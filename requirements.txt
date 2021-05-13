@@ -1,0 +1,4 @@
+nipype>=1.6.0
+pybids>=0.13
+tedana>=0.0.9
+bids>=0.0
