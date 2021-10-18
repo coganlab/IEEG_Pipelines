@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Created on Mon July 29 11:43:54 2019
 
@@ -17,7 +15,7 @@ from bids.layout import models
 import nipype.interfaces.fsl as fsl
 import nipype.interfaces.freesurfer as freesurfer
 from nipype.interfaces import afni as afni
-from BIDS_converter.data2bids import tree
+#from BIDS_converter.data2bids import tree
 from tedana.workflows import t2smap_workflow
 
 os.environ['OMP_NUM_THREADS'] = str(cpu_count()) #tedana resets thread count on import. See https://github.com/ME-ICA/tedana/issues/473 for details
@@ -86,10 +84,13 @@ def get_parser(): #parses flags at onset of command
         Mutually eclusive with the -ex option.
         """)
 
-    return(parser)
+    return parser
 
-class Preprocessing():
-    def __init__(self, input_dir=None, output_dir=None, include=None, exclude=None, verbose=False): #sets the .self globalization for self variables
+class Preprocessing:
+    def __init__(self, input_dir=None, output_dir=None, include=None,
+                 exclude=None, verbose=False):
+        #sets the .self globalization for self variables
+        self.is_verbose = False
         self._input_dir = None
         self._output_dir = None
 
@@ -101,11 +102,21 @@ class Preprocessing():
 
     def set_verbosity(self,verbosity):
         if verbosity:
-            self._is_verbose = True
-        else:
-            self._is_verbose = False
+            self.is_verbose = True
 
-    def set_bids(self,include,exclude): #this function sets up the BIDSLayout object by including/excluding scans by subject, run, or echo
+    def set_bids(self,include,exclude):
+        """
+
+        This function sets up the BIDSLayout object by including/excluding
+         scans by subject, run, or echo
+
+        :param include:
+        :type include:
+        :param exclude:
+        :type exclude:
+        :return:
+        :rtype:
+        """
 
         if exclude is not None:
             parsestr = "|".join(exclude)
@@ -147,7 +158,7 @@ class Preprocessing():
                     ignore.append(os.path.join(root,file))
                 elif include is not None and not re.match(patterns,file):
                     ignore.append(os.path.join(root,file))
-        self.BIDS_layout = BIDSLayout(self._data_dir,ignore=ignore)   
+        self.BIDS_layout = BIDSLayout(self._data_dir,ignore=ignore)
 
     def get_data_dir(self):
         return self._data_dir
@@ -176,10 +187,23 @@ class Preprocessing():
                 data.update(entry)
                 json.dump(data, fst)
 
-    def FuncHandler(self,fileobj,output,suffix): # This function primarily allows files to overwrite their inputs as outputs without causing errors
-                                                # it also checks root, working directory, and origional file address. It also allows for the user 
-                                                # to add on a suffix instead of typing a whole path for a new output. Finally, it integrates a sub-brick
-                                                # specifier  so that specific subsections of an image may be selected instead of the whole thing.
+    def FuncHandler(self,fileobj,output,suffix):
+        """Allows files to overwrite their inputs as outputs without causing errors
+
+
+        it also checks root, working directory, and origional file address. It also allows for the user
+         to add on a suffix instead of typing a whole path for a new output. Finally, it integrates a sub-brick
+         specifier  so that specific subsections of an image may be selected instead of the whole thing.
+
+        :param fileobj:
+        :type fileobj:
+        :param output:
+        :type output:
+        :param suffix:
+        :type suffix:
+        :return:
+        :rtype:
+        """
         if type(fileobj) == models.BIDSImageFile: #setting file to temp file before performing operation
             fileobj = fileobj.path
         elif type(fileobj) is not str:
@@ -211,9 +235,13 @@ class Preprocessing():
             else:
                 fileobj = tempfileobj
 
-        if output == None and suffix == None:   # Renames input file to add a "desc-temp" suffix if the user has not given an output file name. 
-                                                # This marks the file for deletion but only after the output file (with the same name) is generated,
-                                                # effectively "overwrighting" the file. This will not happen if an output is named
+        if output == None and suffix == None:
+            """
+            Renames input file to add a "desc-temp" suffix if the user has not given an output file name. 
+            This marks the file for deletion but only after the output file (with the same name) is generated,
+            effectively "overwrighting" the file. This will not happen if an output is named
+            """
+
             if "_desc-temp" not in fileobj:
                 output = fileobj
                 fileobj = output.split('.nii.gz')[0] + "_desc-temp.nii.gz"
@@ -228,16 +256,25 @@ class Preprocessing():
             print("both suffix and output filename detected as input, using filename given")
         return(fileobj,output)
             
-    ### These are the standalone tools, useable on their own and customiseable for alternate preprocessing algorithms.
-    # it is recommended that you not edit anything above this line (excluding package imports and argparser)
-    # without a serious knowledge of python and this script 
+    """These are the standalone tools, useable on their own and customiseable for alternate preprocessing algorithms.
+     it is recommended that you not edit anything above this line (excluding package imports and argparser)
+     without a serious knowledge of python and this script 
+    """
 
     #cortical reconstruction
-    def cortical_recon(self,filepath=None): 
+    def cortical_recon(self,filepath=None):
+        """
+        https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.freesurfer/preprocess.html#reconall
+
+        :param filepath:
+        :type filepath:
+        :return:
+        :rtype:
+        """
         if filepath == None:
             filepath = self._data_dir
         freesurfer.ReconAll(filepath)
-        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.freesurfer/preprocess.html#reconall
+
 
     def skullstrip(self,fileobj=None,out_file=None,args=None,suffix=None): 
 
@@ -277,14 +314,33 @@ class Preprocessing():
             os.remove(fileobj)
 
     def warp(self,fileobj1=None,fileobj2=None,out_file=None,transformation=None,args=None,saved_mat_file=None,suffix=None):
+        """
+        https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/preprocess.html#warp
 
+        :param fileobj1:
+        :type fileobj1:
+        :param fileobj2:
+        :type fileobj2:
+        :param out_file:
+        :type out_file:
+        :param transformation:
+        :type transformation:
+        :param args:
+        :type args:
+        :param saved_mat_file:
+        :type saved_mat_file:
+        :param suffix:
+        :type suffix:
+        :return:
+        :rtype:
+        """
         #setting files
         if fileobj2 is not None:
             fileobj2, _ = self.FuncHandler(fileobj2,out_file,suffix)
         fileobj1, out_file = self.FuncHandler(fileobj1,out_file,suffix)
     
         ThreeDWarp = afni.Warp(in_file=fileobj1,out_file=out_file)
-        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/preprocess.html#warp
+
         if args is not None:
             ThreeDWarp.inputs.args=args
         if transformation == 'card2oblique':
@@ -345,7 +401,7 @@ class Preprocessing():
             base, _ = self.FuncHandler(base,out_file,suffix)
             myreg.inputs.basefile = base
 
-        myreg.inputs.verbose = self._is_verbose
+        myreg.inputs.verbose = self.is_verbose
         myreg.inputs.timeshift = tshift
         myreg.inputs.interp = interpolation
         if onedfile is True:
@@ -376,7 +432,7 @@ class Preprocessing():
 
         copy3d.inputs.in_file = in_file
         copy3d.inputs.out_file = out_file
-        copy3d.inputs.verbose = self._is_verbose
+        copy3d.inputs.verbose = self.is_verbose
         #copy3d.inputs.num_threads = cpu_count()
         copy3d.run()
 
@@ -496,7 +552,15 @@ class Preprocessing():
             if "_desc-temp" in in_file:
                 os.remove(in_file)
 
-    
+    @property
+    def is_verbose(self):
+        return self.is_verbose
+
+    @is_verbose.setter
+    def is_verbose(self, value):
+        self._is_verbose = value
+
+
 if __name__ == "__main__":
     args = get_parser().parse_args()
     pre = Preprocessing(**vars(args))
@@ -516,7 +580,6 @@ if __name__ == "__main__":
     #Main preprocessing pipeline: uses tools defined above
     for sub_id in sub_ids :
 
-        #print(os.environ)
         #Defining which images we care about and setting the basenames
         all_fobj = []
         for BIDSFiles in pre.BIDS_layout.get(scope='raw',subject=sub_id,suffix='bold',extension='.nii.gz'):
@@ -527,7 +590,7 @@ if __name__ == "__main__":
 
         #copying those files to a new derivatives directory so we can mess with them
         for fobj in all_fobj:
-            if pre._is_verbose:
+            if pre.is_verbose:
                 print("copying {filename} to preprocessing derivatives directory".format(filename=fobj.path))
             try:
                 copy(fobj.path,os.path.join(pre._output_dir,fobj.filename))
@@ -540,7 +603,7 @@ if __name__ == "__main__":
         pre.BIDS_layout.add_derivatives(pre._output_dir)
 
         # skull stripping
-        if pre._is_verbose:
+        if pre.is_verbose:
             print("performing skull stripping")
         filenames = pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',return_type="filename",acquisition="MPRAGE")
         for filename in filenames:
@@ -554,7 +617,7 @@ if __name__ == "__main__":
 
             CWD = os.getcwd()
             os.chdir(pre._output_dir)
-            if pre._is_verbose:
+            if pre.is_verbose:
                 print("denoising and saving motion parameters")
             for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
                 try: #checking that image is either single echo or the first of the multi echo series
@@ -576,7 +639,7 @@ if __name__ == "__main__":
 
             
             #
-            if pre._is_verbose:
+            if pre.is_verbose:
                 print("Starting preprocessing of functional datasets")
             for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
                 pre.despike(fobj.path, fobj.path.replace(".nii.gz","_desc-pt.nii.gz"))
@@ -586,7 +649,7 @@ if __name__ == "__main__":
             #print("Performing cortical reconstruction on %s" %sub_id)
             #preprocess.cortical_recon(bids_obj)
 
-            if pre._is_verbose:
+            if pre.is_verbose:
                 print("Prepare T2* and S0 volumes for use in functional masking and (optionally) anatomical-functional coregistration (takes a little while).")
             fobjs = []
             for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
@@ -609,10 +672,10 @@ if __name__ == "__main__":
             else:
                 raise FileNotFoundError
 
-            if pre._is_verbose:
+            if pre.is_verbose:
                 print("--------Using AFNI align_epi_anat.py to drive anatomical-functional coregistration ")
             #pre.calc()
             
             os.chdir(CWD)
-    if pre._is_verbose:
-        tree(pre.BIDS_layout.root)
+    #if pre._is_verbose:
+    #    tree(pre.BIDS_layout.root)

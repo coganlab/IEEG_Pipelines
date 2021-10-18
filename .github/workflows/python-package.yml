@@ -28,4 +28,4 @@ jobs:
         if [ -f Python/envs/requirements.txt ]; then pip install -r Python/envs/requirements.txt; fi
     - name: Test with pytest
       run: |
-        pytest -v --pycodestyle
+        pytest -v
