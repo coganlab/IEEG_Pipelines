@@ -1,0 +1,11 @@
+{
+    "Name": "iEEG_speech",
+    "BIDSVersion": "1.5.0",
+    "HEDVersion": "7.2.0",
+    "License": "This dataset is made available under the ______ License",
+    "Authors": [
+        "Gregory Cogan"
+    ],
+    "Funding": [],
+    "ReferencesAndLinks": []
+}
