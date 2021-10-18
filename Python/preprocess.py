@@ -91,7 +91,7 @@ def get_parser():  # parses flags at onset of command
 
 class Preprocessing:
     def __init__(self, input_dir=None, output_dir=None, include=None,
-                 exclude=None, verbose=False):
+                 exclude=None, verbose=False, validate=True):
         # sets the .self globalization for self variables
         self.is_verbose = False
         self._input_dir = None
@@ -101,13 +101,13 @@ class Preprocessing:
         self.set_out_dir(output_dir)
         self.set_verbosity(verbose)
         if self._data_dir is not None:
-            self.set_bids(include, exclude)
+            self.set_bids(include, exclude, validate)
 
     def set_verbosity(self, verbosity):
         if verbosity:
             self.is_verbose = True
 
-    def set_bids(self, include, exclude):
+    def set_bids(self, include, exclude, validate):
         """
 
         This function sets up the BIDSLayout object by including/excluding
@@ -161,7 +161,8 @@ class Preprocessing:
                     ignore.append(os.path.join(root, file))
                 elif include is not None and not re.match(patterns, file):
                     ignore.append(os.path.join(root, file))
-        self.BIDS_layout = BIDSLayout(self._data_dir, ignore=ignore)
+        self.BIDS_layout = BIDSLayout(self._data_dir, ignore=ignore,
+                                      validate=validate)
 
     def get_data_dir(self):
         return self._data_dir

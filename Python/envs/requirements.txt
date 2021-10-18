@@ -2,4 +2,5 @@ pytest
 pytest-pycodestyle
 tedana
 nipype
-pybids
+bids>=0.0
+scipy
