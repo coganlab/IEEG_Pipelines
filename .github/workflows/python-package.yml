@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
+        if [ -f Python/envs/requirements.txt ]; then pip install -r Python/envs/requirements.txt; fi
     - name: Test with pytest
       run: |
         pytest -v --pycodestyle
