@@ -6,7 +6,6 @@ Created on Mon July 29 11:43:54 2019
 import argparse
 import os
 import re
-import nipype
 import json
 from shutil import copy, SameFileError
 from multiprocessing import cpu_count
@@ -19,6 +18,7 @@ from nipype.interfaces import afni as afni
 from tedana.workflows import t2smap_workflow
 
 os.environ['OMP_NUM_THREADS'] = str(cpu_count()) #tedana resets thread count on import. See https://github.com/ME-ICA/tedana/issues/473 for details
+
 
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
@@ -85,6 +85,7 @@ def get_parser(): #parses flags at onset of command
         """)
 
     return parser
+
 
 class Preprocessing:
     def __init__(self, input_dir=None, output_dir=None, include=None,
