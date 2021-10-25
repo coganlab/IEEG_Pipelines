@@ -6,6 +6,7 @@
 2. [MNE](https://github.com/mne-tools/mne-python/)
 3. [spaCy](https://github.com/explosion/spaCy/tree/master)
 4. [Eelbrain](https://github.com/Eelbrain/Alice)
+5. [FOOOF](https://github.com/fooof-tools/fooof)
 
 ## Preprocessing
 
