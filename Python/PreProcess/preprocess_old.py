@@ -26,11 +26,11 @@ def get_parser():  # parses flags at onset of command
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter
         , description=""" 
-        preprocess.py is a preprocessing script that allows for the user to substitute in any software packages they want for any process. It takes 
+        preprocess_old.py is a preprocessing script that allows for the user to substitute in any software packages they want for any process. It takes 
         full advantage of BIDS formatting for intuitive dataset querying via the pybids module. It is recommended that users take a quick look at 
         their tutorial (https://github.com/bids-standard/pybids/blob/master/examples/pybids_tutorial.ipynb). One can also use their 
         documentation (https://bids-standard.github.io/pybids/) for reference.
-        ex: python3 preprocess.py -i /media/sf_Ubuntu_files/BIDS -ex s12r17 -verb 
+        ex: python3 preprocess_old.py -i /media/sf_Ubuntu_files/BIDS -ex s12r17 -verb 
         """
         , epilog="""
             Made by Aaron Earle-Richardson (ae166@duke.edu)

@@ -1,4 +1,4 @@
-from preprocess import Preprocessing
+from Python.PreProcess.preprocess_old import Preprocessing
 
 
 def test_bids():
