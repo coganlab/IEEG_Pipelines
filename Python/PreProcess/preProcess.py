@@ -7,18 +7,17 @@ from mne_bids import read_raw_bids, BIDSPath
 
 HOME = os.path.expanduser("~")
 BIDS_root = os.path.join(HOME, r"Box\CoganLab\BIDS-1.0_Uniqueness_point\BIDS")
-#BIDS_path = BIDSPath(root=BIDS_root, suffix="ieeg")
 
 
 def line_filter(data: mne.io.Raw) -> mne.io.Raw:
-    #raw = mne.io.read_raw(data, preload=True)
-    #raw.set_channel_types({nam: "ecog" for nam in raw.info.ch_names})
+    if not data.preload:
+        data.load_data()
     filt = data.notch_filter(range(60, 1000, 60))
     return filt
 
 
 def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
-    my_search = layout.get(**kwargs)
+    my_search: list = layout.get(**kwargs)
     if len(my_search) >= 2:
         raise IndexError("Search terms matched more than one file, try adding"
                          " more search terms")
@@ -36,6 +35,7 @@ if __name__ == "__main__":
     for sub_id in layout.get_subjects():
         data[sub_id] = dict()
         for run in layout.get_runs():
-            BIDS_path = bidspath_from_layout(layout, subject=sub_id, run=run, extension=".edf")
+            BIDS_path = bidspath_from_layout(layout, subject=sub_id, run=run,
+                                             extension=".edf")
             raw = read_raw_bids(bids_path=BIDS_path)
             data[sub_id][run] = line_filter(raw)
