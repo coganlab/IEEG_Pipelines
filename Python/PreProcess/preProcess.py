@@ -2,8 +2,9 @@ from bids import BIDSLayout
 from bids.layout import parse_file_entities, BIDSFile
 import mne
 import os
-from typing import Union
+from joblib import Parallel, delayed
 from mne_bids import read_raw_bids, BIDSPath
+import numpy as np
 
 HOME = os.path.expanduser("~")
 BIDS_root = os.path.join(HOME, r"Box\CoganLab\BIDS-1.1_Uniqueness_point\BIDS")
@@ -12,7 +13,8 @@ BIDS_root = os.path.join(HOME, r"Box\CoganLab\BIDS-1.1_Uniqueness_point\BIDS")
 def line_filter(data: mne.io.Raw) -> mne.io.Raw:
     if not data.preload:
         data.load_data()
-    filt = data.notch_filter(freqs=range(60, 1000, 60), method='spectrum_fit')
+    filt = data.notch_filter(freqs=range(60, 1020, 60), method='spectrum_fit',
+                             verbose=10,)
     return filt
 
 
@@ -29,16 +31,31 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     return BIDS_path
 
 
+def raw_from_layout(layout: BIDSLayout, subject: str, run: str) -> mne.io.Raw:
+    BIDS_path = bidspath_from_layout(layout, subject=subject, run=run,
+                                     extension=".edf")
+    raw = read_raw_bids(bids_path=BIDS_path)
+    return raw
+
+
+def open_dat_file(file_path: str):
+    with open(file_path, mode='rb') as f:
+        data = np.fromfile(f, dtype="float32")
+    array = np.reshape(data, [len(headers_dict), -1], order='F')
+
+
 if __name__ == "__main__":
     layout = BIDSLayout(BIDS_root)
     data = dict()
+    raw_data = dict()
     for sub_id in layout.get_subjects():
-        if not sub_id == "D0029":
+        if not sub_id == "D0059":
             continue
-        data[sub_id] = dict()
-        for run in layout.get_runs():
-
-            BIDS_path = bidspath_from_layout(layout, subject=sub_id, run=run,
-                                             extension=".edf")
-            raw = read_raw_bids(bids_path=BIDS_path)
-            data[sub_id][run] = line_filter(raw)
+        raw_data[sub_id] = dict()
+        runs = layout.get_runs()
+        for run in runs:
+            raw_data[sub_id][run] = raw_from_layout(layout, sub_id, run)
+        filtered_runs = Parallel(n_jobs=len(runs))(delayed(
+            line_filter)(raw_data[sub_id][run]) for run in runs)
+        data[sub_id] = mne.concatenate_raws(filtered_runs)
+        print(data)
