@@ -2,7 +2,7 @@ from bids import BIDSLayout
 from bids.layout import parse_file_entities, BIDSFile
 import mne
 import os
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 import numpy as np
 
@@ -13,8 +13,9 @@ BIDS_root = os.path.join(HOME, r"Box\CoganLab\BIDS-1.1_Uniqueness_point\BIDS")
 def line_filter(data: mne.io.Raw) -> mne.io.Raw:
     if not data.preload:
         data.load_data()
-    filt = data.notch_filter(freqs=range(60, 1020, 60), method='spectrum_fit',
-                             verbose=10,)
+    filt = data.notch_filter(freqs=range(60, 241, 60), method='spectrum_fit',
+                             mt_bandwidth=20.0, verbose=10, n_jobs=cpu_count())
+    # make njobs 'cuda' with a gpu
     return filt
 
 
@@ -57,7 +58,4 @@ if __name__ == "__main__":
         runs = layout.get_runs()
         for run in runs:
             raw_data[sub_id][run] = raw_from_layout(layout, sub_id, run)
-        filtered_runs = Parallel(n_jobs=len(runs))(delayed(
-            line_filter)(raw_data[sub_id][run]) for run in runs)
-        data[sub_id] = mne.concatenate_raws(filtered_runs)
-        print(data)
+            data[sub_id][run] = line_filter(raw_data[sub_id][run])
