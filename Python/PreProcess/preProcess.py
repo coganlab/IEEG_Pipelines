@@ -38,10 +38,12 @@ def raw_from_layout(layout: BIDSLayout, subject: str, run: str) -> mne.io.Raw:
     return raw
 
 
-def open_dat_file(file_path: str):
+def open_dat_file(file_path: str, channels: list):
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
-    array = np.reshape(data, [len(headers_dict), -1], order='F')
+
+    array = np.reshape(data, [len(channels), -1], order='F')
+    return array
 
 
 if __name__ == "__main__":
