@@ -9,9 +9,15 @@ from typing import Union, List, Tuple, Dict
 
 HOME = os.path.expanduser("~")
 LAB_root = os.path.join(HOME, "Box", "CoganLab")
-BIDS_root = os.path.join(LAB_root, "BIDS-1.1_Uniqueness_point", "BIDS")
-D59_dat = os.path.join(LAB_root, "D_Data", "Uniqueness_Point", "D59", "210720",
-                       "001", "D59_Uniqueness_Point_210720.ieeg.dat")
+BIDS_root = os.path.join(HOME, "Desktop", "BIDS")
+# LAB_root, "BIDS-1.1_Uniqueness_point", "BIDS")
+TASK = "Phoneme_Sequencing"
+SUB = "D29"
+DATE_NUM = "190318"
+D_dat = os.path.join(LAB_root, "D_Data", TASK, SUB, DATE_NUM, "001"
+                     , "{}_{}_{}.cleanieeg.dat".format(SUB, TASK, DATE_NUM))
+D_dat2 = os.path.join(LAB_root, "D_Data", TASK, SUB, DATE_NUM, "001"
+                      , "{}_{}_{}.ieeg.dat".format(SUB, TASK, DATE_NUM))
 
 
 def line_filter(data: mne.io.Raw) -> mne.io.Raw:
@@ -24,10 +30,10 @@ def line_filter(data: mne.io.Raw) -> mne.io.Raw:
                                     method='spectrum_fit',
                                     mt_bandwidth=20.0,
                                     filter_length='20s',
-                                    p_value=0.01,
+                                    # p_value=0.01, only used if freqs=None
                                     verbose=10,
-                                    n_jobs=cpu_count()-1)
-    # make njobs 'cuda' with a gpu
+                                    n_jobs=cpu_count())
+    # make njobs 'cuda' with a gpu if method is 'fir'
     return filt
 
 
@@ -46,7 +52,10 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
 
 def raw_from_layout(layout: BIDSLayout, subject: str,
                     run: Union[List[int], int] = None) -> mne.io.Raw:
-    runs = layout.get(return_type="id", target="run", subject=subject, run=run)
+    kwargs = dict(subject=subject)
+    if run:
+        kwargs["run"] = run
+    runs = layout.get(return_type="id", target="run", **kwargs)
     raw = []
     for r in runs:
         BIDS_path = bidspath_from_layout(layout, subject=subject, run=r,
@@ -100,9 +109,9 @@ def filt_main(layout: BIDSLayout,
     return raw_data, data
 
 
-def figure_compare(raw: List[mne.io.Raw], labels: List[str]):
+def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
     for title, data in zip(labels, raw):
-        fig = data.plot_psd(fmax=250, average=True)
+        fig = data.plot_psd(fmax=250, average=avg)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
@@ -111,11 +120,12 @@ def figure_compare(raw: List[mne.io.Raw], labels: List[str]):
 
 if __name__ == "__main__":
     layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, "D0059", [1, 2, 3, 4])
-    raw_dat = open_dat_file(D59_dat, raw.copy().ch_names)
+    raw = raw_from_layout(layout, "D0029", [1,2,3,4] )
+    raw_dat = open_dat_file(D_dat, raw.copy().ch_names)
+    raw_dat2 = open_dat_file(D_dat2, raw.copy().ch_names)
     #raw.load_data()
     #filt = line_filter(raw)
     # raw_dat, dat = filt_main(layout, "D0028", 1)
-    #data = [raw.copy(), filt.copy(), raw_dat.copy()]
-    #figure_compare(data, ['Un', 'Spec_fit ', 'Correct '])
+    data = [raw_dat2.copy(), raw_dat.copy()]
+    figure_compare(data, ['Un',  'Correct '])
 
