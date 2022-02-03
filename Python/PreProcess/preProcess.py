@@ -7,18 +7,22 @@ from mne_bids import read_raw_bids, BIDSPath
 import numpy as np
 from typing import Union, List, Tuple, Dict
 import matplotlib.pyplot as plt
+import nibabel as nib
+from dipy.align import resample
+from typing import TypeVar
 
 HOME = os.path.expanduser("~")
 LAB_root = os.path.join(HOME, "Box", "CoganLab")
 BIDS_root = os.path.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
 # LAB_root, "BIDS-1.1_Uniqueness_point", "BIDS")
-TASK = "Phoneme_Seq"
-SUB = "D24"
-DATE_NUM = "181026"
-D_dat_filt = os.path.join(LAB_root, "D_Data", TASK+"uencing", SUB, DATE_NUM, "001"
+TASK = "Phoneme_Sequencing"
+SUB = "D28"
+DATE_NUM = "190307"
+D_dat_filt = os.path.join(LAB_root, "D_Data", TASK, SUB, DATE_NUM, "001"
                      , "{}_{}_{}.cleanieeg.dat".format(SUB, TASK, DATE_NUM))
-D_dat_raw = os.path.join(LAB_root, "D_Data", TASK+"uencing", SUB, DATE_NUM, "001"
+D_dat_raw = os.path.join(LAB_root, "D_Data", TASK, SUB, DATE_NUM, "001"
                       , "{}_{}_{}.ieeg.dat".format(SUB, TASK, DATE_NUM))
+PathLike = TypeVar("PathLike", str, os.PathLike)
 
 
 def line_filter(data: mne.io.Raw) -> mne.io.Raw:
@@ -39,6 +43,14 @@ def line_filter(data: mne.io.Raw) -> mne.io.Raw:
 
 
 def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
+    """
+
+    Steps:
+    1. mne.time_frequency.dpss_windows
+    2.  f-test pre-defined freq range for max power using mne.stats.permutation_cluster_test
+    3.
+
+    """
     f, ax = plt.subplots()
     psds, freqs = mne.time_frequency.psd_multitaper(data, fmax=250, n_jobs=cpu_count(), verbose=10)
     psds = 10 * np.log10(psds)  # convert to dB
@@ -49,6 +61,88 @@ def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
                     color='k', alpha=.5)
     ax.set(title='Multitaper PSD (gradiometers)', xlabel='Frequency (Hz)',
            ylabel='Power Spectral Density (dB)')
+
+
+def get_strongest_line(array: np.ndarray):
+    pass
+
+
+def plot_overlay(image, compare, title, thresh=None):
+    """Define a helper function for comparing plots."""
+    image = nib.orientations.apply_orientation(
+        np.asarray(image.dataobj), nib.orientations.axcodes2ornt(
+            nib.orientations.aff2axcodes(image.affine))).astype(np.float32)
+    compare = nib.orientations.apply_orientation(
+        np.asarray(compare.dataobj), nib.orientations.axcodes2ornt(
+            nib.orientations.aff2axcodes(compare.affine))).astype(np.float32)
+    if thresh is not None:
+        compare[compare < np.quantile(compare, thresh)] = np.nan
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    fig.suptitle(title)
+    for i, ax in enumerate(axes):
+        ax.imshow(np.take(image, [image.shape[i] // 2], axis=i).squeeze().T,
+                  cmap='gray')
+        ax.imshow(np.take(compare, [compare.shape[i] // 2],
+                          axis=i).squeeze().T, cmap='gist_heat', alpha=0.5)
+        ax.invert_yaxis()
+        ax.axis('off')
+    fig.tight_layout()
+
+
+def allign_mri(t1_path: PathLike, ct_path: PathLike, my_raw: mne.io.Raw,
+               sub_id: str, subj_dir=None):
+    if subj_dir is None:
+        subj_dir = os.path.join(LAB_root, "ECoG_Recon_Full")
+    T1 = nib.load(t1_path)
+    viewer = T1.orthoview()
+    viewer.set_position(0, 9.9, 5.8)
+    viewer.figs[0].axes[0].annotate(
+        'PC', (107, 108), xytext=(10, 75), color='white',
+        horizontalalignment='center',
+        arrowprops=dict(facecolor='white', lw=0.5, width=2, headwidth=5))
+    viewer.figs[0].axes[0].annotate(
+        'AC', (137, 108), xytext=(246, 75), color='white',
+        horizontalalignment='center',
+        arrowprops=dict(facecolor='white', lw=0.5, width=2, headwidth=5))
+    CT_orig = nib.load(ct_path)
+    CT_resampled = resample(moving=np.asarray(CT_orig.dataobj),
+                            static=np.asarray(T1.dataobj),
+                            moving_affine=CT_orig.affine,
+                            static_affine=T1.affine)
+    plot_overlay(T1, CT_resampled, 'Unaligned CT Overlaid on T1', thresh=0.95)
+    del CT_resampled
+    reg_affine, _ = mne.transforms.compute_volume_registration(
+        CT_orig, T1, pipeline='rigids')
+    CT_aligned = mne.transforms.apply_volume_registration(CT_orig, T1, reg_affine)
+    plot_overlay(T1, CT_aligned, 'Aligned CT Overlaid on T1', thresh=0.95)
+    del CT_orig
+    CT_data = CT_aligned.get_fdata().copy()
+    CT_data[CT_data < np.quantile(CT_data, 0.95)] = np.nan
+    T1_data = np.asarray(T1.dataobj)
+    fig, axes = plt.subplots(1, 3, figsize=(12, 6))
+    for ax in axes:
+        ax.axis('off')
+    axes[0].imshow(T1_data[T1.shape[0] // 2], cmap='gray')
+    axes[0].set_title('MR')
+    axes[1].imshow(np.asarray(CT_aligned.dataobj)[CT_aligned.shape[0] // 2],
+                   cmap='gray')
+    axes[1].set_title('CT')
+    axes[2].imshow(T1_data[T1.shape[0] // 2], cmap='gray')
+    axes[2].imshow(CT_data[CT_aligned.shape[0] // 2], cmap='gist_heat', alpha=0.5)
+    for ax in (axes[0], axes[2]):
+        ax.annotate('Subcutaneous fat', (110, 52), xytext=(100, 30),
+                    color='white', horizontalalignment='center',
+                    arrowprops=dict(facecolor='white'))
+    for ax in axes:
+        ax.annotate('Skull (dark in MR, bright in CT)', (40, 175),
+                    xytext=(120, 246), horizontalalignment='center',
+                    color='white', arrowprops=dict(facecolor='white'))
+    axes[2].set_title('CT aligned to MR')
+    fig.tight_layout()
+    del CT_data, T1
+    subj_trans = mne.coreg.estimate_head_mri_t(sub_id, subjects_dir=subj_dir)
+    gui = mne.gui.locate_ieeg(my_raw.info, subj_trans, CT_aligned,
+                              subject=sub_id, subjects_dir=subj_dir)
 
 
 def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
@@ -81,7 +175,7 @@ def raw_from_layout(layout: BIDSLayout, subject: str,
 
 
 def open_dat_file(file_path: str, channels: Union[str, List[str], int],
-                  sfreq: int = 2048, types: str = "ECoG") -> mne.io.RawArray:
+                  sfreq: int = 2048, types: str = "seeg") -> mne.io.RawArray:
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
     channels.remove("Trigger")
@@ -134,7 +228,7 @@ def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
 
 if __name__ == "__main__":
     layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, "D0024", [1, 2, 3, 4])
+    raw = raw_from_layout(layout, "D0028", [1, 2, 3, 4])
     filt_dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
     raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
     raw.load_data()
@@ -142,3 +236,6 @@ if __name__ == "__main__":
     # raw_dat, dat = filt_main(layout, "D0028", 1)
     data = [raw_dat, filt_dat, raw, filt]
     figure_compare(data, ['Un',  '', "BIDS Un", "BIDS "])
+    T1_path = layout.get(return_type="path", subject="D0028", type="T1w")[0]
+    CT_path = layout.get(return_type="path", subject="D0028", type="CT")[0]
+    allign_mri(T1_path, CT_path, filt, "D0028")

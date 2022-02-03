@@ -5,3 +5,5 @@ nipype
 bids>=0.0
 scipy
 mne_bids
+dipy
+pyqt5
