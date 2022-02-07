@@ -2,6 +2,7 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 import mne
 import os
+from re import match
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 import numpy as np
@@ -9,20 +10,26 @@ from typing import Union, List, Tuple, Dict
 import matplotlib.pyplot as plt
 import nibabel as nib
 from dipy.align import resample
-from typing import TypeVar
+from typing import TypeVar, Tuple
 
 HOME = os.path.expanduser("~")
 LAB_root = os.path.join(HOME, "Box", "CoganLab")
 BIDS_root = os.path.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
-# LAB_root, "BIDS-1.1_Uniqueness_point", "BIDS")
-TASK = "Phoneme_Sequencing"
-SUB = "D28"
-DATE_NUM = "190307"
-D_dat_filt = os.path.join(LAB_root, "D_Data", TASK, SUB, DATE_NUM, "001"
-                     , "{}_{}_{}.cleanieeg.dat".format(SUB, TASK, DATE_NUM))
-D_dat_raw = os.path.join(LAB_root, "D_Data", TASK, SUB, DATE_NUM, "001"
-                      , "{}_{}_{}.ieeg.dat".format(SUB, TASK, DATE_NUM))
 PathLike = TypeVar("PathLike", str, os.PathLike)
+
+
+def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
+    cleanieeg = None
+    ieeg = None
+    for root, _, files in os.walk(folder):
+        for file in files:
+            if match(r".*cleanieeg\.dat.*", file):
+                cleanieeg = os.path.join(root, file)
+            elif match(r".*ieeg\.dat.*", file):
+                ieeg = os.path.join(root, file)
+            if ieeg is not None and cleanieeg is not None:
+                return ieeg, cleanieeg
+    raise FileNotFoundError("Not all .dat files were found:")
 
 
 def line_filter(data: mne.io.Raw) -> mne.io.Raw:
@@ -227,15 +234,19 @@ def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
 
 
 if __name__ == "__main__":
+    TASK = "Phoneme_Sequencing"
+    SUB = "D22"
+    D_dat_raw, D_dat_filt = find_dat(os.path.join(LAB_root, "D_Data", TASK,
+                                                  SUB))
     layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, "D0028", [1, 2, 3, 4])
+    raw = raw_from_layout(layout, "D0022", [1, 2, 3, 4])
     filt_dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
     raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
     raw.load_data()
     filt = line_filter(raw)
     # raw_dat, dat = filt_main(layout, "D0028", 1)
-    data = [raw_dat, filt_dat, raw, filt]
-    figure_compare(data, ['Un',  '', "BIDS Un", "BIDS "])
-    T1_path = layout.get(return_type="path", subject="D0028", type="T1w")[0]
-    CT_path = layout.get(return_type="path", subject="D0028", type="CT")[0]
-    allign_mri(T1_path, CT_path, filt, "D0028")
+    data = [raw_dat, filt_dat, raw]
+    figure_compare(data, ['Un',  '', "BIDS Un"])
+    #T1_path = layout.get(return_type="path", subject="D0022", type="T1w")[0]
+    #CT_path = layout.get(return_type="path", subject="D0022", type="CT")[0]
+    #allign_mri(T1_path, CT_path, filt, "D0028")
