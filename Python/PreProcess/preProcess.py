@@ -1,7 +1,9 @@
+from os import walk
 from bids import BIDSLayout
 from bids.layout import BIDSFile
 import mne
-import os
+import os.path as op
+from os import PathLike as PL
 from re import match
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
@@ -11,21 +13,23 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 from dipy.align import resample
 
-HOME = os.path.expanduser("~")
-LAB_root = os.path.join(HOME, "Box", "CoganLab")
-BIDS_root = os.path.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
-PathLike = TypeVar("PathLike", str, os.PathLike)
+HOME = op.expanduser("~")
+LAB_root = op.join(HOME, "Box", "CoganLab")
+BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
+PathLike = TypeVar("PathLike", str, PL)
+RunDict = Dict[int, mne.io.Raw]
+SubDict = Dict[str, RunDict]
 
 
 def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
     cleanieeg = None
     ieeg = None
-    for root, _, files in os.walk(folder):
+    for root, _, files in walk(folder):
         for file in files:
             if match(r".*cleanieeg\.dat.*", file):
-                cleanieeg = os.path.join(root, file)
+                cleanieeg = op.join(root, file)
             elif match(r".*ieeg\.dat.*", file):
-                ieeg = os.path.join(root, file)
+                ieeg = op.join(root, file)
             if ieeg is not None and cleanieeg is not None:
                 return ieeg, cleanieeg
     raise FileNotFoundError("Not all .dat files were found:")
@@ -43,7 +47,7 @@ def line_filter(data: mne.io.Raw) -> mne.io.Raw:
                                     filter_length='20s',
                                     p_value=0.1,  # only used if freqs=None
                                     verbose=10,
-                                    n_jobs=cpu_count()-1)
+                                    n_jobs=cpu_count() - 1)
     # make njobs 'cuda' with a gpu if method is 'fir'
     return filt
 
@@ -52,9 +56,10 @@ def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
     """
 
     Steps:
-    1. mne.time_frequency.dpss_windows
-    2.  f-test pre-defined freq range for max power using mne.stats.permutation_cluster_test
-    3.
+    1. psd_multitaper
+    2. f-test pre-defined freq range for max power using mne.stats.permutation_cluster_test (or just max)
+    3. fft extract and sum frequencies found in max
+    4. subtract frequencies in the time domain (signal - extracted_signal)
 
     """
     f, ax = plt.subplots()
@@ -98,7 +103,7 @@ def plot_overlay(image, compare, title, thresh=None):
 def allign_mri(t1_path: PathLike, ct_path: PathLike, my_raw: mne.io.Raw,
                sub_id: str, subj_dir=None):
     if subj_dir is None:
-        subj_dir = os.path.join(LAB_root, "ECoG_Recon_Full")
+        subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     T1 = nib.load(t1_path)
     viewer = T1.orthoview()
     viewer.set_position(0, 9.9, 5.8)
@@ -207,7 +212,7 @@ def add_arrows(axes):
 def filt_main(layout: BIDSLayout,
               subjects: Union[str, List[str]] = None,
               runs: Union[int, List[int]] = None
-              ) -> Tuple[Dict[str, Dict[int, mne.io.Raw]]]:
+              ) -> Tuple[SubDict, SubDict]:
     data = dict()
     raw_data = dict()
     subjects: List[str] = layout.get(return_type="id", target="subject",
@@ -223,6 +228,24 @@ def filt_main(layout: BIDSLayout,
     return raw_data, data
 
 
+def filt_main_2(layout: BIDSLayout,
+                subjects: Union[str, List[str]] = None,
+                runs: Union[int, List[int]] = None):
+    """A function that runs through all the subjects that filters then saves
+
+    """
+    subjects: List[str] = layout.get(return_type="id", target="subject",
+                                     subject=subjects)
+    for sub_id in subjects:
+        runs: List[int] = layout.get(return_type="id", target="run",
+                                     subject=sub_id, run=runs)
+        for run in runs:
+            raw_data = raw_from_layout(layout, sub_id, run)
+            filt_data = line_filter(raw_data)
+            save_name = "{}_filt_run-{}_ieeg.fif"
+            filt_data.save(op.join(LAB_root, "Aaron_test", save_name))
+
+
 def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
     for title, data in zip(labels, raw):
         fig = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count())
@@ -234,18 +257,20 @@ def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
 
 if __name__ == "__main__":
     TASK = "Phoneme_Sequencing"
-    SUB = "D22"
-    D_dat_raw, D_dat_filt = find_dat(os.path.join(LAB_root, "D_Data", TASK,
-                                                  SUB))
+    # SUB = "D22"
+    # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data", TASK, SUB))
     layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, "D0022", [1, 2, 3, 4])
-    filt_dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    raw.load_data()
-    filt = line_filter(raw)
+    # subjects = ["D22", "D23", "D24", "D25", "D28", "D29", "D31", "D35", "D39", "D40", "D41", "D42", "D45", "D48",
+    #            "D49", "D52", "D53", "D54", "D55", "D56", "D57", "D58" "D59", "D60", "D61", "D63", "D64"]
+    filt_main_2(layout)
+    # raw = raw_from_layout(layout, "D0022", [1, 2, 3, 4])
+    # filt_dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    # raw.load_data()
+    # filt = mne.io.read_raw_fif("D22_filt_ieeg.fif")
     # raw_dat, dat = filt_main(layout, "D0028", 1)
-    data = [raw_dat, filt_dat, raw]
-    figure_compare(data, ['Un',  '', "BIDS Un"])
-    #T1_path = layout.get(return_type="path", subject="D0022", type="T1w")[0]
-    #CT_path = layout.get(return_type="path", subject="D0022", type="CT")[0]
-    #allign_mri(T1_path, CT_path, filt, "D0028")
+    # data = [raw_dat, filt_dat, raw, filt]
+    # figure_compare(data, ['Un',  '', "BIDS Un", "BIDS "])
+    # T1_path = layout.get(return_type="path", subject="D0022", type="T1w")[0]
+    # CT_path = layout.get(return_type="path", subject="D0022", type="CT")[0]
+    # allign_mri(T1_path, CT_path, filt, "D0028")
