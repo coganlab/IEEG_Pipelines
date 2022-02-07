@@ -1,17 +1,19 @@
-from os import walk
-from bids import BIDSLayout
-from bids.layout import BIDSFile
-import mne
+import logging
 import os.path as op
 from os import PathLike as PL
+from os import walk
 from re import match
+from typing import Union, List, Tuple, Dict, TypeVar
+
+import matplotlib.pyplot as plt
+import mne
+import nibabel as nib
+import numpy as np
+from bids import BIDSLayout
+from bids.layout import BIDSFile
+from dipy.align import resample
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
-import numpy as np
-from typing import Union, List, Tuple, Dict, TypeVar
-import matplotlib.pyplot as plt
-import nibabel as nib
-from dipy.align import resample
 
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
@@ -256,12 +258,12 @@ def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
 
 
 if __name__ == "__main__":
-    TASK = "Phoneme_Sequencing"
+    logging.basicConfig(filename="Information.log", filemode="w",
+                        level=logging.INFO)
+    # TASK = "Phoneme_Sequencing"
     # SUB = "D22"
     # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data", TASK, SUB))
     layout = BIDSLayout(BIDS_root)
-    # subjects = ["D22", "D23", "D24", "D25", "D28", "D29", "D31", "D35", "D39", "D40", "D41", "D42", "D45", "D48",
-    #            "D49", "D52", "D53", "D54", "D55", "D56", "D57", "D58" "D59", "D60", "D61", "D63", "D64"]
     filt_main_2(layout)
     # raw = raw_from_layout(layout, "D0022", [1, 2, 3, 4])
     # filt_dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
