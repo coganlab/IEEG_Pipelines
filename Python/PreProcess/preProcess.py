@@ -230,22 +230,21 @@ def filt_main(layout: BIDSLayout,
     return raw_data, data
 
 
-def filt_main_2(layout: BIDSLayout,
-                subjects: Union[str, List[str]] = None,
-                runs: Union[int, List[int]] = None):
+def filt_main_2(layout: BIDSLayout, subjects: Union[str, List[str]] = None):
     """A function that runs through all the subjects that filters then saves
 
     """
-    subjects: List[str] = layout.get(return_type="id", target="subject",
-                                     subject=subjects)
+    if subjects is None:
+        subjects: List[str] = layout.get(return_type="id", target="subject")
     for sub_id in subjects:
         runs: List[int] = layout.get(return_type="id", target="run",
-                                     subject=sub_id, run=runs)
+                                     subject=sub_id)
         for run in runs:
             raw_data = raw_from_layout(layout, sub_id, run)
             filt_data = line_filter(raw_data)
             save_name = "{}_filt_run-{}_ieeg.fif"
-            filt_data.save(op.join(LAB_root, "Aaron_test", save_name))
+            filt_data.save(op.join(LAB_root, "Aaron_test",
+                                   "filt_phonemesequence", save_name))
 
 
 def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
@@ -260,6 +259,7 @@ def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
 if __name__ == "__main__":
     logging.basicConfig(filename="Information.log", filemode="w",
                         level=logging.INFO)
+    mne.set_log_file("Information.log")
     # TASK = "Phoneme_Sequencing"
     # SUB = "D22"
     # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data", TASK, SUB))
