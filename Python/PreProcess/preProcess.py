@@ -6,11 +6,10 @@ from re import match
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 import numpy as np
-from typing import Union, List, Tuple, Dict
+from typing import Union, List, Tuple, Dict, TypeVar
 import matplotlib.pyplot as plt
 import nibabel as nib
 from dipy.align import resample
-from typing import TypeVar, Tuple
 
 HOME = os.path.expanduser("~")
 LAB_root = os.path.join(HOME, "Box", "CoganLab")
