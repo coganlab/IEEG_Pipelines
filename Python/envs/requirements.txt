@@ -7,3 +7,4 @@ scipy
 mne_bids
 dipy
 pyqt5
+pyvistaqt
