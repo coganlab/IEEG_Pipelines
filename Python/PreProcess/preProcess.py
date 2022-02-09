@@ -188,12 +188,13 @@ def raw_from_layout(layout: BIDSLayout, subject: str,
                                          extension=".edf")
         new_raw = read_raw_bids(bids_path=BIDS_path)
         new_raw.load_data()
-        raw.append(new_raw)
+        raw.append(new_raw.copy())
+        del new_raw
     whole_raw: mne.io.Raw = mne.concatenate_raws(raw)
     return whole_raw
 
 
-def open_dat_file(file_path: str, channels: List[str], int,
+def open_dat_file(file_path: str, channels: List[str],
                   sfreq: int = 2048, types: str = "seeg") -> mne.io.RawArray:
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
@@ -246,12 +247,14 @@ def filt_main_2(layout: BIDSLayout, subjects: Union[str, List[str]] = None):
         runs: List[int] = layout.get(return_type="id", target="run",
                                      subject=sub_id)
         for run in runs:
+            logging.info("sub-{}, run-{}".format(sub_id, run))
             raw_data = raw_from_layout(layout, sub_id, run)
             filt_data = line_filter(raw_data)
             save_name = "{}_filt_run-{}_ieeg.fif".format(sub_id, run)
             filt_data.save(op.join(LAB_root, "Aaron_test",
                                    "filt_phonemesequence", save_name),
                            overwrite=False)
+        del runs
 
 
 def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
@@ -264,9 +267,10 @@ def figure_compare(raw: List[mne.io.Raw], labels: List[str], avg: bool = True):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(filename="Information.log", filemode="w",
+    log_filename = op.join(LAB_root, "Aaron_test", "Information.log")
+    logging.basicConfig(filename=log_filename, filemode="w",
                         level=logging.INFO)
-    mne.set_log_file("Information.log",
+    mne.set_log_file(log_filename,
                      "%(levelname)s: %(message)s - %(asctime)s")
     # TASK = "Phoneme_Sequencing"
     # SUB = "D22"
