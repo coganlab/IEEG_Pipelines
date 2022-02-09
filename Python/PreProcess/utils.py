@@ -1,8 +1,7 @@
-import os.path as op
 from os import PathLike as PL
 from typing import List, TypeVar
 
-import matplotlib.pyplot as plt
+from matplotlib.pyplot import Figure, Axes
 from mne.io import Raw
 import numpy as np
 from joblib import cpu_count
@@ -19,14 +18,14 @@ def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True):
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        fig: plt.Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count())
+        fig: Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count())
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
         add_arrows(fig.axes[:2])
 
 
-def add_arrows(axes: plt.Axes):
+def add_arrows(axes: Axes):
     # add some arrows at 60 Hz and its harmonics
     for ax in axes:
         freqs = ax.lines[-1].get_xdata()

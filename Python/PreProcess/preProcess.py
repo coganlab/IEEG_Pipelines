@@ -4,6 +4,7 @@ from os import walk
 from re import match
 from typing import Union, List, Tuple, Dict, Any
 
+import matplotlib.pyplot as plt
 import mne
 import numpy as np
 from bids import BIDSLayout
