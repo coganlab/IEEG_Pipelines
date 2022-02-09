@@ -167,17 +167,23 @@ if __name__ == "__main__":
                         level=logging.INFO)
     mne.set_log_file(log_filename,
                      "%(levelname)s: %(message)s - %(asctime)s")
-    # TASK = "Phoneme_Sequencing"
-    # SUB = "D22"
+    SUB = "D0024"
+    layout = BIDSLayout(BIDS_root)
+    # filt_main_2(layout)
+    filt = mne.io.read_raw_fif(
+        op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
+                "{}_filt_run-{}_ieeg.fif".format(SUB, 1)))
+    for i in [2, 3, 4]:
+        f_name = op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
+                         "{}_filt_run-{}_ieeg.fif".format(SUB, i))
+        mne.concatenate_raws([filt, mne.io.read_raw_fif(f_name)])
+    T1_path = layout.get(return_type="path", subject=SUB,
+                         extension="nii.gz")[0]
+    CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
+    gui = allign_mri(T1_path, CT_path, filt, "D24")
     # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
     #  TASK, SUB))
-    layout = BIDSLayout(BIDS_root)
-    filt_main_2(layout)
-    # raw = raw_from_layout(layout, "D0022", [1, 2, 3, 4])
-    # filt_dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    # raw.load_data()
-    # filt = mne.io.read_raw_fif("D22_filt_ieeg.fif")
-    # raw_dat, dat = filt_main(layout, "D0028", 1)
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
+    # dat = open_dat_file(D_dat_filt, raw.copy().channels)
     # data = [raw_dat, filt_dat, raw, filt]
     # figure_compare(data, ['Un',  '', "BIDS Un", "BIDS "])

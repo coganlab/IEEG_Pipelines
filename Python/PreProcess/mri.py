@@ -5,6 +5,7 @@ import mne
 import nibabel as nib
 import numpy as np
 from bids import BIDSLayout
+from bids.layout import BIDSImageFile
 from dipy.align import resample
 
 from utils import LAB_root, PathLike
@@ -95,7 +96,8 @@ def allign_mri(t1_path: PathLike, ct_path: PathLike, my_raw: mne.io.Raw,
 if __name__ == "__main__":
     BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
     layout = BIDSLayout(BIDS_root)
-    T1_path = layout.get(return_type="path", subject="D0022", type="T1w")[0]
-    CT_path = layout.get(return_type="path", subject="D0022", type="CT")[0]
-    filt = mne.io.read_raw_fif("D22_filt_ieeg.fif")
-    allign_mri(T1_path, CT_path, filt, "D0022")
+    T1_path = layout.get(return_type="path", subject="D0024",
+                         extension="nii.gz")[0]
+    CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
+    filt = mne.io.read_raw_fif("D24_filt_ieeg.fif")
+    allign_mri(T1_path, CT_path, filt, "D0024")
