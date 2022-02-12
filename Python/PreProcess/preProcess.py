@@ -1,4 +1,3 @@
-import logging
 import os.path as op
 from os import walk
 from re import match
@@ -13,7 +12,7 @@ from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
 from utils import HOME, LAB_root, PathLike, figure_compare
-from mri import allign_mri
+from mri import allign_CT, show_brain, head_to_mni
 
 BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
 RunDict = Dict[int, mne.io.Raw]
@@ -76,7 +75,7 @@ def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
            ylabel='Power Spectral Density (dB)')
 
 
-def get_strongest_line(array: np.ndarray):
+def get_strongest_line(myarray: np.ndarray):
     pass
 
 
@@ -122,6 +121,17 @@ def open_dat_file(file_path: str, channels: List[str],
     return raw
 
 
+def retrieve_filt(sub: str, runs: int = 4) -> mne.io.Raw:
+    filt = mne.io.read_raw_fif(
+        op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
+                "{}_filt_run-{}_ieeg.fif".format(sub, 1)))
+    for i in [x+2 for x in range(runs-1)]:
+        f_name = op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
+                         "{}_filt_run-{}_ieeg.fif".format(sub, i))
+        mne.concatenate_raws([filt, mne.io.read_raw_fif(f_name)])
+    return filt
+
+
 def filt_main(layout: BIDSLayout,
               subjects: Union[str, List[str]] = None,
               runs: Union[int, List[int]] = None
@@ -151,36 +161,43 @@ def filt_main_2(layout: BIDSLayout, subjects: Union[str, List[str]] = None):
         runs: List[int] = layout.get(return_type="id", target="run",
                                      subject=sub_id)
         for run in runs:
-            logging.info("sub-{}, run-{}".format(sub_id, run))
-            raw_data = raw_from_layout(layout, sub_id, run)
-            filt_data = line_filter(raw_data)
-            save_name = "{}_filt_run-{}_ieeg.fif".format(sub_id, run)
-            filt_data.save(op.join(LAB_root, "Aaron_test",
-                                   "filt_phonemesequence", save_name),
-                           overwrite=False)
+            try:
+                raw_data = raw_from_layout(layout, sub_id, run)
+                filt_data = line_filter(raw_data)
+                save_name = "{}_filt_run-{}_ieeg.fif".format(sub_id, run)
+                filt_data.save(op.join(LAB_root, "Aaron_test",
+                                    "filt_phonemesequence", save_name),
+                            overwrite=False)
+            except Exception:
+                pass
         del runs
 
 
 if __name__ == "__main__":
-    log_filename = op.join(LAB_root, "Aaron_test", "Information.log")
-    logging.basicConfig(filename=log_filename, filemode="w",
-                        level=logging.INFO)
+    log_filename = "output.log"  # op.join(LAB_root, "Aaron_test", "Information.log")
     mne.set_log_file(log_filename,
-                     "%(levelname)s: %(message)s - %(asctime)s")
-    SUB = "D0024"
+                     "%(levelname)s: %(message)s - %(asctime)s",
+                     overwrite=True)
+    mne.set_log_level("INFO")
+    sub_num = 24
+    sub_pad = "D00{}".format(sub_num)
+    sub = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
-    # filt_main_2(layout)
-    filt = mne.io.read_raw_fif(
-        op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
-                "{}_filt_run-{}_ieeg.fif".format(SUB, 1)))
-    for i in [2, 3, 4]:
-        f_name = op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
-                         "{}_filt_run-{}_ieeg.fif".format(SUB, i))
-        mne.concatenate_raws([filt, mne.io.read_raw_fif(f_name)])
-    T1_path = layout.get(return_type="path", subject=SUB,
-                         extension="nii.gz")[0]
+    filt = retrieve_filt(sub_pad, 4)
+    T1_path = layout.get(subject=sub_pad, extension="nii.gz")[0]
     CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
-    gui = allign_mri(T1_path, CT_path, filt, "D24")
+    subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
+    if sub == "D24":
+        reg_affine = np.array([[1.00000,0.00000,0.00000,-5.69848],
+                  [0.00000,1.00000,0.00000,25.40463],
+                  [0.00000,0.00000,1.00000,63.92385],
+                  [0.00000,0.00000,0.00000,1.00000]])
+    else:
+        reg_affine = None
+    CT_aligned = allign_CT(T1_path, CT_path, reg_affine)
+    subj_trans = mne.coreg.estimate_head_mri_t(sub, subjects_dir=subj_dir)
+
+    # show_brain(filt, subj_trans, sub)
     # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
     #  TASK, SUB))
     # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)

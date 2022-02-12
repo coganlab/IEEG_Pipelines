@@ -1,12 +1,11 @@
 import os.path as op
+from typing import Union
 
 import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
 import numpy as np
 from bids import BIDSLayout
-from bids.layout import BIDSImageFile
-from dipy.align import resample
 
 from utils import LAB_root, PathLike
 
@@ -34,70 +33,77 @@ def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
     fig.tight_layout()
 
 
-def allign_mri(t1_path: PathLike, ct_path: PathLike, my_raw: mne.io.Raw,
-               sub_id: str, subj_dir: PathLike = None):
+def allign_CT(t1_path: PathLike, ct_path: PathLike, reg_affine=None
+              ) -> nib.spatialimages.SpatialImage:
+    T1 = nib.load(t1_path)
+    CT_orig = nib.load(ct_path)
+    sdr_morph = None
+    if reg_affine is None:
+        reg_affine, sdr_morph = mne.transforms.compute_volume_registration(
+            CT_orig, T1, pipeline='all')
+    CT_aligned = mne.transforms.apply_volume_registration(CT_orig, T1,
+                                                          reg_affine, 
+                                                          sdr_morph)
+    return CT_aligned
+
+
+def show_brain(my_raw: mne.io.Raw, trans: mne.transforms.Transform,
+               sub_id: PathLike, subj_dir: PathLike = None):
+    subj_dir = get_sub_dir(subj_dir)
+    my_raw.info = mne.preprocessing.ieeg.project_sensors_onto_brain(
+        my_raw.info, trans, sub_id, subjects_dir=subj_dir)
+    brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white')
+    brain = mne.viz.Brain(sub_id, surf='white', subjects_dir=subj_dir,
+                          title='Projection', **brain_kwargs)
+    brain.add_sensors(my_raw.info, trans=trans)
+    view_kwargs = dict(azimuth=60, elevation=100, distance=350,
+                       focalpoint=(0, 0, -15))
+    brain.show_view(**view_kwargs)
+
+
+def head_to_mni(inst: Union[mne.io.Raw, mne.Epochs, mne.Evoked], 
+                sub: str, subj_dir: PathLike = None):
+    subj_dir = get_sub_dir(subj_dir)
+    montage = inst.get_montage()
+
+    # first we need a head to mri transform since the data is stored in "head"
+    # coordinates, let's load the mri to head transform and invert it
+    head_mri_t = mne.coreg.estimate_head_mri_t(sub, subj_dir)
+    # apply the transform to our montage
+    montage.apply_trans(head_mri_t)
+
+    # now let's load our Talairach transform and apply it
+    mri_mni_t = mne.read_talxfm(sub, subj_dir)
+    montage.apply_trans(mri_mni_t)  # mri to mni_tal (MNI Taliarach)
+
+    # for fsaverage, "mri" and "mni_tal" are equivalent and, since
+    # we want to plot in fsaverage "mri" space, we need use an identity
+    # transform to equate these coordinate frames
+    montage.apply_trans(
+        mne.transforms.Transform(fro='mni_tal', to='mri', trans=np.eye(4)))
+
+    inst.set_montage(montage)
+
+
+def get_sub_dir(subj_dir: PathLike = None):
     if subj_dir is None:
         subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
-    T1 = nib.load(t1_path)
-    viewer = T1.orthoview()
-    viewer.set_position(0, 9.9, 5.8)
-    viewer.figs[0].axes[0].annotate(
-        'PC', (107, 108), xytext=(10, 75), color='white',
-        horizontalalignment='center',
-        arrowprops=dict(facecolor='white', lw=0.5, width=2, headwidth=5))
-    viewer.figs[0].axes[0].annotate(
-        'AC', (137, 108), xytext=(246, 75), color='white',
-        horizontalalignment='center',
-        arrowprops=dict(facecolor='white', lw=0.5, width=2, headwidth=5))
-    CT_orig = nib.load(ct_path)
-    CT_resampled = resample(moving=np.asarray(CT_orig.dataobj),
-                            static=np.asarray(T1.dataobj),
-                            moving_affine=CT_orig.affine,
-                            static_affine=T1.affine)
-    plot_overlay(T1, CT_resampled, 'Unaligned CT Overlaid on T1', thresh=0.95)
-    del CT_resampled
-    reg_affine, _ = mne.transforms.compute_volume_registration(
-        CT_orig, T1, pipeline='rigids')
-    CT_aligned = mne.transforms.apply_volume_registration(CT_orig, T1,
-                                                          reg_affine)
-    plot_overlay(T1, CT_aligned, 'Aligned CT Overlaid on T1', thresh=0.95)
-    del CT_orig
-    CT_data = CT_aligned.get_fdata().copy()
-    CT_data[CT_data < np.quantile(CT_data, 0.95)] = np.nan
-    T1_data = np.asarray(T1.dataobj)
-    fig, axes = plt.subplots(1, 3, figsize=(12, 6))
-    for ax in axes:
-        ax.axis('off')
-    axes[0].imshow(T1_data[T1.shape[0] // 2], cmap='gray')
-    axes[0].set_title('MR')
-    axes[1].imshow(np.asarray(CT_aligned.dataobj)[CT_aligned.shape[0] // 2],
-                   cmap='gray')
-    axes[1].set_title('CT')
-    axes[2].imshow(T1_data[T1.shape[0] // 2], cmap='gray')
-    axes[2].imshow(CT_data[CT_aligned.shape[0] // 2], cmap='gist_heat',
-                   alpha=0.5)
-    for ax in (axes[0], axes[2]):
-        ax.annotate('Subcutaneous fat', (110, 52), xytext=(100, 30),
-                    color='white', horizontalalignment='center',
-                    arrowprops=dict(facecolor='white'))
-    for ax in axes:
-        ax.annotate('Skull (dark in MR, bright in CT)', (40, 175),
-                    xytext=(120, 246), horizontalalignment='center',
-                    color='white', arrowprops=dict(facecolor='white'))
-    axes[2].set_title('CT aligned to MR')
-    fig.tight_layout()
-    del CT_data, T1
-    subj_trans = mne.coreg.estimate_head_mri_t(sub_id, subjects_dir=subj_dir)
-    gui = mne.gui.locate_ieeg(my_raw.info, subj_trans, CT_aligned,
-                              subject=sub_id, subjects_dir=subj_dir)
-    return gui
+    return subj_dir
 
 
 if __name__ == "__main__":
     BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
+    subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     layout = BIDSLayout(BIDS_root)
-    T1_path = layout.get(return_type="path", subject="D0024",
+    sub_num = 24
+    sub_pad = "D00{}".format(sub_num)
+    sub = "D{}".format(sub_num)
+    T1_path = layout.get(return_type="path", subject=sub_pad,
                          extension="nii.gz")[0]
     CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
     filt = mne.io.read_raw_fif("D24_filt_ieeg.fif")
-    allign_mri(T1_path, CT_path, filt, "D0024")
+    CT_aligned = allign_CT(T1_path, CT_path, sub)
+    subj_trans = mne.coreg.estimate_head_mri_t(sub, subjects_dir=subj_dir)
+    gui = mne.gui.locate_ieeg(filt.info, subj_trans, CT_aligned,
+                              subject=sub, subjects_dir=subj_dir, 
+                              verbose=10)
