@@ -12,7 +12,7 @@ from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
 from utils import HOME, LAB_root, PathLike, figure_compare
-from mri import allign_CT, show_brain, head_to_mni
+from mri import allign_CT, show_brain, head_to_mni, plot_gamma
 
 BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
 RunDict = Dict[int, mne.io.Raw]
@@ -181,23 +181,70 @@ if __name__ == "__main__":
     mne.set_log_level("INFO")
     sub_num = 24
     sub_pad = "D00{}".format(sub_num)
-    sub = "D{}".format(sub_num)
+    subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
     filt = retrieve_filt(sub_pad, 4)
     T1_path = layout.get(subject=sub_pad, extension="nii.gz")[0]
     CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
-    subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
-    if sub == "D24":
+    subjects_dir = op.join(LAB_root, "ECoG_Recon_Full")
+    if subject == "D24":
         reg_affine = np.array([[1.00000,0.00000,0.00000,-5.69848],
                   [0.00000,1.00000,0.00000,25.40463],
                   [0.00000,0.00000,1.00000,63.92385],
                   [0.00000,0.00000,0.00000,1.00000]])
+    elif subject == "D29":
+        reg_affine = np.array([[ 0.99949355, -0.02990436,  0.01087993,  0.00315547],
+                            [ 0.03083844,  0.99457727, -0.09932295, -0.03061648],
+                            [-0.00785074,  0.09960816,  0.99499577, -0.00894423],
+                            [ 0.,          0.,          0.,          1.        ]])
     else:
         reg_affine = None
     CT_aligned = allign_CT(T1_path, CT_path, reg_affine)
-    subj_trans = mne.coreg.estimate_head_mri_t(sub, subjects_dir=subj_dir)
+    subj_trans = mne.coreg.estimate_head_mri_t(subject, subjects_dir=subjects_dir)
+    inv_trans = mne.coreg.invert_transform(mne.transforms.Transform("head", "head", subj_trans['trans']))
+    mri = filt.copy()
+    montage = mri.get_montage()
+    montage.apply_trans(inv_trans)
+    mri.set_montage(montage)
+    mri.info = mne.preprocessing.ieeg.project_sensors_onto_brain(
+        mri.info, subj_trans, subject, subjects_dir=subjects_dir)
+    # mne.pick_info(mri.info, mne.pick_channels_regexp(mri.ch_names, "LTG..*"),
+    #              copy=False)
+    epoch_length = 2  # seconds
+    events, event_id = mne.events_from_annotations(mri)
+    epochs = mne.Epochs(mri, events, event_id=event_id['Audio'],
+                        tmin=-0.5, tmax=-0.5 + epoch_length,
+                        baseline=(None, 0), reject={'ecog': 1000e-6})
+    # Make evoked from the one epoch and resample
+    evoked = epochs.average()
+    gamma_power_t = evoked.copy().filter(30, 90).apply_hilbert(envelope=True)
+    gamma_info = gamma_power_t.info
 
-    # show_brain(filt, subj_trans, sub)
+    xyz_pts = np.array([dig['r'] for dig in evoked.info['dig']])
+    gui = mne.gui.locate_ieeg(mri.info, subj_trans, CT_aligned,
+                              subject=subject,
+                              subjects_dir=subjects_dir, verbose=10)
+    """
+    src = mne.read_source_spaces(
+        op.join(subjects_dir, 'fsaverage', 'bem', 'fsaverage-ico-5-src.fif'))
+    stc = mne.stc_near_sensors(gamma_power_t, trans='fsaverage',
+                               subject='fsaverage', src=src,
+                               mode='nearest', subjects_dir=subjects_dir,
+                               distance=0.02)
+    vmin, vmid, vmax = np.percentile(gamma_power_t.data, [10, 25, 90])
+    clim = dict(kind='value', lims=[vmin, vmid, vmax])
+    brain = stc.plot(surface='pial', hemi='rh', colormap='inferno',
+                     colorbar=False,
+                     clim=clim, views=['lat', 'med'],
+                     subjects_dir=subjects_dir,
+                     size=(250, 250), smoothing_steps='nearest',
+                     time_viewer=False)
+    brain.add_sensors(evoked.info, trans='fsaverage')
+    """
+    # mne.viz.plot_alignment(mri.info, subj_trans, subject,
+    #                        subjects_dir=subjects_dir, ecog=True,
+    #                        surfaces=['pial'], coord_frame='mri')
+    # show_brain(filt, subj_trans, subject, subjects_dir)
     # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
     #  TASK, SUB))
     # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)

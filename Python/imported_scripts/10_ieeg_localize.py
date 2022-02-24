@@ -337,12 +337,12 @@ brain.show_view(**view_kwargs)
 
 # project sensors to the brain surface
 raw_ecog.info = mne.preprocessing.ieeg.project_sensors_onto_brain(
-#    raw_ecog.info, subj_trans_ecog, 'sample_ecog',
-#    subjects_dir=op.join(misc_path, 'ecog'))
+    raw_ecog.info, subj_trans_ecog, 'sample_ecog',
+    subjects_dir=op.join(misc_path, 'ecog'))
 
 # plot projected sensors
 brain = mne.viz.Brain('sample_ecog', subjects_dir=op.join(misc_path, 'ecog'),
-#                      title='After Projection', **brain_kwargs)
+                     title='After Projection', **brain_kwargs)
 brain.add_sensors(raw_ecog.info, trans=subj_trans_ecog)
 brain.show_view(**view_kwargs)
 
@@ -359,7 +359,7 @@ brain.show_view(**view_kwargs)
 # when the electrode contacts were localized so we need to use it again here.
 
 # plot the alignment
-brain = mne.viz.Brain('sample_seeg', subjects_dir=op.join(misc_path, 'seeg'),
+brain = mne.viz.Brain('sample_seeg', subjects_dir=op.join(misc_path, 'seeg')
                       **brain_kwargs)
 brain.add_sensors(raw.info, trans=subj_trans)
 brain.show_view(**view_kwargs)

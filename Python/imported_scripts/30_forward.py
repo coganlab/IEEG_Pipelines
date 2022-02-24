@@ -22,7 +22,7 @@ sample_dir = op.join(data_path, 'MEG', 'sample',)
 raw_fname = op.join(sample_dir, 'sample_audvis_raw.fif')
 # The paths to Freesurfer reconstructions
 subjects_dir = op.join(data_path, 'subjects')
-subject = 'sample'
+subject = 'D24'
 
 # %%
 # Computing the forward operator
