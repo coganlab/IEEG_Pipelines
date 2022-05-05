@@ -342,7 +342,7 @@ raw_ecog.info = mne.preprocessing.ieeg.project_sensors_onto_brain(
 
 # plot projected sensors
 brain = mne.viz.Brain('sample_ecog', subjects_dir=op.join(misc_path, 'ecog'),
-                     title='After Projection', **brain_kwargs)
+                      title='After Projection', **brain_kwargs)
 brain.add_sensors(raw_ecog.info, trans=subj_trans_ecog)
 brain.show_view(**view_kwargs)
 
@@ -360,7 +360,7 @@ brain.show_view(**view_kwargs)
 
 # plot the alignment
 brain = mne.viz.Brain('sample_seeg', subjects_dir=op.join(misc_path, 'seeg')
-                      **brain_kwargs)
+                      ** brain_kwargs)
 brain.add_sensors(raw.info, trans=subj_trans)
 brain.show_view(**view_kwargs)
 

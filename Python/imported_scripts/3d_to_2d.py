@@ -110,14 +110,14 @@ fig2.savefig('./brain.png', bbox_inches='tight')  # For ClickableImage
 # because we've stored the clicks as a layout file already.
 
 # # The click coordinates are stored as a list of tuples
- im = plt.imread('./brain.png')
- click = ClickableImage(im)
- click.plot_clicks()
+im = plt.imread('./brain.png')
+click = ClickableImage(im)
+click.plot_clicks()
 
 # # Generate a layout from our clicks and normalize by the image
- print('Generating and saving layout...')
- lt = click.to_layout()
- lt.save(op.join(layout_path, layout_name))  # save if we want
+print('Generating and saving layout...')
+lt = click.to_layout()
+lt.save(op.join(layout_path, layout_name))  # save if we want
 
 # # We've already got the layout, load it
 lt = mne.channels.read_layout(layout_name, path=layout_path, scale=False)

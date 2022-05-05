@@ -33,6 +33,7 @@ viewer.figs[0].axes[0].annotate(
     horizontalalignment='center',
     arrowprops=dict(facecolor='white', lw=0.5, width=2, headwidth=5))
 
+
 def plot_overlay(image, compare, title, thresh=None):
     """Define a helper function for comparing plots."""
     image = nib.orientations.apply_orientation(

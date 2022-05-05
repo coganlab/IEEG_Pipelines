@@ -8,7 +8,7 @@ import nibabel as nib
 import numpy as np
 from bids import BIDSLayout
 
-from utils import LAB_root, PathLike
+from .utils import LAB_root, PathLike
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
@@ -43,7 +43,7 @@ def allign_CT(t1_path: PathLike, ct_path: PathLike, reg_affine=None
         reg_affine, sdr_morph = mne.transforms.compute_volume_registration(
             CT_orig, T1, pipeline='all')
     CT_aligned = mne.transforms.apply_volume_registration(CT_orig, T1,
-                                                          reg_affine, 
+                                                          reg_affine,
                                                           sdr_morph)
     return CT_aligned
 
@@ -66,7 +66,7 @@ def show_brain(my_raw: mne.io.Raw, trans: mne.transforms.Transform,
     brain.show_view(**view_kwargs)
 
 
-def head_to_mni(inst: Union[mne.io.Raw, mne.Epochs, mne.Evoked], 
+def head_to_mni(inst: Union[mne.io.Raw, mne.Epochs, mne.Evoked],
                 sub: str, subj_dir: PathLike = None):
     subj_dir = get_sub_dir(subj_dir)
     montage = inst.get_montage()
@@ -145,4 +145,3 @@ if __name__ == "__main__":
     subj_trans = mne.coreg.estimate_head_mri_t(sub, subjects_dir=subj_dir)
     gui = mne.gui.locate_ieeg(filt.info, subj_trans, CT_aligned, subject=sub,
                               subjects_dir=subj_dir, verbose=10)
-

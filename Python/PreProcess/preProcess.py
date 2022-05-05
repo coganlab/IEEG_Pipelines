@@ -11,10 +11,9 @@ from bids.layout import BIDSFile
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
-from utils import HOME, LAB_root, PathLike, figure_compare
-from mri import allign_CT, show_brain, head_to_mni, plot_gamma
+from .utils import HOME, LAB_root, PathLike, figure_compare
+from .mri import allign_CT, show_brain, head_to_mni, plot_gamma
 
-BIDS_root = op.join("..","..","..","..","Sentence_Rep", "BIDS")
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
 
@@ -93,20 +92,26 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs: dict) -> BIDSPath:
 
 
 def raw_from_layout(layout: BIDSLayout, subject: str,
-                    run: Union[List[int], int] = None) -> mne.io.Raw:
+                    run: Union[List[int], int] = None,
+                    extension=".edf") -> mne.io.Raw:
     kwargs: Dict[str, Any] = dict(subject=subject)
     if run:
         kwargs["run"] = run
     runs = layout.get(return_type="id", target="run", **kwargs)
     raw: List[mne.io.Raw] = []
-    for r in runs:
-        BIDS_path = bidspath_from_layout(layout, subject=subject, run=r,
-                                         extension=".edf")
-        new_raw = read_raw_bids(bids_path=BIDS_path)
-        new_raw.load_data()
-        raw.append(new_raw.copy())
-        del new_raw
-    whole_raw: mne.io.Raw = mne.concatenate_raws(raw)
+    if runs:
+        for r in runs:
+            BIDS_path = bidspath_from_layout(layout, subject=subject, run=r,
+                                             extension=extension)
+            new_raw = read_raw_bids(bids_path=BIDS_path)
+            new_raw.load_data()
+            raw.append(new_raw.copy())
+            del new_raw
+        whole_raw: mne.io.Raw = mne.concatenate_raws(raw)
+    else:
+        BIDS_path = bidspath_from_layout(layout, subject=subject,
+                                         extension=extension)
+        whole_raw = read_raw_bids(bids_path=BIDS_path)
     return whole_raw
 
 
@@ -174,25 +179,27 @@ def filt_main_2(layout: BIDSLayout, subjects: Union[str, List[str]] = None):
                 filt_data = line_filter(raw_data)
                 save_name = "{}_filt_run-{}_ieeg.fif".format(sub_id, run)
                 filt_data.save(op.join(LAB_root, "Aaron_test",
-                                    "filt_phonemesequence", save_name),
-                            overwrite=False)
+                                       "filt_phonemesequence", save_name),
+                               overwrite=False)
             except Exception:
                 pass
         del runs
 
 
 if __name__ == "__main__":
-    log_filename = "output.log"  # op.join(LAB_root, "Aaron_test", "Information.log")
+    log_filename = "output.log"
+    # op.join(LAB_root, "Aaron_test", "Information.log")
     mne.set_log_file(log_filename,
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
+    BIDS_root = op.join("..", "..", "..", "..", "Sentence_Rep", "BIDS")
     sub_num = 53
     sub_pad = "D00{}".format(sub_num)
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
     raw = raw_from_layout(layout, sub_pad, 2)
-    #raw.plot(n_channels=3,precompute=True, start=90)
+    # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     """
     T1_path = layout.get(subject=sub_pad, extension="nii.gz")[0]
@@ -204,15 +211,21 @@ if __name__ == "__main__":
                   [0.00000,0.00000,1.00000,63.92385],
                   [0.00000,0.00000,0.00000,1.00000]])
     elif subject == "D29":
-        reg_affine = np.array([[ 0.99949355, -0.02990436,  0.01087993,  0.00315547],
-                            [ 0.03083844,  0.99457727, -0.09932295, -0.03061648],
-                            [-0.00785074,  0.09960816,  0.99499577, -0.00894423],
-                            [ 0.,          0.,          0.,          1.        ]])
+        reg_affine = np.array([[ 0.99949355, -0.02990436,  0.01087993,
+        0.00315547],
+                            [ 0.03083844,  0.99457727, -0.09932295,
+                            -0.03061648],
+                            [-0.00785074,  0.09960816,  0.99499577,
+                             -0.00894423],
+                            [ 0.,          0.,          0.,
+                             1.        ]])
     else:
         reg_affine = None
     CT_aligned = allign_CT(T1_path, CT_path, reg_affine)
-    subj_trans = mne.coreg.estimate_head_mri_t(subject, subjects_dir=subjects_dir)
-    inv_trans = mne.coreg.invert_transform(mne.transforms.Transform("head", "head", subj_trans['trans']))
+    subj_trans = mne.coreg.estimate_head_mri_t(subject,
+    subjects_dir=subjects_dir)
+    inv_trans = mne.coreg.invert_transform(
+        mne.transforms.Transform("head", "head", subj_trans['trans']))
     mri = filt.copy()
     montage = mri.get_montage()
     montage.apply_trans(inv_trans)
@@ -255,10 +268,10 @@ if __name__ == "__main__":
     #                        subjects_dir=subjects_dir, ecog=True,
     #                        surfaces=['pial'], coord_frame='mri')
     # show_brain(filt, subj_trans, subject, subjects_dir)
-    #D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
+    # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
     #                                 TASK, SUB))
-    #raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
-    #dat = open_dat_file(D_dat_filt, raw.copy().channels)
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
+    # dat = open_dat_file(D_dat_filt, raw.copy().channels)
     # raw = raw_from_layout(layout, sub_pad, 1)
     # data = [raw, filt]
     # figure_compare(data, [ "BIDS Un", "BIDS "])
