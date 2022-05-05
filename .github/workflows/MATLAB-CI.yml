@@ -1,4 +1,4 @@
-name: Latest MATLAB on Ubuntu
+name: MATLAB (Latest) on Ubuntu
 on:
   push:
     branches: [ main ]
