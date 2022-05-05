@@ -1,12 +1,4 @@
 pytest
 pytest-pycodestyle
 tedana
-nipype
 bids>=0.0
-scipy
-mne_bids
-dipy
-git+https://github.com/dipy/cudipy.git
-pyqt5-tools
-pyvistaqt
-ipywidgets

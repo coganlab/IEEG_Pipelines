@@ -14,7 +14,7 @@ from mne_bids import read_raw_bids, BIDSPath
 from utils import HOME, LAB_root, PathLike, figure_compare
 from mri import allign_CT, show_brain, head_to_mni, plot_gamma
 
-BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
+BIDS_root = op.join("..","..","..","..","Sentence_Rep", "BIDS")
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
 
@@ -121,11 +121,19 @@ def open_dat_file(file_path: str, channels: List[str],
     return raw
 
 
-def retrieve_filt(sub: str, runs: int = 4) -> mne.io.Raw:
+def retrieve_filt(sub: str,
+                  runs: Union[List[int], int] = (1, 2, 3, 4)) -> mne.io.Raw:
+    try:
+        iter(runs)
+    except TypeError:
+        runs = [runs]
+    if not isinstance(runs, list):
+        runs = list(runs)
     filt = mne.io.read_raw_fif(
         op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
                 "{}_filt_run-{}_ieeg.fif".format(sub, 1)))
-    for i in [x+2 for x in range(runs-1)]:
+    del runs[0]
+    for i in runs:
         f_name = op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
                          "{}_filt_run-{}_ieeg.fif".format(sub, i))
         mne.concatenate_raws([filt, mne.io.read_raw_fif(f_name)])
@@ -179,11 +187,14 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    sub_num = 24
+    sub_num = 53
     sub_pad = "D00{}".format(sub_num)
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
-    filt = retrieve_filt(sub_pad, 4)
+    raw = raw_from_layout(layout, sub_pad, 2)
+    #raw.plot(n_channels=3,precompute=True, start=90)
+    # filt = retrieve_filt(sub_pad, 1)
+    """
     T1_path = layout.get(subject=sub_pad, extension="nii.gz")[0]
     CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
     subjects_dir = op.join(LAB_root, "ECoG_Recon_Full")
@@ -224,7 +235,6 @@ if __name__ == "__main__":
     gui = mne.gui.locate_ieeg(mri.info, subj_trans, CT_aligned,
                               subject=subject,
                               subjects_dir=subjects_dir, verbose=10)
-    """
     src = mne.read_source_spaces(
         op.join(subjects_dir, 'fsaverage', 'bem', 'fsaverage-ico-5-src.fif'))
     stc = mne.stc_near_sensors(gamma_power_t, trans='fsaverage',
@@ -245,9 +255,10 @@ if __name__ == "__main__":
     #                        subjects_dir=subjects_dir, ecog=True,
     #                        surfaces=['pial'], coord_frame='mri')
     # show_brain(filt, subj_trans, subject, subjects_dir)
-    # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
-    #  TASK, SUB))
-    # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
-    # dat = open_dat_file(D_dat_filt, raw.copy().channels)
-    # data = [raw_dat, filt_dat, raw, filt]
-    # figure_compare(data, ['Un',  '', "BIDS Un", "BIDS "])
+    #D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
+    #                                 TASK, SUB))
+    #raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
+    #dat = open_dat_file(D_dat_filt, raw.copy().channels)
+    # raw = raw_from_layout(layout, sub_pad, 1)
+    # data = [raw, filt]
+    # figure_compare(data, [ "BIDS Un", "BIDS "])
