@@ -4,7 +4,7 @@ import mne.datasets
 from mne.io import BaseRaw
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
-sample_path = mne.datasets.sample.data_path()
+# sample_path = mne.datasets.sample.data_path()
 layout = BIDSLayout(bids_root)
 
 

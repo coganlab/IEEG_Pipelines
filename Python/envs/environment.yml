@@ -10,8 +10,8 @@ dependencies:
   - scipy
   - pandas
   - tqdm
-  - ipython
   - nipype
+  - mne
   - mne-bids
   - EDFlib-Python
   - pip:
