@@ -2,3 +2,7 @@ pytest
 pytest-pycodestyle
 tedana
 bids>=0.0
+nipype
+EDFlib-Python
+mne
+mne-bids
