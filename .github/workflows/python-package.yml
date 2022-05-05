@@ -1,5 +1,5 @@
 # This workflow will install Python dependencies, run tests and lint with pycodestyle
-name: Python package
+name: Python (3.8, 3.9) on Windows/Linux
 
 on:
   push:

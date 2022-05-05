@@ -1,4 +1,4 @@
-name: Generate Test Artifacts on GitHub-Hosted Runner
+name: Latest MATLAB on Ubuntu
 on:
   push:
     branches: [ main ]
