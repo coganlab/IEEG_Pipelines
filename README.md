@@ -1,4 +1,5 @@
 # IEEG_Pipelines
+
 A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganlab.org/)
 
 ## Pipeline Functionality
@@ -10,20 +11,41 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 ## Installation
 
 ### MATLAB
+
 1. Install MATLAB
 2. Clone this repository into your userpath (`Documents/MATLAB` by default)
 3. Run commands:
-```
-path = fullfile(userpath, 'IEEG_Pipelines', 'MATLAB');
-addpath(genpath(path));
-```
+
+    ```(MATLAB)
+    path = fullfile(userpath, 'IEEG_Pipelines', 'MATLAB');
+    addpath(genpath(path));
+    ```
 
 ### Python
+
+(3.8 or 3.9 supported)
+
 1. Install Anaconda
 2. Clone this repository
-3. open a terminal and `cd` into this repo's `Python` directory
+3. Open a terminal and `cd` into this repo's `Python` directory
 4. Run this command:
-```
-conda env create -f envs/environment.yml
-```
-5. When it is finished installing run `conda activate preprocessing` to activate the environment
+
+    ```(bash)
+    conda env create -f envs/environment.yml
+    ```
+
+5. When it is finished installing run `conda activate preprocess` to activate the environment
+
+#### For pip venv (Anaconda alternative)
+
+1. Install Python
+2. Clone this repository
+3. Open a terminal and `cd` into this repo's `Python` directory
+4. Run:
+
+    ``` (bash)
+    python -m venv <PATH TO VENV>/preprocess
+    python -m pip install -r envs/requirements.txt -e <PATH TO VENV>/preprocess
+    ```
+
+5. When it is finished installing run `source activate <PATH TO VENV>/preprocess` to activate the environment

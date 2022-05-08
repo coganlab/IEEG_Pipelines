@@ -8,6 +8,7 @@ dependencies:
   - matplotlib
   - scipy
   - pandas
+  - joblib
   - tqdm
   - pip:
     - -r requirements.txt
