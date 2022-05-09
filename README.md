@@ -4,7 +4,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 ## Pipeline Functionality
 
-[![Python (3.8, 3.9) on Windows/Linux](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/python-package.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/python-package.yml)
+[![Python (3.8, 3.9) on Windows/Linux](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Conda-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Conda-CI.yml)
 
 [![MATLAB latest](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml)
 

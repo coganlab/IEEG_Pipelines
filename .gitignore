@@ -1,3 +1,4 @@
 *.pyc
 *.vs/*
 *.vscode/*
+*.asv
