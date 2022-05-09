@@ -23,7 +23,9 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 ### Python
 
-(3.8 or 3.9 supported)
+Version 3.8 or 3.9 supported
+
+#### Conda
 
 1. Install Anaconda
 2. Clone this repository
@@ -36,16 +38,41 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 5. When it is finished installing run `conda activate preprocess` to activate the environment
 
-#### For pip venv (Anaconda alternative)
+#### Pip
 
 1. Install Python
 2. Clone this repository
 3. Open a terminal and `cd` into this repo's `Python` directory
 4. Run:
 
-    ``` (bash)
+    ```(bash)
     python -m venv <PATH TO VENV>/preprocess
     python -m pip install -r envs/requirements.txt -e <PATH TO VENV>/preprocess
     ```
 
 5. When it is finished installing run `source activate <PATH TO VENV>/preprocess` to activate the environment
+
+## Usage
+
+### MATLAB ([INCOMPLETE](https://github.com/coganlab/IEEG_Pipelines/issues/21#issue-1229145282))
+
+1. Load `.dat` file using [convert_OpenE_rec2mat.m](MATLAB/ieeg%20file%20reading/convert_OpenE_rec2mat.m)
+2. Create the ieeg data structure from the [ieegStructClass.m](MATLAB/ieegClassDefinition/ieegStructClass.m)
+3. `TBD`
+
+### Python ([INCOMPLETE](https://github.com/coganlab/IEEG_Pipelines/issues/22#issue-1229152846))
+
+1. Load BIDS files from BIDS directory using `pybids` and [preProcess.py](Python/PreProcess/preProcess.py)
+    
+    ```(python)
+    from bids import BIDSLayout
+    import preProcess as pre
+    layout = BIDSLayout(BIDS_root)
+    data = pre.raw_from_layout(layout)
+    ```
+2. Perform line noise filtering
+
+    ```(python)
+    filt = pre.line_filter(data)
+    ```
+3. `TBD`
