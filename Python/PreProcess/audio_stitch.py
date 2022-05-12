@@ -1,6 +1,6 @@
 from bids import BIDSLayout
 from scipy.io import wavfile
-import os
+import os.path as op
 
 
 def get_audio(my_layout: BIDSLayout, sub_id, run) -> list:
@@ -15,8 +15,8 @@ def concat_audio(my_layout: BIDSLayout, waves: list):
     import numpy as np
     data = np.ndarray((0), dtype=np.float32)
     for file in waves:
-        full_file = os.path.join(my_layout.root, "stimuli", file)
-        if os.path.isfile(full_file):
+        full_file = op.join(my_layout.root, "stimuli", file)
+        if op.isfile(full_file):
             data = np.concatenate((data, wavfile.read(full_file)[1]),
                                   axis=None)
         else:
