@@ -14,6 +14,11 @@ from mne_bids import read_raw_bids, BIDSPath
 from utils import HOME, LAB_root, PathLike, figure_compare
 from mri import allign_CT, show_brain, head_to_mni, plot_gamma
 
+log_filename = "output.log"
+mne.set_log_file(log_filename,
+                 "%(levelname)s: %(message)s - %(asctime)s",
+                 overwrite=True)
+mne.set_log_level("INFO")
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
 
@@ -196,19 +201,11 @@ def find_dir(path: PathLike, pattern: str) -> PathLike:
 
 if __name__ == "__main__":
     # %%
-    # setting logging
-    log_filename = "output.log"
-    mne.set_log_file(log_filename,
-                     "%(levelname)s: %(message)s - %(asctime)s",
-                     overwrite=True)
-    mne.set_log_level("INFO")
-
-    # %%
     # set user variables
-    task = "SentenceRep"
+    task = "Phoneme_sequencing"
     BIDS_root = op.join(find_dir(LAB_root, task), "BIDS")
     sub_num = 53
-    run_num = 2
+    run_num = 1
     sub_pad = "D00{}".format(sub_num)
     subject = "D{}".format(sub_num)
 
@@ -218,11 +215,16 @@ if __name__ == "__main__":
     raw = raw_from_layout(layout, sub_pad, run_num)
     D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
                                      task, subject))
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
-    dat = open_dat_file(D_dat_filt, raw.copy().channels)
+
+    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    # TODO: make the dat files only load the section of data loaded from BIDS
     filt = line_filter(raw)
     data = [raw, filt, raw_dat, dat]
     figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""])
+
+    # %%
+    # other run configurations
     # raw.plot(n_channels=3, precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     """
