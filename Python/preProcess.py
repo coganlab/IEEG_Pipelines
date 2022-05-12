@@ -1,5 +1,5 @@
 import os.path as op
-from os import walk
+from os import walk, listdir
 from re import match
 from typing import Union, List, Tuple, Dict, Any
 
@@ -11,8 +11,8 @@ from bids.layout import BIDSFile
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
-from .utils import HOME, LAB_root, PathLike, figure_compare
-from .mri import allign_CT, show_brain, head_to_mni, plot_gamma
+from utils import HOME, LAB_root, PathLike, figure_compare
+from mri import allign_CT, show_brain, head_to_mni, plot_gamma
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -186,20 +186,44 @@ def filt_main_2(layout: BIDSLayout, subjects: Union[str, List[str]] = None):
         del runs
 
 
+def find_dir(path: PathLike, pattern: str) -> PathLike:
+    for fname in listdir(path):
+        if pattern in fname:
+            return op.join(path, fname)
+    raise FileNotFoundError("File containing the pattern " + pattern +
+                            " not found in " + path)
+
+
 if __name__ == "__main__":
+    # %%
+    # setting logging
     log_filename = "output.log"
-    # op.join(LAB_root, "Aaron_test", "Information.log")
     mne.set_log_file(log_filename,
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    BIDS_root = op.join("..", "..", "..", "..", "Sentence_Rep", "BIDS")
+
+    # %%
+    # set user variables
+    task = "SentenceRep"
+    BIDS_root = op.join(find_dir(LAB_root, task), "BIDS")
     sub_num = 53
+    run_num = 2
     sub_pad = "D00{}".format(sub_num)
     subject = "D{}".format(sub_num)
+
+    # %%
+    # loading data
     layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, sub_pad, 2)
-    # raw.plot(n_channels=3,precompute=True, start=90)
+    raw = raw_from_layout(layout, sub_pad, run_num)
+    D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
+                                     task, subject))
+    raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
+    dat = open_dat_file(D_dat_filt, raw.copy().channels)
+    filt = line_filter(raw)
+    data = [raw, filt, raw_dat, dat]
+    figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""])
+    # raw.plot(n_channels=3, precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     """
     T1_path = layout.get(subject=sub_pad, extension="nii.gz")[0]
@@ -268,10 +292,3 @@ if __name__ == "__main__":
     #                        subjects_dir=subjects_dir, ecog=True,
     #                        surfaces=['pial'], coord_frame='mri')
     # show_brain(filt, subj_trans, subject, subjects_dir)
-    # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
-    #                                 TASK, SUB))
-    # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
-    # dat = open_dat_file(D_dat_filt, raw.copy().channels)
-    # raw = raw_from_layout(layout, sub_pad, 1)
-    # data = [raw, filt]
-    # figure_compare(data, [ "BIDS Un", "BIDS "])
