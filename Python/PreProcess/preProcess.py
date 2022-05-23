@@ -199,6 +199,7 @@ if __name__ == "__main__":
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
     raw = raw_from_layout(layout, sub_pad, 2)
+    filt = mt_filt(raw)
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     """
