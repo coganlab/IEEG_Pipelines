@@ -1,0 +1,36 @@
+<p>If your system is already setup - please traverse to the Source localization pipeline (<a href="/w/page/146866377/Pipeline">Pipeline / Cogan Lab (pbworks.com)</a>)</p>
+<p>&nbsp;</p>
+<p><span style="font-size:200%;">System Setup:</span></p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="font-size:150%;">Running both Python MNE and FreeSurfer on Windows requires a WSL (Windows Subsystem Linux)<span style="font-family:mceinline;">:</span></span></p>
+<p>&nbsp;</p>
+<ol><li><span style="font-size:150%;"><span style="font-family:mceinline;">&nbsp;FreeSurfer runs on all OS's besides Windows, to accomodate for this we need to use a WSL</span></span></li>
+<ol><li><span style="font-size:130%;"><span style="font-family:mceinline;"><span style="font-family:mceinline;">A WSL is a Linux virtual machine that runs simultaneously&nbsp;on a Windows machine with shared file systems</span></span></span></li>
+<li><span style="font-size:130%;"><span style="font-family:mceinline;"><span style="font-family:mceinline;">We want to do this so that python MNE can reference the files containing our FreeSurfer reconstructions - using the Environment Variables (paths) created by the Freesurfer Environment</span></span></span></li>
+</ol><li><span style="font-size:150%;">Install WSL</span></li>
+<ol><li><span style="font-size:130%;">if you are not a _____ user you will have to do the following steps (ii --&gt; vi)</span></li>
+<li><span style="font-size:130%;">Changing your settings</span></li>
+<li><span style="font-size:130%;">Changing your Securities</span></li>
+<li><span style="font-size:130%;">obtaining a distribution&nbsp;</span></li>
+</ol><li><span style="font-size:130%;">Installing X-Server</span></li>
+<ol><li><span style="font-size:130%;">Installing Xserver</span></li>
+</ol></ol><p><span style="font-size:130%;">&nbsp;</span></p>
+<ol><li><span style="font-size:130%;">Installing ___ to be able to traverse/view your WSL file directory</span></li>
+<ol><li><span style="font-size:130%;">&nbsp;</span></li>
+</ol><li><span style="font-size:130%;">Testing your GUI</span></li>
+<ol><li><span style="font-size:130%;">FSL - MRI viewer&nbsp;</span></li>
+</ol><li><span style="font-size:130%;">Install FreeSurfer on the WSL</span></li>
+<ol><li><span style="font-size:130%;">Traverse to the Freesurfer website and select a Linux distribution</span></li>
+<li><span style="font-size:130%;">Copy the link to the distribution</span></li>
+<li><span style="font-size:130%;">wget the link&nbsp;</span></li>
+</ol><li><span style="font-size:130%;">Install miniconda or anaconda on the WSL&nbsp;</span></li>
+<ol><li><span style="font-size:130%;">After installation make sure to say "yes" when prompted on whether you want conda or anaconda to initialize in your bash window&nbsp;</span></li>
+</ol><li><span style="font-size:130%;">Pip install the MNE environment on the WSL</span></li>
+<li><span style="font-size:130%;">Acitvate the MNE environment</span></li>
+<ol><li><span style="font-size:130%;">anaconda or conda activate mne&nbsp;</span></li>
+</ol><li><span style="font-size:130%;">Make sure the Subject Directories are pointing to the correct locations</span></li>
+<ol><li><span style="font-size:130%;">export SUBJECTS_DIRS &amp; export FREESURFER_HOME - will change these pointers&nbsp;</span></li>
+</ol></ol><p>&nbsp;</p>
+<p>How to Modify your Bash window so that Conda or Anaconda Activates:</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>

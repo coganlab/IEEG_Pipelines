@@ -1,0 +1,119 @@
+<p>&nbsp;</p>
+<p><span style="text-decoration:underline;"><span style="font-size:115%;"><strong><span style="font-family:Calibri, sans-serif;">Preprocessing Set Up:</span></strong></span></span></p>
+<p>&nbsp;</p>
+<p>Create folder “<span style="color:#c00000;">InUnit Preprocessing</span>” to house all preprocessing files:</p>
+<p>&nbsp;</p>
+<p><img id="pbImage480848" style="width:756px;height:207px;" src="/f/1631896590/pp1.png" alt="" /></p>
+<p>Within “InUnit Preprocessing”:</p>
+<ul>
+<li><span style="font-family:Symbol;"><span style="font-family:'Times New Roman';">&nbsp; &nbsp; &nbsp;</span></span>Create folders for each of the participants <span style="color:#4472c4;">(D##) </span>you will be preprocessing</li>
+<li><span style="font-family:Symbol;"><span style="font-family:'Times New Roman';">&nbsp; &nbsp; &nbsp;&nbsp;</span></span>Download <span style="color:#70ad47;">maketrigtimes</span> and <span style="color:#70ad47;">view_triggers </span>matlab scripts from box</li>
+<ul>
+<li><span style="color:#70ad47;">maketrigtimes</span>: Box Sync\ECoG_Recon\matlab_code\ecog_preprocessing</li>
+<li><span style="color:#70ad47;">view_triggers</span>: Box Sync\CoganLab\ECoG_Task_Data\TaskUploadDir </li>
+<li><span style="color:#ff6600;">Startup.mat</span>&nbsp;will also be saved here. See page 2 for details</li>
+</ul>
+</ul>
+<p>&nbsp;</p>
+<p><img id="pbImage658603" style="width:593px;height:169px;" src="/f/1631896590/pp2.png" alt="" /></p>
+<p>Within the participant folder, create folders for each <span style="color:#bf8f00;">task</span> completed/to be preprocessed</p>
+<p><strong>&nbsp;</strong></p>
+<p><span style="text-decoration:underline;"><span style="font-size:115%;"><strong><span style="font-family:Calibri, sans-serif;">ECoG</span></strong><strong><span style="font-family:Calibri, sans-serif;">&nbsp;preprocessing:</span></strong></span></span></p>
+<p>&nbsp;</p>
+<ul>
+<li><span style="font-size:100%;font-family:Calibri, sans-serif;">Setup your&nbsp;</span><span style="font-size:100%;font-family:Calibri, sans-serif;">Matlab</span><span style="font-size:100%;font-family:Calibri, sans-serif;">&nbsp;to include the following:</span></li>
+</ul>
+<p><span style="font-size:100%;font-family:Calibri, sans-serif;">&nbsp;</span></p>
+<p><img id="pbImage965932" src="/f/1631896588/pp3.png" alt="" /><span style="font-size:100%;font-family:Calibri, sans-serif;">&nbsp;</span></p>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody>
+<tr>
+<td>
+<p><span style="font-family:'Courier New';color:#ed7d31;">globalFsDir     will need to be set specific to your own computer</span></p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<p><strong><span style="font-size:100%;font-family:Calibri, sans-serif;">COPY below:</span></strong></p>
+<p><span style="font-size:100%;font-family:'Courier New';">global&nbsp;</span><span style="font-size:100%;font-family:'Courier New';">globalFsDir</span><span style="font-size:100%;font-family:'Courier New';">;</span></p>
+<p><span style="font-size:100%;font-family:'Courier New';">global RECONDIR;</span></p>
+<p><span style="font-size:100%;font-family:'Courier New';">global RECONDIR_FULL;</span></p>
+<p><span style="font-size:100%;font-family:'Courier New';">global TASKSTIM;</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;font-family:'Courier New';">RECONDIR = 'E:\Box Sync\Box Sync\</span><span style="font-size:100%;font-family:'Courier New';">ECoG_Recon</span><span style="font-size:100%;font-family:'Courier New';">';</span></p>
+<p><span style="font-size:100%;font-family:'Courier New';">RECONDIR_FULL = 'E:\Box Sync\Box Sync\</span><span style="font-size:100%;font-family:'Courier New';">CoganLab</span><span style="font-size:100%;font-family:'Courier New';">\</span><span style="font-size:100%;font-family:'Courier New';">ECoG_Recon_Full</span><span style="font-size:100%;font-family:'Courier New';">';</span></p>
+<p><span style="font-size:100%;font-family:'Courier New';">TASKSTIM = 'E:\Box Sync\Box Sync\</span><span style="font-size:100%;font-family:'Courier New';">CoganLab</span><span style="font-size:100%;font-family:'Courier New';">\</span><span style="font-size:100%;font-family:'Courier New';">task_stimuli</span><span style="font-size:100%;font-family:'Courier New';">';</span></p>
+<p><span style="font-size:100%;font-family:'Courier New';">%</span><span style="font-size:100%;font-family:'Courier New';">globalFsDir</span><span style="font-size:100%;font-family:'Courier New';">&nbsp;= 'c:/users/pa112/Desktop/xxxx/</span><span style="font-size:100%;font-family:'Courier New';">xxxxxx</span><span style="font-size:100%;font-family:'Courier New';">';</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;font-family:'Courier New';">addpath</span><span style="font-size:100%;font-family:'Courier New';">(</span><span style="font-size:100%;font-family:'Courier New';">genpath</span><span style="font-size:100%;font-family:'Courier New';">(</span><span style="font-size:100%;font-family:'Courier New';">fullfile</span><span style="font-size:100%;font-family:'Courier New';">(RECONDIR, '</span><span style="font-size:100%;font-family:'Courier New';">matlab_code</span><span style="font-size:100%;font-family:'Courier New';">')));</span></p>
+<p>&nbsp;</p>
+<p><span style="text-decoration:underline;"><span style="font-size:100%;font-family:Calibri, sans-serif;">This code will need to be run before beginning EACH preprocessing session</span></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size:115%;font-family:Calibri, sans-serif;"><strong><span style="text-decoration:underline;">To Begin Preprocessing: </span></strong></span></p>
+<p>&nbsp;</p>
+<ul>
+<li><strong><span style="font-size:100%;font-family:Calibri, sans-serif;">Download EDF file</span></strong><span style="font-size:100%;font-family:Calibri, sans-serif;"> (location:&nbsp;Box Sync\</span><span style="font-size:100%;font-family:Calibri, sans-serif;">CoganLab</span><span style="font-size:100%;font-family:Calibri, sans-serif;">\</span><span style="font-size:100%;font-family:Calibri, sans-serif;">ECoG_Task_Data</span><span style="font-size:100%;font-family:Calibri, sans-serif;">\</span><span style="font-size:100%;font-family:Calibri, sans-serif;">TaskUploadDir</span><span style="font-size:100%;font-family:Calibri, sans-serif;">) for the participant/task you will be preprocessing</span></li>
+<ul>
+<li><span style="font-size:100%;font-family:Calibri, sans-serif;">Place EDF file into designated participant (D##)/ task folder from page 1</span></li>
+</ul>
+</ul>
+<p>&nbsp;</p>
+<ul>
+<li><strong><span style="font-size:100%;font-family:Calibri, sans-serif;">Download&nbsp;<strong><span style="font-size:100%;font-family:Calibri, sans-serif;">trialdata.mat</span></strong>&nbsp;</span></strong><span style="font-size:100%;font-family:Calibri, sans-serif;">&nbsp;for same participant/</span><span style="font-size:100%;font-family:Calibri, sans-serif;">task (location: Box Sync\CoganLab\ECoG_Task_Data\Cogan_Task_Data)&nbsp;&nbsp;</span></li>
+<ul>
+<li>Place into same folder as EDF (TIMIT preprocessing requires all trialdata.mat files for <span style="text-decoration:underline;">each block and practice</span><span style="font-family:Calibri, sans-serif;font-size:100%;"> to be downloaded)</span></li>
+</ul>
+</ul>
+<p>&nbsp;</p>
+<ol>
+<li><span style="font-size:100%;font-family:Calibri, sans-serif;">In&nbsp;</span><span style="font-size:100%;font-family:Calibri, sans-serif;">matlab: make current folder desired partcicipant (D##)&gt;task folder</span></li>
+<li><span style="font-size:100%;font-family:Calibri, sans-serif;">Run startup.mat</span></li>
+<li><span style="font-size:100%;font-family:Calibri, sans-serif;">Open ecog_preprocessing.m </span></li>
+</ol>
+<p>&nbsp;</p>
+<p><strong><span style="font-size:100%;font-family:Calibri, sans-serif;">Each section of&nbsp;</span></strong><strong><span style="font-size:100%;font-family:Calibri, sans-serif;">ecog_preprocessing.m</span></strong><strong><span style="font-size:100%;font-family:Calibri, sans-serif;">&nbsp;is meant to be run one at a time, you can highlight the section and press F9 to run.</span></strong><strong>&nbsp;</strong></p>
+<p>&nbsp;</p>
+<p><span style="font-family:Calibri, sans-serif;">*Add a new&nbsp;</span><span style="font-family:'Courier New';color:#0000ff;">case</span><span style="font-family:Calibri, sans-serif;">&nbsp;for each task/recording sections</span><span style="font-family:Calibri, sans-serif;">:</span></p>
+<p>&nbsp;</p>
+<p><img id="pbImage695778" src="/f/1631896588/pp4.png" alt="" /></p>
+<ul>
+<li><span style="font-size:100%;font-family:Calibri, sans-serif;">Copy and paste the most recent </span><span style="font-size:100%;font-family:'Courier New';color:#0000ff;">case</span><span style="font-family:Calibri, sans-serif;"> (example figure <span style="color:#ff0000;">A</span>) and replace purple text with current participant information and file locations.</span></li>
+<li><span style="font-family:Calibri, sans-serif;">Once filled in, highlight lines ‘cd’ to ‘rec’ and press F9 to run.</span></li>
+</ul>
+<p>&nbsp;</p>
+<p><span style="font-family:Calibri, sans-serif;">Scroll down, highlight and run (shown in figure&nbsp;</span><strong><span style="color:#4472c4;">B</span></strong><span style="font-family:Calibri, sans-serif;">):</span></p>
+<p><img id="pbImage12084" src="/f/1631896589/pp5.png" alt="" /></p>
+<p>&nbsp;</p>
+<p><span style="font-family:Calibri, sans-serif;">Scroll down, highlight and run (shown in figure&nbsp;</span><strong><span style="color:#ffd966;">C</span></strong><span style="font-family:Calibri, sans-serif;">)</span></p>
+<p><img id="pbImage492525" src="/f/1631896589/pp6.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>Variable “labels” will be created in workspace.</p>
+<ul>
+<li>Check here to confirm <span style="font-size:100%;font-family:'Courier New';color:#000000;">trigger_chan_index, mic_chan_index, neural_chan_index </span>(final portion of example <span style="color:#ff0000;">A</span>)<span style="font-size:100%;font-family:'Courier New';color:#000000;">. </span></li>
+<ul>
+<li><span style="font-size:100%;font-family:'Courier New';color:#000000;">&nbsp;</span>Enter channel values into last 3 lines of example <span style="color:#ff0000;">A</span>, highlight and run(F9).</li>
+</ul>
+</ul>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>Use to double check number of triggers during maketrigtimes.m step</p>
+<p><span style="font-family:Calibri, sans-serif;">Number of triggers:</span></p>
+<p>&nbsp;</p>
+<p><span style="font-family:Calibri, sans-serif;">Timit- 336</span></p>
+<p><span style="font-family:Calibri, sans-serif;">Delay- 336</span></p>
+<p><span style="font-family:Calibri, sans-serif;">No Delay- 504</span></p>
+<p><span style="font-family:Calibri, sans-serif;">Uniqueness Point- 480</span></p>
+<p><span style="font-family:Calibri, sans-serif;">Sentence Rep- 270</span></p>
+<p><span style="font-family:Calibri, sans-serif;">PhonemeS- 208</span></p>
+<p><span style="font-family:Calibri, sans-serif;">Environmental- 1176</span></p>
+<p><span style="font-family:Calibri, sans-serif;">Neighborhood- 1120</span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>

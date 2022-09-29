@@ -1,0 +1,151 @@
+<h2>Initial Setup (Only needs to be done in the beginning)</h2>
+<h3 style="margin-left:40px;">Virtual Box Setup</h3>
+<p style="margin-left:40px;"><span style="background-color:#00ffff;">WINDOWS</span></p>
+<ol><li>Copy xubuntu16 folder to C:\Users\[your username]\VirtualBox VMs</li>
+<li>Run Oracle VM Virtualbox</li>
+<li>Tools &gt; Add &gt; navigate to&nbsp;C:\Users\[your username]\VirtualBox VMs\ xubuntu16.vbox</li>
+<li>Right click newly added VM &gt; Settings&nbsp;</li>
+<li>Under Shared Folders, remove the&nbsp;<span style="font-family:sans-serif;font-size:100%;">C:</span><span style="font-family:sans-serif;font-size:100%;">\</span><span style="font-family:sans-serif;font-size:100%;">Users</span><span style="font-family:sans-serif;font-size:100%;">\</span><span style="font-family:sans-serif;font-size:100%;">sf225</span><span style="font-family:sans-serif;font-size:100%;">\</span><span style="font-family:sans-serif;font-size:100%;">Desktop</span><span style="font-family:sans-serif;font-size:100%;">\</span><span style="font-family:sans-serif;font-size:100%;">share</span></li>
+<li><span style="font-family:sans-serif;font-size:100%;">Create and add your own share folder</span></li>
+<ol><li><span style="font-family:sans-serif;font-size:100%;">This share folder should be on the hard drive with a generous amount of space (~500 Mb per subject)</span></li>
+<li><span style="font-family:sans-serif;font-size:100%;">Access full, auto mount yes</span>&nbsp;</li>
+</ol><li><span style="font-family:sans-serif;font-size:100%;">Note the VM is already setup and installed with Freesurfer, FSL, and Matlab&nbsp;</span></li>
+<ol><li><span style="font-family:sans-serif;font-size:100%;">Username: sbf</span></li>
+<li><span style="font-family:sans-serif;font-size:100%;">Passwork: SpeecH422&nbsp;</span></li>
+</ol></ol><h3 style="margin-left:40px;">Other Required Software</h3>
+<p style="margin-left:40px;"><span style="background-color:#00ffff;">WINDOWS</span></p>
+<ol><li>MDicom:&nbsp;<a href="http://www.microdicom.com/downloads.html">http://www.microdicom.com/downloads.html</a></li>
+<li>Mricrogl:&nbsp;<a href="https://www.nitrc.org/projects/mricrogl">https://www.nitrc.org/projects/mricrogl</a> </li>
+<li>Bioimageduite 3 (legacy)&nbsp;<a href="https://medicine.yale.edu/bioimaging/suite/lands/downloads/">https://medicine.yale.edu/bioimaging/suite/lands/downloads/</a> </li>
+<ol><li>Windows (VS 2008) Complete Version Default&nbsp;</li>
+<li>Username: anonymous&nbsp;</li>
+<li>Password: bioimagesuite&nbsp;</li>
+</ol><li>Matlab&nbsp;</li>
+</ol><p>&nbsp;</p>
+<h2>MRI and CT Preparation</h2>
+<h3 style="margin-left:40px;">Prepare MRI and CT volumes for Processing</h3>
+<p style="margin-left:40px;"><span style="background-color:#00ffff;">WINDOWS</span></p>
+<ol><li>Create a folder on your desktop called "mri"</li>
+<li>In this folder create a subject folder, e.g. "D#"</li>
+<li>Copy the MRI and CT .zip files for the subject into this newly created folder</li>
+<ol><li>Greg will place these .zip files on the neurosurgery shared drive, under the folder MRIs&nbsp;</li>
+<li>Update: MRIs may need to be accessed in PACE*&nbsp;</li>
+</ol><li>Extract all zip files into this directory&nbsp;</li>
+<ol><li>Do not create subfolder during extraction, all *.dcm files should be in mri/D#/</li>
+</ol><li>Open MicroDicom.exe&nbsp;</li>
+<li>File &gt; Scan for DICOM files and point to the mri/D# directory&nbsp;</li>
+<li>Identify which scan to use for the MRI reconstruction and CT&nbsp;</li>
+<ol><li>For MRI: ax spgr scan without contrast&nbsp;</li>
+</ol><li>Use dcm2niix.exe to convert dicom files to .nii</li>
+<ol><li>Open command prompt/powershell in subject directory (shift + right click in folder &gt; Open powershell here)</li>
+<li>Type c:/users/[YOUR USER]/Desktop/MRIcroGL/dcm2niix.exe "."</li>
+</ol><li>This will convert all volumes into .nii files&nbsp;</li>
+<ol><li>The axial D# without contrast: D#_ax_spgr_#.nii</li>
+<li>The one with the contrast usually has a "+c" in the file name</li>
+<li>For CT, it usually has _HEADAX_ in the file name</li>
+<li>Select the file with the most slices (use mDicom to check which file)&nbsp;</li>
+</ol><li>Create a subject folder on the virtual machine shared folder</li>
+<ol><li>share/mri/D#</li>
+<li>Copy the CT and MRI *.nii files there and rename to "D#_MRI.nii" and "D#_CT.nii"&nbsp;</li>
+</ol></ol><p>&nbsp;</p>
+<p style="margin-left:40px;"><span style="background-color:#ffff00;">LINUX&nbsp;</span></p>
+<ol><li>Run xubuntu16 VM (Oracle Virtualbox) (user: sbf&nbsp; &nbsp; Password: SpeecH422)</li>
+<li>In VM, navigate to the share/mri/D# folder</li>
+<li>Open command line in that folder, and type "freeview D#_MRI.nii"&nbsp;</li>
+<li>Make adjustments so that the volume is anterior-commissure and posterior-commissure (AC/PC) aligned&nbsp;</li>
+</ol><p style="margin-left:40px;"><img id="pbImage824409" style="height:587px;" src="/f/1572883549/MRI_freeview.JPG" alt="" width="1200" />&nbsp;</p>
+<ol><ol><li>Tools &gt; Transform Volume &gt; Rotate</li>
+<li>AC/PC should be aligned horizontally. Examples of what the AC/PC are at the bottom of the page; they are distinct white matter tracks in the center of the brain</li>
+<li>Read more about the alignment process in "<a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5671481/">Semi-automated Anatomical Labeling and Inter-subject Warping of High-Density Intracranial Recording Electrodes in Electrocortigraphy</a>"</li>
+<li>As the last step of the procedure, the anterior commissure should be aligned at the origin of the volume. Manually enter coordinates (0,0,0) in the Right Anterior Superior (RAS) box at the bottom left of the freeview window and press Enter. This will move the <strong>cursor</strong> to 0,0,0</li>
+<ol><li>Do not click anywhere on the volume, otherwise the cursor coordinates will non-zero.</li>
+<li>The use Tools &gt; Transform Volume &gt; Translate to move the volume to the cursor position&nbsp;</li>
+</ol><li>The end result should look like the above image. The red + cursor should be over the AC (check all 3 panels) and the RAS coordinates in the lower left should read 0,0,0</li>
+<li>Save the volume as "D#_MRI_ACPC.nii"&nbsp; &nbsp; &nbsp;</li>
+</ol></ol><p>&nbsp;</p>
+<h2>Recon-all</h2>
+<p style="margin-left:40px;"><span style="background-color:#ffff00;">LINUX</span></p>
+<ol><li>In command terminal (current directory in share/mri/D#/) type the following the press enter</li>
+<ol><li>recon-all -cw256 -s D# -i D#_MRI_acpc.nii -all -localGI</li>
+<li>This will take ~5 hours to complete</li>
+<li>Should say "Finished without error" in the terminal&nbsp;</li>
+</ol><li>To view reconstructions results, type freeview in to the command line</li>
+<li>File &gt; Load Volume and navigate to /home/sbf/Desktop/freesurfer/D#/mri/T1.mgz</li>
+<ol><li>File &gt; Load Surface and navigate to /home/sbf/Desktop/freesurfer/D#/surf/lh.pial</li>
+<li>Same process for rh.pial.&nbsp;</li>
+</ol></ol><p>&nbsp;</p>
+<h2>Align CT to MRI</h2>
+<p>&nbsp; &nbsp; &nbsp;<span style="background-color:#ffff00;">LINUX</span></p>
+<ol><li>Open a command terminal in /home/sbf/Desktop/share/mri/D#, type: ct2mri.sh D# D#_CT.nii</li>
+<li>This will take about 10 minutes to run, after which results will automatically display on the screen</li>
+<li>The red lines should follow the contour of the CT and MRI, respectively</li>
+</ol><p style="margin-left:40px;"><img id="pbImage209136" src="/f/1572883801/alignCTtoMRI.JPG" alt="" />&nbsp;</p>
+<ol><li>Note, you don't need to wait for recon-all to finish before running ct2mri.sh, but recon-all should be started and running for about 20 minutes</li>
+<li>The program outputs /home/sbf/Desktop/D#/elec_recon/postInPre.nii.gz</li>
+<li>This CT is now in the same orientation and space as the freesurfer results.&nbsp;</li>
+</ol><p>&nbsp;</p>
+<h2>Copy Files to Windows/VM Shared Folder</h2>
+<p style="margin-left:40px;"><span style="background-color:#ffff00;">LINUX</span></p>
+<ol><li>Freesurfer recon-all cannot save results to the share directly, because Windows share does not support symlinks and the program will halt. Thus, we must copy the freesurfer results to the share/freesurfer directory so that we can access the results from Windows</li>
+<li>In the command line terminal under /home/sbf/Desktop/freesurfer type:</li>
+<ol><li>python symlink2copy.py D#</li>
+<li>cp -R D# /home/sbf/Desktop/share/freesurfer&nbsp;</li>
+</ol></ol><p>&nbsp;</p>
+<h2>BioImage Suite Labeling</h2>
+<p style="margin-left:40px;">WINDOWS</p>
+<ol><li>Open BioImageSuite 3 (legacy version)</li>
+<li>Editors tab &gt; Electrode Editor</li>
+<li>One Electrode Editor window, File &gt; Load and navigate to share/freesurfer/D#/elec_recon/postInPre.nii.gz</li>
+<li>On the right side of the main window, configure to match the following:</li>
+</ol><p style="margin-left:40px;"><img id="pbImage606431" src="/f/1573153362/BioImageSuite7.JPG" alt="" /></p>
+<ol><li>Image Processing &gt; Threshold &gt; Threshold Image</li>
+<li>Set low threshold to 2000 and click Threshold Image at the bottom. You should now see a 3D cube with electrodes visible</li>
+</ol><p style="margin-left:40px;"><img id="pbImage149995" src="/f/1573153361/BioImageSuite4.JPG" alt="" />&nbsp;</p>
+<ol><ol><li>Left click and hold to rotate</li>
+<li>Middle mouse button and hold to zoom</li>
+<li>Right click and hold to translate volume</li>
+</ol><li>Open Electrode Control Window</li>
+<li>Volume Trace &gt; VOL Size 5&nbsp;</li>
+<li>Edit the first grid by clicking Electrode Info tab&nbsp;</li>
+<ol><li>Change dimensions to 1 X 12 (or however many you need) and click Update Grid. A message will notify you the grid dimensions will change</li>
+<li>Grid &gt; Grid color &gt; choose a distinguishing color&nbsp;</li>
+<li>Edit &gt; Full Edit Mode</li>
+<li>Start with the bottom electrode (electrode 1, which is the electrode furthest from the scalp)</li>
+</ol></ol><p style="margin-left:80px;"><img id="pbImage326078" src="/f/1573153361/BioImageSuite5.JPG" alt="" />&nbsp;</p>
+<ol><ol><li>Check the Button Pick on the right, and click Pick Current</li>
+<li>Go to the main window and Shift + Left click to place electrode&nbsp;</li>
+</ol></ol><p style="margin-left:80px;"><img id="pbImage176145" src="/f/1573153362/BioImageSuite6.JPG" alt="" />&nbsp;</p>
+<ol><li>Go to Patient Info tab and click Add New Grid&nbsp;</li>
+<li>Repeat the above procedure to label electrodes for this grid/depth/strip</li>
+<li>You will need to save each grid/depth/strip with the right naming convention</li>
+</ol><p style="margin-left:40px;"><img id="pbImage741414" src="/f/1573153360/BioImageSuite3.JPG" alt="" />&nbsp;</p>
+<ol><li>Enter grid/depth/strip name here and press Update Grid</li>
+<li>Depth = LD_ or RD_ for left and right hemispheres, respectively</li>
+<li>Grids = LG_ or RG_</li>
+<li>Strips = LS_ or RS_&nbsp;</li>
+<li>You will need to get information about naming from the neurologist or neurosurgeon notes or by looking at the EDF headers of task data</li>
+<li>Tips:</li>
+<ol><li>If electrodes aren't distinguishable in 3D mode, sometimes they appear better in 2D mode</li>
+<ol><li>Set low threshold to 0</li>
+<li>Use Simple Mode in the main panel</li>
+</ol></ol></ol><p style="margin-left:120px;"><img id="pbImage951883" src="/f/1573153359/BioImageSuite1.JPG" alt="" />&nbsp;</p>
+<ol><ol><li>There is a bug in 2D mode: when you want to edit a grid/depth/strip, it is easy to accidentally move an electrode unintentionally. After selecting a grid, do not click on the main panel without first clicking the Release button (shown below):</li>
+</ol></ol><p style="margin-left:80px;"><img id="pbImage506358" style="width:269px;height:116px;" src="/f/1573153360/BioImageSuite2.JPG" alt="" />&nbsp;</p>
+<ol><ol><li>If you accidentally move an electrode, click Edit &gt; Undo Move Electrode in the Electrode Control window</li>
+<li>Check the electrode spacing&nbsp;</li>
+<li>Use auto-warp to extrapolate locations. Sometimes you can distinguish the first 4 or 5 contacts (nearest center of brain), but as the depth approaches the skull, it often gets washed out. Bioimage suite has an auto-warp function that will extrapolate the remaining unplaced electrodes on a given grid/depth/strip</li>
+<li>Electrode Control panel &gt; Grid &gt; Auto Warp</li>
+<li>When finished, click File &gt; Save in the Electrode Control panel. Save as share/freesurfer/D#/elec_recon/D#.mgrid&nbsp;</li>
+</ol></ol><p>&nbsp;</p>
+<h2>Matlab Scripts after labeling</h2>
+<p style="margin-left:40px;"><span style="background-color:#00ffff;">WINDOWS</span></p>
+<ol><li>First time setup</li>
+<ol><li>Matlab startup.m script should set the following global variables</li>
+</ol></ol><p style="margin-left:80px;"><img id="pbImage281207" src="/f/1573230202/matlab_globalvariables.JPG" alt="" />&nbsp;</p>
+<ol><ol><li>Your paths will be specific to your machine and setup&nbsp;</li>
+</ol><li>Run:&nbsp; freesurfer_preprocessing('D#')</li>
+<li>Run:&nbsp;&nbsp;freesurfer_print_elec_slices('D#')</li>
+<li>Test results with plot_subj('D#'). You should see pial surface rendering with the correct location and names of labeled electrodes&nbsp;</li>
+<li>Files should be automatically saved to ECoG_Recon&nbsp; (check that Box Sync is syncing the files)</li>
+</ol><p>&nbsp;</p>
+<p>&nbsp;</p>

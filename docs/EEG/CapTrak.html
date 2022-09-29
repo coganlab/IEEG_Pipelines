@@ -1,0 +1,56 @@
+<p>&nbsp;</p>
+<p><strong>Hardware Setup</strong></p>
+<ol>
+<li>Insert electrodes into the holders and align wires to avoid blocking the surface of the LED.&nbsp;</li>
+<li>Plug REF into the ActiChamp control box and electrode into the head cap</li>
+<li>GND should be inserted into the GND distributor, and then the GND jumper cable should go from the GND distributor to the GND on the control box.&nbsp;</li>
+<li>The three fiducials should be placed at naison, LPA, and RPA. Use the holders and double-sided adhesives to attach to the head.</li>
+<li>Plug the ribbon cables into the input connectors of the ActiChamp control box.&nbsp;</li>
+<li>Plug the micro USB cable into the port. This port is on the inside of the control box (may have to remove batteries/power pack to get to this port)&nbsp;</li>
+</ol>
+<p style="margin-left:40px;"><img id="pbImage29436" style="width:488px;height:416px;" src="https://coganlab-eeg.pbworks.com/f/Wire_Organization2.jpg" alt="" />&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>Software Setup&nbsp;</strong></p>
+<ol>
+<li>Click on the CapTrak icon and launch the application to view the main menu</li>
+</ol>
+<p style="margin-left:40px;"><img id="pbImage354475" style="width:676px;height:417px;" src="https://coganlab-eeg.pbworks.com/f/MainMenu.png" alt="" />&nbsp;</p>
+<ol>
+<li>Option 1: New Workspace&gt; Load electrode position file &gt; CACS-128-X2_M14_til_128.bvef &gt; Remove electrodes: 125, 126, 127, and 128 &gt;Select ActiChap control box &gt; Name and save new workspace</li>
+<li>Option 2: Open workspace &gt; continue using established workspace. Use this workspace when using the 124 channel head caps: <strong><a href="/w/file/125777384/Open_WS_Cogan.png">124ch_Cogan</a></strong></li>
+<li>Click Start Scan</li>
+</ol>
+<p>&nbsp;</p>
+<p><strong>Operation</strong></p>
+<ol>
+<li>&nbsp;The scanner should be held approximately 30 cm from the head. A beep&nbsp; will play if the distance of the scanner is too close or too far. This auditory feedback can be turned off.&nbsp;</li>
+<li>Two green LED lights will be displayed on the cap. Orient the scanner to be parallel to the green lights. You may have to rotate the scanner to detect the green lights.&nbsp;</li>
+<li>Once the scanner detects the green lights, a chime will play and then two new green LEDs will be lit. Repeat the step of orienting the scanner to pick up the lights until the entire head has been scanned.&nbsp;</li>
+<li>A progress bar on the right hand side of the screen will indicate how much of the cap is left to scan.&nbsp;</li>
+<li>Troubleshooting: <a href="/w/file/123553242/Wire_Organization2.jpg">Wires may need to be moved to the side for the LED to be detected</a>. Wires blocking the surface of the electrode may yield the message "Green light not detected"</li>
+<li>A chime will signal the complete scan and a dialog box will appear to save the scanned file. Save the file with this format:<strong> [ParticipantID]_124ch</strong></li>
+<li>Files can be <a href="/w/file/125777393/ExportAs.png">saved as</a> the following:</li>
+<ul>
+<li>.bvct (ideal to use with Brain Vision Analyzer)</li>
+<li>.txt</li>
+<li>.sfp (BESA)</li>
+<li>.csv&nbsp;</li>
+</ul>
+</ol>
+<p style="margin-left:40px;"><img id="pbImage759811" style="width:683px;height:422px;" src="https://coganlab-eeg.pbworks.com/f/SaveFile.png" alt="" />&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>Troubleshooting</strong></p>
+<ol>
+<li>Observed 180222:</li>
+<ol>
+<li>During scanning in work space ActiChamp_64 (Appelbaum head caps) two electrodes started to blink simultaneously. Error message "59 and 61 are switched. Continue?". Captrak system encountered this error due to the electrodes in the wrong location in the head cap. The electrodes were switched to match the location layout specified in the work space. Repeated scans did not yield error message.&nbsp;&nbsp;</li>
+</ol>
+<li>Observed 180222 &amp; 180226&nbsp;</li>
+<ol>
+<li>Error message "Naison landmark not detected" appeared at the end of the scan. </li>
+<li>Repeat of scan required with an emphasis on detecting the Nz landmark. *The Nz landmark was plugged into the ground distributor and attached to the glass head.&nbsp;</li>
+<li>Error message appeared after the 2nd scan. The Nz was removed from the ground distributor and then plugged back in.&nbsp;</li>
+<li>The scan of the head was repeated, and the error message did not appear at the end of the 3rd scan.</li>
+<li>Suggested solutions: leave the landmark electrodes unplugged when not in use, and then plug into the ground distributor prior to scanning the head.&nbsp;</li>
+</ol></ol>
+<p>&nbsp;</p>

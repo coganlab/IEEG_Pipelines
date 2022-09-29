@@ -1,0 +1,45 @@
+<h2>What is PACE?</h2>
+<p><span style="color:#5a5a5a;">Protected Analytics Computing Environment (PACE) is a highly protected virtual network space that serves as a marketplace where approved users can work with identifiable protected health information. PACE simplifies the effort of obtaining EHR (Electronic Health Record) data from Duke Health enterprise data warehouse and Duke's Maestro Care (Epic) EHR system, while supporting collaborators from around the world with approved NetIDs. The marketplace offers a rich set of tools, services, and resources required by research and quality initiatives. Within the protected enclave, PACE users are provided the ability to select operating systems, analytic tools (e.g. R, SAS, Python), services (e.g. an Honest Broker or Transfer Agent service to securely release data outside of PACE), compute and data sources (e.g. Microsoft Azure, Exadata, OIT GPU, DEDUCE). Future expansion of the marketplace will include access to cloud offerings like Amazon AWS and Google Cloud Platform.</span></p>
+<p>&nbsp;</p>
+<p>PACE website:&nbsp;<a href="https://pace.ori.duke.edu/">https://pace.ori.duke.edu/</a></p>
+<p>&nbsp;</p>
+<h2>Setting up a PACE account (Duke Health Employee)</h2>
+<ol><li>Register for the "PACE training for Duke Employees and Affiliates" course in Duke LMS. You will need to score at least 80% on the exam in order to earn course completion.&nbsp;</li>
+<li><span style="color:#5a5a5a;">Obtain a CoreResearch@Duke Service Request ID&nbsp;</span></li>
+<ol><li><span style="color:#5a5a5a;">As of January 1, 2021, PACE has begun billing for services using&nbsp;</span><span style="text-decoration:underline;"><span style="color:#0000ff;"><a title="CR@D" href="https://coreresearch.duke.edu/">CoreResearch@Duke</a></span></span><span style="color:#5a5a5a;">, Duke's enterprise-wide shared resource request system. When requesting new PACE resources via GetIT, you will need to provide a CoreResearch Service Request ID. If you are not familiar with how to meet this requirement for your project, you may need to contact your PI, PI Delegate, Financial or Grant Manager for assistance.&nbsp;&nbsp;</span></li>
+</ol><li>Submit a PACE Account Request</li>
+<ol><li>Provide&nbsp;IRB #, RPR, QI, or equivalent number at time of request (requester must be Key Personnel on an IRB study with an approved or exempt status)&nbsp;&nbsp;</li>
+</ol></ol><p>&nbsp;</p>
+<h2>Accessing the PACE Environment</h2>
+<ol><li>Login to secure.citrix.duke.edu with your&nbsp; netID</li>
+<li>Click the DESKTOPS button in the top banner</li>
+<li>Click the PACE - SIMPLE icon to launch the environment&nbsp;</li>
+</ol><p>&nbsp;</p>
+<h2>Software to load in PACE</h2>
+<ol><li>MicroDicom is a free software that can view CT and MRI images&nbsp;</li>
+<li>As a first time user of PACE, request from the PACE admin to save a .zip of MicroDicom application on the PACE software share drive (<span style="font-size:100%;color:#1f497d;">S:\Open Source\Windows\MicroDicom\)</span></li>
+<li>Save MicroDicom as a desktop shortcut in PACE&nbsp;</li>
+</ol><p>&nbsp;</p>
+<h2>Viewing MRI and CT files in PACE</h2>
+<ol><li>Open MicroDicom</li>
+<li>File &gt; Scan for DICOM files and point to the mri/D# directory&nbsp;</li>
+<li>Identify which scan to use for the MRI reconstruction and CT&nbsp;</li>
+<li>Check that identifiers have been removed (top left corner)&nbsp;</li>
+<li>Export the series&nbsp;</li>
+<ol><li>File &gt; Export &gt; To DICOM file...</li>
+<li>Specify Destination and Filename prefix</li>
+<li>Select source: Current series</li>
+<li>Check box: Separate files for every Image</li>
+<li>Image size original&nbsp;</li>
+</ol></ol><p>&nbsp;</p>
+<h2>Moving files out of the PACE Environment</h2>
+<ol><li>Based on the specified destination of exported files, .zip the series and rename with Subject ID and Series name (i.e. MRI or CT)</li>
+<li>Move the new .zip folder to Pro00065476-TA-[netID]</li>
+<li>In Windows OS login to pacedata.duhs.duke.edu with netID credentials and 2FA</li>
+<li>Click on the&nbsp;Pro00065476-TA-[netID] folder and download the folder</li>
+<li>This .zip folder will disappear from the Windows OS and PACE environment after download&nbsp;</li>
+</ol><p>&nbsp;</p>
+<h2>File Upload</h2>
+<ol><li>Downloaded .zip files can be uploaded to Duke Box &gt; MRI</li>
+<li>Send notification to relevant parties on new files&nbsp;</li>
+</ol>

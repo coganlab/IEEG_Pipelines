@@ -1,0 +1,188 @@
+<h2>Required software:</h2>
+<ul>
+<li>Matlab</li>
+<li>Audacity&nbsp;<span style="font-family:sans-serif;font-size:130%;">(<a href="https://www.audacityteam.org/download/">https://www.audacityteam.org/download/</a>&nbsp;</span><span style="font-family:sans-serif;font-size:130%;">)</span></li>
+</ul>
+<p>&nbsp;</p>
+<h2>Preparing audio files&nbsp;&nbsp;</h2>
+<ol>
+<li>Go to the subject directory on Box/CoganLab/ECoG_Task_Data/Cogan_Task_Data/</li>
+<li>&nbsp;Copy the block-recording (*_AllTrials.wav) into a temporary directory</li>
+<li>Rename these blocks to block1.wav, block2.wav. etc.</li>
+<ol>
+<li>&nbsp;D##_Block_1_AllTrials.wav would be renamed to <strong>block1</strong>.wav</li>
+<li>D##_Block_2_AllTrials.wav would be renamed to<strong> block2</strong>.wav</li>
+<li>D##_Block_3_AllTrials.wav would be renamed to <strong>block3</strong>.wav</li>
+<li>D##_Block_4_AllTrials.wav would be renamed to <strong>block4</strong>.wav&nbsp;</li>
+</ol>
+<li>Copy *_TrialData.mat into same directory and rename to <strong>trialInfo</strong>.mat&nbsp;</li>
+<ol>
+<li>D##_Block_1_TrialData would be renamed to <strong>trialInfo</strong>.mat</li>
+<li>If there are multiple *.mat files, copy the one with the highest block number</li>
+<li><em>If the task is split across multiple recordings, then combine trialInfo files into one</em></li>
+<ol>
+<li>Copy each *TrialData.mat and rename to trialInfo1.mat, trialInfo2.mat, etc.</li>
+<li>Run <strong>fix_trialInfo_blocks('trialInfo1.mat', [1 2]);</strong></li>
+<ol>
+<li>[1 2]&nbsp;refer to the blocks that the trialInfo1.mat file <em>should </em>contain.</li>
+<li>Sometimes trialInfo has extra trials before the session was terminated, and this script will remove those extra trials.&nbsp;</li>
+</ol>
+<li>Run <strong>fix_trialInfo_blocks('trialInfo2.mat',&nbsp;[3 4]);</strong></li>
+<ol>
+<li>Or whatever the blocks <em>should </em>be&nbsp;</li>
+</ol>
+<li>Run <strong>combine_trialInfo</strong>&nbsp;</li>
+<li>A single trialInfo.mat file that combined trialInfo1.mat and trialInfo2.mat together</li>
+<li>Double click trialInfo.mat to load it</li>
+<li>Type <strong>trialInfo = cellfun(@(a) a, trialInfo);</strong> to convert to structure for easier examination. Ensure all blocks are present and named appropriately&nbsp;</li>
+</ol></ol>
+<li>Run Matlab&nbsp;</li>
+<ol>
+<li><strong>X = 'H:\Box Sync\CoganLab\ECoG_Task_Data\response_coding\response+coding_dep';</strong> (individual path may be different)</li>
+<li>Type into Matlab command line, <strong>addpath(genpath(X));&nbsp;</strong></li>
+</ol>
+<li>In Matlab, navigate to the directory with the *.wavs&nbsp;</li>
+<li>Run <strong>combine_wavs&nbsp;</strong></li>
+<li>A file allblocks.wav should be generated in that same directory&nbsp;</li>
+<li>Drag and drop the allblocks.wav into Audacity main window</li>
+</ol> 
+<table style="width:100%;margin-left:0px;margin-right:0px;float:left;" border="0" align="left">
+<tbody>
+<tr>
+<td><strong>Control&nbsp;</strong></td>
+<td><strong>Function&nbsp;</strong></td>
+</tr>
+<tr>
+<td>Ctrl + mouse wheel&nbsp;</td>
+<td>Zoom&nbsp;</td>
+</tr>
+<tr>
+<td>Shift + mouse wheel&nbsp;&nbsp;</td>
+<td>Pan left or right&nbsp;</td>
+</tr>
+<tr>
+<td>Left click + drag&nbsp;</td>
+<td>Highlight portion of wav file&nbsp;</td>
+</tr>
+<tr>
+<td>Ctrl + B&nbsp;&nbsp;</td>
+<td>
+<p>Label the selected portion (*Select text and Backspace to remove label)&nbsp;</p>
+</td>
+</tr>
+<tr>
+<td>Spacebar</td>
+<td>Play selected portion</td>
+</tr>
+<tr>
+<td>Shift + left click</td>
+<td>Extend selected portion</td>
+</tr>
+<tr>
+<td>Up/Down arrow</td>
+<td>Select different tracks (Current selected track is outlined in yellow)</td>
+</tr>
+<tr>
+<td>Tab + Shift + Tab</td>
+<td>Navigate through labels (when label track selected)</td>
+</tr>
+<tr>
+<td>Ctrl + S</td>
+<td>Save project</td>
+</tr>
+</tbody>
+</table>
+<p><br /><span style="font-size:115%;"><span style="font-family:sans-serif;"><strong>Do not use Control + Z&nbsp;</strong></span><span style="font-family:sans-serif;"><strong>to undo changes to labels. </strong>Modifying labels (adjusting onset or </span><span style="font-family:sans-serif;">offset, or changing text) are lumped into a single History level. A single Control + Z can </span><span style="font-family:sans-serif;">undo all of these lumped modifications.&nbsp;</span><span style="font-family:sans-serif;">Control + Y will redo</span>&nbsp;</span></p>
+<p>&nbsp;</p>
+<h2><span style="font-size:115%;">Response Coding Guidelines</span></h2>
+<ol>
+<li><span style="font-size:115%;">Precisely denote onset of voice and offset of voice</span></li>
+<li><span style="font-size:115%;">For "Just Listen" trials, do not put a label during the response epoch</span></li>
+<li><span style="font-size:115%;">For "Repeat" trials, just put a number for the label</span></li>
+<li><span style="font-size:115%;">For "Yes/No" trials, include "yes" or "no" in the label text</span></li>
+<li><span style="font-size:115%;">If the epoch or trial is noisy, include "noisy" in the label text</span></li>
+<li><span style="font-size:115%;">You can have multiple tags, e.g. "1_yes_noisy" can be a valid label</span></li>
+<li><span style="font-size:115%;">Noisy trials indicate a significant amount of background noise, or the response is unclear and not discernible</span></li>
+<li><span style="font-size:115%;">If they miss trials, just leave the response blank</span></li>
+<li><span style="font-size:115%;">Focus on getting the sound onset correct</span></li>
+<li><span style="font-size:115%;">If the ending of the word is not discernible, extrapolate to where the end should be (i.e. can't hear the ending "t" in "rabbit", extrapolate to where you think it should be)</span></li>
+<li><span style="font-size:115%;">For "yes" responses, don't worry about getting the final "s" sound, as it slows down the coding too much. However, words ending in "s" that are repeated should have an accurate offset.&nbsp;</span></li>
+<li><span style="font-size:115%;">To save results, close any label tracks that are not the response coding (Cue track). When you export labels in Audacity, it will export all label tracks into a single file, so make sure only the relevant label track is loaded.</span></li>
+<li><span style="font-size:115%;">File &gt; Export &gt; Export Labels&nbsp; and save as "response_coding.txt."&nbsp;</span></li>
+<li><span style="font-size:115%;"><strong>Copy the following files to Box under [subj]_task[tasknumber]&nbsp;/folder</strong></span></li>
+<ol>
+<li><span style="font-size:115%;"><strong>allblocks.wav (wav w/ noise reduction)*</strong></span></li>
+<li><span style="font-size:115%;"><strong>allblocks_orig.wav (original wav file, unedited)</strong></span></li>
+<li><span style="font-size:115%;"><strong>block_wav_onsets.mat</strong></span></li>
+<li><span style="font-size:115%;"><strong>cue_events.txt</strong></span></li>
+<li><span style="font-size:115%;"><strong>filtered_sound_finder_results.txt</strong></span></li>
+<li><span style="font-size:115%;"><strong>first_stims.txt</strong></span></li>
+<li><span style="font-size:115%;"><strong>response_coding.txt</strong></span></li>
+<li><span style="font-size:115%;"><strong>sound_finder_results.txt</strong></span></li>
+<li><span style="font-size:115%;"><strong>trialInfo.mat&nbsp;</strong></span></li>
+<li><span style="font-size:115%;"><strong>condition_events.mat&nbsp;</strong></span></li>
+</ol></ol>
+<p><strong style="font-size:115%;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; *&nbsp;</strong><span style="font-size:115%;">On box, if </span><span style="font-size:115%;"><span style="text-decoration:underline;">only</span> allblocks.wav is uploaded, that is the original/unedited wav file- noise reduction was not required.&nbsp;&nbsp;</span></p>
+<p><span style="font-size:115%;">&nbsp;</span></p>
+<p>&nbsp;</p>
+<h2>To Speed Up Coding</h2>
+<ol>
+<li>The following steps can accelerate coding, and should start after loading the allblocks.wav in Audacity</li>
+<li>Filter noise from wav file</li>
+<ol>
+<li>Highlight a quiet portion of allblock.wav (around half a second)</li>
+</ol></ol>
+<p style="margin-left:80px;"><img id="pbImage181522" style="width:925px;height:129px;" src="/f/1570739423/ResponseCoding2_noiseprofile.JPG" alt="" />&nbsp;</p>
+<ol><ol>
+<li>Effect &gt; Noise Reduction</li>
+<li>Click Get Noise Profile&nbsp;</li>
+<li>Highlight the entire wav (double click any part of the wav to select the whole track)</li>
+</ol></ol>
+<p style="margin-left:80px;"><img id="pbImage284071" style="height:123px;" src="/f/1570739424/ResponseCoding2_noiseprofileentire.JPG" alt="" />&nbsp;</p>
+<ol><ol>
+<li>Effect &gt; Noise Reduction</li>
+<li>The default settings should be fine, but you can adjust the settings to achieve better results</li>
+<ol>
+<li>Noise reduction: 9</li>
+<li>Sensitivity: 6</li>
+<li>Frequency smoothing: 3&nbsp;</li>
+</ol>
+<li>Click OK. The wav file should be clean&nbsp;</li>
+</ol></ol>
+<p style="margin-left:80px;"><img id="pbImage441930" style="height:137px;" src="/f/1570739422/ResponseCoding2_clean.JPG" alt="" />&nbsp;</p>
+<ol>
+<li>Sound Finder&nbsp;</li>
+<ol>
+<li>Highlight the entire wav (double click any part of the wav/ctrl 'A' to select the whole track)</li>
+<li>Analyze &gt; Label Sounds... This will output labels where sound occurs.&nbsp;&nbsp;</li>
+<li>The first setting may need to be adjusted to achieve desired results&nbsp;</li>
+</ol></ol>
+<p style="margin-left:80px;"><img id="pbImage216702" src="/f/1662577321/label%20sounds.JPG" alt="" /></p>
+<p style="margin-left:80px;">*(-30 dB is a good starting point, closer to -100 is more sensitive)</p>
+<p style="margin-left:80px;">* Label text: Delete "Sound"&nbsp;</p>
+<ol>
+<li>File &gt; Export &gt; Export Labels and save as "<strong>sound_finder_results</strong>.txt"&nbsp;</li>
+<li>Close the label track by clicking the x on the left side</li>
+<li>Highlight the first auditory stimulus (not the response of the participant or the tone, the actual stimulus)</li>
+<li>CTRL + B to create a label, call it 1. Repeat this for Block 2 ... Block <em>n</em></li>
+<li>File &gt; Export &gt; Export Labels and save as "<strong>first_stims</strong>.txt"</li>
+<li>In Matlab, run <strong>make_cue_events</strong>, then run <strong>filter_sound_finder_results</strong>. This creates two files:</li>
+<ol>
+<li>cue_events.txt</li>
+<li>filtered_sound_finder_results.txt&nbsp;</li>
+</ol>
+<li>Run: <strong>make_condition_events</strong>&nbsp;</li>
+<li>In Audacity, close any label tracks&nbsp;</li>
+<li>File &gt; Import &gt; Labels. Select filtered_sound_finder_results.txt</li>
+<li>File &gt; Import&gt; Labels. Select cue_events.txt</li>
+<ol>
+<li>The filtered_sound_finder_results is a label track that should only include the results of the sound finder, except now the stimulus voices are filtered out.&nbsp;</li>
+<li>What should be left is hopefully labels for each participant response. You will still need to navigate through each response and modify, delete, or add labels for each trial, as the results will not be perfect.</li>
+<li>The cue_events label track is there to just help you navigate and denote which trial stimulus was played.</li>
+<li>As seen above, the middle track is the auto-generated responses from the sound finder.</li>
+<li>You will need to go through each one and verify the begin and end point, and adjust as needed</li>
+</ol></ol>
+<p style="margin-left:80px;"><img id="pbImage417659" style="height:253px;" src="/f/1570803932/ResponseCoding_readytocode.JPG" alt="" width="1200" />&nbsp;</p>
+<ol><ol>
+<li>If sound finder results are not very good, repeat the Sound Finder steps with a different parameter.&nbsp;&nbsp;</li>
+</ol></ol>
