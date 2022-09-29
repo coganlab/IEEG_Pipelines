@@ -1,0 +1,145 @@
+<p>Singularity is a Linux software that allows application-level isolation. You can build a container filled with whatever applications you wish outside of the duke cluster, then move the container to the cluster to run the programs.</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">Commands to be run outside of Singularity container</span></p>
+<p><span style="background-color:#ffff99;">Commands to be run inside container</span></p>
+<p>&nbsp;</p>
+<p>duke compute cluster is running singularity 2.3.2 as of 10/30/2017. (Duke cluster upgraded to 2.4 in 12/17. These build instructions should still work, but now you can run 2.4 containers on the server. See email below.)</p>
+<p>New versions of singularity use build instead of create &amp; bootstrap commands. Just amend some of the commands below, but the overall procedure will be the same.</p>
+<p>&nbsp;</p>
+<p>install that version on a computer you have root access to (VMBox works)</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">sudo singularity create -s 12000 deb.simg</span>&nbsp;(size in MB, you can expand the container, so start small and add more space as needed)</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">sudo singularity bootstrap deb.simg spec</span></p>
+<p>&nbsp;</p>
+<p>where spec contains the recipe</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffcc99;">Bootstrap:docker</span></p>
+<p><span style="background-color:#ffcc99;">From: debian:jessie</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffcc99;">%post</span></p>
+<p><span style="background-color:#ffcc99;">&nbsp; &nbsp; mkdir /dscrhome</span></p>
+<p><span style="background-color:#ffcc99;">&nbsp; &nbsp; mkdir /global</span></p>
+<p><span style="background-color:#ffcc99;">&nbsp; &nbsp; mkdir /matlab</span></p>
+<p>&nbsp;</p>
+<p>/dscrhome is required for singularity on duke computer cluster</p>
+<p>in host, download matlab zip from mathworks</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">mkdir global</span>, and put zip there</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">sudo singularity shell --writable -B global:/global deb.simg</span></p>
+<p>&nbsp;</p>
+<p>Note, X system should be working, you can test this by running xeyes, xcalc, or xclock.</p>
+<p>If these aren't installed, install x11-apps</p>
+<p>You should see these gui apps running. If not, try binding the home directory, <span style="background-color:#ccffcc;">sudo singularity shell --writable -B global:/global -B /home/:/home/ deb.simg</span></p>
+<p>&nbsp;</p>
+<p>%% now inside container</p>
+<p><span style="background-color:#ffff99;">apt-get update</span></p>
+<p><span style="background-color:#ffff99;">apt-get install xorg unzip</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffff99;">mv /global/matlab.zip /matlab</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffff99;">cd /matlab</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffff99;">unzip matlab.zip</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffff99;">./install</span></p>
+<p>&nbsp;</p>
+<p>Don't activate Matlab quite yet, unless you need to test the installation.</p>
+<p>&nbsp;</p>
+<p>complete installation.</p>
+<p>&nbsp;</p>
+<p>We must make licenses folder write enabled for all, for manual activation on the duke cluster</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffff99;">chmod -R 777 /usr/local/MATLAB/R2017b</span></p>
+<p><span style="background-color:#ffff99;">chmod 777 /dscrhome</span></p>
+<p><span style="background-color:#ffff99;">chmod 777 /global</span></p>
+<p>&nbsp;</p>
+<p>exit container</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">sudo tar cjvf deb.simg.tar.bz2 deb.simg</span>&nbsp;(slower, smaller file)</p>
+<p>or</p>
+<p><span style="background-color:#ccffff;">sudo tar czvf deb.simg.tar.gzip deb.simg</span> (much faster, larger file)</p>
+<p>&nbsp;</p>
+<p>move tar to pace system using browswer ftp,</p>
+<p>pacedata.duhs.duke.edu/</p>
+<p>&nbsp;</p>
+<p>log into duke cluster using <span style="background-color:#ccffff;">ssh -X</span> to enable X forwarding</p>
+<p>&nbsp;</p>
+<p>make sure pace storage is mounted (see&nbsp;<a href="/w/page/120968496/PACE" search_id="oid.120968496">PACE</a>) and you can see coganlab/ folder.</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">cd coganlab/</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">tar xvf deb.simg.tar.bz2 to uncompress into coganlab/ folder</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">singularity shell --writable deb.simg</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffff99;">cd /usr/local/MATLAB/R2017b/bin</span></p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ffff99;">./activation_matlab.sh</span>, choose license.lic file.</p>
+<p>&nbsp;</p>
+<p>If you don't have license file, you need to create one through mathworks.com. Click the help button</p>
+<p>and it will give you information on how to obtain license through mathworks.com.</p>
+<p>(includes hostname ID, which I believe is just mac address of network interface)</p>
+<p>ip link show, look at link/ether string under eth0 device</p>
+<p>e.g. 005056aeb9c8</p>
+<p>&nbsp;</p>
+<p>Upload that license.lic file to pace. Then re-run activation_matlab.sh and point to that license file.</p>
+<p>&nbsp;</p>
+<p>You may need to launch the shell with the --writable flag from now on, e.g.&nbsp;&nbsp;<span style="background-color:#ccffff;">singularity shell --writable deb.simg</span></p>
+<p>&nbsp;</p>
+<p>At some point you might wish to downsize your container,</p>
+<p>&nbsp;</p>
+<p>while in container, run <span style="background-color:#ffff99;">df /</span>&nbsp;to see how much space you are using (add some buffer space, maybe 2 gb)</p>
+<p>create a new container with desired size</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">sudo singularity create -s 10000 deb2.simg</span></p>
+<p>&nbsp;</p>
+<p>then pipe the content from old to new</p>
+<p>&nbsp;</p>
+<p><span style="background-color:#ccffff;">sudo singularity export deb.simg | sudo singularity import deb2.simg</span></p>
+<p>&nbsp;</p>
+<p>To uninstall singularity, run the following:</p>
+<p><span style="background-color:#ccffff;">sudo rm -rf /usr/local/libexec/singularity </span></p>
+<p><span style="background-color:#ccffff;">sudo rm -rf /usr/local/etc/singularity </span></p>
+<p><span style="background-color:#ccffff;">sudo rm -rf /usr/local/include/singularity </span></p>
+<p><span style="background-color:#ccffff;">sudo rm -rf /usr/local/lib/singularity </span></p>
+<p><span style="background-color:#ccffff;">sudo rm -rf /usr/local/var/lib/singularity/ </span></p>
+<p><span style="background-color:#ccffff;">sudo rm /usr/local/bin/singularity </span></p>
+<p><span style="background-color:#ccffff;">sudo rm /usr/local/bin/run-singularity </span></p>
+<p><span style="background-color:#ccffff;">sudo rm /usr/local/etc/bash_completion.d/singularity </span></p>
+<p><span style="background-color:#ccffff;"> sudo rm /usr/local/man/man1/singularity.1</span></p>
+<p>&nbsp;</p>
+<p>=============================================</p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;">All:</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;">You’re getting this email because at one time or another you used the CI process on gitlab.oit.duke.edu with the DCC CI Runner to build a Singularity container. This runner used version 2.3.1 of Singularity. At the end of August Docker changed the format of their Docker containers on Docker Hub. This broke Singularity version 2.3.1. Singularity released a version 2.3.2 (which is installed on most of the servers) that was able to use the new format. Unfortunately, I didn’t catch that the version on the runner stayed the same so any builds that used a container with the new format failed. Everyone must have already had their working containers built as there were no complaints till this week. We’ve updated the DCC GitLab CI Runner to version 2.4.1 of Singularity. I will be pushing that version out to the servers that have Singularity installed. There’s no need to rebuild your containers if they are working, version 2.4.1 will run containers built with an earlier version.</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;">This updated version of Singularity has some new features (see&nbsp;<a href="http://singularity.lbl.gov/index.html" target="_blank">http://singularity.lbl.gov/index.html</a>&nbsp;for documentation). One new feature is that the containers now use Squashfs. This means you don’t have to prebuild an image that you install into the new build command will create the container with the required space. It also makes the container read only. If you need a writable container you can convert it. Also, Singularity has changed their recommended naming convention for the definition files from Singularity.def to just Singularity. With these new features in mind the CI build scripts were modified. Since Squashfs is already compressed there is no longer a need to compress the built image. If you use the new process you can just curl or wget the built image directly and then you won’t have to extract it from a “.tar.gz” anymore. If you have old projects that you don’t want to modify they will still work, it’s just the “.tar.gz” file will not be that different in size than the extracted container. The following is the recommended “.gitlab-ci.yml” to put in your projects:</span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;">stages:</span></p>
+<p><span style="font-size:100%;">&nbsp; - build</span></p>
+<p><span style="font-size:100%;">&nbsp; - deploy</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;">build_image:</span></p>
+<p><span style="font-size:100%;">&nbsp; stage: build</span></p>
+<p><span style="font-size:100%;">&nbsp; script:</span></p>
+<p><span style="font-size:100%;">&nbsp;&nbsp;&nbsp; - build_image</span></p>
+<p><span style="font-size:100%;">&nbsp; tags:</span></p>
+<p><span style="font-size:100%;">&nbsp;&nbsp;&nbsp; - dcc</span></p>
+<p><span style="font-size:100%;">&nbsp; artifacts:</span></p>
+<p><span style="font-size:100%;">&nbsp;&nbsp;&nbsp; paths:</span></p>
+<p><span style="font-size:100%;">&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;- $CI_PROJECT_NAME.img</span></p>
+<p><span style="font-size:100%;">&nbsp;&nbsp;&nbsp; expire_in: 1 day</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;">deploy_image:</span></p>
+<p><span style="font-size:100%;">&nbsp; stage: deploy</span></p>
+<p><span style="font-size:100%;">&nbsp; script:</span></p>
+<p><span style="font-size:100%;">&nbsp;&nbsp;&nbsp; - deploy_output</span></p>
+<p><span style="font-size:100%;">&nbsp; tags:</span></p>
+<p><span style="font-size:100%;">&nbsp;&nbsp;&nbsp; - dcc</span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size:100%;">Mike Newton</span></p>
