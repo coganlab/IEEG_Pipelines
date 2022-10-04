@@ -419,10 +419,10 @@ pw: ieeg
 
 Lab Meeting Journal Club Presentation Schedule 2020 and 2021:
 
-[Old Meetings](/Old%20Meetings)
+[Old Meetings](Old Meetings.html)
 
 <div>
 
-[lab meetings.xlsx](/w/file/149485092/lab%20meetings.xlsx)
+[lab meetings.xlsx](General Lab Info/lab meetings.xlsx)
 
 </div>
