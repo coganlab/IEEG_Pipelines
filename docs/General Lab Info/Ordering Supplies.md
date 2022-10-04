@@ -4,6 +4,8 @@ has_children: false
 parent: General Info
 nav_order: 1
 ---
+# Ordering Supplies
+
 ## Office Supplies
 
 Staples is an approved Duke vendor and is the main source for office supplies. Contact Alyssa Brewer (alyssa.brewer@duke.edu) to request items. 
