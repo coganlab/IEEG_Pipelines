@@ -1,3 +1,9 @@
+---
+title: Lab Members
+has_children: false
+nav_order: 2
+---
+
 <table style="width:73.09%;height:122px;" border="0">
 
 <tbody>
