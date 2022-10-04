@@ -1,7 +1,8 @@
 ---
 title: Lab Members
 has_children: false
-nav_order: 2
+parent: General Info
+nav_order: 1
 ---
 
 <table style="width:73.09%;height:122px;" border="0">
