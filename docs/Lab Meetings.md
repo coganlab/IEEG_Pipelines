@@ -2,7 +2,7 @@
 title: Lab Meetings
 has_children: True
 ---
-We have weekly individual meetings as well as weekly lab meetings (Mondays at 2:00 PM).  Our general schedule for the weekly lab meetings is to alternate between administrivia/lab updates and journal club (schedule below).  Currently, we are having all of these meetings virtually using zoom:
+We have weekly individual meetings as well as weekly lab meetings (Thursdays at 5:00 PM).  Our general schedule for the weekly lab meetings is to alternate between administrivia/lab updates and journal club (schedule below).  Currently, we are having all of these meetings virtually using zoom:
 
 [https://duke.zoom.us/j/2028123222](https://duke.zoom.us/j/2028123222)
 
