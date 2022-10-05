@@ -2,7 +2,7 @@
 title: Purchasing via Buy@Duke
 has_children: false
 parent: General Info
-nav_order: 1
+
 ---
 # Purchasing via Buy@Duke
 

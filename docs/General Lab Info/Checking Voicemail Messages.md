@@ -2,7 +2,7 @@
 title: Checking Voicemail Messages
 has_children: false
 parent: General Info
-nav_order: 1
+
 ---
 # Checking Voicemail Messages
 **Lab phone number:** 919-681-7601

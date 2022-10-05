@@ -2,7 +2,7 @@
 title: Data Analysis
 has_children: false
 parent: EEG
-nav_order: 1
+
 ---
 If your system is already setup - please traverse to the Source localization pipeline ([Pipeline / Cogan Lab (pbworks.com)](/w/page/146866377/Pipeline))
 

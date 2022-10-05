@@ -2,7 +2,7 @@
 title: Singularity
 has_children: false
 parent: Computing
-nav_order: 1
+
 ---
 Singularity is a Linux software that allows application-level isolation. You can build a container filled with whatever applications you wish outside of the duke cluster, then move the container to the cluster to run the programs.
 

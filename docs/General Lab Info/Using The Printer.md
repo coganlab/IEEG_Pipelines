@@ -3,7 +3,7 @@ layout: page
 title: Using The Printer
 has_children: false
 parent: General Lab Info
-nav_order: 1
+
 weight : 98
 ---
 <object data="Instructions%20to%20use%20Cogan%20Lab%20printer.pdf" type="application/pdf" width="700px" height="700px">

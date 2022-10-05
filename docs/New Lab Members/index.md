@@ -1,7 +1,7 @@
 ---
 title: New Lab Members
 has_children: true
-nav_order: 2
+
 ---
 # New Lab Members
 
@@ -29,8 +29,8 @@ nav_order: 2
    2.  CapTrak
    3.  BIAC MRI Safety Training - [Level 1 Access](https://wiki.biac.duke.edu/biac:scanneraccess?s%5B%5D=safety&s%5B%5D=training)  
 
-#### [Response Coding](../ECoG In Unit/Response Coding.html)
-#### [In-Unit ECoG recording setup](../ECoG In Unit/System Setup.html)
+#### [Response Coding](../ECoG In Unit/Response Coding.md)
+#### [In-Unit ECoG recording setup](../ECoG In Unit/System Setup.md)
 
 ---
 

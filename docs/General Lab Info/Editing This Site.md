@@ -2,7 +2,7 @@
 title: Editing This Site
 has_children: false
 parent: General Info
-nav_order: 1
+
 ---
 
 # Editing This Site

@@ -2,7 +2,7 @@
 title: Anesthesia Report Log
 has_children: false
 parent: uECoG
-nav_order: 1
+
 ---
 # Report Log
 ### Access Report

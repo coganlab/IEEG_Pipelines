@@ -2,7 +2,7 @@
 title: Undergraduate Research Volunteers
 has_children: false
 parent: New Lab Members
-nav_order: 1
+
 ---
 # Process for Adding Duke Undergraduate Students to Study Personnel
 

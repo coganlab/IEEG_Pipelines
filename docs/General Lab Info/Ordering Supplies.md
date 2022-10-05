@@ -2,7 +2,7 @@
 title: Ordering Supplies
 has_children: false
 parent: General Info
-nav_order: 1
+
 ---
 # Ordering Supplies
 

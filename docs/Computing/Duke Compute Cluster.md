@@ -2,7 +2,7 @@
 title: Duke Compute Cluster
 has_children: false
 parent: Computing
-nav_order: 1
+
 ---
 
 # Duke Compute Cluster (DCC)

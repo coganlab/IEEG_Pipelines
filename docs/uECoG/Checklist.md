@@ -3,7 +3,7 @@ layout: page
 title: Checklist
 has_children: false
 parent: uECoG
-nav_order: 1
+
 weight : 98
 ---
 <object data="Human%20Intraoperative%20Recording%20Checklist.pdf" type="application/pdf" width="700px" height="700px">
