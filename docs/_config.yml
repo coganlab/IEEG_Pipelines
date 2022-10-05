@@ -48,4 +48,4 @@ aux_links_new_tab: true
 # Supports true (default) or false
 heading_anchors: true
 
-logo: "/docs/lab_logo.png"
+logo: "https://github.com/coganlab/IEEG_Pipelines/blob/wiki/docs/lab_logo.png"

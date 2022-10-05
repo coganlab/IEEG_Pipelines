@@ -2,7 +2,6 @@
 title: CapTrak
 has_children: false
 parent: EEG
-
 ---
 **Hardware Setup**
 

@@ -1,7 +1,6 @@
 ---
 title: Lab Meetings
-has_children: false
-
+has_children: True
 ---
 We have weekly individual meetings as well as weekly lab meetings (Mondays at 2:00 PM).  Our general schedule for the weekly lab meetings is to alternate between administrivia/lab updates and journal club (schedule below).  Currently, we are having all of these meetings virtually using zoom:
 
@@ -419,7 +418,7 @@ pw: ieeg
 
 Lab Meeting Journal Club Presentation Schedule 2020 and 2021:
 
-[Old Meetings](Old Meetings.html)
+[Old Meetings](Old Meetings.md)
 
 <div>
 
