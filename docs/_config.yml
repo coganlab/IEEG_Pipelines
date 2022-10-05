@@ -48,4 +48,4 @@ aux_links_new_tab: true
 # Supports true (default) or false
 heading_anchors: true
 
-logo: "/assets/images/lab_logo_small.png"
+logo: "../assets/images/lab_logo_small.png"
