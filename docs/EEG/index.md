@@ -5,12 +5,12 @@ nav_order: 2
 ---
 # EEG
 
-## Visual: [Checkerboard Contrast Combo](/w/page/133263822/Checkerboard%20Contrast%20Combo) 
+## Visual: [Checkerboard Contrast Combo](Checkerboard Contrast Combo.html) 
 
-## Auditory: [Two Beeps](/w/page/133263945/Two%20Beeps) 
+## Auditory: [Two Beeps](Two Beeps.html) 
 
-## Motor: [Jaw Movement](/w/page/133263969/Jaw%20Movement) 
+## Motor: [Jaw Movement](Jaw Movement.html) 
 
-## [Lexical Repeat Decision ](/w/page/128850435/Lexical%20Repeat%20Decision)
+## [Lexical Repeat Decision ](Lexical Repeat Decision.html)
 
-## [Sternberg audio](/w/page/128845182/Sternberg%20Task%20Audio) start with E1
+## [Sternberg audio](Neighborhood Sternberg.html) start with E1
