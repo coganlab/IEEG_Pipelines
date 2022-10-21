@@ -67,7 +67,7 @@ else
         [p]=numSubplots(length(spec));
         if(isempty(chanMap))
             
-            subaxis(p(1),p(2),iChan,'sh', 0.03, 'sv', 0.01, 'padding', 0, 'margin', 0)
+            subaxis(p(1),p(2),iChan,'sh', 0.06, 'sv', 0.02, 'padding', 0, 'margin', 0)
             imagesc(tspec,F,20.*log10(sq(specMean)'));
             axis off;
             axis('square');

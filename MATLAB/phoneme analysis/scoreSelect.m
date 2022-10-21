@@ -41,7 +41,7 @@ end
             cmatNorm = cmat./sum(cmat,2);
 %             size(cmatNorm)
 %             unique(labels(test))
-            phonErrVect(nCv,iVar) = phonemeDistanceError(cmatNorm,unique([labels(test) yhat']));
+            %phonErrVect(nCv,iVar) = phonemeDistanceError(cmatNorm,unique([labels(test) yhat']));
 %             accVect(nCv,iVar) =  trace(cmatNorm)./size(cmatNorm,1);
 %             for t = 1:length(labUnique)
 %             [~,~,~,aucVect(nCv,v,t)] = perfcurve(labels(test),yscore(:,t),labUnique(t));

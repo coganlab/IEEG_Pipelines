@@ -1,10 +1,11 @@
 function [lossMod,Cmat,yhat,aucVect,nModes] = pcaDecodeVariance(sigTrain,sigTest,YTrain,YTest,varPercent, isauc)
-        meanTrain = mean(sigTrain,1);
-        stdTrain = std(sigTrain,0,1);
-        sigTrainNorm = (sigTrain - meanTrain)./stdTrain;
+%         meanTrain = mean(sigTrain,1);
+%         stdTrain = std(sigTrain,0,1);
+        %sigTrainNorm = (sigTrain - meanTrain)./stdTrain;
         [coeffTrain,scoreTrain,~,~,explained] = pca(sigTrain,'Centered',false);
         nModes = find(cumsum(explained)>varPercent,1);
-        sigTestNorm = (sigTest - meanTrain)./stdTrain;
+        
+        %sigTestNorm = (sigTest - meanTrain)./stdTrain;
         scoreTest = sigTest*coeffTrain;
         
         scoreTrainGrid = scoreTrain(:,1:nModes);

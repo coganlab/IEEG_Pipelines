@@ -27,6 +27,6 @@ function [phonemeWord,phonemeCell] = phonemeDecoder(phonemeSequence)
             phonemeCell{iTrial,iLength} = phonemeLabel;
         end
        
-        phonemeWord{iTrial} =  strrep(strcat('/',strjoin(cellstr(wordTemp(:)), '/,/'),'/'),'z','ae');
+        phonemeWord{iTrial} =  strrep(strcat('/',wordTemp,'/'),'z','ae');
     end
 end

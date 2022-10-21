@@ -1,31 +1,41 @@
-function [valChannelSmooth,b] = chanView(val2disp,chanMap,selectedChannels,nonChan,titl,cval,pixRange,isSmooth)
+function [valChannelSmooth,b] = chanView(val2disp,chanMap, options)
 % figure;
+arguments
+    val2disp double{mustBeVector} 
+    chanMap double
+    options.selectedChannels double = sort(chanMap(~isnan(chanMap)))';
+    options.nonChan logical = isnan(chanMap);
+    options.titl {mustBeTextScalar} = 'channel map values'
+    options.cval double = []
+    options.pixRange double = []
+    options.isSmooth logical = 0
+end
 valChannel = zeros(size(chanMap,1),size(chanMap,2));
 valChannelNan = nan(size(chanMap,1),size(chanMap,2));
-for iChan = 1 : length(selectedChannels)
-        [cIndR, cIndC] = find(ismember(chanMap,selectedChannels(iChan)));
+for iChan = 1 : length(options.selectedChannels)
+        [cIndR, cIndC] = find(ismember(chanMap,options.selectedChannels(iChan)));
         valChannel(cIndR,cIndC) = val2disp(iChan);
         valChannelNan(cIndR,cIndC) = val2disp(iChan);
 end
 %nonChan = isnan(valChannelNan);
-if(isSmooth)
-valChannelSmooth = imgaussfilt(valChannel,isSmooth);
+if(options.isSmooth)
+    valChannelSmooth = imgaussfilt(valChannel,options.isSmooth);
 else
-valChannelSmooth = valChannelNan;
+    valChannelSmooth = valChannelNan;
 end
-valChannelSmooth(nonChan) = nan;
-if(isempty(pixRange))
+valChannelSmooth(options.nonChan) = nan;
+if(isempty(options.pixRange))
 b = imagesc(valChannelSmooth); 
 else
-    valChannelSmooth = valChannelSmooth(pixRange(1):pixRange(2),pixRange(3):pixRange(4));
+    valChannelSmooth = valChannelSmooth(options.pixRange(1):options.pixRange(2),options.pixRange(3):options.pixRange(4));
     b = imagesc(valChannelSmooth); 
 end
 axis equal
 axis tight
-if(~isempty(cval))
-caxis(cval);
+if(~isempty(options.cval))
+caxis(options.cval);
 end
 set(b,'AlphaData',~isnan(valChannelSmooth));
-title(titl);
+title( options.titl);
 colormap((parula(4096)));
 %colorbar;
