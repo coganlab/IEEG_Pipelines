@@ -27,10 +27,13 @@ for iSubject=1:length(Subject)
 
     anatName = {Subject(iSubject).ChannelInfo.Location};
     anatName(cellfun(@isempty,anatName)) = {'dummy'};
-    anatName = anatName(chanIdx);
+    
     
     channelName = {Subject(iSubject).ChannelInfo.Name};
     channelName(cellfun(@isempty,channelName)) = {'dummy'};
+    assert(length(channelName)==length(anatName),'Channel Dimension mismatch')
+
+    anatName = anatName(chanIdx);
     channelName = channelName(chanIdx);
 
     if(~isempty(options.roi))
@@ -41,11 +44,12 @@ for iSubject=1:length(Subject)
     end
 
     if(~isempty(options.subsetElec))
-        selectChanId = contains(channelName,options.subsetElec);  
+        selectChanId = ismember(channelName,options.subsetElec);  
     else
         disp('No specified input channels; Extracting all channels')
         selectChanId = true(size(chanIdx));
     end
+    
     chan2select = selectChanId & anatChanId;
 
     if(isempty(find(chan2select)))

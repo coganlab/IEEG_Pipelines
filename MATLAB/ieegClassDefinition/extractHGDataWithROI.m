@@ -10,16 +10,21 @@ arguments
     options.baseName = 'Start'
     options.respTimeThresh = -1;
     options.subsetElec cell = '' % subset of electrodes to select from stats 
+    options.remNoiseTrials logical = true; % true to remove all noisy trials
+    options.remNoResponseTrials logical = true; % true to remove all no-response trials 
 end
 
 timePad = 0.5;
 if(isempty(options.normFactor))
     disp('No normalization factors provided');
+    % Selecting all trials with no noise for baseline
     ieegBaseStruct = extractRawDataWithROI(Subject,Epoch = options.baseName,...
         Time = [options.baseTimeRange(1)-timePad options.baseTimeRange(2)+timePad],...
-        roi = options.roi, remFastResponseTimeTrials=options.respTimeThresh, ...
+        roi = options.roi, remFastResponseTimeTrials=-1, ...
+        remNoiseTrials=options.remNoiseTrials,remNoResponseTrials=false,...
         subsetElec=options.subsetElec);
     
+    % Extracting normalization parameters for each subject
     for iSubject = 1:length(Subject)
         if(isempty(ieegBaseStruct(iSubject).ieegStruct))
             continue;
@@ -33,11 +38,14 @@ else
     normFactorSubject = options.normFactor;
 end
 clear ieegBaseStruct;
+% Extracting field epochs for the fixed parameters
 ieegFieldStruct = extractRawDataWithROI(Subject,Epoch = options.Epoch,...
     Time = [options.Time(1)-timePad options.Time(2)+timePad],...
     roi = options.roi,remFastResponseTimeTrials=options.respTimeThresh,...
+    remNoiseTrials=options.remNoiseTrials,remNoResponseTrials=options.remNoResponseTrials,...
     subsetElec=options.subsetElec);
 ieegHGAll = [];
+% Filtering signal in the high-gamma band for each subject
 for iSubject = 1:length(Subject)
     if(isempty(ieegFieldStruct(iSubject).ieegStruct))
         ieegHGAll(iSubject).ieegHGNorm = [];

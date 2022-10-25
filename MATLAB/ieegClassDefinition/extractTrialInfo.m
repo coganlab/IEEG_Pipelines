@@ -34,8 +34,7 @@ for iSubject=1:length(Subject)
             end
         end
     end
-    if(options.remFastResponseTimeTrials>=0)
-        disp('Removing Trials with negative response time')
+   
         respTime=[];
        for iTrials=1:length(Trials)
            if ~isempty(Trials(iTrials).ResponseStart)
@@ -44,6 +43,8 @@ for iSubject=1:length(Subject)
                respTime(iTrials)=0;
            end
        end
+    if(options.remFastResponseTimeTrials>=0)
+       disp('Removing Trials with negative response time')
        negResponseIdx=find(respTime<options.remFastResponseTimeTrials);
     end
     trials2select=setdiff(1:numTrials,cat(2,noiseIdx,noResponseIdx,negResponseIdx));
