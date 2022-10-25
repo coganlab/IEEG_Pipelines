@@ -12,6 +12,7 @@ arguments
     options.subsetElec cell = '' % subset of electrodes to select from stats 
     options.remNoiseTrials logical = true; % true to remove all noisy trials
     options.remNoResponseTrials logical = true; % true to remove all no-response trials 
+    options.remWMchannels logical = true;
 end
 
 timePad = 0.5;
@@ -22,7 +23,7 @@ if(isempty(options.normFactor))
         Time = [options.baseTimeRange(1)-timePad options.baseTimeRange(2)+timePad],...
         roi = options.roi, remFastResponseTimeTrials=-1, ...
         remNoiseTrials=options.remNoiseTrials,remNoResponseTrials=false,...
-        subsetElec=options.subsetElec);
+        subsetElec=options.subsetElec, remWMchannels=options.remWMchannels);
     
     % Extracting normalization parameters for each subject
     for iSubject = 1:length(Subject)
@@ -43,7 +44,7 @@ ieegFieldStruct = extractRawDataWithROI(Subject,Epoch = options.Epoch,...
     Time = [options.Time(1)-timePad options.Time(2)+timePad],...
     roi = options.roi,remFastResponseTimeTrials=options.respTimeThresh,...
     remNoiseTrials=options.remNoiseTrials,remNoResponseTrials=options.remNoResponseTrials,...
-    subsetElec=options.subsetElec);
+    subsetElec=options.subsetElec, remWMchannels=options.remWMchannels);
 ieegHGAll = [];
 % Filtering signal in the high-gamma band for each subject
 for iSubject = 1:length(Subject)

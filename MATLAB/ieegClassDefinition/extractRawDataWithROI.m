@@ -9,6 +9,7 @@ arguments
     options.remNoiseTrials logical = true; % true to remove all noisy trials
     options.remNoResponseTrials logical = true; % true to remove all no-response trials    
     options.remFastResponseTimeTrials double = -1; % response time threshold to remove all faster response trials    
+    options.remWMchannels logical = true;
 end
 
 ieegStructAll = [];
@@ -32,12 +33,18 @@ for iSubject=1:length(Subject)
     channelName = {Subject(iSubject).ChannelInfo.Name};
     channelName(cellfun(@isempty,channelName)) = {'dummy'};
     assert(length(channelName)==length(anatName),'Channel Dimension mismatch')
-
+    
+    whiteMatterIds = false(size(channelName));
+    whiteMatterIds(Subject(iSubject).WM) = true;
+    
     anatName = anatName(chanIdx);
     channelName = channelName(chanIdx);
+    whiteMatterIds= whiteMatterIds(chanIdx);
 
     if(~isempty(options.roi))
+        
         anatChanId = contains(anatName,options.roi);  
+        disp(['Selecting desired anatomy : ' num2str(sum(anatChanId))])
     else
         disp('No specified anatomy; Extracting all channels')
         anatChanId = true(size(chanIdx));
@@ -45,21 +52,29 @@ for iSubject=1:length(Subject)
 
     if(~isempty(options.subsetElec))
         selectChanId = ismember(channelName,options.subsetElec);  
+        disp(['Selecting desired input channel : ' num2str(sum(selectChanId))])
     else
         disp('No specified input channels; Extracting all channels')
         selectChanId = true(size(chanIdx));
     end
+
+    if(options.remWMchannels)
+        disp(['Removing white matter channels : ' num2str(sum(whiteMatterIds))])
+        nonwhiteMatterId = ~whiteMatterIds;
+    else
+        nonwhiteMatterId = true(size(chanIdx));
+    end
     
-    chan2select = selectChanId & anatChanId;
+    chan2select = selectChanId & anatChanId & nonwhiteMatterId;
 
     if(isempty(find(chan2select)))
-        disp('No anatomical channels found; Iterating next subject');
+        disp('No requested channels found; Iterating next subject');
         ieegStructAll(iSubject).ieegStruct = [];
         ieegStructAll(iSubject).channelName = [];
         continue;
         % Forces the iteration for next subject;
     else
-        disp(['Number of anatomical channels : ' num2str(sum(chan2select))]);
+        disp(['Total number of selected channels : ' num2str(sum(chan2select))]);
     end
 
     
