@@ -1,4 +1,4 @@
-function trialInfoStruct = extractTrialInfo(Subject,options)
+function trialInfos = extractTrialInfo(Subject,options)
 arguments    
     Subject struct % subject output of populated task    
     options.remNoiseTrials logical = true; % true to remove all noisy trials
@@ -7,6 +7,7 @@ arguments
 end
 %EXTRACTTRIALINFO Summary of this function goes here
 %   Detailed explanation goes here
+trialInfos = {};
 for iSubject=1:length(Subject)
     Subject(iSubject).Name
     Trials = Subject(iSubject).Trials;
@@ -48,12 +49,12 @@ for iSubject=1:length(Subject)
        negResponseIdx=find(respTime<options.remFastResponseTimeTrials);
     end
     trials2select=setdiff(1:numTrials,cat(2,noiseIdx,noResponseIdx,negResponseIdx));
-    trialInfo = Subject(iSubject).trialInfo(trials2select);
+    trialInfos{iSubject} = [Subject(iSubject).trialInfo(trials2select)];
     % Phoneme Sequence trial parsing
-    phonemeTrial = phonemeSequenceTrialParser(trialInfo);   
-    trialInfoStruct(iSubject).subjectId =  Subject(iSubject).Name;
-    trialInfoStruct(iSubject).phonemeTrial = phonemeTrial;
-    trialInfoStruct(iSubject).responseTime = respTime(trials2select);
+%     phonemeTrial = phonemeSequenceTrialParser(trialInfo);   
+%     trialInfoStruct(iSubject).subjectId =  Subject(iSubject).Name;
+%     trialInfoStruct(iSubject).phonemeTrial = phonemeTrial;
+%     trialInfoStruct(iSubject).responseTime = respTime(trials2select);
 end
 end
 
