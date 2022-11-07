@@ -3,7 +3,7 @@ arguments
     Subject struct % subject output of populated task
     options.Epoch string = 'Start' % Epoch information; e.g., 'Auditory', 'Go', 'ResponseStart'
     options.Time double{mustBeVector} = [-1 1]; % Epoch time window
-    options.roi = '' % anatomical extraction; e.g., 'precentral', 'superiortemporal'
+    options.roi = '' % anatomical extraction; e.g., {'precentral', 'superiortemporal'}
     options.subsetElec cell = '' % subset of electrodes to select from stats 
     options.isCAR logical = true; % true to perform CAR subtraction
     options.remNoiseTrials logical = true; % true to remove all noisy trials
@@ -42,8 +42,11 @@ for iSubject=1:length(Subject)
     whiteMatterIds= whiteMatterIds(chanIdx);
 
     if(~isempty(options.roi))
-        
-        anatChanId = contains(anatName,options.roi);  
+        anatChanId = false(size(chanIdx));
+        roirequested = options.roi;
+        for iRoi = 1:length(roirequested)
+            anatChanId = anatChanId|contains(anatName,roirequested{iRoi});  
+        end
         disp(['Selecting desired anatomy : ' num2str(sum(anatChanId))])
     else
         disp('No specified anatomy; Extracting all channels')
@@ -114,8 +117,8 @@ for iSubject=1:length(Subject)
        disp(['Removing Trials with negative response time ' num2str(length(negResponseIdx))])
     end
     trials2remove = unique(cat(2,noiseIdx,noResponseIdx, negResponseIdx));
-    
-    TrialSelect=Trials(setdiff(1:numTrials,trials2remove));
+    trials2select = setdiff(1:numTrials,trials2remove);
+    TrialSelect=Trials(trials2select);
     ieegEpoch=trialIEEG(TrialSelect,chanIdx,options.Epoch,options.Time.*1000);
     ieegEpoch = permute(ieegEpoch,[2,1,3]);
     fs = Subject(iSubject).Experiment.processing.ieeg.sample_rate;   
@@ -131,6 +134,7 @@ for iSubject=1:length(Subject)
     assert(length(TrialSelect)==size(ieegStruct.data,2),'Trial mismatch');
     ieegStructAll(iSubject).ieegStruct = ieegStruct;
     ieegStructAll(iSubject).channelName = channelNameAnat;
+    ieegStructAll(iSubject).trialInfo = Subject(iSubject).trialInfo(trials2select);
 end
 
 

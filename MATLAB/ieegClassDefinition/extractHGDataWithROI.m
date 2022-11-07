@@ -4,7 +4,7 @@ arguments
     options.Epoch string = 'ResponseStart' % Epoch information; e.g., 'Auditory', 'Go', 'ResponseStart'
     options.Time (1,2) double = [-1 1]; % Epoch time window
     options.roi = '' % anatomical extraction; e.g., 'precentral', 'superiortemporal'
-    options.normFactor double = [];
+    options.normFactor = [];
     options.fDown double = 200;
     options.baseTimeRange = [-0.5 0]; 
     options.baseName = 'Start'
@@ -33,7 +33,7 @@ if(isempty(options.normFactor))
         ieegBaseHG = extractHiGamma(ieegBaseStruct(iSubject).ieegStruct,...
             options.fDown,options.baseTimeRange);
         normFactorBase = extractHGnormFactor(ieegBaseHG);
-        normFactorSubject(iSubject).normFactor = normFactorBase;
+        normFactorSubject{iSubject} = normFactorBase;
     end
 else
     normFactorSubject = options.normFactor;
@@ -52,13 +52,15 @@ for iSubject = 1:length(Subject)
         ieegHGAll(iSubject).ieegHGNorm = [];
         ieegHGAll(iSubject).channelName = [];
         ieegHGAll(iSubject).normFactor = [];
+        ieegHGAll(iSubject).trialInfo = [];
             continue;
     end
     ieegFieldHG = extractHiGamma(ieegFieldStruct(iSubject).ieegStruct,...
-        options.fDown, options.Time,normFactorSubject(iSubject).normFactor,2);
+        options.fDown, options.Time,normFactorSubject{iSubject},2);
     ieegHGAll(iSubject).ieegHGNorm = ieegFieldHG;
     ieegHGAll(iSubject).channelName = ieegFieldStruct(iSubject).channelName;
-    ieegHGAll(iSubject).normFactor = normFactorSubject(iSubject).normFactor;
+    ieegHGAll(iSubject).trialInfo = ieegFieldStruct(iSubject).trialInfo;
+    ieegHGAll(iSubject).normFactor =normFactorSubject{iSubject};
 end
 
 
