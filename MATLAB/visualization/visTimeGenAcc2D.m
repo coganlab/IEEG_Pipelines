@@ -8,7 +8,7 @@ arguments
     decodeStruct struct
     options.perc2cutoff double = 90;
     options.pVal2Cutoff double = 0.01;
-    options.chanceVal double = 0.25;
+    options.chanceVal double = 1;
     options.timePad double = 0.1;
     options.clabel string = "Output Value"
     options.axisLabel string = ""

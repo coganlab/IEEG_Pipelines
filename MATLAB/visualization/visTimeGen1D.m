@@ -6,11 +6,12 @@ function visTimeGen1D(decodeStruct,options)
 
 arguments
     decodeStruct struct    
-    options.pVal2Cutoff double = 0.01;    
+    options.pVal2Cutoff double = 0.05;    
     options.timePad double = 0.1;
     options.clabel string = "Output Value"
     options.axisLabel string = ""
     options.clowLimit double = 0
+    options.maxVal = 1;
 end
 
 pVal2Cutoff = options.pVal2Cutoff;
@@ -22,11 +23,11 @@ pValTime = decodeStruct.pValTime;
 figure;
 plot(timeRange,r2Time,'LineWidth',2);
 hold on;
-%[pvalnew,~] = fdr(pValTime,pVal2Cutoff);
-scatter(timeRange(pValTime<pVal2Cutoff),(max(r2Time)+0.1).*ones(1,sum(pValTime<pVal2Cutoff)),'filled');
+[pvalnew,~] = fdr(pValTime,pVal2Cutoff);
+scatter(timeRange(pValTime<pvalnew),options.maxVal.*ones(1,sum(pValTime<pvalnew)),'filled');
 xlabel("Time from " + options.axisLabel + " onset (s)")
 ylabel('Coefficient of Determination');
-set(gca,'FontSize',15);
+set(gca,'FontSize',10);
 axis square;
 formatTicks(gca);
 
