@@ -8,7 +8,10 @@ import nibabel as nib
 import numpy as np
 from bids import BIDSLayout
 
-from utils import LAB_root, PathLike
+if __name__ == '__main_'+'_':
+    from utils import LAB_root, PathLike
+else:
+    from .utils import LAB_root, PathLike
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,

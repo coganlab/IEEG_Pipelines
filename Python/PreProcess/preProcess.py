@@ -11,8 +11,10 @@ from bids.layout import BIDSFile
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
-from utils import HOME, LAB_root, PathLike, figure_compare
-from mri import allign_CT, show_brain, head_to_mni, plot_gamma
+if __name__ == '__main_'+'_':
+    from utils import LAB_root, PathLike
+else:
+    from .utils import LAB_root, PathLike
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
