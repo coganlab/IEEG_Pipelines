@@ -34,7 +34,7 @@ classdef ieegStructMicro < ieegStructClass
             
         end
         
-        function ieegHiGammaNorm = extractHiGammaNorm(obj1,obj2,fDown,gtw1,gtw2) % extracting normalized high-gamma
+        function ieegHiGammaNorm = extractHiGammaNorm(obj1,obj2,fDown,gtw1,gtw2) % extracting normalized high-gamma            
             ieegHiGammaTemp = extractHiGammaNorm@ieegStructClass(obj1,obj2,fDown,gtw1,gtw2);
             ieegHiGammaNorm = ieegStructMicro(ieegHiGammaTemp.data, ieegHiGammaTemp.fs, ieegHiGammaTemp.tw, ieegHiGammaTemp.fBand, ieegHiGammaTemp.name, obj1.chanMap);
         end

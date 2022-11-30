@@ -1,8 +1,9 @@
 name: preprocess
 channels:
+  - conda-forge
   - defaults
 dependencies:
-  - python<3.10
+  - python<3.11
   - pip
   - numpy
   - matplotlib
@@ -10,5 +11,7 @@ dependencies:
   - pandas
   - joblib
   - tqdm
+  - mne
+  - mne-bids
   - pip:
     - -r requirements.txt

@@ -1,7 +1,19 @@
-function [waveChannel,timeSelect] = travellingWaveMovie(sig2Movie,fs,chanMap,selectedChannels,timeAll,stw,clim,frameRate,movTitle,colbarTitle)
-        %timeAll = linspace(tw(1),tw(2),(tw(2)-tw(1))*fs);
-        
-        timeSelectInd = timeAll>=stw(1)&timeAll<=stw(2);
+function [waveChannel,timeSelect] = travellingWaveMovie(sig2Movie,chanMap,timeAll,etw,clim,frameRate,movTitle,colbarTitle)
+        %%%
+            % sig2Movie: channels x timepoints
+            % chanMap: 2D channel map
+            % timeAll: 1 x timepoints (in seconds)
+            % etw: epoch time window in seconds (e.g. [-1 1] to print movie
+            % between -1 to 1 seconds
+            % clim: Colorbar range in uV or z-score value (e.g. [0 20])
+            % frameRate: Frame rate of the movie (e.g. 120)
+            % movTitle: Filename to be saved (e.g. 'S23_highGamma')
+            % colbarTitle: Color axis label (e.g. 'z-score')
+
+
+%timeAll = linspace(tw(1),tw(2),(tw(2)-tw(1))*fs);
+        selectedChannels = sort(chanMap(~isnan(chanMap)))';
+        timeSelectInd = timeAll>=etw(1)&timeAll<=etw(2);
         timeSelect = timeAll(timeSelectInd);
         figure;
         plot(timeSelect,sig2Movie(:,timeSelectInd),'color',[0 0 0] +0.75);

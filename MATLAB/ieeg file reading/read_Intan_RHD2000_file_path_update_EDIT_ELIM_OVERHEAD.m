@@ -18,7 +18,7 @@ function [amplifier_data,board_adc_data,t_amplifier,amplifier_channels] = read_I
 % Example:
 % >> clear
 % >> path = 'E:\1024 channel\2019-02-06 Human 1024ch IntraOp\';
-% >> [amplifier_data,board_adc_data,t_amplifier] = read_Intan_RHD2000_file_path_update(fullPathToRawDataFile,10:12);
+% >> [amplifier_data,board_adc_data,t_amplifier] = read_Intan_RHD2000_file_path_update(path,10:12);
 % >> plot(t_amplifier, amplifier_data(1,:))
 
 % [file, path, filterindex] = ...
