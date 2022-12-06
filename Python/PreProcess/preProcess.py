@@ -12,9 +12,9 @@ from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
 if __name__ == '__main_'+'_':
-    from utils import LAB_root, PathLike
+    from utils import LAB_root, PathLike, figure_compare
 else:
-    from .utils import LAB_root, PathLike
+    from .utils import LAB_root, PathLike, figure_compare
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -229,6 +229,7 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
+    TASK = "Phoneme_sequencing"
     BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
     sub_num = 53
     sub_pad = "D00{}".format(sub_num)
@@ -239,9 +240,9 @@ if __name__ == "__main__":
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
-    #                                 TASK, SUB))
+    #                                  TASK, subject))
     # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
     # dat = open_dat_file(D_dat_filt, raw.copy().channels)
     # raw = raw_from_layout(layout, sub_pad, 1)
-    # data = [raw, filt]
-    # figure_compare(data, [ "BIDS Un", "BIDS "])
+    data = [raw, filt]
+    figure_compare(data, [ "BIDS Un", "BIDS "])

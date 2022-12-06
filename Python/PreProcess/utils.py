@@ -16,6 +16,7 @@ PathLike = TypeVar("PathLike", str, PL)
 # plotting funcs
 
 def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True):
+    """Plots the psd of a list of raw objects"""
     for title, data in zip(labels, raw):
         title: str
         data: Raw
@@ -27,7 +28,7 @@ def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True):
 
 
 def add_arrows(axes: Axes):
-    # add some arrows at 60 Hz and its harmonics
+    """add some arrows at 60 Hz and its harmonics"""
     for ax in axes:
         freqs = ax.lines[-1].get_xdata()
         psds = ax.lines[-1].get_ydata()
