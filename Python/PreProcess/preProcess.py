@@ -21,6 +21,7 @@ SubDict = Dict[str, RunDict]
 
 
 def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
+    """Looks for the .dat file in a specified folder"""
     cleanieeg = None
     ieeg = None
     for root, _, files in walk(folder):
@@ -35,6 +36,7 @@ def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
 
 
 def line_filter(data: mne.io.Raw) -> mne.io.Raw:
+    """Implementation of the mne notch filter. needs to be improved or replaced"""
     if not data.preload:
         data.load_data()
     filt = data.copy().notch_filter(None,  # (60, 120, 180, 240),
@@ -52,7 +54,7 @@ def line_filter(data: mne.io.Raw) -> mne.io.Raw:
 
 
 def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
-    """
+    """A multitaper notch filter that eliminates the strongest line
 
     Steps:
     1. psd_multitaper
@@ -76,11 +78,16 @@ def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
            ylabel='Power Spectral Density (dB)')
 
 
-def get_strongest_line(myarray: np.ndarray):
-    pass
-
-
 def bidspath_from_layout(layout: BIDSLayout, **kwargs: dict) -> BIDSPath:
+    """Searches a BIDSLayout for a file and returns a BIDSPath to it.
+
+    Parameters
+    ----------
+    layout : BIDSLayout
+        The BIDSLayout to search.
+    **kwargs : dict
+        The parameters to search for. See BIDSFile.get() for more info.
+    """
     my_search: List[BIDSFile] = layout.get(**kwargs)
     if len(my_search) >= 2:
         raise FileNotFoundError("Search terms matched more than one file, "
@@ -96,6 +103,19 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs: dict) -> BIDSPath:
 def raw_from_layout(layout: BIDSLayout, subject: str,
                     run: Union[List[int], int] = None,
                     extension=".edf") -> mne.io.Raw:
+    """Searches a BIDSLayout for a raw file and returns a mne Raw object.
+
+    Parameters
+    ----------
+    layout : BIDSLayout
+        The BIDSLayout to search.
+    subject : str
+        The subject to search for.
+    run : Union[List[int], int], optional
+        The run to search for, by default None
+    extension : str, optional
+        The file extension to search for, by default ".edf"
+    """
     kwargs: Dict[str, Any] = dict(subject=subject)
     if run:
         kwargs["run"] = run
@@ -119,6 +139,19 @@ def raw_from_layout(layout: BIDSLayout, subject: str,
 
 def open_dat_file(file_path: str, channels: List[str],
                   sfreq: int = 2048, types: str = "seeg") -> mne.io.RawArray:
+    """Opens a .dat file and returns a mne.io.RawArray object.
+
+    Parameters
+    ----------
+    file_path : str
+        The path to the .dat file.
+    channels : List[str]
+        The channels to load.
+    sfreq : int, optional
+        The sampling frequency, by default 2048
+    types : str, optional
+        The channel types, by default "seeg"
+    """
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
     channels.remove("Trigger")
@@ -130,6 +163,7 @@ def open_dat_file(file_path: str, channels: List[str],
 
 def retrieve_filt(sub: str,
                   runs: Union[List[int], int] = (1, 2, 3, 4)) -> mne.io.Raw:
+    """Retrieves a saved filtered fif file from the data folder."""
     try:
         iter(runs)
     except TypeError:
@@ -195,7 +229,7 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    BIDS_root = op.join(LAB_root, "BIDS-1.0_SentenceRep", "BIDS")
+    BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
     sub_num = 53
     sub_pad = "D00{}".format(sub_num)
     subject = "D{}".format(sub_num)
@@ -204,73 +238,6 @@ if __name__ == "__main__":
     filt = line_filter(raw)
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
-    """
-    T1_path = layout.get(subject=sub_pad, extension="nii.gz")[0]
-    CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
-    subjects_dir = op.join(LAB_root, "ECoG_Recon_Full")
-    if subject == "D24":
-        reg_affine = np.array([[1.00000,0.00000,0.00000,-5.69848],
-                  [0.00000,1.00000,0.00000,25.40463],
-                  [0.00000,0.00000,1.00000,63.92385],
-                  [0.00000,0.00000,0.00000,1.00000]])
-    elif subject == "D29":
-        reg_affine = np.array([[ 0.99949355, -0.02990436,  0.01087993,
-        0.00315547],
-                            [ 0.03083844,  0.99457727, -0.09932295,
-                            -0.03061648],
-                            [-0.00785074,  0.09960816,  0.99499577,
-                             -0.00894423],
-                            [ 0.,          0.,          0.,
-                             1.        ]])
-    else:
-        reg_affine = None
-    CT_aligned = allign_CT(T1_path, CT_path, reg_affine)
-    subj_trans = mne.coreg.estimate_head_mri_t(subject,
-    subjects_dir=subjects_dir)
-    inv_trans = mne.coreg.invert_transform(
-        mne.transforms.Transform("head", "head", subj_trans['trans']))
-    mri = filt.copy()
-    montage = mri.get_montage()
-    montage.apply_trans(inv_trans)
-    mri.set_montage(montage)
-    mri.info = mne.preprocessing.ieeg.project_sensors_onto_brain(
-        mri.info, subj_trans, subject, subjects_dir=subjects_dir)
-    # mne.pick_info(mri.info, mne.pick_channels_regexp(mri.ch_names, "LTG..*"),
-    #              copy=False)
-    epoch_length = 2  # seconds
-    events, event_id = mne.events_from_annotations(mri)
-    epochs = mne.Epochs(mri, events, event_id=event_id['Audio'],
-                        tmin=-0.5, tmax=-0.5 + epoch_length,
-                        baseline=(None, 0), reject={'ecog': 1000e-6})
-    # Make evoked from the one epoch and resample
-    evoked = epochs.average()
-    gamma_power_t = evoked.copy().filter(30, 90).apply_hilbert(envelope=True)
-    gamma_info = gamma_power_t.info
-
-    xyz_pts = np.array([dig['r'] for dig in evoked.info['dig']])
-    gui = mne.gui.locate_ieeg(mri.info, subj_trans, CT_aligned,
-                              subject=subject,
-                              subjects_dir=subjects_dir, verbose=10)
-    src = mne.read_source_spaces(
-        op.join(subjects_dir, 'fsaverage', 'bem', 'fsaverage-ico-5-src.fif'))
-    stc = mne.stc_near_sensors(gamma_power_t, trans='fsaverage',
-                               subject='fsaverage', src=src,
-                               mode='nearest', subjects_dir=subjects_dir,
-                               distance=0.02)
-    vmin, vmid, vmax = np.percentile(gamma_power_t.data, [10, 25, 90])
-    clim = dict(kind='value', lims=[vmin, vmid, vmax])
-    brain = stc.plot(surface='pial', hemi='rh', colormap='inferno',
-                     colorbar=False,
-                     clim=clim, views=['lat', 'med'],
-                     subjects_dir=subjects_dir,
-                     size=(250, 250), smoothing_steps='nearest',
-                     time_viewer=False)
-    brain.add_sensors(evoked.info, trans='fsaverage')
-    """
-    # mne.viz.plot_alignment(mri.info, subj_trans, subject,
-    #                        subjects_dir=subjects_dir, ecog=True,
-    #                        surfaces=['pial'], coord_frame='mri')
-    # show_brain(filt, subj_trans, subject, subjects_dir)
     # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
     #                                 TASK, SUB))
     # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
