@@ -1,4 +1,4 @@
-function [elecFact,timeFact,trialFact] = viz_ktensor_phonotactic(est_factors,channelsPooled,timeEpoch,phonemeTrial,disp)
+function [elecFact,timeFact,trialFact] = viz_ktensor_phonotactic_v3(est_factors,channelsPooled,timeEpoch,phonemeTrial,disp)
 
  figure;
 
