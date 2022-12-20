@@ -20,7 +20,7 @@ def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True):
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        fig: Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count())
+        fig: Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count(), spatial_colors=False)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')

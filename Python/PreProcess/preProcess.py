@@ -1,9 +1,8 @@
 import os.path as op
-from os import walk
+from os import walk, listdir, curdir
 from re import match
 from typing import Union, List, Tuple, Dict, Any
 
-import matplotlib.pyplot as plt
 import mne
 import numpy as np
 from bids import BIDSLayout
@@ -11,7 +10,7 @@ from bids.layout import BIDSFile
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
-if __name__ == '__main_'+'_':
+if __name__ == '__main_'+'_' or op.basename(op.abspath(curdir)) == "PreProcess":
     from utils import LAB_root, PathLike, figure_compare
 else:
     from .utils import LAB_root, PathLike, figure_compare
@@ -46,14 +45,14 @@ def line_filter(data: mne.io.Raw) -> mne.io.Raw:
                                     method='spectrum_fit',
                                     mt_bandwidth=5.0,
                                     filter_length='20s',
-                                    p_value=0.05,  # only used if freqs=None
+                                    p_value=0.01,  # only used if freqs=None
                                     verbose=10,
                                     n_jobs=cpu_count())
     # make njobs 'cuda' with a gpu if method is 'fir'
     return filt
 
 
-def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
+def mt_filt(data: mne.io.Raw, ranges: List[List[int]] = None, fmax: int = 250):  # TODO: make your own filter
     """A multitaper notch filter that eliminates the strongest line
 
     Steps:
@@ -62,20 +61,27 @@ def mt_filt(data: mne.io.Raw):  # TODO: make your own filter
        _cluster_test (or just max)
     3. fft extract and sum frequencies found in max
     4. subtract frequencies in the time domain (signal - extracted_signal)
-
     """
-    f, ax = plt.subplots()
-    psds, freqs = mne.time_frequency.psd_multitaper(data, fmax=250,
-                                                    n_jobs=cpu_count(),
-                                                    verbose=10)
+    # 1. psd_multitaper
+    spectrum = data.compute_psd(method="multitaper", fmin=0, fmax=fmax,
+                                n_jobs=cpu_count(), proj=True, verbose=10)
+    psds, freqs = spectrum.get_data(return_freqs=True)
     psds = 10 * np.log10(psds)  # convert to dB
     psds_mean = psds.mean(0)
     psds_std = psds.std(0)
-    ax.plot(freqs, psds_mean, color='k')
-    ax.fill_between(freqs, psds_mean - psds_std, psds_mean + psds_std,
-                    color='k', alpha=.5)
-    ax.set(title='Multitaper PSD (gradiometers)', xlabel='Frequency (Hz)',
-           ylabel='Power Spectral Density (dB)')
+
+    # 2. f-test pre-defined freq range for max power
+    if ranges is None:
+        ranges = [[i-10, i+10] for i in list(range(60, fmax, 60))]
+
+    for f in ranges:
+        pass
+
+    # ax.plot(freqs, psds_mean, color='k')
+    # ax.fill_between(freqs, psds_mean - psds_std, psds_mean + psds_std,
+    #                 color='k', alpha=.5)
+    # ax.set(title='Multitaper PSD (gradiometers)', xlabel='Frequency (Hz)',
+    #        ylabel='Power Spectral Density (dB)')
 
 
 def bidspath_from_layout(layout: BIDSLayout, **kwargs: dict) -> BIDSPath:
@@ -181,68 +187,49 @@ def retrieve_filt(sub: str,
     return filt
 
 
-def filt_main(layout: BIDSLayout,
-              subjects: Union[str, List[str]] = None,
-              runs: Union[int, List[int]] = None
-              ) -> Tuple[SubDict, SubDict]:
-    data = dict()
-    raw_data = dict()
-    subjects: List[str] = layout.get(return_type="id", target="subject",
-                                     subject=subjects)
-    for sub_id in subjects:
-        raw_data[sub_id] = dict()
-        data[sub_id] = dict()
-        runs: List[int] = layout.get(return_type="id", target="run",
-                                     subject=sub_id, run=runs)
-        for run in runs:
-            raw_data[sub_id][run] = raw_from_layout(layout, sub_id, run)
-            data[sub_id][run] = line_filter(raw_data[sub_id][run])
-    return raw_data, data
-
-
-def filt_main_2(layout: BIDSLayout, subjects: Union[str, List[str]] = None):
-    """A function that runs through all the subjects that filters then saves
-
-    """
-    if subjects is None:
-        subjects: List[str] = layout.get(return_type="id", target="subject")
-    for sub_id in subjects:
-        runs: List[int] = layout.get(return_type="id", target="run",
-                                     subject=sub_id)
-        for run in runs:
-            try:
-                raw_data = raw_from_layout(layout, sub_id, run)
-                filt_data = line_filter(raw_data)
-                save_name = "{}_filt_run-{}_ieeg.fif".format(sub_id, run)
-                filt_data.save(op.join(LAB_root, "Aaron_test",
-                                       "filt_phonemesequence", save_name),
-                               overwrite=False)
-            except Exception:
-                pass
-        del runs
+def get_data(sub_num: int = 53, task: str = "SentenceRep", BIDS_root: PathLike = None):
+    for dir in listdir(LAB_root):
+        if match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(LAB_root, dir)):
+            BIDS_root = op.join(LAB_root, dir, "BIDS")
+            break
+    if BIDS_root is None:
+        raise FileNotFoundError("Could not find BIDS directory in {} for task {}".format(LAB_root, task))
+    sub_pad = "D" + "{}".format(sub_num).zfill(4)
+    subject = "D{}".format(sub_num)
+    layout = BIDSLayout(BIDS_root)
+    raw = raw_from_layout(layout, sub_pad)
+    D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
+                                             task, subject))
+    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    return layout, raw, raw_dat, dat
 
 
 if __name__ == "__main__":
+    import matplotlib
+    matplotlib.use("TKAgg")
+    import matplotlib.pyplot as plt
+    #%% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")
     mne.set_log_file(log_filename,
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    TASK = "Phoneme_sequencing"
-    BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
+    TASK = "SentenceRep"
     sub_num = 53
-    sub_pad = "D00{}".format(sub_num)
-    subject = "D{}".format(sub_num)
-    layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, sub_pad, 2)
-    filt = line_filter(raw)
+    layout, raw, raw_dat, dat = get_data(53, TASK)
+    #%% Filter the data
+    # filt = line_filter(raw)
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
-    # D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
-    #                                  TASK, subject))
-    # raw_dat = open_dat_file(D_dat_raw, raw.copy().channels)
-    # dat = open_dat_file(D_dat_filt, raw.copy().channels)
-    # raw = raw_from_layout(layout, sub_pad, 1)
-    data = [raw, filt]
-    figure_compare(data, [ "BIDS Un", "BIDS "])
+    #%% Plot the data
+    # data = [raw, raw_dat]
+    # figure_compare(data, [ "BIDS Un", "Un"])
+    # for chan in raw.ch_names:
+    #     if chan == "Trigger":
+    #         continue
+    #     fmax = 250
+    #     spectrum = raw.compute_psd(method="multitaper", fmin=0, fmax=fmax, picks=chan,
+    #                                 n_jobs=cpu_count(), verbose='INFO')
+    #     psds, freqs = spectrum.get_data(return_freqs=True)
