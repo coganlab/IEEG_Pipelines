@@ -1,4 +1,6 @@
+import operator
 import os.path as op
+import pandas as pd
 from os import PathLike as PL
 from typing import List, TypeVar
 
@@ -38,3 +40,78 @@ def add_arrows(axes: Axes):
             y = psds[(idx - 4):(idx + 5)].max()
             ax.arrow(x=freqs[idx], y=y + 18, dx=0, dy=-12, color='red',
                      width=0.1, head_width=3, length_includes_head=True)
+
+
+def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
+    """Ensure a variable is an integer."""
+    # This is preferred over numbers.Integral, see:
+    # https://github.com/scipy/scipy/pull/7351#issuecomment-299713159
+    extra = f' {extra}' if extra else extra
+    try:
+        # someone passing True/False is much more likely to be an error than
+        # intentional usage
+        if isinstance(x, bool):
+            raise TypeError()
+        x = int(operator.index(x))
+    except TypeError:
+        raise TypeError(f'{name} must be {must_be}{extra}, got {type(x)}')
+    return x
+
+
+def validate_type(item, types):
+    try:
+        if isinstance(types, TypeVar):
+            check = isinstance(item, types.__constraints__)
+        elif types is int:
+            ensure_int(item)
+            check = True
+        elif types is float:
+            check = is_number(item)
+        else:
+            check = isinstance(item, types)
+    except TypeError:
+        check = False
+    if not check:
+        raise TypeError(
+            f"must be an instance of {types}, "
+            f"got {type(item)} instead.")
+
+
+def is_number(s) -> bool:
+    if isinstance(s, str):
+        try:
+            float(s)
+            return True
+        except ValueError:
+            return False
+    elif isinstance(s, (np.number, int, float)):
+        return True
+    elif isinstance(s, pd.DataFrame):
+        try:
+            s.astype(float)
+            return True
+        except Exception:
+            return False
+    elif isinstance(s, pd.Series):
+        try:
+            pd.to_numeric(s)
+            return True
+        except Exception:
+            return False
+    else:
+        return False
+
+
+def sum_squared(X: np.ndarray) -> float:
+    """Compute norm of an array.
+    Parameters
+    ----------
+    X : array
+        Data whose norm must be found.
+    Returns
+    -------
+    value : float
+        Sum of squares of the input array X.
+    """
+    X_flat = X.ravel(order='F' if np.isfortran(X) else 'C')
+    return np.dot(X_flat, X_flat)

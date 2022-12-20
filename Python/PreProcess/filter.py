@@ -9,10 +9,15 @@ from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
 from mne.parallel import parallel_func
-from mne.utils import logger, _validate_type, _ensure_int, _pl, sum_squared, warn, verbose
+from mne.utils import logger, _pl, warn, verbose
 from scipy import stats, interpolate
 from scipy.fft import rfft, irfft, rfftfreq
 from scipy.signal.windows import dpss as sp_dpss
+
+if __name__ in ['__main_'+'_', "PreProcess"]:
+    from utils import ensure_int, validate_type, sum_squared
+else:
+    from .utils import ensure_int, validate_type, sum_squared
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -573,7 +578,7 @@ def _check_filterable(x, kind='filtered', alternative='filter'):
                 f'instances. To get a {kind} {name} instance, use a method '
                 f'like `inst_new = inst.copy().{alternative}(...)` '
                 'instead.')
-    _validate_type(x, (np.ndarray, list, tuple), f'Data to be {kind}')
+    validate_type(x, (np.ndarray, list, tuple))
     x = np.asanyarray(x)
     if x.dtype != np.float64:
         raise ValueError('Data to be %s must be real floating, got %s'
@@ -582,7 +587,7 @@ def _check_filterable(x, kind='filtered', alternative='filter'):
 
 
 def _to_samples(filter_length, sfreq, phase, fir_design):
-    _validate_type(filter_length, (str, 'int-like'), 'filter_length')
+    validate_type(filter_length, (str, int))
     if isinstance(filter_length, str):
         filter_length = filter_length.lower()
         err_msg = ('filter_length, if a string, must be a '
@@ -605,7 +610,7 @@ def _to_samples(filter_length, sfreq, phase, fir_design):
                                         sfreq)), 1)
         if fir_design == 'firwin':
             filter_length += (filter_length - 1) % 2
-    filter_length = _ensure_int(filter_length, 'filter_length')
+    filter_length = ensure_int(filter_length, 'filter_length')
     return filter_length
 
 
@@ -614,10 +619,10 @@ if __name__ == "__main__":
     import mne
 
     # %% Set up logging
-    log_filename = "output.log"
-    # op.join(LAB_root, "Aaron_test", "Information.log")
-    mne.set_log_file(log_filename,
+    mne.set_log_file("output.log",
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
     layout, raw, raw_dat, dat = get_data(53, "SentenceRep")
+    filt = line_filter(raw.get_data(), raw.info['sfreq'], mt_bandwidth=5.0,
+                       filter_length='20s', verbose='INFO')
