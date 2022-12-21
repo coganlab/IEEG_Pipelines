@@ -2,12 +2,15 @@ import operator
 import os.path as op
 import pandas as pd
 from os import PathLike as PL
-from typing import List, TypeVar
+from os import environ
+from typing import List, TypeVar, Iterable, Union
 
 from matplotlib.pyplot import Figure, Axes
 from mne.io import Raw
+from mne.utils import config, logger
 import numpy as np
-from joblib import cpu_count
+from joblib import Parallel, delayed, cpu_count
+from tqdm import tqdm
 
 
 HOME = op.expanduser("~")
@@ -102,7 +105,7 @@ def is_number(s) -> bool:
         return False
 
 
-def sum_squared(X: np.ndarray) -> float:
+def sum_squared(X: np.ndarray) -> np.ndarray:
     """Compute norm of an array.
     Parameters
     ----------
@@ -115,3 +118,29 @@ def sum_squared(X: np.ndarray) -> float:
     """
     X_flat = X.ravel(order='F' if np.isfortran(X) else 'C')
     return np.dot(X_flat, X_flat)
+
+
+def parallelize(func: object, par_var: Iterable, n_jobs: int = None, *args, **kwargs) -> list:
+    if n_jobs is None:
+        n_jobs = cpu_count()
+    settings = dict(verbose=5, prefer='threads', pre_dispatch=n_jobs)
+    env = dict(**environ)
+    if config.get_config('MNE_CACHE_DIR') is not None:
+        settings['temp_folder'] = config.get_config('MNE_CACHE_DIR')
+    elif 'TEMP' in env.keys():
+        settings['temp_folder'] = env['TEMP']
+
+    if config.get_config('MNE_MEMMAP_MIN_SIZE') is not None:
+        settings['max_nbytes'] = config.get_config('MNE_MEMMAP_MIN_SIZE')
+    else:
+        settings['max_nbytes'] = get_mem()
+
+    data_new = Parallel(n_jobs, **settings)(delayed(func)(
+        x_, *args, **kwargs)for x_ in tqdm(par_var))
+    return data_new
+
+
+def get_mem() -> Union[float, int]:
+    from psutil import virtual_memory
+    ram_per = virtual_memory()[3]/cpu_count()
+    return ram_per
