@@ -1,4 +1,11 @@
 function [ieegall,microphone,trigger] = intanWrap(path,channel,fileNum,isDecimate,isTask)
+arguments
+    path {mustBeTextScalar}
+    channel double
+    fileNum double
+    isDecimate logical = 0
+    isTask logical = 0
+end
     d = dir([path '*.rhd']);
     d.name
     ieegall = []; microphone = []; trigger = [];

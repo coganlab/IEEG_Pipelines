@@ -46,13 +46,13 @@ end
         pTest = labels(test);
         if(length(varVector)>1)
             if(numFolds>0)
-                [lossVect,~,phonErrorVect] = scoreSelect(gTrain,pTrain,varVector,1,numFolds); % Hyper parameter tuning
+                [lossVect] = scoreSelect(gTrain,pTrain,varVector,1,numFolds); % Hyper parameter tuning
             else
-                [lossVect,~,phonErrorVect] = scoreSelect(gTrain,pTrain,varVector,0,numFolds);
+                [lossVect] = scoreSelect(gTrain,pTrain,varVector,0,numFolds);
             end
 
              lossVectAll(nCv,:) = mean(lossVect,1);
-             phonErrorVectAll(nCv,:) = mean(phonErrorVect,1);
+             %phonErrorVectAll(nCv,:) = mean(phonErrorVect,1);
             [~,optimVarId] = min(mean(lossVect,1)); % Selecting the optimal principal components
             optimVar = varVector(optimVarId);
         else

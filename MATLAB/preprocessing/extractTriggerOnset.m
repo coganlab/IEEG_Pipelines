@@ -1,8 +1,6 @@
 function locs = extractTriggerOnset(trigger,fs)
+    
     time = [0:length(trigger)-1]./fs;
-     figure;
-     plot(time,trigger);
-     
      tw(1) = input('Enter the starting time');
      tw(2) = input('Enter the ending time');
      amp = input('Enter the amplitude');
