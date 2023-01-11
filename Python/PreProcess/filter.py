@@ -1,4 +1,3 @@
-import operator
 from collections import Counter
 from functools import partial
 from typing import TypeVar, Union, List
@@ -16,11 +15,11 @@ from scipy.signal.windows import dpss as sp_dpss
 from scipy.signal import get_window
 
 if __name__ in ['__main_' + '_', "PreProcess"]:
-    from utils import ensure_int, validate_type, parallelize
-    from fastmath import sum_squared, sine_f_test
+    from utils import ensure_int, validate_type, parallelize, is_number
+    from fastmath import sine_f_test
 else:
-    from .utils import ensure_int, validate_type, parallelize
-    from .fastmath import sum_squared, sine_f_test
+    from .utils import ensure_int, validate_type, parallelize, is_number
+    from .fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -209,7 +208,6 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     return x_out, rm_freqs
 
 
-# TODO: jitify core functions like this
 def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_widths: ListNum,
                         window_fun: np.ndarray, threshold: float, get_thresh: partial) -> (ArrayLike, List[float]):
     """Use MT-spectrum to remove line frequencies.
@@ -227,7 +225,14 @@ def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]
 
-    # # specify frequencies
+    # specify frequencies
+    if line_freqs is not None and notch_widths is not None:
+        if not isinstance(notch_widths, (list, tuple)) and is_number(notch_widths):
+            notch_widths = [notch_widths] * len(line_freqs)
+        ranges = [(freq - notch_width/2, freq + notch_width/2
+                   ) for freq, notch_width in zip(line_freqs, notch_widths)]
+        indices = [ind for ind in indices if any(
+            lower <= freqs[ind] <= upper for (lower, upper) in ranges)]
     # indices_1 = np.unique([np.argmin(np.abs(freqs - lf))
     #                        for lf in line_freqs])
     # indices_2 = [np.logical_and(freqs > lf - nw / 2., freqs < lf + nw / 2.)
@@ -504,7 +509,8 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=4,
-                       filter_length='20s', verbose=10)
+    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=None,
+                       filter_length='20s', verbose=10,
+                       freqs=[60, 120, 180, 240], notch_widths=20)
     raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
     dat = open_dat_file(D_dat_filt, raw.copy().ch_names)

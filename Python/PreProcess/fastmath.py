@@ -1,10 +1,27 @@
 import numpy as np
-from numba import jit
+from numba import jit, float64, complex128
 from numba import types as t
 
 
-@jit
-def sine_f_test(window_fun: t.Sized, x_p: t.Array) -> (t.Array, t.Array):
+@jit([float64(float64[::1])], nopython=True, nogil=True, fastmath=True)
+def sum_squared(x: float64[::1]) -> float64:
+    """Compute norm of an array.
+    Parameters
+    ----------
+    x : array
+        Data whose norm must be found.
+    Returns
+    -------
+    value : float
+        Sum of squares of the input array x.
+    """
+    x_flat = x.ravel()
+    return np.dot(x_flat, x_flat)
+
+
+@jit([t.Tuple((float64[:, ::1], complex128[:, ::1]))(float64[:, :], complex128[:, :, ::1])],
+     nopython=True, nogil=True, fastmath=True, boundscheck=True)
+def sine_f_test(window_fun: float64[:, ::1], x_p: complex128[:, :, ::1]) -> (float64[:, ::1], complex128[:, ::1]):
 
     # drop the even tapers
     n_tapers = len(window_fun)
@@ -39,19 +56,3 @@ def sine_f_test(window_fun: t.Sized, x_p: t.Array) -> (t.Array, t.Array):
     f_stat = num / den
 
     return f_stat, A
-
-
-@jit
-def sum_squared(x: t.Array) -> t.Array:
-    """Compute norm of an array.
-    Parameters
-    ----------
-    x : array
-        Data whose norm must be found.
-    Returns
-    -------
-    value : float
-        Sum of squares of the input array x.
-    """
-    x_flat = x.ravel()
-    return np.dot(x_flat, x_flat)

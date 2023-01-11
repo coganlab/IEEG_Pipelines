@@ -11,8 +11,6 @@ from mne_bids import read_raw_bids, BIDSPath
 
 
 if __name__ == '__main_'+'_' or op.basename(op.abspath(curdir)) == "PreProcess":
-    import matplotlib
-    matplotlib.use("TKAgg")
     from utils import LAB_root, PathLike, figure_compare
 else:
     from .utils import LAB_root, PathLike, figure_compare
