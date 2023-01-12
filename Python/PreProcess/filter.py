@@ -9,16 +9,16 @@ from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
 from mne.utils import logger, _pl, warn, verbose
-from scipy import stats, interpolate
+from scipy import stats
 from scipy.fft import rfft, rfftfreq
 from scipy.signal.windows import dpss as sp_dpss
 from scipy.signal import get_window
 
 if __name__ in ['__main_' + '_', "PreProcess"]:
-    from utils import ensure_int, validate_type, parallelize, is_number
+    from utils import ensure_int, validate_type, parallelize, is_number, tqdm
     from fastmath import sine_f_test
 else:
-    from .utils import ensure_int, validate_type, parallelize, is_number
+    from .utils import ensure_int, validate_type, parallelize, is_number, tqdm
     from .fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
@@ -27,10 +27,12 @@ ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
 @verbose
 def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
-                filter_length: str = 'auto', notch_widths: ListNum = None,
+                filter_length: str = 'auto',
+                notch_widths: Union[ListNum, int] = None,
                 mt_bandwidth: float = None, p_value: float = 0.05,
                 picks: ListNum = None, n_jobs: int = None,
-                copy: bool = True, *, verbose: Union[int, bool, str] = None) -> Signal:
+                copy: bool = True, *, verbose: Union[int, bool, str] = None
+                ) -> Signal:
     r"""Notch filter for the signal x.
     Applies a zero-phase notch filter to the signal x, operating on the last
     dimension.
@@ -149,7 +151,7 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
     # Execute channel wise sine wave detection and filtering
     if n_jobs == 1:
         freq_list = list()
-        for ii, x_ in enumerate(x):
+        for ii, x_ in tqdm(enumerate(x)):
             if ii in picks:
                 x[ii], f = _mt_spectrum_remove_win(
                     x_, sfreq, line_freqs, notch_widths, window_fun, threshold,
@@ -225,7 +227,7 @@ def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]
 
-    # specify frequencies
+    # specify frequencies within indicated ranges
     if line_freqs is not None and notch_widths is not None:
         if not isinstance(notch_widths, (list, tuple)) and is_number(notch_widths):
             notch_widths = [notch_widths] * len(line_freqs)
@@ -393,8 +395,9 @@ def _get_window_thresh(n_times, sfreq, bandwidth, p_value):
     return window_fun, threshold
 
 
-def _compute_mt_params(n_times, sfreq, bandwidth, low_bias, adaptive,
-                       verbose=None):
+def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
+                       adaptive: bool,
+                       verbose: bool = None):
     """Triage windowing and multitaper parameters."""
     # Compute standardized half-bandwidth
     if isinstance(bandwidth, str):
@@ -417,8 +420,8 @@ def _compute_mt_params(n_times, sfreq, bandwidth, low_bias, adaptive,
     n_tapers_max = int(2 * half_nbw)
     window_fun, eigvals = dpss_windows(n_times, half_nbw, n_tapers_max,
                                        sym=False, low_bias=low_bias)
-    logger.info('    Using multitaper spectrum estimation with %d DPSS '
-                'windows' % len(eigvals))
+    # logger.info('    Using multitaper spectrum estimation with %d DPSS '
+    #             'windows' % len(eigvals))
 
     if adaptive and len(eigvals) < 3:
         warn('Not adaptively combining the spectral estimators due to a '
@@ -500,7 +503,7 @@ def _to_samples(filter_length, sfreq):
 
 
 if __name__ == "__main__":
-    from preProcess import get_data, open_dat_file
+    from preProcess import get_data
     import mne
 
     # %% Set up logging
@@ -508,9 +511,9 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=None,
+    layout, raw, D_dat_raw, D_dat_filt = get_data(57, "SentenceRep")
+    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
                        filter_length='20s', verbose=10,
                        freqs=[60, 120, 180, 240], notch_widths=20)
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)

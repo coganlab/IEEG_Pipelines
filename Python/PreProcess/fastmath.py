@@ -1,9 +1,9 @@
 import numpy as np
-from numba import jit, float64, complex128
+from numba import njit, float64, complex128
 from numba import types as t
 
 
-@jit([float64(float64[::1])], nopython=True, nogil=True, fastmath=True)
+@njit([float64(float64[::1])], nogil=True, fastmath=True, cache=True)
 def sum_squared(x: float64[::1]) -> float64:
     """Compute norm of an array.
     Parameters
@@ -19,10 +19,12 @@ def sum_squared(x: float64[::1]) -> float64:
     return np.dot(x_flat, x_flat)
 
 
-@jit([t.Tuple((float64[:, ::1], complex128[:, ::1]))(float64[:, :], complex128[:, :, ::1])],
-     nopython=True, nogil=True, fastmath=True, boundscheck=True)
-def sine_f_test(window_fun: float64[:, ::1], x_p: complex128[:, :, ::1]) -> (float64[:, ::1], complex128[:, ::1]):
-
+@njit([t.Tuple((float64[:, ::1], complex128[:, ::1]))(
+    float64[:, :], complex128[:, :, ::1])], nogil=True, boundscheck=True,
+    fastmath=True, cache=True)
+def sine_f_test(window_fun: float64[:, ::1], x_p: complex128[:, :, ::1]
+                ) -> (float64[:, ::1], complex128[:, ::1]):
+    """computes the F-statistic for sine wave in locally-white noise"""
     # drop the even tapers
     n_tapers = len(window_fun)
     tapers_odd = np.arange(0, n_tapers, 2)
