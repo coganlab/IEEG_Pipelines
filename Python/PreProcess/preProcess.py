@@ -9,14 +9,13 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-
-if __name__ == '__main_'+'_' or op.basename(op.abspath(curdir)) == "PreProcess":
-    from utils import LAB_root, PathLike, figure_compare
-else:
-    from .utils import LAB_root, PathLike, figure_compare
+import filter as flt
+import utils as utl
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
+PathLike = utl.PathLike
+LAB_root = utl.LAB_root
 
 
 def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
@@ -169,8 +168,7 @@ if __name__ == "__main__":
     sub_num = 57
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
     #%% Filter the data
-    from filter import line_filter
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
+    filt = flt.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
                        filter_length='20s', verbose=10,
                        freqs=[60, 120, 180, 240], notch_widths=20)
     raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
@@ -179,7 +177,7 @@ if __name__ == "__main__":
     # filt = retrieve_filt(sub_pad, 1)
     #%% Plot the data
     data = [raw, filt, raw_dat, dat]
-    figure_compare(data, [ "BIDS Un", "BIDS ", "Un", ""])
+    utl.figure_compare(data, [ "BIDS Un", "BIDS ", "Un", ""])
     # for chan in raw.ch_names:
     #     if chan == "Trigger":
     #         continue

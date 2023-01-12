@@ -8,7 +8,7 @@ from typing import List, TypeVar, Iterable, Union
 import matplotlib as mpl
 from matplotlib.pyplot import Figure, Axes
 from mne.io import Raw
-from mne.utils import config, logger
+from mne.utils import config
 import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from tqdm import tqdm

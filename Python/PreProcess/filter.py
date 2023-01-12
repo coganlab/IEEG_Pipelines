@@ -13,13 +13,10 @@ from scipy import stats
 from scipy.fft import rfft, rfftfreq
 from scipy.signal.windows import dpss as sp_dpss
 from scipy.signal import get_window
+from tqdm import tqdm
 
-if __name__ in ['__main_' + '_', "PreProcess"]:
-    from utils import ensure_int, validate_type, parallelize, is_number, tqdm
-    from fastmath import sine_f_test
-else:
-    from .utils import ensure_int, validate_type, parallelize, is_number, tqdm
-    from .fastmath import sine_f_test
+from utils import ensure_int, validate_type, parallelize, is_number
+from fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -34,7 +31,7 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
                 ) -> Signal:
     r"""Notch filter for the signal x.
-    Applies a zero-phase notch filter to the signal x, operating on the last
+    Applies a multitaper notch filter to the signal x, operating on the last
     dimension.
     Parameters
     ----------
