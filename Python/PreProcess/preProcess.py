@@ -1,16 +1,16 @@
 import os.path as op
 from os import walk, listdir, curdir
-from re import match
 from typing import Union, List, Tuple, Dict, Any
 
 import mne
+import re
 import numpy as np
 from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-import filter as flt
-import utils as utl
+from . import filter as flt
+from . import utils as utl
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -24,9 +24,9 @@ def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
     ieeg = None
     for root, _, files in walk(folder):
         for file in files:
-            if match(r".*cleanieeg\.dat.*", file):
+            if re.match(r".*cleanieeg\.dat.*", file):
                 cleanieeg: PathLike = op.join(root, file)
-            elif match(r".*ieeg\.dat.*", file):
+            elif re.match(r".*ieeg\.dat.*", file):
                 ieeg: PathLike = op.join(root, file)
             if ieeg is not None and cleanieeg is not None:
                 return ieeg, cleanieeg
@@ -93,7 +93,8 @@ def raw_from_layout(layout: BIDSLayout, subject: str,
 
 
 def open_dat_file(file_path: str, channels: List[str],
-                  sfreq: int = 2048, types: str = "seeg") -> mne.io.RawArray:
+                  sfreq: int = 2048, types: str = "seeg",
+                  units: str = "uV") -> mne.io.RawArray:
     """Opens a .dat file and returns a mne.io.RawArray object.
 
     Parameters
@@ -111,8 +112,19 @@ def open_dat_file(file_path: str, channels: List[str],
         data = np.fromfile(f, dtype="float32")
     channels.remove("Trigger")
     array = np.reshape(data, [len(channels), -1], order='F')
+    match units:
+        case "V":
+            factor = 1
+        case "mV":
+            factor = 1e-3
+        case "uV":
+            factor = 1e-6
+        case "nV":
+            factor = 1e-9
+        case _:
+            raise NotImplementedError("Unit " + units + " not implemented yet")
     info = mne.create_info(channels, sfreq, types)
-    raw = mne.io.RawArray(array, info)
+    raw = mne.io.RawArray(array * factor, info)
     return raw
 
 
@@ -142,7 +154,7 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
 
     """
     for dir in listdir(LAB_root):
-        if match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(LAB_root, dir)):
+        if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(LAB_root, dir)):
             BIDS_root = op.join(LAB_root, dir, "BIDS")
             break
     if BIDS_root is None:
