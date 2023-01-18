@@ -1,25 +1,22 @@
-import operator
 from collections import Counter
 from functools import partial
 from typing import TypeVar, Union, List
 
 import numpy as np
 from numpy.typing import ArrayLike
-from numba import jit, njit
 from mne._ola import _COLA
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
 from mne.utils import logger, _pl, warn, verbose
-from scipy import stats, interpolate
-from scipy.fft import rfft, irfft, rfftfreq
+from scipy import stats
+from scipy.fft import rfft, rfftfreq
 from scipy.signal.windows import dpss as sp_dpss
 from scipy.signal import get_window
+from tqdm import tqdm
 
-if __name__ in ['__main_' + '_', "PreProcess"]:
-    from utils import ensure_int, validate_type, sum_squared, parallelize
-else:
-    from .utils import ensure_int, validate_type, sum_squared, parallelize
+from utils import ensure_int, validate_type, parallelize, is_number
+from fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -27,12 +24,14 @@ ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
 @verbose
 def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
-                filter_length: str = 'auto', notch_widths: ListNum = None,
+                filter_length: str = 'auto',
+                notch_widths: Union[ListNum, int] = None,
                 mt_bandwidth: float = None, p_value: float = 0.05,
                 picks: ListNum = None, n_jobs: int = None,
-                copy: bool = True, *, verbose: Union[int, bool, str] = None) -> Signal:
+                copy: bool = True, *, verbose: Union[int, bool, str] = None
+                ) -> Signal:
     r"""Notch filter for the signal x.
-    Applies a zero-phase notch filter to the signal x, operating on the last
+    Applies a multitaper notch filter to the signal x, operating on the last
     dimension.
     Parameters
     ----------
@@ -115,32 +114,41 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
                 raise ValueError('notch_widths must be None, scalar, or the '
                                  'same length as freqs')
 
-    data_idx = [ch_t in set(raw.get_channel_types(only_data_chs=True)) for ch_t in raw.get_channel_types()]
-    filt._data[data_idx] = _mt_spectrum_proc(x, fs, freqs, notch_widths, mt_bandwidth,
+    data_idx = [ch_t in set(raw.get_channel_types(only_data_chs=True)
+                            ) for ch_t in raw.get_channel_types()]
+    filt._data[data_idx] = mt_spectrum_proc(x, fs, freqs, notch_widths, mt_bandwidth,
                                              p_value, picks, n_jobs, filter_length)
 
     return filt
 
 
-def _mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
-                      notch_widths: ListNum, mt_bandwidth: float,
-                      p_value: float, picks: list, n_jobs: int,
-                      filter_length: Union[str, int]) -> ArrayLike:
+def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
+                     notch_widths: ListNum, mt_bandwidth: float,
+                     p_value: float, picks: list, n_jobs: int,
+                     filter_length: Union[str, int]) -> ArrayLike:
     """Call _mt_spectrum_remove."""
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
+
+    # convert filter length to samples
     if isinstance(filter_length, str) and filter_length == 'auto':
         filter_length = '10s'
     if filter_length is None:
         filter_length = x.shape[-1]
-    filter_length = min(_to_samples(filter_length, sfreq, '', ''), x.shape[-1])
+    filter_length = min(_to_samples(filter_length, sfreq), x.shape[-1])
+
+    # Define adaptive windowing function
     get_wt = partial(
         _get_window_thresh, sfreq=sfreq, bandwidth=mt_bandwidth,
         p_value=p_value)
+
+    # Set default window function and threshold
     window_fun, threshold = get_wt(filter_length)
+
+    # Execute channel wise sine wave detection and filtering
     if n_jobs == 1:
         freq_list = list()
-        for ii, x_ in enumerate(x):
+        for ii, x_ in tqdm(enumerate(x)):
             if ii in picks:
                 x[ii], f = _mt_spectrum_remove_win(
                     x_, sfreq, line_freqs, notch_widths, window_fun, threshold,
@@ -149,7 +157,8 @@ def _mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
     else:
         runs = [x_ for xi, x_ in enumerate(x) if xi in picks]
         data_new = parallelize(_mt_spectrum_remove_win, runs, n_jobs,
-                               sfreq, line_freqs, notch_widths, window_fun, threshold, get_wt)
+                               sfreq, line_freqs, notch_widths, window_fun,
+                               threshold, get_wt)
         freq_list = [d[1] for d in data_new]
         data_new = np.array([d[0] for d in data_new])
         x[picks, :] = data_new
@@ -168,8 +177,10 @@ def _mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
     return x
 
 
-def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_widths: ListNum,
-                            window_fun: np.ndarray, threshold: float, get_thresh: object) -> (ArrayLike, List[float]):
+def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
+                            notch_widths: ListNum, window_fun: np.ndarray,
+                            threshold: float, get_thresh: partial
+                            ) -> (ArrayLike, List[float]):
     n_times = x.shape[-1]
     n_samples = window_fun.shape[1]
     n_overlap = (n_samples + 1) // 2
@@ -180,8 +191,7 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum, no
     # Define how to process a chunk of data
     def process(x_):
         out = _mt_spectrum_remove(
-            x_, sfreq, line_freqs, notch_widths, window_fun, threshold,
-            get_thresh)
+            x_, sfreq, line_freqs, notch_widths, window_fun, threshold, get_thresh)
         rm_freqs.append(out[1])
         return (out[0],)  # must return a tuple
 
@@ -197,70 +207,41 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum, no
     return x_out, rm_freqs
 
 
-# TODO: jitify core functions like this
 def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_widths: ListNum,
-                        window_fun: np.ndarray, threshold: float, get_thresh: object) -> (ArrayLike, List[float]):
+                        window_fun: np.ndarray, threshold: float, get_thresh: partial) -> (ArrayLike, List[float]):
     """Use MT-spectrum to remove line frequencies.
     Based on Chronux. If line_freqs is specified, all freqs within notch_width
     of each line_freq is set to zero.
     """
+
     assert x.ndim == 1
     if x.shape[-1] != window_fun.shape[-1]:
         window_fun, threshold = get_thresh(x.shape[-1])
-    # drop the even tapers
-    n_tapers = len(window_fun)
-    tapers_odd = np.arange(0, n_tapers, 2)
-    tapers_even = np.arange(1, n_tapers, 2)
-    tapers_use = window_fun[tapers_odd]
-
-    # sum tapers for (used) odd prolates across time (n_tapers, 1)
-    H0 = np.sum(tapers_use, axis=1)
-
-    # sum of squares across tapers (1, )
-    H0_sq = sum_squared(H0)
-
-    # make "time" vector
-    rads = 2 * np.pi * (np.arange(x.size) / float(sfreq))
-
     # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
     x_p, freqs = _mt_spectra(x[np.newaxis, :], window_fun, sfreq)
+    f_stat, A = sine_f_test(window_fun, x_p)
 
-    # sum of the product of x_p and H0 across tapers (1, n_freqs)
-    x_p_H0 = np.sum(x_p[:, tapers_odd, :] *
-                    H0[np.newaxis, :, np.newaxis], axis=1)
+    # find frequencies to remove
+    indices = np.where(f_stat > threshold)[1]
 
-    # resulting calculated amplitudes for all freqs
-    A = x_p_H0 / H0_sq
-
-    # TODO: make F test happen even when freqs are not None
-    if line_freqs is None:
-        # figure out which freqs to remove using F stat
-
-        # estimated coefficient
-        x_hat = A * H0[:, np.newaxis]
-
-        # numerator for F-statistic
-        num = (n_tapers - 1) * (A * A.conj()).real * H0_sq
-        # denominator for F-statistic
-        den = (np.sum(np.abs(x_p[:, tapers_odd, :] - x_hat) ** 2, 1) +
-               np.sum(np.abs(x_p[:, tapers_even, :]) ** 2, 1))
-        den[den == 0] = np.inf
-        f_stat = num / den
-
-        # find frequencies to remove
-        indices = np.where(f_stat > threshold)[1]
-        rm_freqs = freqs[indices]
-    else:
-        # specify frequencies
-        indices_1 = np.unique([np.argmin(np.abs(freqs - lf))
-                               for lf in line_freqs])
-        indices_2 = [np.logical_and(freqs > lf - nw / 2., freqs < lf + nw / 2.)
-                     for lf, nw in zip(line_freqs, notch_widths)]
-        indices_2 = np.where(np.any(np.array(indices_2), axis=0))[0]
-        indices = np.unique(np.r_[indices_1, indices_2])
-        rm_freqs = freqs[indices]
+    # specify frequencies within indicated ranges
+    if line_freqs is not None and notch_widths is not None:
+        if not isinstance(notch_widths, (list, tuple)) and is_number(notch_widths):
+            notch_widths = [notch_widths] * len(line_freqs)
+        ranges = [(freq - notch_width/2, freq + notch_width/2
+                   ) for freq, notch_width in zip(line_freqs, notch_widths)]
+        indices = [ind for ind in indices if any(
+            lower <= freqs[ind] <= upper for (lower, upper) in ranges)]
+    # indices_1 = np.unique([np.argmin(np.abs(freqs - lf))
+    #                        for lf in line_freqs])
+    # indices_2 = [np.logical_and(freqs > lf - nw / 2., freqs < lf + nw / 2.)
+    #              for lf, nw in zip(line_freqs, notch_widths)]
+    # indices_2 = np.where(np.any(np.array(indices_2), axis=0))[0]
+    # indices = np.unique(np.r_[indices_1, indices_2])
 
     fits = list()
+    # make "time" vector
+    rads = 2 * np.pi * (np.arange(x.size) / float(sfreq))
     for ind in indices:
         c = 2 * A[0, ind]
         fit = np.abs(c) * np.cos(freqs[ind] * rads + np.angle(c))
@@ -272,10 +253,11 @@ def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_
         # fitted sinusoids are summed, and subtracted from data
         datafit = np.sum(fits, axis=0)
 
-    return x - datafit, rm_freqs
+    return x - datafit, freqs[indices]
 
 
-def _mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float, n_fft: int = None) -> (ArrayLike, ArrayLike):
+def _mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
+                n_fft: int = None) -> (ArrayLike, ArrayLike):
     """Compute tapered spectra.
     Parameters
     ----------
@@ -318,8 +300,8 @@ def _mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float, n_fft: int = None) 
     return x_mt, freqs
 
 
-def dpss_windows(N, half_nbw, Kmax, low_bias=True, interp_from=None,
-                 interp_kind='linear'):
+def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
+                 interp_from=None, interp_kind=None):
     """Compute Discrete Prolate Spheroidal Sequences.
     Will give of orders [0,Kmax-1] for a given frequency-spacing multiple
     NW and sequence length N.
@@ -333,20 +315,40 @@ def dpss_windows(N, half_nbw, Kmax, low_bias=True, interp_from=None,
         = BW*N/dt but with dt taken as 1.
     Kmax : int
         Number of DPSS windows to return is Kmax (orders 0 through Kmax-1).
+    sym : bool
+        Whether to generate a symmetric window (``True``, for filter design) or
+        a periodic window (``False``, for spectral analysis). Default is
+        ``True``.
+        .. versionadded:: 1.3
+    norm : 2 | ``'approximate'`` | ``'subsample'`` | None
+        Window normalization method. If ``'approximate'`` or ``'subsample'``,
+        windows are normalized by the maximum, and a correction scale-factor
+        for even-length windows is applied either using
+        ``N**2/(N**2+half_nbw)`` ("approximate") or a FFT-based subsample shift
+        ("subsample"). ``2`` uses the L2 norm. ``None`` (the default) uses
+        ``"approximate"`` when ``Kmax=None`` and ``2`` otherwise.
+        .. versionadded:: 1.3
     low_bias : bool
         Keep only tapers with eigenvalues > 0.9.
-    interp_from : int (optional)
+    interp_from : int | None
         The dpss can be calculated using interpolation from a set of dpss
         with the same NW and Kmax, but shorter N. This is the length of this
         shorter set of dpss windows.
-        .. note:: If SciPy 1.1 or greater is available, interpolating
-                  is likely not necessary as DPSS computations should be
-                  sufficiently fast.
-    interp_kind : str (optional)
+        .. deprecated:: 1.3
+           The ``interp_from`` option is deprecated and will be
+           removed in version 1.4. Modern implementations can handle large
+           values of ``N`` so interpolation is no longer necessary; any value
+           passed here will be ignored.
+    interp_kind : str | None
         This input variable is passed to scipy.interpolate.interp1d and
         specifies the kind of interpolation as a string ('linear', 'nearest',
         'zero', 'slinear', 'quadratic, 'cubic') or as an integer specifying the
         order of the spline interpolator to use.
+        .. deprecated:: 1.3
+           The ``interp_kind`` option is deprecated and will be
+           removed in version 1.4. Modern implementations can handle large
+           values of ``N`` so interpolation is no longer necessary; any value
+           passed here will be ignored.
     Returns
     -------
     v, e : tuple,
@@ -360,53 +362,15 @@ def dpss_windows(N, half_nbw, Kmax, low_bias=True, interp_from=None,
     .. footbibliography::
     """
 
-    # This np.int32 business works around a weird Windows bug, see
-    # gh-5039 and https://github.com/scipy/scipy/pull/8608
-    Kmax = np.int32(operator.index(Kmax))
-    N = np.int32(operator.index(N))
-    W = float(half_nbw) / N
-    nidx = np.arange(N, dtype='d')
-
-    # In this case, we create the dpss windows of the smaller size
-    # (interp_from) and then interpolate to the larger size (N)
     if interp_from is not None:
-        if interp_from > N:
-            e_s = 'In dpss_windows, interp_from is: %s ' % interp_from
-            e_s += 'and N is: %s. ' % N
-            e_s += 'Please enter interp_from smaller than N.'
-            raise ValueError(e_s)
-        dpss = []
-        d, e = dpss_windows(interp_from, half_nbw, Kmax, low_bias=False)
-        for this_d in d:
-            x = np.arange(this_d.shape[-1])
-            tmp = interpolate.interp1d(x, this_d, kind=interp_kind)
-            d_temp = tmp(np.linspace(0, this_d.shape[-1] - 1, N,
-                                     endpoint=False))
+        warn('The ``interp_from`` option is deprecated and will be removed in '
+             'version 1.4.', FutureWarning)
+    if interp_kind is not None:
+        warn('The ``interp_kind`` option is deprecated and will be removed in '
+             'version 1.4.', FutureWarning)
 
-            # Rescale:
-            d_temp = d_temp / np.sqrt(sum_squared(d_temp))
-
-            dpss.append(d_temp)
-
-        dpss = np.array(dpss)
-
-    else:
-        dpss = sp_dpss(N, half_nbw, Kmax)
-
-    # Now find the eigenvalues of the original spectral concentration problem
-    # Use the autocorr sequence technique from Percival and Walden, 1993 pg 390
-
-    # compute autocorr using FFT (same as nitime.utils.autocorr(dpss) * N)
-    rxx_size = 2 * N - 1
-    n_fft = next_fast_len(rxx_size)
-    dpss_fft = rfft(dpss, n_fft)
-    dpss_rxx = irfft(dpss_fft * dpss_fft.conj(), n_fft)
-    dpss_rxx = dpss_rxx[:, :N]
-
-    r = 4 * W * np.sinc(2 * W * nidx)
-    r[0] = 2 * W
-    eigvals = np.dot(dpss_rxx, r)
-
+    dpss, eigvals = sp_dpss(N, half_nbw, Kmax, sym=sym, norm=norm,
+                            return_ratios=True)
     if low_bias:
         idx = (eigvals > 0.9)
         if not idx.any():
@@ -419,15 +383,19 @@ def dpss_windows(N, half_nbw, Kmax, low_bias=True, interp_from=None,
 
 
 def _get_window_thresh(n_times, sfreq, bandwidth, p_value):
-    # max taper size chosen because it has an max error < 1e-3:
-    # >>> np.max(np.diff(dpss_windows(953, 4, 100)[0]))
-    # 0.00099972447657578449
-    # so we use 1000 because it's the first "nice" number bigger than 953.
-    # but if we have a new enough scipy,
-    # it's only ~0.175 sec for 8 tapers even with 100000 samples
-    dpss_n_times_max = 100000
-
     # figure out what tapers to use
+    window_fun, _, _ = _compute_mt_params(
+        n_times, sfreq, bandwidth, False, False, verbose=False)
+
+    # F-stat of 1-p point
+    threshold = stats.f.ppf(1 - p_value / n_times, 2, 2 * len(window_fun) - 2)
+    return window_fun, threshold
+
+
+def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
+                       adaptive: bool,
+                       verbose: bool = None):
+    """Triage windowing and multitaper parameters."""
     # Compute standardized half-bandwidth
     if isinstance(bandwidth, str):
         logger.info('    Using standard spectrum estimation with "%s" window'
@@ -448,88 +416,16 @@ def _get_window_thresh(n_times, sfreq, bandwidth, p_value):
     # Compute DPSS windows
     n_tapers_max = int(2 * half_nbw)
     window_fun, eigvals = dpss_windows(n_times, half_nbw, n_tapers_max,
-                                       low_bias=False,
-                                       interp_from=min(n_times, dpss_n_times_max))
-    logger.info('    Using multitaper spectrum estimation with %d DPSS '
-                'windows' % len(eigvals))
+                                       sym=False, low_bias=low_bias)
+    # logger.info('    Using multitaper spectrum estimation with %d DPSS '
+    #             'windows' % len(eigvals))
 
-    # F-stat of 1-p point
-    threshold = stats.f.ppf(1 - p_value / n_times, 2, 2 * len(window_fun) - 2)
-    return window_fun, threshold
+    if adaptive and len(eigvals) < 3:
+        warn('Not adaptively combining the spectral estimators due to a '
+             'low number of tapers (%s < 3).' % (len(eigvals),))
+        adaptive = False
 
-
-def next_fast_len(target: int) -> int:
-    """Find the next fast size of input data to `fft`, for zero-padding, etc.
-    SciPy's FFTPACK has efficient functions for radix {2, 3, 4, 5}, so this
-    returns the next composite of the prime factors 2, 3, and 5 which is
-    greater than or equal to `target`. (These are also known as 5-smooth
-    numbers, regular numbers, or Hamming numbers.)
-    Parameters
-    ----------
-    target : int
-        Length to start searching from.  Must be a positive integer.
-    Returns
-    -------
-    out : int
-        The first 5-smooth number greater than or equal to `target`.
-    Notes
-    -----
-    Copied from SciPy with minor modifications.
-    """
-    from bisect import bisect_left
-    hams = (8, 9, 10, 12, 15, 16, 18, 20, 24, 25, 27, 30, 32, 36, 40, 45, 48,
-            50, 54, 60, 64, 72, 75, 80, 81, 90, 96, 100, 108, 120, 125, 128,
-            135, 144, 150, 160, 162, 180, 192, 200, 216, 225, 240, 243, 250,
-            256, 270, 288, 300, 320, 324, 360, 375, 384, 400, 405, 432, 450,
-            480, 486, 500, 512, 540, 576, 600, 625, 640, 648, 675, 720, 729,
-            750, 768, 800, 810, 864, 900, 960, 972, 1000, 1024, 1080, 1125,
-            1152, 1200, 1215, 1250, 1280, 1296, 1350, 1440, 1458, 1500, 1536,
-            1600, 1620, 1728, 1800, 1875, 1920, 1944, 2000, 2025, 2048, 2160,
-            2187, 2250, 2304, 2400, 2430, 2500, 2560, 2592, 2700, 2880, 2916,
-            3000, 3072, 3125, 3200, 3240, 3375, 3456, 3600, 3645, 3750, 3840,
-            3888, 4000, 4050, 4096, 4320, 4374, 4500, 4608, 4800, 4860, 5000,
-            5120, 5184, 5400, 5625, 5760, 5832, 6000, 6075, 6144, 6250, 6400,
-            6480, 6561, 6750, 6912, 7200, 7290, 7500, 7680, 7776, 8000, 8100,
-            8192, 8640, 8748, 9000, 9216, 9375, 9600, 9720, 10000)
-
-    if target <= 6:
-        return target
-
-    # Quickly check if it's already a power of 2
-    if not (target & (target - 1)):
-        return target
-
-    # Get result quickly for small sizes, since FFT itself is similarly fast.
-    if target <= hams[-1]:
-        return hams[bisect_left(hams, target)]
-
-    match = float('inf')  # Anything found will be smaller
-    p5 = 1
-    while p5 < target:
-        p35 = p5
-        while p35 < target:
-            # Ceiling integer division, avoiding conversion to float
-            # (quotient = ceil(target / p35))
-            quotient = -(-target // p35)
-
-            p2 = 2 ** int(quotient - 1).bit_length()
-
-            N = p2 * p35
-            if N == target:
-                return N
-            elif N < match:
-                match = N
-            p35 *= 3
-            if p35 == target:
-                return p35
-        if p35 < match:
-            match = p35
-        p5 *= 5
-        if p5 == target:
-            return p5
-    if p5 < match:
-        match = p5
-    return match
+    return window_fun, eigvals, adaptive
 
 
 def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
@@ -577,7 +473,7 @@ def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered', alter
     return x
 
 
-def _to_samples(filter_length, sfreq, phase, fir_design):
+def _to_samples(filter_length, sfreq):
     validate_type(filter_length, (str, int))
     if isinstance(filter_length, str):
         filter_length = filter_length.lower()
@@ -599,14 +495,12 @@ def _to_samples(filter_length, sfreq, phase, fir_design):
             raise ValueError(err_msg)
         filter_length = max(int(np.ceil(filter_length * mult_fact *
                                         sfreq)), 1)
-        if fir_design == 'firwin':
-            filter_length += (filter_length - 1) % 2
     filter_length = ensure_int(filter_length, 'filter_length')
     return filter_length
 
 
 if __name__ == "__main__":
-    from preProcess import get_data, open_dat_file
+    from preProcess import get_data
     import mne
 
     # %% Set up logging
@@ -614,8 +508,9 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=4,
-                       filter_length='20s', verbose=10)
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    layout, raw, D_dat_raw, D_dat_filt = get_data(57, "SentenceRep")
+    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
+                       filter_length='20s', verbose=10,
+                       freqs=[60, 120, 180, 240], notch_widths=20)
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)

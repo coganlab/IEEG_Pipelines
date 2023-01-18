@@ -5,14 +5,15 @@ from os import PathLike as PL
 from os import environ
 from typing import List, TypeVar, Iterable, Union
 
+import matplotlib as mpl
 from matplotlib.pyplot import Figure, Axes
 from mne.io import Raw
-from mne.utils import config, logger
+from mne.utils import config
 import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from tqdm import tqdm
 
-
+mpl.use("TkAgg")
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
 PathLike = TypeVar("PathLike", str, PL)
@@ -25,7 +26,8 @@ def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True):
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        fig: Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count(), spatial_colors=False)
+        fig: Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count(),
+                                    spatial_colors=False)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
@@ -105,25 +107,11 @@ def is_number(s) -> bool:
         return False
 
 
-def sum_squared(X: np.ndarray) -> np.ndarray:
-    """Compute norm of an array.
-    Parameters
-    ----------
-    X : array
-        Data whose norm must be found.
-    Returns
-    -------
-    value : float
-        Sum of squares of the input array X.
-    """
-    X_flat = X.ravel(order='F' if np.isfortran(X) else 'C')
-    return np.dot(X_flat, X_flat)
-
-
 def parallelize(func: object, par_var: Iterable, n_jobs: int = None, *args, **kwargs) -> list:
     if n_jobs is None:
         n_jobs = cpu_count()
-    settings = dict(verbose=5, prefer='threads', pre_dispatch=n_jobs)
+    settings = dict(verbose=5,# prefer='threads',
+                    pre_dispatch=n_jobs)
     env = dict(**environ)
     if config.get_config('MNE_CACHE_DIR') is not None:
         settings['temp_folder'] = config.get_config('MNE_CACHE_DIR')
