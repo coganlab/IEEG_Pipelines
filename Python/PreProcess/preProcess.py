@@ -9,12 +9,10 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from Python.PreProcess import filter, utils
+from Python.PreProcess.utils import PathLike, LAB_root
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
-PathLike = utils.PathLike
-LAB_root = utils.LAB_root
 
 
 def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
@@ -32,7 +30,7 @@ def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
     raise FileNotFoundError("Not all .dat files were found:")
 
 
-def bidspath_from_layout(layout: BIDSLayout, **kwargs: dict) -> BIDSPath:
+def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     """Searches a BIDSLayout for a file and returns a BIDSPath to it.
 
     Parameters
@@ -170,6 +168,7 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
 
 
 if __name__ == "__main__":
+    from Python.PreProcess import utils, filter
     # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")

@@ -13,8 +13,11 @@ import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from tqdm import tqdm
 
-if environ.get('DISPLAY') is not None:
+try:
     mpl.use("TkAgg")
+except ImportError:
+    pass
+
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
 PathLike = TypeVar("PathLike", str, PL)

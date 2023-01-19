@@ -2,9 +2,9 @@ from bids import BIDSLayout
 from mne_bids import BIDSPath
 import mne.datasets
 from mne.io import BaseRaw
-from numba import config
-
-config.DISABLE_JIT = True
+# from numba import config as n_conf
+# TODO: make numba import work during testing
+# n_conf.DISABLE_JIT = True
 
 from Python.PreProcess import preProcess as pre  # noqa: E402
 
