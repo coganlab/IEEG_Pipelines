@@ -6,7 +6,7 @@ from os import environ
 from typing import List, TypeVar, Iterable, Union
 
 import matplotlib as mpl
-from matplotlib.pyplot import Figure, Axes
+from matplotlib.pyplot import Axes
 from mne.io import Raw
 from mne.utils import config
 import numpy as np
@@ -33,8 +33,8 @@ def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True,
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        fig: Figure = data.compute_psd('multitaper', fmax=250, n_jobs=n_jobs, **kwargs
-                                       ).plot(average=avg, spatial_colors=False)
+        fig = data.compute_psd('multitaper', fmax=250, n_jobs=n_jobs, **kwargs
+                               ).plot(average=avg, spatial_colors=False)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
