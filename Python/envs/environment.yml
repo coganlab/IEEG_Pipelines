@@ -10,6 +10,5 @@ dependencies:
   - pandas
   - joblib
   - tqdm
-  - numba
   - pip:
     - -r requirements.txt

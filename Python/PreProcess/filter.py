@@ -510,11 +510,12 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=8,
+    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep", 2)
+    raw.drop_channels(raw.ch_names[10:158])
+    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=1,
                        filter_length='20s', verbose=10,
                        freqs=[60, 120, 180, 240], notch_widths=20)
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    data = [raw, filt, raw_dat, dat]
-    figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""])
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    # data = [raw, filt, raw_dat, dat]
+    # figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""])
