@@ -9,13 +9,12 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from . import filter as flt
-from . import utils as utl
+from Python.PreProcess import filter, utils
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
-PathLike = utl.PathLike
-LAB_root = utl.LAB_root
+PathLike = utils.PathLike
+LAB_root = utils.LAB_root
 
 
 def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
@@ -180,16 +179,16 @@ if __name__ == "__main__":
     sub_num = 57
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
     #%% Filter the data
-    filt = flt.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
-                       filter_length='20s', verbose=10,
-                       freqs=[60, 120, 180, 240], notch_widths=20)
+    # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
+    #                    filter_length='20s', verbose=10,
+    #                    freqs=[60, 120, 180, 240], notch_widths=20)
     raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     #%% Plot the data
-    data = [raw, filt, raw_dat, dat]
-    utl.figure_compare(data, [ "BIDS Un", "BIDS ", "Un", ""])
+    # data = [raw, filt, raw_dat, dat]
+    # utl.figure_compare(data, [ "BIDS Un", "BIDS ", "Un", ""])
     # for chan in raw.ch_names:
     #     if chan == "Trigger":
     #         continue
