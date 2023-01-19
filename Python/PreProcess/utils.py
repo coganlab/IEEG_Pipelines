@@ -13,7 +13,7 @@ import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from tqdm import tqdm
 
-if not mpl.get_backend() == 'headless':
+if environ.get('DISPLAY') is not None:
     mpl.use("TkAgg")
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")

@@ -11,3 +11,4 @@ matplotlib
 scipy
 pandas
 joblib
+psutil
