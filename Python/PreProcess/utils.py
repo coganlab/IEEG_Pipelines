@@ -13,7 +13,8 @@ import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from tqdm import tqdm
 
-mpl.use("TkAgg")
+if not mpl.get_backend() == 'headless':
+    mpl.use("TkAgg")
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
 PathLike = TypeVar("PathLike", str, PL)
