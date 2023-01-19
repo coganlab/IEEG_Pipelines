@@ -6,7 +6,7 @@ from numba import config
 
 config.DISABLE_JIT = True
 
-from Python.PreProcess import preProcess as pre
+from Python.PreProcess import preProcess as pre  # noqa: E402
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 # sample_path = mne.datasets.sample.data_path()
@@ -20,7 +20,8 @@ def test_bids():
 def test_bidspath_from_layout():
 
     expected = "sub-pt1_ses-presurgery_task-ictal_ieeg.eeg"
-    bidspath = pre.bidspath_from_layout(layout, subject="pt1", extension=".eeg")
+    bidspath = pre.bidspath_from_layout(layout, subject="pt1",
+                                        extension=".eeg")
     assert isinstance(bidspath, BIDSPath)
     assert bidspath.basename == expected
 

@@ -15,7 +15,8 @@ from scipy.signal.windows import dpss as sp_dpss
 from scipy.signal import get_window
 from tqdm import tqdm
 
-from Python.PreProcess.utils import ensure_int, validate_type, parallelize, is_number
+from Python.PreProcess.utils import ensure_int, validate_type, parallelize,\
+    is_number
 from Python.PreProcess.fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
@@ -98,7 +99,8 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
         filt = raw.copy()
     else:
         filt = raw
-    x = _check_filterable(filt.get_data("data"), 'notch filtered', 'notch_filter')
+    x = _check_filterable(filt.get_data("data"), 'notch filtered',
+                          'notch_filter')
     if freqs is not None:
         freqs = np.atleast_1d(freqs)
         # Only have to deal with notch_widths for non-autodetect
@@ -116,8 +118,9 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
 
     data_idx = [ch_t in set(raw.get_channel_types(only_data_chs=True)
                             ) for ch_t in raw.get_channel_types()]
-    filt._data[data_idx] = mt_spectrum_proc(x, fs, freqs, notch_widths, mt_bandwidth,
-                                             p_value, picks, n_jobs, filter_length)
+    filt._data[data_idx] = mt_spectrum_proc(
+        x, fs, freqs, notch_widths, mt_bandwidth, p_value, picks, n_jobs,
+        filter_length)
 
     return filt
 
@@ -178,8 +181,8 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
 
 
 def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-                            notch_widths: ListNum, window_fun: np.ndarray,
-                            threshold: float, get_thresh: partial
+                            notch_width: ListNum, window_fun: np.ndarray,
+                            thresh: float, get_thresh: partial
                             ) -> (ArrayLike, List[float]):
     n_times = x.shape[-1]
     n_samples = window_fun.shape[1]
@@ -191,7 +194,7 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     # Define how to process a chunk of data
     def process(x_):
         out = _mt_spectrum_remove(
-            x_, sfreq, line_freqs, notch_widths, window_fun, threshold, get_thresh)
+            x_, sfreq, line_freqs, notch_width, window_fun, thresh, get_thresh)
         rm_freqs.append(out[1])
         return (out[0],)  # must return a tuple
 
@@ -207,8 +210,10 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     return x_out, rm_freqs
 
 
-def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_widths: ListNum,
-                        window_fun: np.ndarray, threshold: float, get_thresh: partial) -> (ArrayLike, List[float]):
+def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
+                        notch_widths: ListNum, window_fun: np.ndarray,
+                        threshold: float, get_thresh: partial) -> (
+        ArrayLike, List[float]):
     """Use MT-spectrum to remove line frequencies.
     Based on Chronux. If line_freqs is specified, all freqs within notch_width
     of each line_freq is set to zero.
@@ -226,18 +231,13 @@ def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum, notch_
 
     # specify frequencies within indicated ranges
     if line_freqs is not None and notch_widths is not None:
-        if not isinstance(notch_widths, (list, tuple)) and is_number(notch_widths):
+        if not isinstance(notch_widths, (list, tuple)) and is_number(
+                notch_widths):
             notch_widths = [notch_widths] * len(line_freqs)
         ranges = [(freq - notch_width/2, freq + notch_width/2
                    ) for freq, notch_width in zip(line_freqs, notch_widths)]
         indices = [ind for ind in indices if any(
             lower <= freqs[ind] <= upper for (lower, upper) in ranges)]
-    # indices_1 = np.unique([np.argmin(np.abs(freqs - lf))
-    #                        for lf in line_freqs])
-    # indices_2 = [np.logical_and(freqs > lf - nw / 2., freqs < lf + nw / 2.)
-    #              for lf, nw in zip(line_freqs, notch_widths)]
-    # indices_2 = np.where(np.any(np.array(indices_2), axis=0))[0]
-    # indices = np.unique(np.r_[indices_1, indices_2])
 
     fits = list()
     # make "time" vector
@@ -448,7 +448,8 @@ def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     return x, orig_shape, picks
 
 
-def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered', alternative: str = 'filter') -> np.ndarray:
+def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
+                      alternative: str = 'filter') -> np.ndarray:
     # Let's be fairly strict about this -- users can easily coerce to ndarray
     # at their end, and we already should do it internally any time we are
     # using these low-level functions. At the same time, let's

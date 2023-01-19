@@ -153,11 +153,13 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
 
     """
     for dir in listdir(LAB_root):
-        if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(LAB_root, dir)):
+        if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(
+                LAB_root, dir)):
             BIDS_root = op.join(LAB_root, dir, "BIDS")
             break
     if BIDS_root is None:
-        raise FileNotFoundError("Could not find BIDS directory in {} for task {}".format(LAB_root, task))
+        raise FileNotFoundError("Could not find BIDS directory in {} for task "
+                                "{}".format(LAB_root, task))
     sub_pad = "D" + "{}".format(sub_num).zfill(4)
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
@@ -168,7 +170,7 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
 
 
 if __name__ == "__main__":
-    #%% Set up logging
+    # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")
     mne.set_log_file(log_filename,
@@ -178,7 +180,7 @@ if __name__ == "__main__":
     TASK = "SentenceRep"
     sub_num = 57
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
-    #%% Filter the data
+    # %% Filter the data
     # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
     #                    filter_length='20s', verbose=10,
     #                    freqs=[60, 120, 180, 240], notch_widths=20)
@@ -186,13 +188,14 @@ if __name__ == "__main__":
     # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
-    #%% Plot the data
-    # data = [raw, filt, raw_dat, dat]
+    # %% Plot the data
+    #  data = [raw, filt, raw_dat, dat]
     # utl.figure_compare(data, [ "BIDS Un", "BIDS ", "Un", ""])
     # for chan in raw.ch_names:
     #     if chan == "Trigger":
     #         continue
     #     fmax = 250
-    #     spectrum = raw.compute_psd(method="multitaper", fmin=0, fmax=fmax, picks=chan,
+    #     spectrum = raw.compute_psd(method="multitaper", fmin=0, fmax=fmax,
+    #     picks=chan,
     #                                 n_jobs=cpu_count(), verbose='INFO')
     #     psds, freqs = spectrum.get_data(return_freqs=True)
