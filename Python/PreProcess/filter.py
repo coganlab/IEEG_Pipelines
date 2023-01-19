@@ -9,10 +9,7 @@ from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
 from mne.utils import logger, _pl, warn, verbose
-from scipy import stats
-from scipy.fft import rfft, rfftfreq
-from scipy.signal.windows import dpss as sp_dpss
-from scipy.signal import get_window
+from scipy import stats, signal, fft
 from tqdm import tqdm
 
 from Python.PreProcess.utils import ensure_int, validate_type, parallelize,\
@@ -284,7 +281,7 @@ def _mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
     x = x - np.mean(x, axis=-1, keepdims=True)
 
     # only keep positive frequencies
-    freqs = rfftfreq(n_fft, 1. / sfreq)
+    freqs = fft.rfftfreq(n_fft, 1. / sfreq)
 
     # The following is equivalent to this, but uses less memory:
     # x_mt = fftpack.fft(x[:, np.newaxis, :] * dpss, n=n_fft)
@@ -292,7 +289,7 @@ def _mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
     x_mt = np.zeros(x.shape[:-1] + (n_tapers, len(freqs)),
                     dtype=np.complex128)
     for idx, sig in enumerate(x):
-        x_mt[idx] = rfft(sig[..., np.newaxis, :] * dpss, n=n_fft)
+        x_mt[idx] = fft.rfft(sig[..., np.newaxis, :] * dpss, n=n_fft)
     # Adjust DC and maybe Nyquist, depending on one-sided transform
     x_mt[..., 0] /= np.sqrt(2.)
     if n_fft % 2 == 0:
@@ -369,8 +366,8 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
         warn('The ``interp_kind`` option is deprecated and will be removed in '
              'version 1.4.', FutureWarning)
 
-    dpss, eigvals = sp_dpss(N, half_nbw, Kmax, sym=sym, norm=norm,
-                            return_ratios=True)
+    dpss, eigvals = signal.windows.dpss(
+        N, half_nbw, Kmax, sym=sym, norm=norm, return_ratios=True)
     if low_bias:
         idx = (eigvals > 0.9)
         if not idx.any():
@@ -400,7 +397,7 @@ def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
     if isinstance(bandwidth, str):
         logger.info('    Using standard spectrum estimation with "%s" window'
                     % (bandwidth,))
-        window_fun = get_window(bandwidth, n_times)[np.newaxis]
+        window_fun = signal.get_window(bandwidth, n_times)[np.newaxis]
         return window_fun, np.ones(1), False
 
     if bandwidth is not None:
@@ -510,12 +507,14 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep", 2)
-    raw.drop_channels(raw.ch_names[10:158])
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=1,
+    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
+    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    # raw.drop_channels(raw.ch_names[10:158])
+    # raw_dat.drop_channels(raw_dat.ch_names[10:158])
+    # dat.drop_channels(dat.ch_names[10:158])
+    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=8,
                        filter_length='20s', verbose=10,
                        freqs=[60, 120, 180, 240], notch_widths=20)
-    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    # data = [raw, filt, raw_dat, dat]
-    # figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""])
+    data = [raw, filt, raw_dat, dat]
+    figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], bandwidth=5.0)

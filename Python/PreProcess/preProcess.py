@@ -54,7 +54,7 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
 
 def raw_from_layout(layout: BIDSLayout, subject: str,
                     run: Union[List[int], int] = None,
-                    extension=".edf") -> mne.io.Raw:
+                    extension: str = ".edf") -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
 
     Parameters

@@ -25,13 +25,16 @@ PathLike = TypeVar("PathLike", str, PL)
 
 # plotting funcs
 
-def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True):
+def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True,
+                   n_jobs: int = None, **kwargs):
     """Plots the psd of a list of raw objects"""
+    if n_jobs is None:
+        n_jobs = cpu_count() - 2
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        fig: Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count(),
-                                    spatial_colors=False)
+        fig: Figure = data.compute_psd('multitaper', fmax=250, n_jobs=n_jobs, **kwargs
+                                       ).plot(average=avg, spatial_colors=False)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
