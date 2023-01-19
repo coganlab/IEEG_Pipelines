@@ -6,6 +6,7 @@ EDFlib-Python
 mne
 mne-bids
 numpy
+numba
 matplotlib
 scipy
 pandas
