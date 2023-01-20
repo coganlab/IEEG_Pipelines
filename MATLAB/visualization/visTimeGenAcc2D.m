@@ -54,10 +54,14 @@ xlabel(['Testing time at ' options.axisLabel ' (s)']);
 ylabel(['Training time at ' options.axisLabel ' (s)']);
 set(gca,'FontSize',15);
 title(['Contour at p<' num2str(pVal2Cutoff)  ]);
+pmask = zeros(size(pValTime));
+for iTrain = 1:size(pValTime,1)
+    [cutoff,pmasked] = fdr(pValTime(iTrain,:),pVal2Cutoff);
+    pmask(iTrain,:) = pmasked;
+end
 
-% [cutoff,~] = fdr(pValTime(:),pVal2Cutoff);
-%[~,cont2] = contour(timeGridX,timeGridY,r2Time,[cutoff ,cutoff]);
-[~,cont2] = contour(timeGridX,timeGridY,pValTime,[pVal2Cutoff ,pVal2Cutoff]);
+[~,cont2] = contour(timeGridX,timeGridY,pmask,[1 ,1]);
+%[~,cont2] = contour(timeGridX,timeGridY,pValTime,[pVal2Cutoff ,pVal2Cutoff]);
 
 cont2.LineWidth = 2;
 cont2.LineColor = 'r';

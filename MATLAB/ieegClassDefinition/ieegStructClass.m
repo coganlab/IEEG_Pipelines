@@ -26,7 +26,29 @@ classdef ieegStructClass
             
             objCar.data = carFilterImpedance(obj.data,badChannels); 
             objCar.name = strcat(obj.name, '_CAR');
-        end % Common average referencing        
+        end % Common average referencing
+        function [ieegFilter,ieegPower] = extractBandPassFilter(obj,fBand,fDown,gtw)
+            arguments
+                obj ieegStructClass
+                fBand double 
+                fDown double = obj.fs;
+                gtw double = obj.tw;
+            end
+            dataTemp = obj.data;
+            if size(dataTemp,1)==1
+                ieegFilterTemp(1,:,:) = ExtractLowFrequencyWrap(dataTemp, obj.fs,fDown, fBand,obj.tw,gtw);
+                
+            else
+                for iTrial = 1:size(obj.data,2)    
+                    ieegFilterTemp(:,iTrial,:) = ExtractLowFrequencyWrap(squeeze(dataTemp(:,iTrial,:)), obj.fs,fDown, fBand,obj.tw,gtw);
+                
+                end
+            end
+            obj.name = strcat(obj.name , '_band-pass_filtered');
+            ieegFilter = ieegStructClass(ieegFilterTemp, fDown, gtw, fBand,obj.name);
+            ieegPower = (squeeze(mean(log10(ieegFilterTemp.^2),3)));
+
+        end
         function [ieegHiGamma,ieegHiGammaPower] = extractHiGamma(obj,fDown,gtw,normFactor,normType) % Extracting high-gamma signal           
             % Extracts HG of ieeg (active) with normalization factors
             % if provided
@@ -73,7 +95,7 @@ classdef ieegStructClass
                     obj.name = strcat(obj.name , '_High-Gamma-Normalized');
             end
             
-        % % no idea how to fix this so this is the best I got
+        % 
         % chanFlag=0;
             if size(dataTemp,1)==1
                 [~,ieegGammaTemp(1,:,:)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp)),fsTemp,fDown,fGamma,twTemp,gtw,normFactor,normType); 

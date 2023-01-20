@@ -11,7 +11,7 @@ arguments
 end
 for iChan = 1:size(ieeg,1)
     [wave,period]=basewave5(squeeze(ieeg(iChan,:,:)),fs,params.fLow,params.fHigh,params.k0,params.waitc);
-    waveSpec.spec{iChan} = abs(wave);
+    waveSpec.spec{iChan} = permute(abs(wave),[1 3 2]); % changing format to trials x time x frequency;
 end
 waveSpec.fscale = 1./period;
 waveSpec.params = params;
