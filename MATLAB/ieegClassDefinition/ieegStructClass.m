@@ -118,7 +118,7 @@ classdef ieegStructClass
             % Extracts normalization factors for ieeg; mean & standard
             % deviation
              normFactor = zeros(size(obj.data,1),2);
-            for iChan = 1:size(obj.data,1)
+            parfor iChan = 1:size(obj.data,1)
                 normFactor(iChan,:) = [mean2(squeeze(obj.data(iChan,:,:))) std2(squeeze(obj.data(iChan,:,:)))];
             end
         end % Extracting HG normalization factors    
@@ -153,16 +153,17 @@ classdef ieegStructClass
             ieegHiGammaNorm = extractHiGamma(obj1,fDown,gtw1,normFactor);            
         end
         function ieegHiGammaNorm = normHiGamma(obj1,normFactor, normType)
-            ieegHiGammaNorm = obj1;
-            for iChan = 1:size(obj1.data,1)
+            ieegHiGammaNormData = obj1.data;
+            parfor iChan = 1:size(obj1.data,1)
                 if(normType==1)
-                    ieegHiGammaNorm.data(iChan,:,:) = (obj1.data(iChan,:,:)-normFactor(iChan,1))./normFactor(iChan,2);
+                    ieegHiGammaNormData(iChan,:,:) = (obj1.data(iChan,:,:)-normFactor(iChan,1))./normFactor(iChan,2);
                 end
                 if(normType==2)
-                    ieegHiGammaNorm.data(iChan,:,:) = (obj1.data(iChan,:,:)-normFactor(iChan,1));
+                    ieegHiGammaNormData(iChan,:,:) = (obj1.data(iChan,:,:)-normFactor(iChan,1));
                 end
             end
-                
+            ieegHiGammaNorm = obj1;
+            ieegHiGammaNorm.data = ieegHiGammaNormData;
         end
         function chanSig = extractTimePermCluster(obj1,obj2)
             % Input

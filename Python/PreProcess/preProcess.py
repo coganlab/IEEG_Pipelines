@@ -11,8 +11,8 @@ from bids.layout import BIDSFile
 from joblib import cpu_count
 from mne_bids import read_raw_bids, BIDSPath
 
-from .utils import HOME, LAB_root, PathLike, figure_compare
-from .mri import allign_CT, show_brain, head_to_mni, plot_gamma
+from utils import HOME, LAB_root, PathLike, figure_compare
+from mri import allign_CT, show_brain, head_to_mni, plot_gamma
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -193,12 +193,13 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    BIDS_root = op.join("..", "..", "..", "..", "Sentence_Rep", "BIDS")
+    BIDS_root = op.join(LAB_root, "BIDS-1.0_SentenceRep", "BIDS")
     sub_num = 53
     sub_pad = "D00{}".format(sub_num)
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
     raw = raw_from_layout(layout, sub_pad, 2)
+    filt = line_filter(raw)
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     """
