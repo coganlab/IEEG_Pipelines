@@ -149,7 +149,8 @@ if __name__ == "__main__":
     plot_gamma(raw)
     # head_to_mni(raw, sub)
     # trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)
-    # mne.bem.make_watershed_bem(sub, subj_dir, brainmask="../mri/brainmask.mgz")
+    # mne.bem.make_watershed_bem(sub, subj_dir,
+    # brainmask="../mri/brainmask.mgz")
     # fig = mne.viz.plot_alignment(raw.info, trans=trans, subject=sub,
     #                              subjects_dir=subj_dir, dig=True,
     #                              show_axes=True)
