@@ -518,4 +518,4 @@ if __name__ == "__main__":
                        freqs=[60, 120, 180, 240], notch_widths=20)
     data = [raw, filt, raw_dat, dat]
     figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,
-                   verbose=10, proj=True)
+                   verbose=10, proj=True, fmax=250)

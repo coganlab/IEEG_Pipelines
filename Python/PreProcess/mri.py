@@ -99,7 +99,7 @@ def get_sub_dir(subj_dir: PathLike = None):
 
 def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None):
     gamma_power_t = evoked.copy().filter(30, 90).apply_hilbert(envelope=True)
-    gamma_info = gamma_power_t.info
+    subjects_dir = get_sub_dir(subjects_dir)
     fig = mne.viz.plot_alignment(evoked.info, trans='fsaverage',
                                  subject='fsaverage',
                                  subjects_dir=subjects_dir,
@@ -146,12 +146,13 @@ if __name__ == "__main__":
     sub = "D{}".format(sub_num)
 
     # %%
+    plot_gamma(raw)
     # head_to_mni(raw, sub)
-    trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)
-    mne.bem.make_watershed_bem(sub, subj_dir, brainmask="../mri/brainmask.mgz")
-    fig = mne.viz.plot_alignment(raw.info, trans=trans, subject=sub,
-                                 subjects_dir=subj_dir, dig=True,
-                                 show_axes=True)
+    # trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)
+    # mne.bem.make_watershed_bem(sub, subj_dir, brainmask="../mri/brainmask.mgz")
+    # fig = mne.viz.plot_alignment(raw.info, trans=trans, subject=sub,
+    #                              subjects_dir=subj_dir, dig=True,
+    #                              show_axes=True)
     # # %%
     # T1_path = layout.get(return_type="path", subject=sub_pad,
     #                      extension="nii.gz")[0]

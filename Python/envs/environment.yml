@@ -10,5 +10,6 @@ dependencies:
   - pandas
   - joblib
   - tqdm
+  - pytz
   - pip:
     - -r requirements.txt

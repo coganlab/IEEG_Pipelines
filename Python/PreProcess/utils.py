@@ -34,7 +34,8 @@ def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True,
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        psd = data.compute_psd(fmax=250, n_jobs=n_jobs, **kwargs, n_fft=2048)
+        psd = data.compute_psd(n_jobs=n_jobs, **kwargs,
+                               n_fft=data.info['sfreq'])
         fig = psd.plot(average=avg, spatial_colors=avg)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
