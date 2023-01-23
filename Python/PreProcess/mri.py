@@ -97,10 +97,9 @@ def get_sub_dir(subj_dir: PathLike = None):
     return subj_dir
 
 
-def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None):
+def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
     data = evoked.copy().filter(30, 150).apply_hilbert(envelope=True)._data
-    subjects_dir = get_sub_dir(subjects_dir)
-    fig = plot_on_average(evoked.info)
+    fig = plot_on_average(evoked.info, subjects_dir=subjects_dir, **kwargs)
     mne.viz.set_3d_view(fig, azimuth=0, elevation=70)
 
     xy, im = mne.viz.snapshot_brain_montage(fig, evoked.info)
