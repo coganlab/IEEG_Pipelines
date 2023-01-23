@@ -11,5 +11,6 @@ dependencies:
   - joblib
   - tqdm
   - pytz
+  - notebook
   - pip:
     - -r requirements.txt

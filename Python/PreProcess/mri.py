@@ -1,5 +1,5 @@
 import os.path as op
-from typing import Union
+from typing import Union, List
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -98,12 +98,9 @@ def get_sub_dir(subj_dir: PathLike = None):
 
 
 def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None):
-    gamma_power_t = evoked.copy().filter(30, 90).apply_hilbert(envelope=True)
+    data = evoked.copy().filter(30, 150).apply_hilbert(envelope=True)._data
     subjects_dir = get_sub_dir(subjects_dir)
-    fig = mne.viz.plot_alignment(evoked.info, trans='fsaverage',
-                                 subject='fsaverage',
-                                 subjects_dir=subjects_dir,
-                                 surfaces=['pial'], coord_frame='head')
+    fig = plot_on_average(evoked.info)
     mne.viz.set_3d_view(fig, azimuth=0, elevation=70)
 
     xy, im = mne.viz.snapshot_brain_montage(fig, evoked.info)
@@ -120,14 +117,27 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None):
     ax.set_axis_off()
 
     # normalize gamma power for plotting
-    gamma_power = -100 * gamma_power_t.data / gamma_power_t.data.max()
+    gamma_power = -100 * data / data.max()
     # add the time course overlaid on the positions
     x_line = np.linspace(-0.025 * im.shape[0], 0.025 * im.shape[0],
-                         gamma_power_t.data.shape[1])
+                         data.shape[1])
     for i, pos in enumerate(xy_pts):
         x, y = pos
         color = cmap(i / xy_pts.shape[0])
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
+
+
+def plot_on_average(info: mne.Info, trans: str = 'fsaverage',
+                    sub: str = 'fsaverage', subj_dir: PathLike = None,
+                    surfaces: List[str] = None, coord_frame: str = 'head',
+                    **kwargs) -> matplotlib.figure.Figure:
+    subj_dir = get_sub_dir(subj_dir)
+    if surfaces is None:
+        surfaces = ['pial']
+    fig = mne.viz.plot_alignment(info, trans=trans, subject=sub,
+                                 subjects_dir=subj_dir, surfaces=surfaces,
+                                 coord_frame=coord_frame, **kwargs)
+    return fig
 
 
 if __name__ == "__main__":
@@ -145,8 +155,10 @@ if __name__ == "__main__":
     sub_pad = "D00{}".format(sub_num)
     sub = "D{}".format(sub_num)
 
+    mne.viz.use_3d_backend('notebook')
     # %%
-    plot_gamma(raw)
+    plot_on_average(raw.info)
+    # plot_gamma(raw)
     # head_to_mni(raw, sub)
     # trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)
     # mne.bem.make_watershed_bem(sub, subj_dir,
