@@ -1,4 +1,5 @@
 import operator
+import gc
 import os.path as op
 import pandas as pd
 from os import PathLike as PL
@@ -33,12 +34,13 @@ def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True,
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        fig = data.compute_psd('multitaper', fmax=250, n_jobs=n_jobs, **kwargs
-                               ).plot(average=avg, spatial_colors=False)
+        psd = data.compute_psd(fmax=250, n_jobs=n_jobs, **kwargs, n_fft=2048)
+        fig = psd.plot(average=avg, spatial_colors=avg)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
         add_arrows(fig.axes[:2])
+        gc.collect()
 
 
 def add_arrows(axes: Axes):
@@ -117,6 +119,8 @@ def is_number(s) -> bool:
 def parallelize(func: object, par_var: Iterable, n_jobs: int = None, *args,
                 **kwargs) -> list:
     if n_jobs is None:
+        n_jobs = cpu_count()
+    elif n_jobs == -1:
         n_jobs = cpu_count()
     settings = dict(verbose=5,  # prefer='threads',
                     pre_dispatch=n_jobs)

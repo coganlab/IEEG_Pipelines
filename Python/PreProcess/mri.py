@@ -6,12 +6,9 @@ import matplotlib
 import mne
 import nibabel as nib
 import numpy as np
-from bids import BIDSLayout
 
-if __name__ == '__main_'+'_':
-    from utils import LAB_root, PathLike
-else:
-    from .utils import LAB_root, PathLike
+from Python.PreProcess.utils import PathLike, LAB_root
+from Python.PreProcess.preProcess import get_data
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
@@ -134,17 +131,33 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None):
 
 
 if __name__ == "__main__":
-    BIDS_root = op.join(LAB_root, "BIDS-1.3_Phoneme_sequencing", "BIDS")
+    # %% Set up logging
+    log_filename = "output.log"
+    # op.join(LAB_root, "Aaron_test", "Information.log")
+    mne.set_log_file(log_filename,
+                     "%(levelname)s: %(message)s - %(asctime)s",
+                     overwrite=True)
+    mne.set_log_level("INFO")
+    TASK = "SentenceRep"
+    sub_num = 29
+    layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
-    layout = BIDSLayout(BIDS_root)
-    sub_num = 24
     sub_pad = "D00{}".format(sub_num)
     sub = "D{}".format(sub_num)
-    T1_path = layout.get(return_type="path", subject=sub_pad,
-                         extension="nii.gz")[0]
-    CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
-    filt = mne.io.read_raw_fif("D24_filt_ieeg.fif")
-    CT_aligned = allign_CT(T1_path, CT_path, sub)
-    subj_trans = mne.coreg.estimate_head_mri_t(sub, subjects_dir=subj_dir)
-    gui = mne.gui.locate_ieeg(filt.info, subj_trans, CT_aligned, subject=sub,
-                              subjects_dir=subj_dir, verbose=10)
+
+    # %%
+    # head_to_mni(raw, sub)
+    trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)
+    mne.bem.make_watershed_bem(sub, subj_dir, brainmask="../mri/brainmask.mgz")
+    fig = mne.viz.plot_alignment(raw.info, trans=trans, subject=sub,
+                                 subjects_dir=subj_dir, dig=True,
+                                 show_axes=True)
+    # # %%
+    # T1_path = layout.get(return_type="path", subject=sub_pad,
+    #                      extension="nii.gz")[0]
+    # CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
+    # # filt = mne.io.read_raw_fif("D24_filt_ieeg.fif")
+    # CT_aligned = allign_CT(T1_path, CT_path, sub)
+    # subj_trans = mne.coreg.estimate_head_mri_t(sub, subjects_dir=subj_dir)
+    # gui = mne.gui.locate_ieeg(raw.info, subj_trans, CT_aligned, subject=sub,
+    #                           subjects_dir=subj_dir, verbose=10)

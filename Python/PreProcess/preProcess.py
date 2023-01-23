@@ -177,14 +177,12 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 57
+    sub_num = 29
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
     # %% Filter the data
     # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
     #                    filter_length='20s', verbose=10,
     #                    freqs=[60, 120, 180, 240], notch_widths=20)
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
     # raw.plot(n_channels=3,precompute=True, start=90)
     # filt = retrieve_filt(sub_pad, 1)
     # %% Plot the data

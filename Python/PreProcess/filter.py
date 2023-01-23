@@ -513,8 +513,9 @@ if __name__ == "__main__":
     # raw.drop_channels(raw.ch_names[10:158])
     # raw_dat.drop_channels(raw_dat.ch_names[10:158])
     # dat.drop_channels(dat.ch_names[10:158])
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=8,
-                       filter_length='20s', verbose=10,
+    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=7,
+                       filter_length='10s', verbose=10,
                        freqs=[60, 120, 180, 240], notch_widths=20)
     data = [raw, filt, raw_dat, dat]
-    figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], bandwidth=5.0)
+    figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,
+                   verbose=10, proj=True)
