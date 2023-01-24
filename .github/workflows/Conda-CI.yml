@@ -1,5 +1,5 @@
 # This workflow will install Python dependencies, run tests and lint with pycodestyle
-name: Python (3.8, 3.9) on Windows/Linux 
+name: Python (3.10) on Windows/Linux
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8, 3.9]
+        python-version: [3.10.*]
         os: [ubuntu-latest, ubuntu-18.04, windows-latest]
 
     steps:

@@ -1,10 +1,7 @@
 import numpy as np
-from numba import njit, float64, complex128
-from numba import types as t
 
 
-@njit([float64(float64[::1])], nogil=True, fastmath=True, cache=True)
-def sum_squared(x: float64[::1]) -> float64:
+def sum_squared(x: np.ndarray) -> np.ndarray:
     """Compute norm of an array.
     Parameters
     ----------
@@ -19,11 +16,11 @@ def sum_squared(x: float64[::1]) -> float64:
     return np.dot(x_flat, x_flat)
 
 
-@njit([t.Tuple((float64[:, ::1], complex128[:, ::1]))(
-    float64[:, :], complex128[:, :, ::1])], nogil=True, boundscheck=True,
-    fastmath=True, cache=True)
-def sine_f_test(window_fun: float64[:, ::1], x_p: complex128[:, :, ::1]
-                ) -> (float64[:, ::1], complex128[:, ::1]):
+# @njit([t.Tuple((float64[:, ::1], complex128[:, ::1]))(
+#     float64[:, :], complex128[:, :, ::1])], nogil=True, boundscheck=True,
+#     fastmath=True, cache=True)
+def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
+                ) -> (np.ndarray, np.ndarray):
     """computes the F-statistic for sine wave in locally-white noise"""
     # drop the even tapers
     n_tapers = len(window_fun)

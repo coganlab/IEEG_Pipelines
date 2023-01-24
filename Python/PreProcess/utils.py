@@ -1,4 +1,5 @@
 import operator
+import gc
 import os.path as op
 import pandas as pd
 from os import PathLike as PL
@@ -6,14 +7,18 @@ from os import environ
 from typing import List, TypeVar, Iterable, Union
 
 import matplotlib as mpl
-from matplotlib.pyplot import Figure, Axes
+from matplotlib.pyplot import Axes
 from mne.io import Raw
 from mne.utils import config
 import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from tqdm import tqdm
 
-mpl.use("TkAgg")
+try:
+    mpl.use("TkAgg")
+except ImportError:
+    pass
+
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
 PathLike = TypeVar("PathLike", str, PL)
@@ -21,17 +26,22 @@ PathLike = TypeVar("PathLike", str, PL)
 
 # plotting funcs
 
-def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True):
+def figure_compare(raw: List[Raw], labels: List[str], avg: bool = True,
+                   n_jobs: int = None, **kwargs):
     """Plots the psd of a list of raw objects"""
+    if n_jobs is None:
+        n_jobs = cpu_count() - 2
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        fig: Figure = data.plot_psd(fmax=250, average=avg, n_jobs=cpu_count(),
-                                    spatial_colors=False)
+        psd = data.compute_psd(n_jobs=n_jobs, **kwargs,
+                               n_fft=data.info['sfreq'])
+        fig = psd.plot(average=avg, spatial_colors=avg)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
         add_arrows(fig.axes[:2])
+        gc.collect()
 
 
 def add_arrows(axes: Axes):
@@ -107,10 +117,13 @@ def is_number(s) -> bool:
         return False
 
 
-def parallelize(func: object, par_var: Iterable, n_jobs: int = None, *args, **kwargs) -> list:
+def parallelize(func: object, par_var: Iterable, n_jobs: int = None, *args,
+                **kwargs) -> list:
     if n_jobs is None:
         n_jobs = cpu_count()
-    settings = dict(verbose=5,# prefer='threads',
+    elif n_jobs == -1:
+        n_jobs = cpu_count()
+    settings = dict(verbose=5,  # prefer='threads',
                     pre_dispatch=n_jobs)
     env = dict(**environ)
     if config.get_config('MNE_CACHE_DIR') is not None:
