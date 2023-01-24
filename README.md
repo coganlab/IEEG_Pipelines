@@ -2,7 +2,7 @@
 
 A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganlab.org/)
 
-## [Lab Wiki](https://coganlab.github.io/IEEG_Pipelines/)
+## [Lab Wiki](https://coganlab.pages.oit.duke.edu/wiki//)
 
 ## Pipeline Functionality
 
