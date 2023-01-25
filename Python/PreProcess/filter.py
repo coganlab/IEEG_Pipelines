@@ -4,7 +4,7 @@ from typing import TypeVar, Union, List
 
 import numpy as np
 from numpy.typing import ArrayLike
-from mne._ola import _COLA
+
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
@@ -13,7 +13,7 @@ from scipy import stats, signal, fft
 from tqdm import tqdm
 
 from Python.PreProcess.utils import ensure_int, validate_type, parallelize,\
-    is_number
+    is_number, _COLA
 from Python.PreProcess.fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
@@ -382,13 +382,14 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
 def _get_window_thresh(n_times, sfreq, bandwidth, p_value):
     # figure out what tapers to use
     window_fun, _, _ = _compute_mt_params(
-        n_times, sfreq, bandwidth, False, False, verbose=False)
+        n_times, sfreq, bandwidth, False, True, verbose=True)
 
     # F-stat of 1-p point
     threshold = stats.f.ppf(1 - p_value / n_times, 2, 2 * len(window_fun) - 2)
     return window_fun, threshold
 
 
+@verbose
 def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
                        adaptive: bool,
                        verbose: bool = None):
@@ -413,9 +414,9 @@ def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
     # Compute DPSS windows
     n_tapers_max = int(2 * half_nbw)
     window_fun, eigvals = dpss_windows(n_times, half_nbw, n_tapers_max,
-                                       sym=False, low_bias=low_bias)
-    # logger.info('    Using multitaper spectrum estimation with %d DPSS '
-    #             'windows' % len(eigvals))
+                                       sym=True, low_bias=low_bias)
+    logger.info('    Using multitaper spectrum estimation with %d DPSS '
+                'windows' % len(eigvals))
 
     if adaptive and len(eigvals) < 3:
         warn('Not adaptively combining the spectral estimators due to a '
