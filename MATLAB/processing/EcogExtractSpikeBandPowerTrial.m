@@ -1,4 +1,4 @@
-function SBP = EcogExtractSpikeBandPowerTrial(data, inFs, fRange, tw, etw, nFilter, decimateFactor)
+function SBP = EcogExtractSpikeBandPowerTrial(data, inFs, fRange, tw, etw, nFilter, decimateFactor, normFactor, normType)
 % Gets spike band power of neural signal 
 % 
 % Extracts spike band power (SBP) of neural signal as defined in the 
@@ -20,16 +20,40 @@ function SBP = EcogExtractSpikeBandPowerTrial(data, inFs, fRange, tw, etw, nFilt
 % SBP (matrix): spike band power of input data,  
 %               channel x (timepoints = outFs*(etw(2) - etw(1)))
 
-SBP = eegfilt(data,inFS,fRange(1),fRange(2),0,nFilter);
+SBP = eegfilt(data,inFs,fRange(1),fRange(2),0,nFilter);
 
 SBP = abs(SBP); % rectify signal
 
 % SBP smoothing
 winLenSBP = 0.050; % seconds
 gaussWinSBP = gausswin(winLenSBP*inFs);
-SBP = conv(SBP, gaussWinSBP, 'same'); % smooth with 50 ms Gaussian window
+SBP_smooth = [];
+for iChan = 1:size(SBP, 1)
+    SBP_smooth(iChan, :) = conv(SBP(iChan, :), gaussWinSBP, 'same'); % smooth with 50 ms Gaussian window
+end
 
-% downsample filtered data and get SBP peaks
-SBP = decimate(SBP, decimateFactor); % 20,000 Hz -> 2,000 Hz
+% downsample filtered data
+SBP_down = [];
+if decimateFactor > 1
+    for iChan = 1:size(SBP_smooth, 1)
+        SBP_down(iChan, :) = decimate(SBP_smooth(iChan, :), decimateFactor); % 20,000 Hz -> 2,000 Hz usually (factor = 10)
+    end
+else
+    SBP_down = SBP_smooth;
+end
+timeDown = linspace(tw(1), tw(2), size(SBP_down,2));
+eTimeDown = timeDown >= etw(1) & timeDown <= etw(2);
+
+% normalize SBP
+if ~isempty(normFactor)
+    if normType==1
+        SBP = SBP_down(:,eTimeDown) - normFactor(:,1)./normFactor(:,2);
+    elseif normType==2
+        SBP = SBP_down(:,eTimeDown) - normFactor(:,1);
+    end
+else
+    SBP = SBP_down(:,eTimeDown);
+end
+
 end
 

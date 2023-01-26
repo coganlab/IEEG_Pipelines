@@ -1,5 +1,5 @@
-function [ieegSpikeBand, ieegSBP] = extractSBP(data, fs, fDown, tw, gtw, name, normFactor, normType)
-    % Extracts spike band power (SBP) of ieeg (active) with normalization factors
+function [ieegBetaBand, ieegBetaP] = extractBeta(data, fs, fDown, tw, gtw, name, normFactor, normType)
+    % Extracts beta band (10-50 Hz) of ieeg (active) with normalization factors
     % if provided
     %
     % Input:
@@ -14,8 +14,8 @@ function [ieegSpikeBand, ieegSBP] = extractSBP(data, fs, fDown, tw, gtw, name, n
     % normType - Normalization type (1=zscore, 2=mean subtracted)
     % 
     % Output:
-    % ieegSpikeBand - Extracted spike band structure;
-    % ieegSPB - Power of extracted spike band
+    % ieegBetaBand - Extracted spike band structure;
+    % ieegBetaP - Power of extracted spike band
 
 switch nargin
     case 6
@@ -25,25 +25,25 @@ switch nargin
         normType = 1;
 end
 
-disp(['Extracting Spike Band ' name])
-fSB = [300 1000]; % Hz
-ieegSBtemp = [];
+disp(['Extracting Beta ' name])
+fSB = [15 25]; % Hz, prev=[10 50], [15 40]
+ieegBetaTemp = [];
 
 if size(data, 1) == 1
-    [~, ieegSBtemp(1, :, :)] = ...
+    [~, ieegBetaTemp(1, :, :)] = ...
         EcogExtractHighGammaTrial(double(squeeze(data)), fs, fDown, fSB, tw,...
                                   gtw, normFactor, normType);
 
 else
     for iTrial = 1:size(data, 2)
-        [~, ieegSBtemp(:, iTrial, :)] = ...
+        [~, ieegBetaTemp(:, iTrial, :)] = ...
             EcogExtractHighGammaTrial(double(squeeze(data(:, iTrial, :))),...
                                       fs, fDown, fSB, tw, gtw, normFactor,...
                                       normType);
     end
 end
 
-ieegSpikeBand = ieegStructClass(ieegSBtemp, fDown, gtw, fSB, name);
-ieegSBP = (squeeze(mean(log10(ieegSBtemp.^2), 3)));
+ieegBetaBand = ieegStructClass(ieegBetaTemp, fDown, gtw, fSB, name);
+ieegBetaP = (squeeze(mean(log10(ieegBetaTemp.^2), 3)));
 
 end
