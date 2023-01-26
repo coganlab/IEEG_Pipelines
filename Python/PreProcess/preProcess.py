@@ -167,6 +167,47 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
     return layout, raw, D_dat_raw, D_dat_filt
 
 
+def crop_data(raw: mne.io.Raw, end_pad: float=10.0):
+    '''
+    Takes raw file with annotated events and crop the file so that the raw
+    file starts at the first event and stops an amount of time in seconds 
+    given by end_pad after the last event
+    '''
+
+    # get start and stop time from raw.annotations onset attribute
+    t_min = raw.annotations.onset[0]
+    t_max = raw.annotations.onset[-1] + end_pad
+
+    # create new cropped raw file 
+    new_raw = raw.copy().crop(tmin=t_min, t_max=t_max)
+
+    return new_raw
+
+def channel_outlier_marker(input_raw, outlier_sd=3):
+    """
+    Marks a channel as 'bad' if the mean of the channel is different from 
+    the mean across channels by a factor of the cross channel std given by 
+    outlier_sd
+    """
+    data = input_raw.get_data()
+    mu = np.mean(data) # take the mean across all channels and time series
+    sig = np.std(data) # take standard deviation across all time series
+    
+    # Loop over each channel, calculate mean, and append channel to 'bad'
+    # in input_raw if the difference in means is more than the given outlier_sd
+    # factor (default is 3 standard deviations)
+    for ii, ch in enumerate(input_raw.ch_names):
+        mu_ch = np.mean(data[ii, :])
+        if abs(mu_ch - mu) > (outlier_sd * sig):
+            input_raw.info['bads'].append(ch)
+    return input_raw
+
+
+    
+    
+
+
+
 if __name__ == "__main__":
     from Python.PreProcess import utils, filter
     # %% Set up logging
@@ -179,6 +220,17 @@ if __name__ == "__main__":
     TASK = "SentenceRep"
     sub_num = 29
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
+    
+    # Crop raw data to minimize processing time
+    new_raw = crop_data(raw)
+
+    # Mark channel outliers as bad
+    marked_raw = channel_outlier_marker(new_raw)
+    
+    #Exclude bad channels 
+    good_raw = marked_raw.copy().drop_channels(marked_raw.info['bads'])
+
+
     # %% Filter the data
     # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
     #                    filter_length='20s', verbose=10,
