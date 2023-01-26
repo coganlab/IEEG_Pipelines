@@ -403,7 +403,7 @@ def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
         return window_fun, np.ones(1), False
 
     if bandwidth is not None:
-        half_nbw = float(bandwidth) * n_times / (2. * sfreq)
+        half_nbw = float(bandwidth) * n_times / sfreq
     else:
         half_nbw = 4.
     if half_nbw < 0.5:
@@ -413,7 +413,7 @@ def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
             % (bandwidth, half_nbw, sfreq / n_times))
 
     # Compute DPSS windows
-    n_tapers_max = int(2 * np.floor(2 * half_nbw - 1))
+    n_tapers_max = int(np.floor(2 * half_nbw - 1))
     window_fun, eigvals = dpss_windows(n_times, half_nbw, n_tapers_max,
                                        sym=True, low_bias=low_bias)
     logger.info('    Using multitaper spectrum estimation with %d DPSS '
@@ -493,7 +493,7 @@ def _to_samples(filter_length, sfreq):
             filter_length = float(filter_length)
         except ValueError:
             raise ValueError(err_msg)
-        filter_length = max(int(np.ceil(filter_length * mult_fact *
+        filter_length = max(int(np.floor(filter_length * mult_fact *
                                         sfreq)), 1)
     filter_length = ensure_int(filter_length, 'filter_length')
     return filter_length
@@ -510,14 +510,14 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    # raw.drop_channels(raw.ch_names[10:158])
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    raw.drop_channels(raw.ch_names[10:158])
     # raw_dat.drop_channels(raw_dat.ch_names[10:158])
     # dat.drop_channels(dat.ch_names[10:158])
-    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=1,
                        filter_length='700ms', verbose=10,
                        freqs=[60, 120, 180, 240], notch_widths=20)
-    data = [raw, filt, raw_dat, dat]
-    figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,
-                   verbose=10, proj=True, fmax=250)
+    # data = [raw, filt, raw_dat, dat]
+    # figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,
+    #                verbose=10, proj=True, fmax=250)
