@@ -117,7 +117,7 @@ def is_number(s) -> bool:
         return False
 
 
-def parallelize(func: object, par_var: Iterable, n_jobs: int = None, *args,
+def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
                 **kwargs) -> list:
     if 'n_jobs' in kwargs.keys():
         n_jobs = kwargs.pop('n_jobs')
@@ -205,8 +205,8 @@ class _COLA:
     """
 
     @verbose
-    def __init__(self, process, store, n_total, n_samples, n_overlap,
-                 sfreq, window='hann', tol=1e-10, n_jobs=None, *, verbose=None):
+    def __init__(self, process, store, n_total, n_samples, n_overlap, sfreq,
+                 window='hann', tol=1e-10, n_jobs=None, *, verbose=None):
         from scipy.signal import get_window
         n_samples = ensure_int(n_samples, 'n_samples')
         n_overlap = ensure_int(n_overlap, 'n_overlap')
@@ -297,9 +297,18 @@ class _COLA:
                                  % (data.shape, self._in_offset,
                                     self.stops[-1]))
         # preallocate data to chunks
-        # data_chunks = [data[start:stop] for start, stop in zip(self.starts,
-        #                                                         self.stops)]
-        # Check to see if we can process the next chunk and dump outputs
+        data_chunks = [data[start:stop] for start, stop in zip(self.starts,
+                                                               self.stops)]
+
+        # Process the data
+        if not self.n_jobs == 1:
+            out_chunks = parallelize(self._process, data_chunks, self.n_jobs,
+                                     **kwargs)
+        else:
+            out_chunks = [self._process(data_chunk, **kwargs)
+                          for data_chunk in data_chunks]
+
+        # overlap add to buffer
         while self._idx < len(self.starts) and \
                 self._in_offset >= self.stops[self._idx]:
             start, stop = self.starts[self._idx], self.stops[self._idx]
@@ -321,7 +330,7 @@ class _COLA:
             if not all(proc.shape[-1] == this_len == this_window.size
                        for proc in this_proc):
                 raise RuntimeError('internal indexing error')
-            outs = self._process(*this_proc, **kwargs)
+            outs = out_chunks[self._idx]
             if self._out_buffers is None:
                 max_len = np.max(self.stops - self.starts)
                 self._out_buffers = [np.zeros(o.shape[:-1] + (max_len,),
@@ -387,4 +396,3 @@ class _Storer(object):
         for o1, o2 in zip(self.outs, outs):
             o1[idx] = o2
         self.idx = stop
-
