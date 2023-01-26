@@ -152,7 +152,7 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
             if ii in picks:
                 x[ii], f = _mt_spectrum_remove_win(
                     x_, sfreq, line_freqs, notch_widths, window_fun, threshold,
-                    get_wt)
+                    get_wt, n_jobs)
                 freq_list.append(f)
     else:
         runs = [x_ for xi, x_ in enumerate(x) if xi in picks]
@@ -179,8 +179,8 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
 
 def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                             notch_width: ListNum, window_fun: np.ndarray,
-                            thresh: float, get_thresh: partial
-                            ) -> (ArrayLike, List[float]):
+                            thresh: float, get_thresh: partial,
+                            n_jobs: int = None) -> (ArrayLike, List[float]):
     n_times = x.shape[-1]
     n_samples = window_fun.shape[1]
     n_overlap = (n_samples + 1) // 2
@@ -191,7 +191,8 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     # Define how to process a chunk of data
     def process(x_):
         out = _mt_spectrum_remove(
-            x_, sfreq, line_freqs, notch_width, window_fun, thresh, get_thresh)
+            x_, sfreq, line_freqs, notch_width, window_fun, thresh, get_thresh
+        )
         rm_freqs.append(out[1])
         return (out[0],)  # must return a tuple
 
@@ -201,8 +202,8 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         x_out[..., idx[0]:stop] += x_
         idx[0] = stop
 
-    _COLA(process, store, n_times, n_samples, n_overlap, sfreq,
-          verbose=False).feed(x)
+    _COLA(process, store, n_times, n_samples, n_overlap, sfreq, n_jobs=n_jobs,
+          verbose=True).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
@@ -412,7 +413,7 @@ def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
             % (bandwidth, half_nbw, sfreq / n_times))
 
     # Compute DPSS windows
-    n_tapers_max = int(2 * half_nbw)
+    n_tapers_max = int(2 * np.floor(2 * half_nbw - 1))
     window_fun, eigvals = dpss_windows(n_times, half_nbw, n_tapers_max,
                                        sym=True, low_bias=low_bias)
     logger.info('    Using multitaper spectrum estimation with %d DPSS '
@@ -514,8 +515,8 @@ if __name__ == "__main__":
     # raw.drop_channels(raw.ch_names[10:158])
     # raw_dat.drop_channels(raw_dat.ch_names[10:158])
     # dat.drop_channels(dat.ch_names[10:158])
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=7,
-                       filter_length='10s', verbose=10,
+    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+                       filter_length='700ms', verbose=10,
                        freqs=[60, 120, 180, 240], notch_widths=20)
     data = [raw, filt, raw_dat, dat]
     figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,

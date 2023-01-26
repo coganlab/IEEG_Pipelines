@@ -119,7 +119,9 @@ def is_number(s) -> bool:
 
 def parallelize(func: object, par_var: Iterable, n_jobs: int = None, *args,
                 **kwargs) -> list:
-    if n_jobs is None:
+    if 'n_jobs' in kwargs.keys():
+        n_jobs = kwargs.pop('n_jobs')
+    elif n_jobs is None:
         n_jobs = cpu_count()
     elif n_jobs == -1:
         n_jobs = cpu_count()
@@ -204,11 +206,11 @@ class _COLA:
 
     @verbose
     def __init__(self, process, store, n_total, n_samples, n_overlap,
-                 sfreq, window='hann', tol=1e-10, *, verbose=None):
+                 sfreq, window='hann', tol=1e-10, n_jobs=None, *, verbose=None):
         from scipy.signal import get_window
-        n_samples = _ensure_int(n_samples, 'n_samples')
-        n_overlap = _ensure_int(n_overlap, 'n_overlap')
-        n_total = _ensure_int(n_total, 'n_total')
+        n_samples = ensure_int(n_samples, 'n_samples')
+        n_overlap = ensure_int(n_overlap, 'n_overlap')
+        n_total = ensure_int(n_total, 'n_total')
         if n_samples <= 0:
             raise ValueError('n_samples must be > 0, got %s' % (n_samples,))
         if n_overlap < 0:
@@ -241,6 +243,7 @@ class _COLA:
         self.stops = self.starts + self._n_samples
         delta = n_total - self.stops[-1]
         self.stops[-1] = n_total
+        self.n_jobs = n_jobs
         sfreq = float(sfreq)
         pl = 's' if len(self.starts) != 1 else ''
         logger.info('    Processing %4d data chunk%s of (at least) %0.1f sec '
@@ -293,6 +296,9 @@ class _COLA:
                                  'buffer size (%s > %s)'
                                  % (data.shape, self._in_offset,
                                     self.stops[-1]))
+        # preallocate data to chunks
+        # data_chunks = [data[start:stop] for start, stop in zip(self.starts,
+        #                                                         self.stops)]
         # Check to see if we can process the next chunk and dump outputs
         while self._idx < len(self.starts) and \
                 self._in_offset >= self.stops[self._idx]:
@@ -382,18 +388,3 @@ class _Storer(object):
             o1[idx] = o2
         self.idx = stop
 
-
-def _ensure_int(x, name='unknown', must_be='an int', *, extra=''):
-    """Ensure a variable is an integer."""
-    # This is preferred over numbers.Integral, see:
-    # https://github.com/scipy/scipy/pull/7351#issuecomment-299713159
-    extra = f' {extra}' if extra else extra
-    try:
-        # someone passing True/False is much more likely to be an error than
-        # intentional usage
-        if isinstance(x, bool):
-            raise TypeError()
-        x = int(operator.index(x))
-    except TypeError:
-        raise TypeError(f'{name} must be {must_be}{extra}, got {type(x)}')
-    return x
