@@ -1,6 +1,5 @@
 from collections import Counter
-from functools import partial
-from typing import TypeVar, Union, List
+from typing import TypeVar, Union, List, Callable, Tuple
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -26,6 +25,7 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
                 notch_widths: Union[ListNum, int] = None,
                 mt_bandwidth: float = None, p_value: float = 0.05,
                 picks: ListNum = None, n_jobs: int = None,
+                adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
                 ) -> Signal:
     r"""Notch filter for the signal x.
@@ -115,16 +115,28 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
 
     data_idx = [ch_t in set(raw.get_channel_types(only_data_chs=True)
                             ) for ch_t in raw.get_channel_types()]
+
+    # Define adaptive windowing function
+    def get_window_thresh(n_times: int) -> (ArrayLike, float):
+        # figure out what tapers to use
+        window_fun, _, _ = _compute_mt_params(
+            n_times, fs, mt_bandwidth, low_bias, adaptive, verbose=True)
+
+        # F-stat of 1-p point
+        threshold = stats.f.ppf(1 - p_value / n_times, 2,
+                                2 * len(window_fun) - 2)
+        return window_fun, threshold
+
     filt._data[data_idx] = mt_spectrum_proc(
-        x, fs, freqs, notch_widths, mt_bandwidth, p_value, picks, n_jobs,
+        x, fs, freqs, notch_widths, picks, n_jobs, get_window_thresh,
         filter_length)
 
     return filt
 
 
 def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
-                     notch_widths: ListNum, mt_bandwidth: float,
-                     p_value: float, picks: list, n_jobs: int,
+                     notch_widths: ListNum, picks: list, n_jobs: int,
+                     get_wt: Callable[[int], Tuple[ArrayLike, float]],
                      filter_length: Union[str, int]) -> ArrayLike:
     """Call _mt_spectrum_remove."""
     # set up array for filtering, reshape to 2D, operate on last axis
@@ -137,10 +149,9 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
         filter_length = x.shape[-1]
     filter_length = min(_to_samples(filter_length, sfreq), x.shape[-1])
 
-    # Define adaptive windowing function
-    get_wt = partial(
-        _get_window_thresh, sfreq=sfreq, bandwidth=mt_bandwidth,
-        p_value=p_value)
+    # get_wt = partial(
+    #     _get_window_thresh, sfreq=sfreq, bandwidth=mt_bandwidth,
+    #     p_value=p_value)
 
     # Set default window function and threshold
     window_fun, threshold = get_wt(filter_length)
@@ -179,7 +190,7 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
 
 def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                             notch_width: ListNum, window_fun: np.ndarray,
-                            thresh: float, get_thresh: partial,
+                            thresh: float, get_thresh: Callable[[int], Tuple[ArrayLike, float]],
                             n_jobs: int = None) -> (ArrayLike, List[float]):
     n_times = x.shape[-1]
     n_samples = window_fun.shape[1]
@@ -210,8 +221,8 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
 def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                         notch_widths: ListNum, window_fun: np.ndarray,
-                        threshold: float, get_thresh: partial) -> (
-        ArrayLike, List[float]):
+                        threshold: float, get_thresh: Callable[[int], Tuple[ArrayLike, float]]
+                        ) -> (ArrayLike, List[float]):
     """Use MT-spectrum to remove line frequencies.
     Based on Chronux. If line_freqs is specified, all freqs within notch_width
     of each line_freq is set to zero.
@@ -378,16 +389,6 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
     assert len(dpss) > 0  # should never happen
     assert dpss.shape[1] == N  # old nitime bug
     return dpss, eigvals
-
-
-def _get_window_thresh(n_times, sfreq, bandwidth, p_value):
-    # figure out what tapers to use
-    window_fun, _, _ = _compute_mt_params(
-        n_times, sfreq, bandwidth, False, True, verbose=True)
-
-    # F-stat of 1-p point
-    threshold = stats.f.ppf(1 - p_value / n_times, 2, 2 * len(window_fun) - 2)
-    return window_fun, threshold
 
 
 @verbose
