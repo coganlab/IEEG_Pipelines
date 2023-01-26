@@ -1,4 +1,4 @@
-function visTimePlot3(timeEpoch,signal2plot,options)
+function t = visTimePlot3(timeEpoch,signal2plot,options)
 %VISTIMEPLOT Visualize channel averaged plot of the entire time series
 %   Detailed explanation goes here
 % timeEpoch - 3 dimensions of time points 
@@ -8,12 +8,18 @@ arguments
     options.colval = [1 0 1]; % color value
     options.fs = 200; % sampling frequency
     options.labels = {'Auditory','Go','ResponseOnset'}
+    options.tileLayout = []
 end
 fs = options.fs;
 colval = options.colval;
 
-figure;
-t = tiledlayout(1,3,'TileSpacing','compact');
+% figure;
+hold on;
+if(isempty(options.tileLayout))
+    t = tiledlayout(1,3,'TileSpacing','compact');
+else
+    t = options.tileLayout;
+end
 sig1M=mean(signal2plot); % extract mean
 sig1S=std(signal2plot)./sqrt(size(signal2plot,1)); % extract standard error
    timeGamma1 = linspace(timeEpoch(1,1),timeEpoch(1,2),(timeEpoch(1,2)-timeEpoch(1,1))*fs );
@@ -67,7 +73,7 @@ sig1S=std(signal2plot)./sqrt(size(signal2plot,1)); % extract standard error
     startTimePoint = startTimePoint+round(length(timeGamma2));
     sig1M2plot = sig1M(startTimePoint:end);
     sig1S2plot = sig1S(startTimePoint:end);
-    h = plot(ax3,timeGamma3,sig1M2plot,'LineWidth',2,'Color',colval)
+    h = plot(ax3,timeGamma3,sig1M2plot,'LineWidth',2,'Color',colval);
      h = patch(ax3,[timeGamma3,timeGamma3(end:-1:1)],[sig1M2plot + sig1S2plot, ...
     sig1M2plot(end:-1:1) - sig1S2plot(end:-1:1)],0.5*colval);
      set(h,'FaceAlpha',.5,'EdgeAlpha',0,'Linestyle','none');
