@@ -12,7 +12,6 @@ from mne.io import Raw
 from mne.utils import config, logger, verbose
 import numpy as np
 from joblib import Parallel, delayed, cpu_count
-from tqdm import tqdm
 
 try:
     mpl.use("TkAgg")
@@ -20,7 +19,7 @@ except ImportError:
     pass
 
 HOME = op.expanduser("~")
-LAB_root = op.join(HOME, "Box", "CoganLab")
+LAB_root = op.join(HOME, "lab", "Data")
 PathLike = TypeVar("PathLike", str, PL)
 
 
@@ -125,7 +124,7 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
         n_jobs = cpu_count()
     elif n_jobs == -1:
         n_jobs = cpu_count()
-    settings = dict(verbose=5, prefer='threads',
+    settings = dict(verbose=0, prefer='threads',
                     pre_dispatch=n_jobs)
     env = dict(**environ)
     if config.get_config('MNE_CACHE_DIR') is not None:
@@ -139,7 +138,7 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
         settings['max_nbytes'] = get_mem()
 
     data_new = Parallel(n_jobs, **settings)(delayed(func)(
-        x_, *args, **kwargs)for x_ in tqdm(par_var))
+        x_, *args, **kwargs)for x_ in par_var)
     return data_new
 
 

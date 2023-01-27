@@ -115,8 +115,15 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
     data_idx = [ch_t in set(raw.get_channel_types(only_data_chs=True)
                             ) for ch_t in raw.get_channel_types()]
 
+    # convert filter length to samples
+    if isinstance(filter_length, str) and filter_length == 'auto':
+        filter_length = '10s'
+    if filter_length is None:
+        filter_length = x.shape[-1]
+    filter_length: int = min(_to_samples(filter_length, fs), x.shape[-1])
+
     # Define adaptive windowing function
-    def get_window_thresh(n_times: int) -> (ArrayLike, float):
+    def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
         # figure out what tapers to use
         window_fun, _, _ = _compute_mt_params(n_times, fs, mt_bandwidth,
                                               low_bias, adaptive, verbose=True)
@@ -127,34 +134,27 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
         return window_fun, threshold
 
     filt._data[data_idx] = mt_spectrum_proc(
-        x, fs, freqs, notch_widths, picks, n_jobs, get_window_thresh,
-        filter_length)
+        x, fs, freqs, notch_widths, picks, n_jobs, get_window_thresh)
 
     return filt
 
 
 def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
                      notch_widths: ListNum, picks: list, n_jobs: int,
-                     get_wt: Callable[[int], Tuple[ArrayLike, float]],
-                     filter_length: Union[str, int]) -> ArrayLike:
+                     get_wt: Callable[[int], Tuple[ArrayLike, float]]
+                     ) -> ArrayLike:
     """Call _mt_spectrum_remove."""
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
 
-    # convert filter length to samples
-    if isinstance(filter_length, str) and filter_length == 'auto':
-        filter_length = '10s'
-    if filter_length is None:
-        filter_length = x.shape[-1]
-    filter_length = min(_to_samples(filter_length, sfreq), x.shape[-1])
-
     # Execute channel wise sine wave detection and filtering
     freq_list = list()
-    for ii, x_ in tqdm(enumerate(x)):
+    for ii, x_ in tqdm(enumerate(x), position=0, total=x.shape[0],
+                       leave=True, desc='channels'):
         logger.debug(f'Processing channel {ii}')
         if ii in picks:
-            x[ii], f = _mt_remove_win(
-                x_, sfreq, line_freqs, notch_widths, get_wt, n_jobs)
+            x[ii], f = _mt_remove_win(x_, sfreq, line_freqs, notch_widths,
+                                      get_wt, n_jobs)
             freq_list.append(f)
 
     # report found frequencies, but do some sanitizing first by binning into
@@ -172,11 +172,11 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
 
 
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-                   notch_width: ListNum, filter_length: int,
+                   notch_width: ListNum,
                    get_thresh: Callable[[int], Tuple[ArrayLike, float]],
                    n_jobs: int = None) -> (ArrayLike, List[float]):
     # Set default window function and threshold
-    window_fun, thresh = get_thresh(filter_length)
+    window_fun, thresh = get_thresh()
     n_times = x.shape[-1]
     n_samples = window_fun.shape[1]
     n_overlap = (n_samples + 1) // 2
