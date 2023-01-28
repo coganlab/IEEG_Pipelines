@@ -19,7 +19,7 @@ except ImportError:
     pass
 
 HOME = op.expanduser("~")
-LAB_root = op.join(HOME, "lab", "Data")
+LAB_root = op.join(HOME, "Box", "CoganLab")
 PathLike = TypeVar("PathLike", str, PL)
 
 
@@ -124,8 +124,7 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
         n_jobs = cpu_count()
     elif n_jobs == -1:
         n_jobs = cpu_count()
-    settings = dict(verbose=0, prefer='threads',
-                    pre_dispatch=n_jobs)
+    settings = dict(verbose=0, prefer='threads')
     env = dict(**environ)
     if config.get_config('MNE_CACHE_DIR') is not None:
         settings['temp_folder'] = config.get_config('MNE_CACHE_DIR')

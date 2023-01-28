@@ -146,14 +146,14 @@ def retrieve_filt(sub: str,
 
 
 def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
-             BIDS_root: PathLike = None):
+             BIDS_root: PathLike = None, lab_root=LAB_root):
     """
 
     """
-    for dir in listdir(LAB_root):
+    for dir in listdir(lab_root):
         if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(
-                LAB_root, dir)):
-            BIDS_root = op.join(LAB_root, dir, "BIDS")
+                lab_root, dir)):
+            BIDS_root = op.join(lab_root, dir, "BIDS")
             break
     if BIDS_root is None:
         raise FileNotFoundError("Could not find BIDS directory in {} for task "

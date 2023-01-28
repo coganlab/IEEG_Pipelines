@@ -141,8 +141,7 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
 
 def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
                      notch_widths: ListNum, picks: list, n_jobs: int,
-                     get_wt: Callable[[int], Tuple[ArrayLike, float]]
-                     ) -> ArrayLike:
+                     get_wt: callable) -> ArrayLike:
     """Call _mt_spectrum_remove."""
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
@@ -172,8 +171,7 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
 
 
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-                   notch_width: ListNum,
-                   get_thresh: Callable[[int], Tuple[ArrayLike, float]],
+                   notch_width: ListNum, get_thresh: callable,
                    n_jobs: int = None) -> (ArrayLike, List[float]):
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
@@ -205,8 +203,7 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
 def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                notch_widths: ListNum, window_fun: np.ndarray,
-               threshold: float,
-               get_thresh: Callable[[int], Tuple[ArrayLike, float]]
+               threshold: float, get_thresh: callable,
                ) -> (ArrayLike, List[float]):
     """Use MT-spectrum to remove line frequencies.
     Based on Chronux. If line_freqs is specified, all freqs within notch_width
@@ -496,19 +493,19 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    # raw.drop_channels(raw.ch_names[10:158])
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    raw.drop_channels(raw.ch_names[5:158])
     # raw_dat.drop_channels(raw_dat.ch_names[10:158])
     # dat.drop_channels(dat.ch_names[10:158])
     filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
                        filter_length='700ms', verbose=10,
                        freqs=[60], notch_widths=20)
-    filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                        filter_length='20s', verbose=10,
-                        freqs=[120, 180, 240], notch_widths=20)
-    data = [raw, filt, filt2, raw_dat, dat]
-    figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-                          ""], avg=True, verbose=10, proj=True, fmax=250)
-    figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-                          ""], avg=False, verbose=10, proj=True, fmax=250)
+    # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+    #                     filter_length='20s', verbose=10,
+    #                     freqs=[120, 180, 240], notch_widths=20)
+    # data = [raw, filt, filt2, raw_dat, dat]
+    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
+    #                       ""], avg=True, verbose=10, proj=True, fmax=250)
+    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
+    #                       ""], avg=False, verbose=10, proj=True, fmax=250)
