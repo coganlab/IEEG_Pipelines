@@ -1,10 +1,9 @@
 from collections import Counter
-from functools import partial
-from typing import TypeVar, Union, List
+from typing import TypeVar, Union, List, Callable, Tuple
 
 import numpy as np
 from numpy.typing import ArrayLike
-from mne._ola import _COLA
+
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
@@ -12,8 +11,7 @@ from mne.utils import logger, _pl, warn, verbose
 from scipy import stats, signal, fft
 from tqdm import tqdm
 
-from Python.PreProcess.utils import to_samples, validate_type, parallelize,\
-    is_number
+from Python.PreProcess.utils import to_samples, ensure_int, validate_type, is_number, _COLA
 from Python.PreProcess.fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
@@ -26,6 +24,7 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
                 notch_widths: Union[ListNum, int] = None,
                 mt_bandwidth: float = None, p_value: float = 0.05,
                 picks: ListNum = None, n_jobs: int = None,
+                adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
                 ) -> Signal:
     r"""Notch filter for the signal x.
@@ -115,53 +114,48 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
 
     data_idx = [ch_t in set(raw.get_channel_types(only_data_chs=True)
                             ) for ch_t in raw.get_channel_types()]
-    filt._data[data_idx] = mt_spectrum_proc(
-        x, fs, freqs, notch_widths, mt_bandwidth, p_value, picks, n_jobs,
-        filter_length)
-
-    return filt
-
-
-def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
-                     notch_widths: ListNum, mt_bandwidth: float,
-                     p_value: float, picks: list, n_jobs: int,
-                     filter_length: Union[str, int]) -> ArrayLike:
-    """Call _mt_spectrum_remove."""
-    # set up array for filtering, reshape to 2D, operate on last axis
-    x, orig_shape, picks = _prep_for_filtering(x, picks)
 
     # convert filter length to samples
     if isinstance(filter_length, str) and filter_length == 'auto':
         filter_length = '10s'
     if filter_length is None:
         filter_length = x.shape[-1]
-    filter_length = min(to_samples(filter_length, sfreq), x.shape[-1])
+
+    filter_length: int = min(to_samples(filter_length, fs), x.shape[-1])
 
     # Define adaptive windowing function
-    get_wt = partial(
-        _get_window_thresh, sfreq=sfreq, bandwidth=mt_bandwidth,
-        p_value=p_value)
+    def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
+        # figure out what tapers to use
+        window_fun, _, _ = _compute_mt_params(n_times, fs, mt_bandwidth,
+                                              low_bias, adaptive, verbose=True)
 
-    # Set default window function and threshold
-    window_fun, threshold = get_wt(filter_length)
+        # F-stat of 1-p point
+        threshold = stats.f.ppf(1 - p_value / n_times, 2,
+                                2 * len(window_fun) - 2)
+        return window_fun, threshold
+
+    filt._data[data_idx] = mt_spectrum_proc(
+        x, fs, freqs, notch_widths, picks, n_jobs, get_window_thresh)
+
+    return filt
+
+
+def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
+                     notch_widths: ListNum, picks: list, n_jobs: int,
+                     get_wt: callable) -> ArrayLike:
+    """Call _mt_spectrum_remove."""
+    # set up array for filtering, reshape to 2D, operate on last axis
+    x, orig_shape, picks = _prep_for_filtering(x, picks)
 
     # Execute channel wise sine wave detection and filtering
-    if n_jobs == 1:
-        freq_list = list()
-        for ii, x_ in tqdm(enumerate(x)):
-            if ii in picks:
-                x[ii], f = _mt_spectrum_remove_win(
-                    x_, sfreq, line_freqs, notch_widths, window_fun, threshold,
-                    get_wt)
-                freq_list.append(f)
-    else:
-        runs = [x_ for xi, x_ in enumerate(x) if xi in picks]
-        data_new = parallelize(_mt_spectrum_remove_win, runs, n_jobs,
-                               sfreq, line_freqs, notch_widths, window_fun,
-                               threshold, get_wt)
-        freq_list = [d[1] for d in data_new]
-        data_new = np.array([d[0] for d in data_new])
-        x[picks, :] = data_new
+    freq_list = list()
+    for ii, x_ in tqdm(enumerate(x), position=0, total=x.shape[0],
+                       leave=True, desc='channels'):
+        logger.debug(f'Processing channel {ii}')
+        if ii in picks:
+            x[ii], f = _mt_remove_win(x_, sfreq, line_freqs, notch_widths,
+                                      get_wt, n_jobs)
+            freq_list.append(f)
 
     # report found frequencies, but do some sanitizing first by binning into
     # 1 Hz bins
@@ -177,10 +171,11 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
     return x
 
 
-def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-                            notch_width: ListNum, window_fun: np.ndarray,
-                            thresh: float, get_thresh: partial
-                            ) -> (ArrayLike, List[float]):
+def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
+                   notch_width: ListNum, get_thresh: callable,
+                   n_jobs: int = None) -> (ArrayLike, List[float]):
+    # Set default window function and threshold
+    window_fun, thresh = get_thresh()
     n_times = x.shape[-1]
     n_samples = window_fun.shape[1]
     n_overlap = (n_samples + 1) // 2
@@ -190,8 +185,8 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
     # Define how to process a chunk of data
     def process(x_):
-        out = _mt_spectrum_remove(
-            x_, sfreq, line_freqs, notch_width, window_fun, thresh, get_thresh)
+        out = _mt_remove(x_, sfreq, line_freqs, notch_width, window_fun,
+                         thresh, get_thresh)
         rm_freqs.append(out[1])
         return (out[0],)  # must return a tuple
 
@@ -201,16 +196,16 @@ def _mt_spectrum_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         x_out[..., idx[0]:stop] += x_
         idx[0] = stop
 
-    _COLA(process, store, n_times, n_samples, n_overlap, sfreq,
-          verbose=False).feed(x)
+    _COLA(process, store, n_times, n_samples, n_overlap, sfreq, n_jobs=n_jobs,
+          verbose=True).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
 
-def _mt_spectrum_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-                        notch_widths: ListNum, window_fun: np.ndarray,
-                        threshold: float, get_thresh: partial) -> (
-        ArrayLike, List[float]):
+def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
+               notch_widths: ListNum, window_fun: np.ndarray,
+               threshold: float, get_thresh: callable,
+               ) -> (ArrayLike, List[float]):
     """Use MT-spectrum to remove line frequencies.
     Based on Chronux. If line_freqs is specified, all freqs within notch_width
     of each line_freq is set to zero.
@@ -379,16 +374,7 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
     return dpss, eigvals
 
 
-def _get_window_thresh(n_times, sfreq, bandwidth, p_value):
-    # figure out what tapers to use
-    window_fun, _, _ = _compute_mt_params(
-        n_times, sfreq, bandwidth, False, False, verbose=False)
-
-    # F-stat of 1-p point
-    threshold = stats.f.ppf(1 - p_value / n_times, 2, 2 * len(window_fun) - 2)
-    return window_fun, threshold
-
-
+@verbose
 def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
                        adaptive: bool,
                        verbose: bool = None):
@@ -401,7 +387,7 @@ def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
         return window_fun, np.ones(1), False
 
     if bandwidth is not None:
-        half_nbw = float(bandwidth) * n_times / (2. * sfreq)
+        half_nbw = float(bandwidth) * n_times / sfreq
     else:
         half_nbw = 4.
     if half_nbw < 0.5:
@@ -411,11 +397,11 @@ def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
             % (bandwidth, half_nbw, sfreq / n_times))
 
     # Compute DPSS windows
-    n_tapers_max = int(2 * half_nbw)
+    n_tapers_max = int(np.floor(2 * half_nbw - 1))
     window_fun, eigvals = dpss_windows(n_times, half_nbw, n_tapers_max,
-                                       sym=False, low_bias=low_bias)
-    # logger.info('    Using multitaper spectrum estimation with %d DPSS '
-    #             'windows' % len(eigvals))
+                                       sym=True, low_bias=low_bias)
+    logger.info('    Using multitaper spectrum estimation with %d DPSS '
+                'windows' % len(eigvals))
 
     if adaptive and len(eigvals) < 3:
         warn('Not adaptively combining the spectral estimators due to a '
@@ -482,14 +468,19 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    # raw.drop_channels(raw.ch_names[10:158])
+    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
+    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
+    raw.drop_channels(raw.ch_names[5:158])
     # raw_dat.drop_channels(raw_dat.ch_names[10:158])
     # dat.drop_channels(dat.ch_names[10:158])
-    filt = line_filter(raw, mt_bandwidth=5.0, n_jobs=7,
-                       filter_length='10s', verbose=10,
-                       freqs=[60, 120, 180, 240], notch_widths=20)
-    data = [raw, filt, raw_dat, dat]
-    figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,
-                   verbose=10, proj=True, fmax=250)
+    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+                       filter_length='700ms', verbose=10,
+                       freqs=[60], notch_widths=20)
+    # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+    #                     filter_length='20s', verbose=10,
+    #                     freqs=[120, 180, 240], notch_widths=20)
+    # data = [raw, filt, filt2, raw_dat, dat]
+    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
+    #                       ""], avg=True, verbose=10, proj=True, fmax=250)
+    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
+    #                       ""], avg=False, verbose=10, proj=True, fmax=250)
