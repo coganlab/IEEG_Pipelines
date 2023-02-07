@@ -11,7 +11,7 @@ from mne.utils import logger, _pl, warn, verbose
 from scipy import stats, signal, fft
 from tqdm import tqdm
 
-from Python.PreProcess.utils import ensure_int, validate_type, is_number, _COLA
+from Python.PreProcess.utils import to_samples, ensure_int, validate_type, is_number, _COLA
 from Python.PreProcess.fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
@@ -120,7 +120,8 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
         filter_length = '10s'
     if filter_length is None:
         filter_length = x.shape[-1]
-    filter_length: int = min(_to_samples(filter_length, fs), x.shape[-1])
+
+    filter_length: int = min(to_samples(filter_length, fs), x.shape[-1])
 
     # Define adaptive windowing function
     def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
@@ -454,32 +455,6 @@ def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
         raise ValueError('Data to be %s must be real floating, got %s'
                          % (kind, x.dtype,))
     return x
-
-
-def _to_samples(filter_length, sfreq):
-    validate_type(filter_length, (str, int))
-    if isinstance(filter_length, str):
-        filter_length = filter_length.lower()
-        err_msg = ('filter_length, if a string, must be a '
-                   'human-readable time, e.g. "10s", or "auto", not '
-                   '"%s"' % filter_length)
-        if filter_length.lower().endswith('ms'):
-            mult_fact = 1e-3
-            filter_length = filter_length[:-2]
-        elif filter_length[-1].lower() == 's':
-            mult_fact = 1
-            filter_length = filter_length[:-1]
-        else:
-            raise ValueError(err_msg)
-        # now get the number
-        try:
-            filter_length = float(filter_length)
-        except ValueError:
-            raise ValueError(err_msg)
-        filter_length = max(int(np.floor(filter_length * mult_fact *
-                                         sfreq)), 1)
-    filter_length = ensure_int(filter_length, 'filter_length')
-    return filter_length
 
 
 if __name__ == "__main__":
