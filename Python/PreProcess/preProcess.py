@@ -9,7 +9,7 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from Python.PreProcess.utils import PathLike, LAB_root
+from Python.PreProcess.utils import PathLike, LAB_root, to_samples
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -167,12 +167,15 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
     return layout, raw, D_dat_raw, D_dat_filt
 
 
-def crop_data(raw: mne.io.Raw, start_pad: float = 10.0, end_pad: float = 10.0):
+def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
     '''
     Takes raw file with annotated events and crop the file so that the raw
     file starts at the first event and stops an amount of time in seconds
     given by end_pad after the last event
     '''
+
+    start_pad = to_samples(start_pad, raw.info['sfreq']) / raw.info['sfreq']
+    end_pad = to_samples(end_pad, raw.info['sfreq']) / raw.info['sfreq']
 
     # get start and stop time from raw.annotations onset attribute
     t_min = raw.annotations.onset[0] - start_pad
@@ -206,7 +209,7 @@ def channel_outlier_marker(input_raw: mne.io.Raw,
 
 
 if __name__ == "__main__":
-    import utils, filter
+    import filter
 
     # %% Set up logging
     log_filename = "output.log"

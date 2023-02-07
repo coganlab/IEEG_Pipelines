@@ -145,3 +145,29 @@ def get_mem() -> Union[float, int]:
     from psutil import virtual_memory
     ram_per = virtual_memory()[3]/cpu_count()
     return ram_per
+
+
+def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
+    validate_type(filter_length, (str, int))
+    if isinstance(filter_length, str):
+        filter_length = filter_length.lower()
+        err_msg = ('filter_length, if a string, must be a '
+                   'human-readable time, e.g. "10s", or "auto", not '
+                   '"%s"' % filter_length)
+        if filter_length.lower().endswith('ms'):
+            mult_fact = 1e-3
+            filter_length = filter_length[:-2]
+        elif filter_length[-1].lower() == 's':
+            mult_fact = 1
+            filter_length = filter_length[:-1]
+        else:
+            raise ValueError(err_msg)
+        # now get the number
+        try:
+            filter_length = float(filter_length)
+        except ValueError:
+            raise ValueError(err_msg)
+        filter_length = max(int(np.ceil(filter_length * mult_fact *
+                                        sfreq)), 1)
+    filter_length = ensure_int(filter_length, 'filter_length')
+    return filter_length
