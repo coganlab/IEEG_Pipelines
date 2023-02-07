@@ -167,7 +167,7 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
     return layout, raw, D_dat_raw, D_dat_filt
 
 
-def crop_data(raw: mne.io.Raw, end_pad: float = 10.0):
+def crop_data(raw: mne.io.Raw, start_pad: float = 10.0, end_pad: float = 10.0):
     '''
     Takes raw file with annotated events and crop the file so that the raw
     file starts at the first event and stops an amount of time in seconds
@@ -175,7 +175,7 @@ def crop_data(raw: mne.io.Raw, end_pad: float = 10.0):
     '''
 
     # get start and stop time from raw.annotations onset attribute
-    t_min = raw.annotations.onset[0]
+    t_min = raw.annotations.onset[0] - start_pad
     t_max = raw.annotations.onset[-1] + end_pad
 
     # create new cropped raw file
@@ -206,7 +206,7 @@ def channel_outlier_marker(input_raw: mne.io.Raw,
 
 
 if __name__ == "__main__":
-    from Python.PreProcess import utils, filter
+    import utils, filter
 
     # %% Set up logging
     log_filename = "output.log"
