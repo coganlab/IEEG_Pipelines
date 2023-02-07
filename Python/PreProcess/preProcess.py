@@ -157,12 +157,12 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
             break
     if BIDS_root is None:
         raise FileNotFoundError("Could not find BIDS directory in {} for task "
-                                "{}".format(LAB_root, task))
+                                "{}".format(lab_root, task))
     sub_pad = "D" + "{}".format(sub_num).zfill(4)
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
     raw = raw_from_layout(layout, sub_pad, run)
-    D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
+    D_dat_raw, D_dat_filt = find_dat(op.join(lab_root, "D_Data",
                                              task, subject))
     return layout, raw, D_dat_raw, D_dat_filt
 
@@ -210,6 +210,7 @@ def channel_outlier_marker(input_raw: mne.io.Raw,
 
 if __name__ == "__main__":
     from filter import line_filter
+    import os
 
     # %% Set up logging
     log_filename = "output.log"
@@ -229,6 +230,8 @@ if __name__ == "__main__":
     filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
                         filter_length='20s', verbose=10,
                         freqs=[120, 180, 240], notch_widths=20)
+    os.mkdir(op.join(layout.root, "derivatives"))
+    filt2.save(layout.root + "/derivatives/sub-D00" + str(sub_num) + "_" + TASK + "_filt_ieeg.fif")
 
     # Crop raw data to minimize processing time
     new = crop_data(filt2)
