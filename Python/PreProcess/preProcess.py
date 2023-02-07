@@ -10,7 +10,7 @@ from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
 from Python.PreProcess.utils import PathLike, LAB_root, to_samples
-
+from Python.PreProcess.filter import Signal
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
 
@@ -209,7 +209,7 @@ def channel_outlier_marker(input_raw: mne.io.Raw,
 
 
 if __name__ == "__main__":
-    import filter
+    from filter import line_filter
 
     # %% Set up logging
     log_filename = "output.log"
@@ -223,21 +223,26 @@ if __name__ == "__main__":
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
 
     # Filtering
-    filt = filter.line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
-                              filter_length='700ms', verbose=10,
-                              freqs=[60], notch_widths=20)
-    filt2 = filter.line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                               filter_length='20s', verbose=10,
-                               freqs=[120, 180, 240], notch_widths=20)
+    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+                       filter_length='700ms', verbose=10,
+                       freqs=[60], notch_widths=20)
+    filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+                        filter_length='20s', verbose=10,
+                        freqs=[120, 180, 240], notch_widths=20)
 
     # Crop raw data to minimize processing time
-    new_raw = crop_data(raw)
+    new = crop_data(filt2)
 
     # Mark channel outliers as bad
-    marked_raw = channel_outlier_marker(new_raw)
+    marked = channel_outlier_marker(new)
 
     # Exclude bad channels
-    good_raw = marked_raw.copy().drop_channels(marked_raw.info['bads'])
+    good: Signal = marked.copy().drop_channels(marked.info['bads'])
+
+    # CAR
+    good_CAR = good.set_eeg_reference(ref_channels="average")
+
+    # High Gamma filt
 
     # %% Filter the data
     # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,

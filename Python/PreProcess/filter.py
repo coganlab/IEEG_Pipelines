@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import TypeVar, Union, List, Callable, Tuple
+from typing import TypeVar, Union, List
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -11,7 +11,7 @@ from mne.utils import logger, _pl, warn, verbose
 from scipy import stats, signal, fft
 from tqdm import tqdm
 
-from Python.PreProcess.utils import to_samples, ensure_int, validate_type, is_number, _COLA
+from Python.PreProcess.utils import to_samples, validate_type, is_number, _COLA
 from Python.PreProcess.fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
