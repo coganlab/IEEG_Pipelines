@@ -167,10 +167,10 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
     return layout, raw, D_dat_raw, D_dat_filt
 
 
-def crop_data(raw: mne.io.Raw, end_pad: float=10.0):
+def crop_data(raw: mne.io.Raw, end_pad: float = 10.0):
     '''
     Takes raw file with annotated events and crop the file so that the raw
-    file starts at the first event and stops an amount of time in seconds 
+    file starts at the first event and stops an amount of time in seconds
     given by end_pad after the last event
     '''
 
@@ -178,21 +178,23 @@ def crop_data(raw: mne.io.Raw, end_pad: float=10.0):
     t_min = raw.annotations.onset[0]
     t_max = raw.annotations.onset[-1] + end_pad
 
-    # create new cropped raw file 
-    new_raw = raw.copy().crop(tmin=t_min, t_max=t_max)
+    # create new cropped raw file
+    new_raw = raw.copy().crop(tmin=t_min, tmax=t_max)
 
     return new_raw
 
-def channel_outlier_marker(input_raw, outlier_sd=3):
+
+def channel_outlier_marker(input_raw: mne.io.Raw,
+                           outlier_sd: int = 3) -> mne.io.Raw:
     """
-    Marks a channel as 'bad' if the mean of the channel is different from 
-    the mean across channels by a factor of the cross channel std given by 
+    Marks a channel as 'bad' if the mean of the channel is different from
+    the mean across channels by a factor of the cross channel std given by
     outlier_sd
     """
     data = input_raw.get_data()
-    mu = np.mean(data) # take the mean across all channels and time series
-    sig = np.std(data) # take standard deviation across all time series
-    
+    mu = np.mean(data)  # take the mean across all channels and time series
+    sig = np.std(data)  # take standard deviation across all time series
+
     # Loop over each channel, calculate mean, and append channel to 'bad'
     # in input_raw if the difference in means is more than the given outlier_sd
     # factor (default is 3 standard deviations)
@@ -203,13 +205,9 @@ def channel_outlier_marker(input_raw, outlier_sd=3):
     return input_raw
 
 
-    
-    
-
-
-
 if __name__ == "__main__":
     from Python.PreProcess import utils, filter
+
     # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")
@@ -220,16 +218,23 @@ if __name__ == "__main__":
     TASK = "SentenceRep"
     sub_num = 29
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
-    
+
+    # Filtering
+    filt = filter.line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+                              filter_length='700ms', verbose=10,
+                              freqs=[60], notch_widths=20)
+    filt2 = filter.line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+                               filter_length='20s', verbose=10,
+                               freqs=[120, 180, 240], notch_widths=20)
+
     # Crop raw data to minimize processing time
     new_raw = crop_data(raw)
 
     # Mark channel outliers as bad
     marked_raw = channel_outlier_marker(new_raw)
-    
-    #Exclude bad channels 
-    good_raw = marked_raw.copy().drop_channels(marked_raw.info['bads'])
 
+    # Exclude bad channels
+    good_raw = marked_raw.copy().drop_channels(marked_raw.info['bads'])
 
     # %% Filter the data
     # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
