@@ -11,8 +11,8 @@ from mne.utils import logger, _pl, warn, verbose
 from scipy import stats, signal, fft
 from tqdm import tqdm
 
-from PreProcess.utils import to_samples, validate_type, is_number, _COLA
-from PreProcess.fastmath import sine_f_test
+from PreProcess.utils.utils import to_samples, validate_type, is_number, _COLA
+from PreProcess.utils.fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -458,8 +458,7 @@ def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
 
 
 if __name__ == "__main__":
-    from preProcess import get_data, open_dat_file
-    from utils import figure_compare
+    from navigate import get_data
     import mne
 
     # %% Set up logging

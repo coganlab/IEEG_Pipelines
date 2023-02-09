@@ -9,8 +9,8 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from Python.PreProcess.utils import PathLike, LAB_root, to_samples
-from Python.PreProcess.filter import Signal
+from PreProcess.utils.utils import PathLike, LAB_root, to_samples
+from PreProcess.filter import Signal
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
 
@@ -123,26 +123,6 @@ def open_dat_file(file_path: str, channels: List[str],
     info = mne.create_info(channels, sfreq, types)
     raw = mne.io.RawArray(array * factor, info)
     return raw
-
-
-def retrieve_filt(sub: str,
-                  runs: Union[List[int], int] = (1, 2, 3, 4)) -> mne.io.Raw:
-    """Retrieves a saved filtered fif file from the data folder."""
-    try:
-        iter(runs)
-    except TypeError:
-        runs = [runs]
-    if not isinstance(runs, list):
-        runs = list(runs)
-    filt = mne.io.read_raw_fif(
-        op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
-                "{}_filt_run-{}_ieeg.fif".format(sub, 1)))
-    del runs[0]
-    for i in runs:
-        f_name = op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
-                         "{}_filt_run-{}_ieeg.fif".format(sub, i))
-        mne.concatenate_raws([filt, mne.io.read_raw_fif(f_name)])
-    return filt
 
 
 def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
