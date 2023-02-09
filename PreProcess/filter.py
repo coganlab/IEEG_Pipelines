@@ -2,19 +2,16 @@ from collections import Counter
 from typing import TypeVar, Union, List
 
 import numpy as np
-from numpy.typing import ArrayLike
-
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
 from mne.utils import logger, _pl, verbose
+from numpy.typing import ArrayLike
 from scipy import stats
 from tqdm import tqdm
 
+from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils
 from PreProcess.utils.utils import is_number, validate_type
-from PreProcess.timefreq.tapers import mt_params, mt_spectra
-from PreProcess.timefreq.fastmath import sine_f_test
-from PreProcess.timefreq.utils import _COLA, to_samples
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -123,13 +120,14 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
     if filter_length is None:
         filter_length = x.shape[-1]
 
-    filter_length: int = min(to_samples(filter_length, fs), x.shape[-1])
+    filter_length: int = min(mt_utils.to_samples(filter_length, fs),
+                             x.shape[-1])
 
     # Define adaptive windowing function
     def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
         # figure out what tapers to use
-        window_fun, _, _ = mt_params(n_times, fs, mt_bandwidth,
-                                    low_bias, adaptive, verbose=True)
+        window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
+                                             low_bias, adaptive, verbose=True)
 
         # F-stat of 1-p point
         threshold = stats.f.ppf(1 - p_value / n_times, 2,
@@ -198,8 +196,8 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         x_out[..., idx[0]:stop] += x_
         idx[0] = stop
 
-    _COLA(process, store, n_times, n_samples, n_overlap, sfreq, n_jobs=n_jobs,
-          verbose=True).feed(x)
+    mt_utils._COLA(process, store, n_times, n_samples, n_overlap, sfreq,
+                   n_jobs=n_jobs, verbose=True).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
@@ -217,8 +215,8 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     if x.shape[-1] != window_fun.shape[-1]:
         window_fun, threshold = get_thresh(x.shape[-1])
     # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
-    x_p, freqs = mt_spectra(x[np.newaxis, :], window_fun, sfreq)
-    f_stat, A = sine_f_test(window_fun, x_p)
+    x_p, freqs = multitaper.spectra(x[np.newaxis, :], window_fun, sfreq)
+    f_stat, A = fastmath.sine_f_test(window_fun, x_p)
 
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]

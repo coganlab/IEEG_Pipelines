@@ -1,13 +1,13 @@
 import operator
 import os.path as op
-import pandas as pd
 from os import PathLike as PL
 from os import environ
 from typing import TypeVar, Iterable, Union
 
-from mne.utils import config
 import numpy as np
+import pandas as pd
 from joblib import Parallel, delayed, cpu_count
+from mne.utils import config
 
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")

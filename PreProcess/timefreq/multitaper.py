@@ -1,11 +1,9 @@
-import numpy as np
-from mne.utils import logger, _pl, warn, verbose
-from scipy import signal, fft
-from numpy.typing import ArrayLike
-from typing import Union, List, Tuple, Dict, Any, TypeVar
+from typing import TypeVar
 
-from .fastmath import sine_f_test
-from PreProcess.utils.utils import is_number
+import numpy as np
+from mne.utils import logger, warn, verbose
+from numpy.typing import ArrayLike
+from scipy import signal, fft
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
@@ -92,8 +90,8 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
     return dpss, eigvals
 
 
-def mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
-                n_fft: int = None) -> (ArrayLike, ArrayLike):
+def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
+            n_fft: int = None) -> (ArrayLike, ArrayLike):
     """Compute significant tapered spectra.
     Parameters
     ----------
@@ -137,9 +135,8 @@ def mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
 
 
 @verbose
-def mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
-                       adaptive: bool,
-                       verbose: bool = None):
+def params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
+           adaptive: bool, verbose: bool = None):
     """Triage windowing and multitaper parameters."""
     # Compute standardized half-bandwidth
     if isinstance(bandwidth, str):

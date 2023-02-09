@@ -1,10 +1,11 @@
+import gc
+from typing import List
+
 import matplotlib as mpl
 import numpy as np
-from matplotlib.pyplot import Axes
-from typing import List
-from mne.io import Raw
 from joblib import cpu_count
-import gc
+from matplotlib.pyplot import Axes
+from mne.io import Raw
 
 try:
     mpl.use("TkAgg")

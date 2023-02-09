@@ -1,14 +1,14 @@
 import os.path as op
 from typing import Union, List
 
-import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
 import numpy as np
 
-from PreProcess.utils.utils import PathLike, LAB_root
 from PreProcess.navigate import get_data
+from PreProcess.utils.utils import PathLike, LAB_root
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,

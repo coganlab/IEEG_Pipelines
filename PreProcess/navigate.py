@@ -201,14 +201,16 @@ if __name__ == "__main__":
     TASK = "SentenceRep"
     sub_num = 29
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
-    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(sub_num) + "_" + TASK + "_filt_ieeg.fif")
+    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
+        sub_num) + "_" + TASK + "_filt_ieeg.fif")
 
     # Spectrograms
     freqs = np.arange(10, 150., 10.)
     events, event_id = mne.events_from_annotations(filt)
     auds = mne.Epochs(filt, events, event_id, tmin=-1, tmax=1, baseline=(
         -1., -.5))['Audio']
-    mne.time_frequency.tfr_array_multitaper(auds.get_data(), auds.info['sfreq'], freqs, time_bandwidth=5.0)
+    mne.time_frequency.tfr_array_multitaper(auds.get_data(
+        ), auds.info['sfreq'], freqs, time_bandwidth=5.0)
     # Crop raw data to minimize processing time
     new = crop_data(filt)
 
