@@ -1,15 +1,17 @@
 import os.path as op
-from os import walk, listdir, curdir
+import re
+from os import walk, listdir
 from typing import Union, List, Tuple, Dict, Any
 
 import mne
-import re
 import numpy as np
 from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from Python.PreProcess.utils import PathLike, LAB_root, to_samples
+from PreProcess.filter import Signal
+from PreProcess.timefreq.utils import to_samples
+from PreProcess.utils.utils import PathLike, LAB_root
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -125,26 +127,6 @@ def open_dat_file(file_path: str, channels: List[str],
     return raw
 
 
-def retrieve_filt(sub: str,
-                  runs: Union[List[int], int] = (1, 2, 3, 4)) -> mne.io.Raw:
-    """Retrieves a saved filtered fif file from the data folder."""
-    try:
-        iter(runs)
-    except TypeError:
-        runs = [runs]
-    if not isinstance(runs, list):
-        runs = list(runs)
-    filt = mne.io.read_raw_fif(
-        op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
-                "{}_filt_run-{}_ieeg.fif".format(sub, 1)))
-    del runs[0]
-    for i in runs:
-        f_name = op.join(LAB_root, "Aaron_test", "filt_phonemesequence",
-                         "{}_filt_run-{}_ieeg.fif".format(sub, i))
-        mne.concatenate_raws([filt, mne.io.read_raw_fif(f_name)])
-    return filt
-
-
 def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
              BIDS_root: PathLike = None, lab_root=LAB_root):
     """
@@ -157,12 +139,12 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
             break
     if BIDS_root is None:
         raise FileNotFoundError("Could not find BIDS directory in {} for task "
-                                "{}".format(LAB_root, task))
+                                "{}".format(lab_root, task))
     sub_pad = "D" + "{}".format(sub_num).zfill(4)
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
     raw = raw_from_layout(layout, sub_pad, run)
-    D_dat_raw, D_dat_filt = find_dat(op.join(LAB_root, "D_Data",
+    D_dat_raw, D_dat_filt = find_dat(op.join(lab_root, "D_Data",
                                              task, subject))
     return layout, raw, D_dat_raw, D_dat_filt
 
@@ -209,8 +191,6 @@ def channel_outlier_marker(input_raw: mne.io.Raw,
 
 
 if __name__ == "__main__":
-    import filter
-
     # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")
@@ -221,38 +201,24 @@ if __name__ == "__main__":
     TASK = "SentenceRep"
     sub_num = 29
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
+    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
+        sub_num) + "_" + TASK + "_filt_ieeg.fif")
 
-    # Filtering
-    filt = filter.line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
-                              filter_length='700ms', verbose=10,
-                              freqs=[60], notch_widths=20)
-    filt2 = filter.line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                               filter_length='20s', verbose=10,
-                               freqs=[120, 180, 240], notch_widths=20)
-
+    # Spectrograms
+    freqs = np.arange(10, 150., 10.)
+    events, event_id = mne.events_from_annotations(filt)
+    auds = mne.Epochs(filt, events, event_id, tmin=-1, tmax=1, baseline=(
+        -1., -.5))['Audio']
+    mne.time_frequency.tfr_array_multitaper(auds.get_data(
+        ), auds.info['sfreq'], freqs, time_bandwidth=5.0)
     # Crop raw data to minimize processing time
-    new_raw = crop_data(raw)
+    new = crop_data(filt)
 
     # Mark channel outliers as bad
-    marked_raw = channel_outlier_marker(new_raw)
+    marked = channel_outlier_marker(new)
 
     # Exclude bad channels
-    good_raw = marked_raw.copy().drop_channels(marked_raw.info['bads'])
+    good: Signal = marked.copy().drop_channels(marked.info['bads'])
 
-    # %% Filter the data
-    # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
-    #                    filter_length='20s', verbose=10,
-    #                    freqs=[60, 120, 180, 240], notch_widths=20)
-    # raw.plot(n_channels=3,precompute=True, start=90)
-    # filt = retrieve_filt(sub_pad, 1)
-    # %% Plot the data
-    #  data = [raw, filt, raw_dat, dat]
-    # utl.figure_compare(data, [ "BIDS Un", "BIDS ", "Un", ""])
-    # for chan in raw.ch_names:
-    #     if chan == "Trigger":
-    #         continue
-    #     fmax = 250
-    #     spectrum = raw.compute_psd(method="multitaper", fmin=0, fmax=fmax,
-    #     picks=chan,
-    #                                 n_jobs=cpu_count(), verbose='INFO')
-    #     psds, freqs = spectrum.get_data(return_freqs=True)
+    # CAR
+    good_CAR = good.set_eeg_reference(ref_channels="average")

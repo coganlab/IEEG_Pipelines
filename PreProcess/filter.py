@@ -1,18 +1,17 @@
 from collections import Counter
-from typing import TypeVar, Union, List, Callable, Tuple
+from typing import TypeVar, Union, List
 
 import numpy as np
-from numpy.typing import ArrayLike
-
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
-from mne.utils import logger, _pl, warn, verbose
-from scipy import stats, signal, fft
+from mne.utils import logger, _pl, verbose
+from numpy.typing import ArrayLike
+from scipy import stats
 from tqdm import tqdm
 
-from Python.PreProcess.utils import to_samples, ensure_int, validate_type, is_number, _COLA
-from Python.PreProcess.fastmath import sine_f_test
+from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils
+from PreProcess.utils.utils import is_number, validate_type
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -121,13 +120,14 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
     if filter_length is None:
         filter_length = x.shape[-1]
 
-    filter_length: int = min(to_samples(filter_length, fs), x.shape[-1])
+    filter_length: int = min(mt_utils.to_samples(filter_length, fs),
+                             x.shape[-1])
 
     # Define adaptive windowing function
     def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
         # figure out what tapers to use
-        window_fun, _, _ = _compute_mt_params(n_times, fs, mt_bandwidth,
-                                              low_bias, adaptive, verbose=True)
+        window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
+                                             low_bias, adaptive, verbose=True)
 
         # F-stat of 1-p point
         threshold = stats.f.ppf(1 - p_value / n_times, 2,
@@ -196,8 +196,8 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         x_out[..., idx[0]:stop] += x_
         idx[0] = stop
 
-    _COLA(process, store, n_times, n_samples, n_overlap, sfreq, n_jobs=n_jobs,
-          verbose=True).feed(x)
+    mt_utils._COLA(process, store, n_times, n_samples, n_overlap, sfreq,
+                   n_jobs=n_jobs, verbose=True).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
@@ -215,8 +215,8 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     if x.shape[-1] != window_fun.shape[-1]:
         window_fun, threshold = get_thresh(x.shape[-1])
     # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
-    x_p, freqs = _mt_spectra(x[np.newaxis, :], window_fun, sfreq)
-    f_stat, A = sine_f_test(window_fun, x_p)
+    x_p, freqs = multitaper.spectra(x[np.newaxis, :], window_fun, sfreq)
+    f_stat, A = fastmath.sine_f_test(window_fun, x_p)
 
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]
@@ -246,169 +246,6 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         datafit = np.sum(fits, axis=0)
 
     return x - datafit, freqs[indices]
-
-
-def _mt_spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
-                n_fft: int = None) -> (ArrayLike, ArrayLike):
-    """Compute tapered spectra.
-    Parameters
-    ----------
-    x : array, shape=(..., n_times)
-        Input signal
-    dpss : array, shape=(n_tapers, n_times)
-        The tapers
-    sfreq : float
-        The sampling frequency
-    n_fft : int | None
-        Length of the FFT. If None, the number of samples in the input signal
-        will be used.
-    Returns
-    -------
-    x_mt : array, shape=(..., n_tapers, n_times)
-        The tapered spectra
-    freqs : array
-        The frequency points in Hz of the spectra
-    """
-    if n_fft is None:
-        n_fft = x.shape[-1]
-
-    # remove mean (do not use in-place subtraction as it may modify input x)
-    x = x - np.mean(x, axis=-1, keepdims=True)
-
-    # only keep positive frequencies
-    freqs = fft.rfftfreq(n_fft, 1. / sfreq)
-
-    # The following is equivalent to this, but uses less memory:
-    # x_mt = fftpack.fft(x[:, np.newaxis, :] * dpss, n=n_fft)
-    n_tapers = dpss.shape[0] if dpss.ndim > 1 else 1
-    x_mt = np.zeros(x.shape[:-1] + (n_tapers, len(freqs)),
-                    dtype=np.complex128)
-    for idx, sig in enumerate(x):
-        x_mt[idx] = fft.rfft(sig[..., np.newaxis, :] * dpss, n=n_fft)
-    # Adjust DC and maybe Nyquist, depending on one-sided transform
-    x_mt[..., 0] /= np.sqrt(2.)
-    if n_fft % 2 == 0:
-        x_mt[..., -1] /= np.sqrt(2.)
-    return x_mt, freqs
-
-
-def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
-                 interp_from=None, interp_kind=None):
-    """Compute Discrete Prolate Spheroidal Sequences.
-    Will give of orders [0,Kmax-1] for a given frequency-spacing multiple
-    NW and sequence length N.
-    .. note:: Copied from NiTime.
-    Parameters
-    ----------
-    N : int
-        Sequence length.
-    half_nbw : float
-        Standardized half bandwidth corresponding to 2 * half_bw = BW*f0
-        = BW*N/dt but with dt taken as 1.
-    Kmax : int
-        Number of DPSS windows to return is Kmax (orders 0 through Kmax-1).
-    sym : bool
-        Whether to generate a symmetric window (``True``, for filter design) or
-        a periodic window (``False``, for spectral analysis). Default is
-        ``True``.
-        .. versionadded:: 1.3
-    norm : 2 | ``'approximate'`` | ``'subsample'`` | None
-        Window normalization method. If ``'approximate'`` or ``'subsample'``,
-        windows are normalized by the maximum, and a correction scale-factor
-        for even-length windows is applied either using
-        ``N**2/(N**2+half_nbw)`` ("approximate") or a FFT-based subsample shift
-        ("subsample"). ``2`` uses the L2 norm. ``None`` (the default) uses
-        ``"approximate"`` when ``Kmax=None`` and ``2`` otherwise.
-        .. versionadded:: 1.3
-    low_bias : bool
-        Keep only tapers with eigenvalues > 0.9.
-    interp_from : int | None
-        The dpss can be calculated using interpolation from a set of dpss
-        with the same NW and Kmax, but shorter N. This is the length of this
-        shorter set of dpss windows.
-        .. deprecated:: 1.3
-           The ``interp_from`` option is deprecated and will be
-           removed in version 1.4. Modern implementations can handle large
-           values of ``N`` so interpolation is no longer necessary; any value
-           passed here will be ignored.
-    interp_kind : str | None
-        This input variable is passed to scipy.interpolate.interp1d and
-        specifies the kind of interpolation as a string ('linear', 'nearest',
-        'zero', 'slinear', 'quadratic, 'cubic') or as an integer specifying the
-        order of the spline interpolator to use.
-        .. deprecated:: 1.3
-           The ``interp_kind`` option is deprecated and will be
-           removed in version 1.4. Modern implementations can handle large
-           values of ``N`` so interpolation is no longer necessary; any value
-           passed here will be ignored.
-    Returns
-    -------
-    v, e : tuple,
-        The v array contains DPSS windows shaped (Kmax, N).
-        e are the eigenvalues.
-    Notes
-    -----
-    Tridiagonal form of DPSS calculation from :footcite:`Slepian1978`.
-    References
-    ----------
-    .. footbibliography::
-    """
-
-    if interp_from is not None:
-        warn('The ``interp_from`` option is deprecated and will be removed in '
-             'version 1.4.', FutureWarning)
-    if interp_kind is not None:
-        warn('The ``interp_kind`` option is deprecated and will be removed in '
-             'version 1.4.', FutureWarning)
-
-    dpss, eigvals = signal.windows.dpss(
-        N, half_nbw, Kmax, sym=sym, norm=norm, return_ratios=True)
-    if low_bias:
-        idx = (eigvals > 0.9)
-        if not idx.any():
-            warn('Could not properly use low_bias, keeping lowest-bias taper')
-            idx = [np.argmax(eigvals)]
-        dpss, eigvals = dpss[idx], eigvals[idx]
-    assert len(dpss) > 0  # should never happen
-    assert dpss.shape[1] == N  # old nitime bug
-    return dpss, eigvals
-
-
-@verbose
-def _compute_mt_params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
-                       adaptive: bool,
-                       verbose: bool = None):
-    """Triage windowing and multitaper parameters."""
-    # Compute standardized half-bandwidth
-    if isinstance(bandwidth, str):
-        logger.info('    Using standard spectrum estimation with "%s" window'
-                    % (bandwidth,))
-        window_fun = signal.get_window(bandwidth, n_times)[np.newaxis]
-        return window_fun, np.ones(1), False
-
-    if bandwidth is not None:
-        half_nbw = float(bandwidth) * n_times / sfreq
-    else:
-        half_nbw = 4.
-    if half_nbw < 0.5:
-        raise ValueError(
-            'bandwidth value %s yields a normalized bandwidth of %s < 0.5, '
-            'use a value of at least %s'
-            % (bandwidth, half_nbw, sfreq / n_times))
-
-    # Compute DPSS windows
-    n_tapers_max = int(np.floor(2 * half_nbw - 1))
-    window_fun, eigvals = dpss_windows(n_times, half_nbw, n_tapers_max,
-                                       sym=True, low_bias=low_bias)
-    logger.info('    Using multitaper spectrum estimation with %d DPSS '
-                'windows' % len(eigvals))
-
-    if adaptive and len(eigvals) < 3:
-        warn('Not adaptively combining the spectral estimators due to a '
-             'low number of tapers (%s < 3).' % (len(eigvals),))
-        adaptive = False
-
-    return window_fun, eigvals, adaptive
 
 
 def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
@@ -458,8 +295,7 @@ def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
 
 
 if __name__ == "__main__":
-    from preProcess import get_data, open_dat_file
-    from utils import figure_compare
+    from navigate import get_data
     import mne
 
     # %% Set up logging
@@ -470,7 +306,7 @@ if __name__ == "__main__":
     layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
     # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
     # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    raw.drop_channels(raw.ch_names[5:158])
+    raw.drop_channels(raw.ch_names[4:158])
     # raw_dat.drop_channels(raw_dat.ch_names[10:158])
     # dat.drop_channels(dat.ch_names[10:158])
     filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,

@@ -28,7 +28,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install flake8 pytest tqdm #cython setuptools
-        if [ -f Python/envs/requirements.txt ]; then pip install -r Python/envs/requirements.txt; fi
+        if [ -f PreProcess/envs/requirements.txt ]; then pip install -r PreProcess/envs/requirements.txt; fi
     - name: Test with pytest
       run: |
         pytest -v --pycodestyle
