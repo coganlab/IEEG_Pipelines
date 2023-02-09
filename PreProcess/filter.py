@@ -7,13 +7,14 @@ from numpy.typing import ArrayLike
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base, pick
-from mne.utils import logger, _pl, warn, verbose
+from mne.utils import logger, _pl, verbose
 from scipy import stats
 from tqdm import tqdm
 
-from PreProcess.utils.utils import to_samples, _COLA, is_number, validate_type
-from PreProcess.utils.timefreq import mt_params, mt_spectra
-from utils.fastmath import sine_f_test
+from PreProcess.utils.utils import is_number, validate_type
+from PreProcess.timefreq.tapers import mt_params, mt_spectra
+from PreProcess.timefreq.fastmath import sine_f_test
+from PreProcess.timefreq.utils import _COLA, to_samples
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -128,7 +129,7 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
     def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
         # figure out what tapers to use
         window_fun, _, _ = mt_params(n_times, fs, mt_bandwidth,
-                                              low_bias, adaptive, verbose=True)
+                                    low_bias, adaptive, verbose=True)
 
         # F-stat of 1-p point
         threshold = stats.f.ppf(1 - p_value / n_times, 2,
@@ -307,7 +308,7 @@ if __name__ == "__main__":
     layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
     # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
     # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    raw.drop_channels(raw.ch_names[5:158])
+    raw.drop_channels(raw.ch_names[4:158])
     # raw_dat.drop_channels(raw_dat.ch_names[10:158])
     # dat.drop_channels(dat.ch_names[10:158])
     filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,

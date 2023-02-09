@@ -5,7 +5,7 @@ from numpy.typing import ArrayLike
 from typing import Union, List, Tuple, Dict, Any, TypeVar
 
 from .fastmath import sine_f_test
-from .utils import is_number
+from PreProcess.utils.utils import is_number
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 

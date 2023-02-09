@@ -1,16 +1,18 @@
 import os.path as op
-from os import walk, listdir, curdir
+import re
+from os import walk, listdir
 from typing import Union, List, Tuple, Dict, Any
 
 import mne
-import re
 import numpy as np
 from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from PreProcess.utils.utils import PathLike, LAB_root, to_samples
 from PreProcess.filter import Signal
+from PreProcess.timefreq.utils import to_samples
+from PreProcess.utils.utils import PathLike, LAB_root
+
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
 
@@ -189,9 +191,6 @@ def channel_outlier_marker(input_raw: mne.io.Raw,
 
 
 if __name__ == "__main__":
-    from filter import line_filter
-    import os
-
     # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")
