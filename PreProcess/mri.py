@@ -7,8 +7,8 @@ import mne
 import nibabel as nib
 import numpy as np
 
-from Python.PreProcess.utils import PathLike, LAB_root
-from Python.PreProcess.preProcess import get_data
+from PreProcess.utils import PathLike, LAB_root
+from PreProcess.preProcess import get_data
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,

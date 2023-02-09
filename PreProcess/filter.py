@@ -11,8 +11,8 @@ from mne.utils import logger, _pl, warn, verbose
 from scipy import stats, signal, fft
 from tqdm import tqdm
 
-from Python.PreProcess.utils import to_samples, validate_type, is_number, _COLA
-from Python.PreProcess.fastmath import sine_f_test
+from PreProcess.utils import to_samples, validate_type, is_number, _COLA
+from PreProcess.fastmath import sine_f_test
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)

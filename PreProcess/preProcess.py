@@ -233,6 +233,12 @@ if __name__ == "__main__":
     os.mkdir(op.join(layout.root, "derivatives"))
     filt2.save(layout.root + "/derivatives/sub-D00" + str(sub_num) + "_" + TASK + "_filt_ieeg.fif")
 
+    # Spectrograms
+    freqs = np.arange(10, 150., 10.)
+    events, event_id = mne.events_from_annotations(filt2)
+    auds = mne.Epochs(filt2, events, event_id, tmin=-1, tmax=1, baseline=(
+        -1., -.5))['Audio']
+    mne.time_frequency.tfr_array_multitaper(auds.get_data(), auds.info['sfreq'], freqs, time_bandwidth=5.0)
     # Crop raw data to minimize processing time
     new = crop_data(filt2)
 
