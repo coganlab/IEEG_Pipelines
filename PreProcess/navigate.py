@@ -202,25 +202,16 @@ if __name__ == "__main__":
     TASK = "SentenceRep"
     sub_num = 29
     layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
-
-    # Filtering
-    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
-                       filter_length='700ms', verbose=10,
-                       freqs=[60], notch_widths=20)
-    filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                        filter_length='20s', verbose=10,
-                        freqs=[120, 180, 240], notch_widths=20)
-    os.mkdir(op.join(layout.root, "derivatives"))
-    filt2.save(layout.root + "/derivatives/sub-D00" + str(sub_num) + "_" + TASK + "_filt_ieeg.fif")
+    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(sub_num) + "_" + TASK + "_filt_ieeg.fif")
 
     # Spectrograms
     freqs = np.arange(10, 150., 10.)
-    events, event_id = mne.events_from_annotations(filt2)
-    auds = mne.Epochs(filt2, events, event_id, tmin=-1, tmax=1, baseline=(
+    events, event_id = mne.events_from_annotations(filt)
+    auds = mne.Epochs(filt, events, event_id, tmin=-1, tmax=1, baseline=(
         -1., -.5))['Audio']
     mne.time_frequency.tfr_array_multitaper(auds.get_data(), auds.info['sfreq'], freqs, time_bandwidth=5.0)
     # Crop raw data to minimize processing time
-    new = crop_data(filt2)
+    new = crop_data(filt)
 
     # Mark channel outliers as bad
     marked = channel_outlier_marker(new)
@@ -230,23 +221,3 @@ if __name__ == "__main__":
 
     # CAR
     good_CAR = good.set_eeg_reference(ref_channels="average")
-
-    # High Gamma filt
-
-    # %% Filter the data
-    # filt = filter.line_filter(raw, mt_bandwidth=5.0, n_jobs=5,
-    #                    filter_length='20s', verbose=10,
-    #                    freqs=[60, 120, 180, 240], notch_widths=20)
-    # raw.plot(n_channels=3,precompute=True, start=90)
-    # filt = retrieve_filt(sub_pad, 1)
-    # %% Plot the data
-    #  data = [raw, filt, raw_dat, dat]
-    # utl.figure_compare(data, [ "BIDS Un", "BIDS ", "Un", ""])
-    # for chan in raw.ch_names:
-    #     if chan == "Trigger":
-    #         continue
-    #     fmax = 250
-    #     spectrum = raw.compute_psd(method="multitaper", fmin=0, fmax=fmax,
-    #     picks=chan,
-    #                                 n_jobs=cpu_count(), verbose='INFO')
-    #     psds, freqs = spectrum.get_data(return_freqs=True)
