@@ -9,9 +9,9 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from PreProcess.filter import Signal
-from PreProcess.timefreq.utils import to_samples
-from PreProcess.utils.utils import PathLike, LAB_root
+from mt_filter import Signal, line_filter
+from timefreq.utils import to_samples
+from utils.utils import PathLike, LAB_root
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -123,7 +123,7 @@ def open_dat_file(file_path: str, channels: List[str],
         case _:
             raise NotImplementedError("Unit " + units + " not implemented yet")
     info = mne.create_info(channels, sfreq, types)
-    raw = mne.io.RawArray(array * factor, info)
+    raw = mne.io.RawArray(array * factor, info, preload=False)
     return raw
 
 

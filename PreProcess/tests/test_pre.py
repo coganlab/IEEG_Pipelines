@@ -1,10 +1,9 @@
 import mne.datasets
+import numpy as np
 from bids import BIDSLayout
 from mne.io import BaseRaw
 from mne_bids import BIDSPath
 
-from PreProcess import navigate as nav  # noqa: E402
-from PreProcess.filter import line_filter
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 # sample_path = mne.datasets.sample.data_path()
@@ -22,22 +21,24 @@ def test_bids():
 
 
 def test_bidspath_from_layout():
-
+    from navigate import bidspath_from_layout
     expected = "sub-pt1_ses-presurgery_task-ictal_ieeg.eeg"
-    bidspath = nav.bidspath_from_layout(layout, subject="pt1",
-                                        extension=".eeg")
+    bidspath = bidspath_from_layout(layout, subject="pt1",
+                                    extension=".eeg")
     assert isinstance(bidspath, BIDSPath)
     assert bidspath.basename == expected
 
 
 def test_raw_from_layout():
-    raw = nav.raw_from_layout(layout, subject="pt1", extension=".vhdr")
+    from navigate import raw_from_layout
+    raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
     assert isinstance(raw, BaseRaw)
 
 
 def test_line_filter():
-    import numpy as np
-    raw = nav.raw_from_layout(layout, subject="pt1", extension=".vhdr")
+    from navigate import raw_from_layout
+    from mt_filter import line_filter
+    raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
     raw.load_data()
     filt = line_filter(raw, raw.info['sfreq'], [60])
     raw_dat = raw._data
