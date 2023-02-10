@@ -9,6 +9,18 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
+import sys
+from pathlib import Path # if you haven't already done so
+file = Path(__file__).resolve()
+parent, root = file.parent, file.parents[1]
+sys.path.append(str(root))
+
+# Additionally remove the current file's directory from sys.path
+try:
+    sys.path.remove(str(parent))
+except ValueError: # Already removed
+    pass
+
 from PreProcess.mt_filter import Signal, line_filter
 from PreProcess.timefreq.utils import to_samples
 from PreProcess.utils.utils import PathLike, LAB_root
