@@ -10,8 +10,8 @@ from numpy.typing import ArrayLike
 from scipy import stats
 from tqdm import tqdm
 
-from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils
-from PreProcess.utils.utils import is_number, validate_type
+from timefreq import multitaper, fastmath, utils as mt_utils
+from utils.utils import is_number, validate_type
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)

@@ -4,7 +4,7 @@ import numpy as np
 from mne.utils import logger, verbose
 from scipy.signal import get_window
 
-from PreProcess.utils.utils import validate_type, ensure_int, parallelize
+from utils.utils import validate_type, ensure_int, parallelize
 
 
 def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
