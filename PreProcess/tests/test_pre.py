@@ -21,7 +21,7 @@ def test_bids():
 
 
 def test_bidspath_from_layout():
-    from navigate import bidspath_from_layout
+    from ..navigate import bidspath_from_layout
     expected = "sub-pt1_ses-presurgery_task-ictal_ieeg.eeg"
     bidspath = bidspath_from_layout(layout, subject="pt1",
                                     extension=".eeg")
@@ -30,14 +30,14 @@ def test_bidspath_from_layout():
 
 
 def test_raw_from_layout():
-    from navigate import raw_from_layout
+    from ..navigate import raw_from_layout
     raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
     assert isinstance(raw, BaseRaw)
 
 
 def test_line_filter():
-    from navigate import raw_from_layout
-    from mt_filter import line_filter
+    from ..navigate import raw_from_layout
+    from ..mt_filter import line_filter
     raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
     raw.load_data()
     filt = line_filter(raw, raw.info['sfreq'], [60])

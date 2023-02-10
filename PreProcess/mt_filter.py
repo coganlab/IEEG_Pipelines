@@ -10,8 +10,8 @@ from numpy.typing import ArrayLike
 from scipy import stats
 from tqdm import tqdm
 
-from timefreq import multitaper, fastmath, utils as mt_utils
-from utils.utils import is_number, validate_type
+from .timefreq import multitaper, fastmath, utils as mt_utils
+from .utils.utils import is_number, validate_type
 
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -295,28 +295,24 @@ def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
 
 
 if __name__ == "__main__":
-    from navigate import get_data
     import mne
+    from bids import BIDSLayout
+    from navigate import raw_from_layout
 
     # %% Set up logging
     mne.set_log_file("output.log",
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    raw.drop_channels(raw.ch_names[4:158])
-    # raw_dat.drop_channels(raw_dat.ch_names[10:158])
-    # dat.drop_channels(dat.ch_names[10:158])
+
+    bids_root = mne.datasets.epilepsy_ecog.data_path()
+    layout = BIDSLayout(bids_root)
+    raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
+
     filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
                        filter_length='700ms', verbose=10,
                        freqs=[60], notch_widths=20)
-    # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-    #                     filter_length='20s', verbose=10,
-    #                     freqs=[120, 180, 240], notch_widths=20)
-    # data = [raw, filt, filt2, raw_dat, dat]
-    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-    #                       ""], avg=True, verbose=10, proj=True, fmax=250)
-    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-    #                       ""], avg=False, verbose=10, proj=True, fmax=250)
+    params = dict(method='multitaper', fmin=55, fmax=65, tmax=200,
+                  bandwidth=0.5, n_jobs=8)
+    fpsd = filt.compute_psd(**params)
+    fpsd.plot()
