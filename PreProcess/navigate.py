@@ -135,7 +135,7 @@ def open_dat_file(file_path: str, channels: List[str],
         case _:
             raise NotImplementedError("Unit " + units + " not implemented yet")
     info = mne.create_info(channels, sfreq, types)
-    raw = mne.io.RawArray(array * factor, info, preload=False)
+    raw = mne.io.RawArray(array * factor, info)
     return raw
 
 

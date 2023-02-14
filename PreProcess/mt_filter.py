@@ -139,7 +139,8 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
     def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
         # figure out what tapers to use
         window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
-                                             low_bias, adaptive, verbose=True)
+                                             low_bias, adaptive,
+                                             verbose=verbose)
 
         # F-stat of 1-p point
         threshold = stats.f.ppf(1 - p_value / n_times, 2,
@@ -232,7 +233,8 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]
-
+    # pdf = 1-stats.f.cdf(f_stat, 2, window_fun.shape[0]-2)
+    # indices = np.where(pdf < 1/x.shape[-1])[1]
     # specify frequencies within indicated ranges
     if line_freqs is not None and notch_widths is not None:
         if not isinstance(notch_widths, (list, tuple)) and is_number(
@@ -309,7 +311,8 @@ def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
 if __name__ == "__main__":
     import mne
     from bids import BIDSLayout
-    from navigate import raw_from_layout
+    from PreProcess.navigate import raw_from_layout
+    # from navigate import get_data
 
     # %% Set up logging
     mne.set_log_file("output.log",
@@ -320,10 +323,13 @@ if __name__ == "__main__":
     bids_root = mne.datasets.epilepsy_ecog.data_path()
     layout = BIDSLayout(bids_root)
     raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
+    raw.load_data()
+    # layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
 
     filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
                        filter_length='700ms', verbose=10,
-                       freqs=[60], notch_widths=20)
+                       freqs=[60], notch_widths=20, p_value=.95)
+    # %% plot results
     params = dict(method='multitaper', fmin=55, fmax=65, tmax=200,
                   bandwidth=0.5, n_jobs=8)
     fpsd = filt.compute_psd(**params)

@@ -91,7 +91,7 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
 
 
 def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
-            n_fft: int = None) -> (ArrayLike, ArrayLike):
+            n_fft: int = None, pad_fact: int = 3) -> (ArrayLike, ArrayLike):
     """Compute significant tapered spectra.
     Parameters
     ----------
@@ -112,7 +112,7 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
         The frequency points in Hz of the spectra
     """
     if n_fft is None:
-        n_fft = x.shape[-1]
+        n_fft = round(sfreq * round(x.shape[-1]*pad_fact/sfreq))
 
     # remove mean (do not use in-place subtraction as it may modify input x)
     x = x - np.mean(x, axis=-1, keepdims=True)
