@@ -168,17 +168,38 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
     given by end_pad after the last event
     '''
 
+    crop_list = []
+
     start_pad = to_samples(start_pad, raw.info['sfreq']) / raw.info['sfreq']
     end_pad = to_samples(end_pad, raw.info['sfreq']) / raw.info['sfreq']
 
-    # get start and stop time from raw.annotations onset attribute
-    t_min = raw.annotations.onset[0] - start_pad
-    t_max = raw.annotations.onset[-1] + end_pad
+    # split annotations into blocks
+    annot = raw.annotations.copy()
+    block_idx = [idx + 1 for idx, val in
+                 enumerate(annot) if val['description'] == 'BAD boundary']
+    block_annot = [annot[i: j] for i, j in
+                   zip([0] + block_idx, block_idx +
+                   ([len(annot)] if block_idx[-1] != len(annot) else []))]
 
-    # create new cropped raw file
-    new_raw = raw.copy().crop(tmin=t_min, tmax=t_max)
+    for block_an in block_annot:
+        # remove boundary events from annotations
+        no_bound = None
+        for an in block_an:
+            if 'boundary' not in an['description']:
+                if no_bound is None:
+                    no_bound = mne.Annotations(**an)
+                else:
+                    an.pop('orig_time')
+                    no_bound.append(**an)
 
-    return new_raw
+        # get start and stop time from raw.annotations onset attribute
+        t_min = no_bound.onset[0] - start_pad
+        t_max = no_bound.onset[-1] + end_pad
+
+        # create new cropped raw file
+        crop_list.append(raw.copy().crop(tmin=t_min, tmax=t_max))
+
+    return mne.concatenate_raws(crop_list)
 
 
 def channel_outlier_marker(input_raw: mne.io.Raw,
