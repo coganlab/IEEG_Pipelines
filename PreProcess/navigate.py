@@ -216,7 +216,7 @@ def channel_outlier_marker(input_raw: mne.io.Raw, outlier_sd: int = 3):
     # Loop over each channel, calculate mean, and append channel to 'bad'
     # in input_raw if the difference in means is more than the given outlier_sd
     # factor (default is 3 standard deviations)
-    for ii, ch in enumerate(input_raw.pick('data').ch_names):
+    for ii, ch in enumerate(input_raw.copy().pick('data').ch_names):
         mu_ch = np.mean(data[ii, :])
         if abs(mu_ch - mu) > (outlier_sd * sig):
             input_raw.info['bads'].append(ch)
