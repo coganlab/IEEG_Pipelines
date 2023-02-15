@@ -202,25 +202,24 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
     return mne.concatenate_raws(crop_list)
 
 
-def channel_outlier_marker(input_raw: mne.io.Raw,
-                           outlier_sd: int = 3) -> mne.io.Raw:
+def channel_outlier_marker(input_raw: mne.io.Raw, outlier_sd: int = 3):
     """
     Marks a channel as 'bad' if the mean of the channel is different from
     the mean across channels by a factor of the cross channel std given by
     outlier_sd
     """
-    data = input_raw.get_data()
+
+    data = input_raw.get_data('data')
     mu = np.mean(data)  # take the mean across all channels and time series
     sig = np.std(data)  # take standard deviation across all time series
 
     # Loop over each channel, calculate mean, and append channel to 'bad'
     # in input_raw if the difference in means is more than the given outlier_sd
     # factor (default is 3 standard deviations)
-    for ii, ch in enumerate(input_raw.ch_names):
+    for ii, ch in enumerate(input_raw.pick('data').ch_names):
         mu_ch = np.mean(data[ii, :])
         if abs(mu_ch - mu) > (outlier_sd * sig):
             input_raw.info['bads'].append(ch)
-    return input_raw
 
 
 if __name__ == "__main__":
@@ -248,10 +247,10 @@ if __name__ == "__main__":
     new = crop_data(filt)
 
     # Mark channel outliers as bad
-    marked = channel_outlier_marker(new)
+    channel_outlier_marker(new)
 
     # Exclude bad channels
-    good: Signal = marked.copy().drop_channels(marked.info['bads'])
+    good: Signal = new.copy().drop_channels(new.info['bads'])
 
     # CAR
     good_CAR = good.set_eeg_reference(ref_channels="average")
