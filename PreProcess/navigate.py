@@ -21,8 +21,8 @@ try:
 except ValueError: # Already removed
     pass
 
-from PreProcess.mt_filter import Signal, line_filter
-from PreProcess.timefreq.utils import to_samples
+from PreProcess.mt_filter import line_filter
+from PreProcess.timefreq.utils import to_samples, Signal
 from PreProcess.utils.utils import PathLike, LAB_root
 
 RunDict = Dict[int, mne.io.Raw]
@@ -162,11 +162,11 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
 
 
 def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
-    '''
+    """
     Takes raw file with annotated events and crop the file so that the raw
     file starts at the first event and stops an amount of time in seconds
     given by end_pad after the last event
-    '''
+    """
 
     crop_list = []
 

@@ -43,6 +43,33 @@ def crop_pad(inst: Signal, pad: str):
     inst.crop(tmin=inst.tmin + pad)
 
 
+def _check_filterable(x: Union[Signal, np.typing.ArrayLike],
+                      kind: str = 'filtered',
+                      alternative: str = 'filter') -> np.ndarray:
+    # Let's be fairly strict about this -- users can easily coerce to ndarray
+    # at their end, and we already should do it internally any time we are
+    # using these low-level functions. At the same time, let's
+    # help people who might accidentally use low-level functions that they
+    # shouldn't use by pushing them in the right direction
+    if isinstance(x, (base.BaseRaw, BaseEpochs, Evoked)):
+        try:
+            name = x.__class__.__name__
+        except Exception:
+            pass
+        else:
+            raise TypeError(
+                'This low-level function only operates on np.ndarray '
+                f'instances. To get a {kind} {name} instance, use a method '
+                f'like `inst_new = inst.copy().{alternative}(...)` '
+                'instead.')
+    validate_type(x, (np.ndarray, list, tuple))
+    x = np.asanyarray(x)
+    if x.dtype != np.float64:
+        raise ValueError('Data to be %s must be real floating, got %s'
+                         % (kind, x.dtype,))
+    return x
+
+
 ###############################################################################
 # Constant overlap-add processing class
 

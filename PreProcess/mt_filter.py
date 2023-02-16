@@ -21,7 +21,7 @@ except ValueError: # Already removed
     pass
 
 from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils
-from PreProcess.utils.utils import is_number, validate_type
+from PreProcess.utils.utils import is_number
 
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -104,7 +104,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = None,
         filt = raw.copy()
     else:
         filt = raw
-    x = _check_filterable(filt.get_data("data"), 'notch filtered',
+    x = mt_utils._check_filterable(filt.get_data("data"), 'notch filtered',
                           'notch_filter')
     if freqs is not None:
         freqs = np.atleast_1d(freqs)
@@ -262,7 +262,7 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
 def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     """Set up array as 2D for filtering ease."""
-    x = _check_filterable(x)
+    x = mt_utils._check_filterable(x)
     orig_shape = x.shape
     x = np.atleast_2d(x)
     picks = pick._picks_to_idx(x.shape[-2], picks)
@@ -280,37 +280,11 @@ def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     return x, orig_shape, picks
 
 
-def _check_filterable(x: Union[mt_utils.Signal, ArrayLike],
-                      kind: str = 'filtered',
-                      alternative: str = 'filter') -> np.ndarray:
-    # Let's be fairly strict about this -- users can easily coerce to ndarray
-    # at their end, and we already should do it internally any time we are
-    # using these low-level functions. At the same time, let's
-    # help people who might accidentally use low-level functions that they
-    # shouldn't use by pushing them in the right direction
-    if isinstance(x, mt_utils.Signal):
-        try:
-            name = x.__class__.__name__
-        except Exception:
-            pass
-        else:
-            raise TypeError(
-                'This low-level function only operates on np.ndarray '
-                f'instances. To get a {kind} {name} instance, use a method '
-                f'like `inst_new = inst.copy().{alternative}(...)` '
-                'instead.')
-    validate_type(x, (np.ndarray, list, tuple))
-    x = np.asanyarray(x)
-    if x.dtype != np.float64:
-        raise ValueError('Data to be %s must be real floating, got %s'
-                         % (kind, x.dtype,))
-    return x
-
-
 if __name__ == "__main__":
     import mne
     from bids import BIDSLayout
-    from PreProcess.navigate import raw_from_layout, get_data
+    from PreProcess.navigate import raw_from_layout, get_data, open_dat_file
+    import PreProcess.utils.plotting
 
 
     # %% Set up logging
@@ -319,17 +293,58 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
 
-    bids_root = mne.datasets.epilepsy_ecog.data_path()
-    layout = BIDSLayout(bids_root)
-    raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
-    raw.load_data()
-    # layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
+    # bids_root = mne.datasets.epilepsy_ecog.data_path()
+    # layout = BIDSLayout(bids_root)
+    # raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
+    # raw.load_data()
+    layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
+    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
+        29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
 
-    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
-                       filter_length='700ms', verbose=10,
-                       freqs=[60], notch_widths=20, p_value=.95)
+    # %% filter data
+    # filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+    #                    filter_length='700ms', verbose=10,
+    #                    freqs=[60], notch_widths=20, p_value=.05)
+    # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+    #                     filter_length='20s', verbose=10,
+    #                     freqs=[120, 180, 240], notch_widths=20, p_value=.05)
+
+    # # %% plot results
+    # data = [raw, filt, filt2, raw_dat, dat]
+    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
+    #                       ""], avg=True, verbose=10, proj=True, fmax=250)
+    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
+    #                       ""], avg=False, verbose=10, proj=True, fmax=250)
+
     # %% plot results
-    params = dict(method='multitaper', fmin=55, fmax=65, tmax=200,
-                  bandwidth=0.5, n_jobs=8)
-    fpsd = filt.compute_psd(**params)
-    fpsd.plot()
+    # params = dict(method='multitaper', fmin=55, fmax=65, tmax=200,
+    #               bandwidth=0.5, n_jobs=8)
+    # fpsd = filt.compute_psd(**params)
+    # fpsd.plot()
+
+    # %% plot results
+    is_sent = False
+    annot = None
+    for event in filt.annotations:
+        if event['description'] in ['Audio']:
+            if event['duration'] > 1:
+                is_sent = True
+            else:
+                is_sent = False
+        if event['description'] not in ['Listen', ':=:']:
+            if is_sent:
+                trial_type = "Sentence/"
+            else:
+                trial_type = "Word/"
+        else:
+            trial_type = "Start/"
+        event['description'] = trial_type + event['description']
+        if annot is None:
+            annot = mne.Annotations(**event)
+        else:
+            event.pop('orig_time')
+            annot.append(**event)
+    filt.set_annotations(annot)
+    freqs = np.arange(10, 200., 2.)
+    spect = multitaper.spectrogram(filt, 'Word/Audio', -0.5, 1.5, 'Start', -0.5, 0, freqs, n_jobs=-1, verbose=10)
+    spect.plot()

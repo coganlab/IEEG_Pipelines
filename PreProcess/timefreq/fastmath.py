@@ -1,7 +1,9 @@
+from functools import singledispatch
+
 import numpy as np
 from mne.utils import logger, verbose
-from mne.epochs import BaseEpochs
-from mne.time_frequency import _BaseTFR
+from mne import Epochs
+from mne.time_frequency import EpochsSpectrum
 from typing import Union
 
 
@@ -70,18 +72,18 @@ def _log_rescale(baseline, mode='mean'):
     return msg
 
 
-def rescale(line: Union[BaseEpochs, _BaseTFR],
-            baseline: Union[BaseEpochs, _BaseTFR], mode: str = 'mean',
-            copy: bool = True, picks: list = 'data',
-            verbose=None) -> Union[BaseEpochs, _BaseTFR]:
+@singledispatch
+def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
+            copy: bool = True, verbose=None) -> np.ndarray:
     """Rescale (baseline correct) data.
     Parameters
     ----------
     data : array
         It can be of any shape. The only constraint is that the last
         dimension should be time.
-    times : 1D array
-        Time instants is seconds.
+    basedata : array
+        It can be of any shape. The only constraint is that the last
+        dimension should be time.
     %(baseline_rescale)s
     mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio'
         Perform baseline correction by
@@ -107,9 +109,9 @@ def rescale(line: Union[BaseEpochs, _BaseTFR],
         Array of same shape as data after rescaling.
     """
     if copy:
-        line = line.copy()
+        data = data.copy()
     if verbose is not False:
-        msg = _log_rescale(baseline, mode)
+        msg = _log_rescale(basedata, mode)
         logger.info(msg)
 
     match mode:
@@ -139,10 +141,20 @@ def rescale(line: Union[BaseEpochs, _BaseTFR],
         case _:
             raise NotImplementedError()
 
-    basedata = baseline.pick(picks)._data.copy()
-    data = line.pick(picks)._data.copy()
     mean = np.mean(basedata, axis=-1, keepdims=True)
     std = np.std(basedata, axis=-1, keepdims=True)
     fun(data, mean, std)
-    line.pick(picks)._data = data
-    return line
+    return data
+
+
+@rescale.register
+def _(line,
+      baseline,
+      mode: str = 'mean', copy: bool = True, picks: list = 'data',
+      verbose=None):
+        basedata = baseline.pick(picks)._data
+        if copy:
+            line = line.copy()
+        line.pick(picks)._data = rescale(line.pick(picks)._data, basedata,
+                                         mode, False, verbose)
+        return line

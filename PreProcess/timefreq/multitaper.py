@@ -1,13 +1,16 @@
 from typing import TypeVar
+from functools import singledispatch
 
 import numpy as np
 from mne.utils import logger, warn, verbose
 from mne.epochs import BaseEpochs
+from mne.io.base import BaseRaw
 from mne.time_frequency import AverageTFR, tfr_multitaper
+from mne import events_from_annotations, Epochs, event
 from numpy.typing import ArrayLike
 from scipy import signal, fft
 
-from PreProcess.timefreq.utils import crop_pad
+from PreProcess.timefreq.utils import crop_pad, to_samples
 from PreProcess.timefreq.fastmath import rescale
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -175,9 +178,10 @@ def params(n_times: int, sfreq: float, bandwidth: float, low_bias: bool,
     return window_fun, eigvals, adaptive
 
 
+@singledispatch
 def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
-                n_cycles: np.ndarray = None, pad: str = "500ms", **kwargs
-                ) -> AverageTFR:
+                n_cycles: np.ndarray = None, pad: str = "500ms",
+                correction: str = 'ratio', **kwargs) -> AverageTFR:
     """Calculate the multitapered, baseline corrected spectrogram
 
     """
@@ -185,16 +189,37 @@ def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
         n_cycles = freqs / 2
 
     # calculate time frequency response
-    power, itc = tfr_multitaper(line, freqs, n_cycles=n_cycles, **kwargs)
-    basepower, bitc = tfr_multitaper(baseline, freqs, n_cycles=n_cycles,
-                                     **kwargs)
+    power, itc = tfr_multitaper(line, freqs, n_cycles, **kwargs)
+    basepower, bitc = tfr_multitaper(baseline, freqs, n_cycles, **kwargs)
 
     # crop the padding off the spectral estimates
     crop_pad(power, pad)
     crop_pad(basepower, pad)
 
     # set output data
-    corrected_data = rescale(power, basepower, 'ratio')
+    corrected_data = rescale(power._data, basepower._data, correction)
 
     return AverageTFR(power.info, corrected_data, power.times, freqs,
                       power.nave, power.comment, power.method)
+
+
+@spectrogram.register
+def _(line: BaseRaw, line_event: str, tmin: float, tmax: float, base_event: str,
+      base_tmin: float, base_tmax: float, freqs: np.ndarray,
+      n_cycles: np.ndarray = None, pad: str = "500ms", **kwargs) -> AverageTFR:
+
+    # determine the events
+    events, ids = events_from_annotations(line)
+    dat_ids = [ids[i] for i in event.match_event_names(ids, line_event)]
+    base_ids = [ids[i] for i in event.match_event_names(ids, base_event)]
+
+    # pad the data
+    pad_secs = to_samples(pad, line.info['sfreq']) / line.info['sfreq']
+
+    # Epoch the data
+    data = Epochs(line, events, dat_ids, tmin - pad_secs,
+                  tmax + pad_secs, baseline=None, preload=True)
+    baseline = Epochs(line, events, base_ids, base_tmin - pad_secs,
+                      base_tmax + pad_secs, baseline=None, preload=True)
+
+    return spectrogram(data, baseline, freqs, n_cycles, pad, **kwargs)
