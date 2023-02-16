@@ -1,10 +1,15 @@
-from typing import Union
+from typing import Union, TypeVar
 
 import numpy as np
 from mne.utils import logger, verbose
+from mne.epochs import BaseEpochs
+from mne.evoked import Evoked
+from mne.io import base
 from scipy.signal import get_window
 
 from PreProcess.utils.utils import validate_type, ensure_int, parallelize
+
+Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
 
 
 def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
@@ -31,6 +36,11 @@ def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
                                         sfreq)), 1)
     filter_length = ensure_int(filter_length, 'filter_length')
     return filter_length
+
+
+def crop_pad(inst: Signal, pad: str):
+    pad = to_samples(pad, inst.info['sfreq'])
+    inst.crop(tmin=inst.tmin + pad)
 
 
 ###############################################################################

@@ -2,9 +2,7 @@ from collections import Counter
 from typing import TypeVar, Union, List
 
 import numpy as np
-from mne.epochs import BaseEpochs
-from mne.evoked import Evoked
-from mne.io import base, pick
+from mne.io import pick
 from mne.utils import logger, _pl, verbose
 from numpy.typing import ArrayLike
 from scipy import stats
@@ -25,19 +23,19 @@ except ValueError: # Already removed
 from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils
 from PreProcess.utils.utils import is_number, validate_type
 
-Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
+
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
 
 @verbose
-def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
+def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = None,
                 filter_length: str = 'auto',
                 notch_widths: Union[ListNum, int] = None,
                 mt_bandwidth: float = None, p_value: float = 0.05,
                 picks: ListNum = None, n_jobs: int = None,
                 adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
-                ) -> Signal:
+                ) -> mt_utils.Signal:
     r"""Notch filter for the signal x.
     Applies a multitaper notch filter to the signal x, operating on the last
     dimension.
@@ -282,14 +280,15 @@ def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     return x, orig_shape, picks
 
 
-def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
+def _check_filterable(x: Union[mt_utils.Signal, ArrayLike],
+                      kind: str = 'filtered',
                       alternative: str = 'filter') -> np.ndarray:
     # Let's be fairly strict about this -- users can easily coerce to ndarray
     # at their end, and we already should do it internally any time we are
     # using these low-level functions. At the same time, let's
     # help people who might accidentally use low-level functions that they
     # shouldn't use by pushing them in the right direction
-    if isinstance(x, (base.BaseRaw, BaseEpochs, Evoked)):
+    if isinstance(x, mt_utils.Signal):
         try:
             name = x.__class__.__name__
         except Exception:

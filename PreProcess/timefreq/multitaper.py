@@ -7,6 +7,9 @@ from mne.time_frequency import AverageTFR, tfr_multitaper
 from numpy.typing import ArrayLike
 from scipy import signal, fft
 
+from PreProcess.timefreq.utils import crop_pad
+from PreProcess.timefreq.fastmath import rescale
+
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
 
@@ -173,7 +176,8 @@ def params(n_times: int, sfreq: float, bandwidth: float, low_bias: bool,
 
 
 def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
-                n_cycles: np.ndarray = None, **kwargs) -> AverageTFR:
+                n_cycles: np.ndarray = None, pad: str = "500ms", **kwargs
+                ) -> AverageTFR:
     """Calculate the multitapered, baseline corrected spectrogram
 
     """
@@ -185,11 +189,12 @@ def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
     basepower, bitc = tfr_multitaper(baseline, freqs, n_cycles=n_cycles,
                                      **kwargs)
 
-    # average baseline over time
-    base_time_avg = np.mean(basepower.data, 2)
+    # crop the padding off the spectral estimates
+    crop_pad(power, pad)
+    crop_pad(basepower, pad)
 
     # set output data
-    corrected_data = power.data / base_time_avg[:, :, np.newaxis]
+    corrected_data = rescale(power, basepower, 'ratio')
 
     return AverageTFR(power.info, corrected_data, power.times, freqs,
                       power.nave, power.comment, power.method)
