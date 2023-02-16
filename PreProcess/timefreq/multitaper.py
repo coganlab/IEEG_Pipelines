@@ -2,6 +2,8 @@ from typing import TypeVar
 
 import numpy as np
 from mne.utils import logger, warn, verbose
+from mne.epochs import BaseEpochs
+from mne.time_frequency import AverageTFR, tfr_multitaper
 from numpy.typing import ArrayLike
 from scipy import signal, fft
 
@@ -135,7 +137,7 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
 
 
 @verbose
-def params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
+def params(n_times: int, sfreq: float, bandwidth: float, low_bias: bool,
            adaptive: bool, verbose: bool = None):
     """Triage windowing and multitaper parameters."""
     # Compute standardized half-bandwidth
@@ -168,3 +170,26 @@ def params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
         adaptive = False
 
     return window_fun, eigvals, adaptive
+
+
+def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
+                n_cycles: np.ndarray = None, **kwargs) -> AverageTFR:
+    """Calculate the multitapered, baseline corrected spectrogram
+
+    """
+    if n_cycles is None:
+        n_cycles = freqs / 2
+
+    # calculate time frequency response
+    power, itc = tfr_multitaper(line, freqs, n_cycles=n_cycles, **kwargs)
+    basepower, bitc = tfr_multitaper(baseline, freqs, n_cycles=n_cycles,
+                                     **kwargs)
+
+    # average baseline over time
+    base_time_avg = np.mean(basepower.data, 2)
+
+    # set output data
+    corrected_data = power.data / base_time_avg[:, :, np.newaxis]
+
+    return AverageTFR(power.info, corrected_data, power.times, freqs,
+                      power.nave, power.comment, power.method)

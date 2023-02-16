@@ -311,8 +311,8 @@ def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
 if __name__ == "__main__":
     import mne
     from bids import BIDSLayout
-    from PreProcess.navigate import raw_from_layout
-    # from navigate import get_data
+    from PreProcess.navigate import raw_from_layout, get_data
+
 
     # %% Set up logging
     mne.set_log_file("output.log",
