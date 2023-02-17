@@ -39,8 +39,8 @@ def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
 
 
 def crop_pad(inst: Signal, pad: str):
-    pad = to_samples(pad, inst.info['sfreq'])
-    inst.crop(tmin=inst.tmin + pad)
+    pad = to_samples(pad, inst.info['sfreq']) / inst.info['sfreq']
+    inst.crop(tmin=inst.tmin + pad, tmax=inst.tmax - pad)
 
 
 def _check_filterable(x: Union[Signal, np.typing.ArrayLike],

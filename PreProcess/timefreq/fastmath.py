@@ -2,7 +2,7 @@ from functools import singledispatch
 
 import numpy as np
 from mne.utils import logger, verbose
-from mne import Epochs
+from mne.epochs import BaseEpochs
 from mne.time_frequency import EpochsSpectrum
 from typing import Union
 
@@ -74,7 +74,7 @@ def _log_rescale(baseline, mode='mean'):
 
 @singledispatch
 def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
-            copy: bool = True, verbose=None) -> np.ndarray:
+            copy: bool = True) -> np.ndarray:
     """Rescale (baseline correct) data.
     Parameters
     ----------
@@ -82,8 +82,8 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
         It can be of any shape. The only constraint is that the last
         dimension should be time.
     basedata : array
-        It can be of any shape. The only constraint is that the last
-        dimension should be time.
+        It can be of any shape. The last dimension should be time, and the
+        first dimension should equal data.
     %(baseline_rescale)s
     mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio'
         Perform baseline correction by
@@ -100,9 +100,6 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
           ('zlogratio')
     copy : bool
         Whether to return a new instance or modify in place.
-    picks : list of int | None
-        Data to process along the axis=-2 (None, default, processes all).
-    %(verbose)s
     Returns
     -------
     data_scaled: array
@@ -110,9 +107,6 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
     """
     if copy:
         data = data.copy()
-    if verbose is not False:
-        msg = _log_rescale(basedata, mode)
-        logger.info(msg)
 
     match mode:
         case 'mean':
@@ -148,13 +142,14 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 
 
 @rescale.register
-def _(line,
-      baseline,
-      mode: str = 'mean', copy: bool = True, picks: list = 'data',
-      verbose=None):
-        basedata = baseline.pick(picks)._data
-        if copy:
-            line = line.copy()
-        line.pick(picks)._data = rescale(line.pick(picks)._data, basedata,
-                                         mode, False, verbose)
-        return line
+def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
+      copy: bool = True, picks: list = 'data', verbose=None) -> BaseEpochs:
+    if copy:
+        line = line.copy()
+    if verbose is not False:
+        msg = _log_rescale(baseline, mode)
+        logger.info(msg)
+    basedata = baseline.pick(picks)._data
+    line.pick(picks)._data = rescale(line.pick(picks)._data, basedata,
+                                     mode, False)
+    return line

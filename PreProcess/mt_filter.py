@@ -293,10 +293,10 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
 
-    # bids_root = mne.datasets.epilepsy_ecog.data_path()
-    # layout = BIDSLayout(bids_root)
-    # raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
-    # raw.load_data()
+    bids_root = mne.datasets.epilepsy_ecog.data_path()
+    layout = BIDSLayout(bids_root)
+    raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
+    raw.load_data()
     layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
     filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
         29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
