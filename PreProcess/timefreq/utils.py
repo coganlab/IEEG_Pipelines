@@ -44,7 +44,7 @@ def crop_pad(inst: Signal, pad: str):
     inst.crop(tmin=inst.tmin + pad, tmax=inst.tmax - pad)
 
 
-def _check_filterable(x: Union[Signal, np.typing.ArrayLike],
+def _check_filterable(x: Union[Signal, np.ndarray],
                       kind: str = 'filtered',
                       alternative: str = 'filter') -> np.ndarray:
     # Let's be fairly strict about this -- users can easily coerce to ndarray

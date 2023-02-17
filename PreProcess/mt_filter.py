@@ -9,7 +9,8 @@ from scipy import stats
 from tqdm import tqdm
 
 import sys
-from pathlib import Path # if you haven't already done so
+from pathlib import Path  # if you haven't already done so
+
 file = Path(__file__).resolve()
 parent, root = file.parent, file.parents[1]
 sys.path.append(str(root))
@@ -17,12 +18,11 @@ sys.path.append(str(root))
 # Additionally remove the current file's directory from sys.path
 try:
     sys.path.remove(str(parent))
-except ValueError: # Already removed
+except ValueError:  # Already removed
     pass
 
-from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils
-from PreProcess.utils.utils import is_number
-
+from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils  # noqa: E402
+from PreProcess.utils.utils import is_number  # noqa: E402
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
@@ -105,7 +105,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = None,
     else:
         filt = raw
     x = mt_utils._check_filterable(filt.get_data("data"), 'notch filtered',
-                          'notch_filter')
+                                   'notch_filter')
     if freqs is not None:
         freqs = np.atleast_1d(freqs)
         # Only have to deal with notch_widths for non-autodetect
@@ -182,9 +182,11 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
     return x
 
 
+@verbose
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                    notch_width: ListNum, get_thresh: callable,
-                   n_jobs: int = None) -> (ArrayLike, List[float]):
+                   n_jobs: int = None,
+                   verbose: bool = None) -> (ArrayLike, List[float]):
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
     n_times = x.shape[-1]
@@ -208,7 +210,7 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         idx[0] = stop
 
     mt_utils._COLA(process, store, n_times, n_samples, n_overlap, sfreq,
-                   n_jobs=n_jobs, verbose=True).feed(x)
+                   n_jobs=n_jobs, verbose=verbose).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
@@ -238,7 +240,7 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         if not isinstance(notch_widths, (list, tuple)) and is_number(
                 notch_widths):
             notch_widths = [notch_widths] * len(line_freqs)
-        ranges = [(freq - notch_width/2, freq + notch_width/2
+        ranges = [(freq - notch_width / 2, freq + notch_width / 2
                    ) for freq, notch_width in zip(line_freqs, notch_widths)]
         indices = [ind for ind in indices if any(
             lower <= freqs[ind] <= upper for (lower, upper) in ranges)]
@@ -285,7 +287,8 @@ if __name__ == "__main__":
     from bids import BIDSLayout
     from PreProcess.navigate import raw_from_layout, get_data, open_dat_file
     import PreProcess.utils.plotting
-
+    from PreProcess.timefreq.multitaper import spectrogram
+    from task.SentenceRep.events import fix_annotations
 
     # %% Set up logging
     mne.set_log_file("output.log",
@@ -293,21 +296,27 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
 
-    bids_root = mne.datasets.epilepsy_ecog.data_path()
-    layout = BIDSLayout(bids_root)
-    raw = raw_from_layout(layout, subject="pt1", extension=".vhdr",
-                          preload=True)
-    # layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
-    # filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
-    #     29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
+    # bids_root = mne.datasets.epilepsy_ecog.data_path()
+    # layout = BIDSLayout(bids_root)
+    # raw = raw_from_layout(layout, subject="pt1", extension=".vhdr",
+    #                       preload=True)
+    layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
+    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
+        29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
+    fix_annotations(filt)
+    freqs = np.arange(10, 200., 2.)
+    spectra = spectrogram(filt, freqs, 'Word/Audio', -0.5, 1.5, 'Start', -0.5,
+                          0,
+                          n_jobs=6, verbose=10)
+    spectra.plot([57], vmin=0.7, vmax=1.4)
 
     # %% filter data
-    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
-                       filter_length='700ms', verbose=10,
-                       freqs=[60], notch_widths=20, p_value=.05)
-    filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                        filter_length='20s', verbose=10,
-                        freqs=[120, 180, 240], notch_widths=20, p_value=.05)
+    # filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+    #                    filter_length='700ms', verbose=10,
+    #                    freqs=[60], notch_widths=20, p_value=.05)
+    # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+    #                     filter_length='20s', verbose=10,
+    #                     freqs=[120, 180, 240], notch_widths=20, p_value=.05)
 
     # # %% plot results
     # data = [raw, filt, filt2, raw_dat, dat]

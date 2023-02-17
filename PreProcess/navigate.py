@@ -10,7 +10,8 @@ from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
 import sys
-from pathlib import Path # if you haven't already done so
+from pathlib import Path  # if you haven't already done so
+
 file = Path(__file__).resolve()
 parent, root = file.parent, file.parents[1]
 sys.path.append(str(root))
@@ -18,12 +19,11 @@ sys.path.append(str(root))
 # Additionally remove the current file's directory from sys.path
 try:
     sys.path.remove(str(parent))
-except ValueError: # Already removed
+except ValueError:  # Already removed
     pass
 
-from PreProcess.mt_filter import line_filter
-from PreProcess.timefreq.utils import to_samples, Signal
-from PreProcess.utils.utils import PathLike, LAB_root
+from PreProcess.timefreq.utils import to_samples, Signal  # noqa: E402
+from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -183,7 +183,7 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
                  enumerate(annot) if val['description'] == 'BAD boundary']
     block_annot = [annot[i: j] for i, j in
                    zip([0] + block_idx, block_idx +
-                   ([len(annot)] if block_idx[-1] != len(annot) else []))]
+                       ([len(annot)] if block_idx[-1] != len(annot) else []))]
 
     for block_an in block_annot:
         # remove boundary events from annotations
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     auds = mne.Epochs(filt, events, event_id, tmin=-1, tmax=1, baseline=(
         -1., -.5))['Audio']
     mne.time_frequency.tfr_array_multitaper(auds.get_data(
-        ), auds.info['sfreq'], freqs, time_bandwidth=5.0)
+    ), auds.info['sfreq'], freqs, time_bandwidth=5.0)
     # Crop raw data to minimize processing time
     new = crop_data(filt)
 

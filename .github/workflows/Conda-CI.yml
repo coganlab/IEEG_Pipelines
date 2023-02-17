@@ -34,4 +34,6 @@ jobs:
           conda list
       - name: Test with pytest
         run: |
-          pytest -v --pycodestyle
+          pytest -v --cov --pycodestyle
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v1

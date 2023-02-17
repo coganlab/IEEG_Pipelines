@@ -11,7 +11,7 @@ def fix_annotations(inst):
                 is_sent = True
             else:
                 is_sent = False
-        if event['description'] not in [ 'Listen', ':=:' ]:
+        if event['description'] not in ['Listen', ':=:']:
             if is_sent:
                 trial_type = "Sentence/"
             else:

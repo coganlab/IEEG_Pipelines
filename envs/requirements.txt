@@ -1,5 +1,7 @@
 pytest
 pytest-pycodestyle
+pytest-cov
+pytest-xdist
 bids>=0.0
 nipype
 EDFlib-Python
