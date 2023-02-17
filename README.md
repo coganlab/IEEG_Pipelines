@@ -10,8 +10,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 [![MATLAB latest](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml)
 
-[![coverage](https://app.codecov.io/gh/coganlab/IEEG_Pipelines)](https://app.codecov.io/gh/coganlab/IEEG_Pipelines)
-
+[![codecov](https://codecov.io/gh/coganlab/IEEG_Pipelines/branch/main/graph/badge.svg?token=X4IAFGOBGN)](https://codecov.io/gh/coganlab/IEEG_Pipelines)
 ## Installation
 
 ### MATLAB
