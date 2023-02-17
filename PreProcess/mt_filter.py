@@ -2,30 +2,40 @@ from collections import Counter
 from typing import TypeVar, Union, List
 
 import numpy as np
-from mne.epochs import BaseEpochs
-from mne.evoked import Evoked
-from mne.io import base, pick
+from mne.io import pick
 from mne.utils import logger, _pl, verbose
 from numpy.typing import ArrayLike
 from scipy import stats
 from tqdm import tqdm
 
-from timefreq import multitaper, fastmath, utils as mt_utils
-from utils.utils import is_number, validate_type
+import sys
+from pathlib import Path  # if you haven't already done so
 
-Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
+file = Path(__file__).resolve()
+parent, root = file.parent, file.parents[1]
+sys.path.append(str(root))
+
+# Additionally remove the current file's directory from sys.path
+try:
+    sys.path.remove(str(parent))
+except ValueError:  # Already removed
+    pass
+
+from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils  # noqa: E402
+from PreProcess.utils.utils import is_number  # noqa: E402
+
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
 
 @verbose
-def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
+def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = None,
                 filter_length: str = 'auto',
                 notch_widths: Union[ListNum, int] = None,
                 mt_bandwidth: float = None, p_value: float = 0.05,
                 picks: ListNum = None, n_jobs: int = None,
                 adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
-                ) -> Signal:
+                ) -> mt_utils.Signal:
     r"""Notch filter for the signal x.
     Applies a multitaper notch filter to the signal x, operating on the last
     dimension.
@@ -94,8 +104,8 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
         filt = raw.copy()
     else:
         filt = raw
-    x = _check_filterable(filt.get_data("data"), 'notch filtered',
-                          'notch_filter')
+    x = mt_utils._check_filterable(filt.get_data("data"), 'notch filtered',
+                                   'notch_filter')
     if freqs is not None:
         freqs = np.atleast_1d(freqs)
         # Only have to deal with notch_widths for non-autodetect
@@ -127,7 +137,8 @@ def line_filter(raw: Signal, fs: float = None, freqs: ListNum = None,
     def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
         # figure out what tapers to use
         window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
-                                             low_bias, adaptive, verbose=True)
+                                             low_bias, adaptive,
+                                             verbose=verbose)
 
         # F-stat of 1-p point
         threshold = stats.f.ppf(1 - p_value / n_times, 2,
@@ -171,9 +182,11 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
     return x
 
 
+@verbose
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                    notch_width: ListNum, get_thresh: callable,
-                   n_jobs: int = None) -> (ArrayLike, List[float]):
+                   n_jobs: int = None,
+                   verbose: bool = None) -> (ArrayLike, List[float]):
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
     n_times = x.shape[-1]
@@ -197,7 +210,7 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         idx[0] = stop
 
     mt_utils._COLA(process, store, n_times, n_samples, n_overlap, sfreq,
-                   n_jobs=n_jobs, verbose=True).feed(x)
+                   n_jobs=n_jobs, verbose=verbose).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
@@ -220,13 +233,14 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]
-
+    # pdf = 1-stats.f.cdf(f_stat, 2, window_fun.shape[0]-2)
+    # indices = np.where(pdf < 1/x.shape[-1])[1]
     # specify frequencies within indicated ranges
     if line_freqs is not None and notch_widths is not None:
         if not isinstance(notch_widths, (list, tuple)) and is_number(
                 notch_widths):
             notch_widths = [notch_widths] * len(line_freqs)
-        ranges = [(freq - notch_width/2, freq + notch_width/2
+        ranges = [(freq - notch_width / 2, freq + notch_width / 2
                    ) for freq, notch_width in zip(line_freqs, notch_widths)]
         indices = [ind for ind in indices if any(
             lower <= freqs[ind] <= upper for (lower, upper) in ranges)]
@@ -250,7 +264,7 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
 def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     """Set up array as 2D for filtering ease."""
-    x = _check_filterable(x)
+    x = mt_utils._check_filterable(x)
     orig_shape = x.shape
     x = np.atleast_2d(x)
     picks = pick._picks_to_idx(x.shape[-2], picks)
@@ -268,55 +282,51 @@ def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     return x, orig_shape, picks
 
 
-def _check_filterable(x: Union[Signal, ArrayLike], kind: str = 'filtered',
-                      alternative: str = 'filter') -> np.ndarray:
-    # Let's be fairly strict about this -- users can easily coerce to ndarray
-    # at their end, and we already should do it internally any time we are
-    # using these low-level functions. At the same time, let's
-    # help people who might accidentally use low-level functions that they
-    # shouldn't use by pushing them in the right direction
-    if isinstance(x, (base.BaseRaw, BaseEpochs, Evoked)):
-        try:
-            name = x.__class__.__name__
-        except Exception:
-            pass
-        else:
-            raise TypeError(
-                'This low-level function only operates on np.ndarray '
-                f'instances. To get a {kind} {name} instance, use a method '
-                f'like `inst_new = inst.copy().{alternative}(...)` '
-                'instead.')
-    validate_type(x, (np.ndarray, list, tuple))
-    x = np.asanyarray(x)
-    if x.dtype != np.float64:
-        raise ValueError('Data to be %s must be real floating, got %s'
-                         % (kind, x.dtype,))
-    return x
-
-
 if __name__ == "__main__":
-    from navigate import get_data
     import mne
+    from bids import BIDSLayout
+    from PreProcess.navigate import raw_from_layout, get_data, open_dat_file
+    import PreProcess.utils.plotting
+    from PreProcess.timefreq.multitaper import spectrogram
+    from task.SentenceRep.events import fix_annotations
 
     # %% Set up logging
     mne.set_log_file("output.log",
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    layout, raw, D_dat_raw, D_dat_filt = get_data(53, "SentenceRep")
-    # raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-    # dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
-    raw.drop_channels(raw.ch_names[4:158])
-    # raw_dat.drop_channels(raw_dat.ch_names[10:158])
-    # dat.drop_channels(dat.ch_names[10:158])
-    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
-                       filter_length='700ms', verbose=10,
-                       freqs=[60], notch_widths=20)
+
+    # bids_root = mne.datasets.epilepsy_ecog.data_path()
+    # layout = BIDSLayout(bids_root)
+    # raw = raw_from_layout(layout, subject="pt1", extension=".vhdr",
+    #                       preload=True)
+    layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
+    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
+        29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
+    fix_annotations(filt)
+    freqs = np.arange(10, 200., 2.)
+    spectra = spectrogram(filt, freqs, 'Word/Audio', -0.5, 1.5, 'Start', -0.5,
+                          0,
+                          n_jobs=6, verbose=10)
+    spectra.plot([57], vmin=0.7, vmax=1.4)
+
+    # %% filter data
+    # filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+    #                    filter_length='700ms', verbose=10,
+    #                    freqs=[60], notch_widths=20, p_value=.05)
     # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
     #                     filter_length='20s', verbose=10,
-    #                     freqs=[120, 180, 240], notch_widths=20)
+    #                     freqs=[120, 180, 240], notch_widths=20, p_value=.05)
+
+    # # %% plot results
     # data = [raw, filt, filt2, raw_dat, dat]
     # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
     #                       ""], avg=True, verbose=10, proj=True, fmax=250)
     # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
     #                       ""], avg=False, verbose=10, proj=True, fmax=250)
+
+    # %% plot results
+    # params = dict(method='multitaper', fmin=55, fmax=65, tmax=200,
+    #               bandwidth=0.5, n_jobs=8)
+    # fpsd = filt.compute_psd(**params)
+    # fpsd.plot()

@@ -7,8 +7,21 @@ import mne
 import nibabel as nib
 import numpy as np
 
-from PreProcess.navigate import get_data
-from PreProcess.utils.utils import PathLike, LAB_root
+import sys
+from pathlib import Path  # if you haven't already done so
+
+file = Path(__file__).resolve()
+parent, root = file.parent, file.parents[1]
+sys.path.append(str(root))
+
+# Additionally remove the current file's directory from sys.path
+try:
+    sys.path.remove(str(parent))
+except ValueError:  # Already removed
+    pass
+
+from PreProcess.navigate import get_data  # noqa: E402
+from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,

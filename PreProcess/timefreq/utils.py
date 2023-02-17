@@ -1,10 +1,16 @@
-from typing import Union
+from typing import Union, TypeVar
 
 import numpy as np
 from mne.utils import logger, verbose
+from mne.epochs import BaseEpochs
+from mne.evoked import Evoked
+from mne.io import base
+from mne.time_frequency import _BaseTFR
 from scipy.signal import get_window
 
-from utils.utils import validate_type, ensure_int, parallelize
+from PreProcess.utils.utils import validate_type, ensure_int, parallelize
+
+Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked, _BaseTFR)
 
 
 def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
@@ -31,6 +37,38 @@ def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
                                         sfreq)), 1)
     filter_length = ensure_int(filter_length, 'filter_length')
     return filter_length
+
+
+def crop_pad(inst: Signal, pad: str):
+    pad = to_samples(pad, inst.info['sfreq']) / inst.info['sfreq']
+    inst.crop(tmin=inst.tmin + pad, tmax=inst.tmax - pad)
+
+
+def _check_filterable(x: Union[Signal, np.ndarray],
+                      kind: str = 'filtered',
+                      alternative: str = 'filter') -> np.ndarray:
+    # Let's be fairly strict about this -- users can easily coerce to ndarray
+    # at their end, and we already should do it internally any time we are
+    # using these low-level functions. At the same time, let's
+    # help people who might accidentally use low-level functions that they
+    # shouldn't use by pushing them in the right direction
+    if isinstance(x, (base.BaseRaw, BaseEpochs, Evoked)):
+        try:
+            name = x.__class__.__name__
+        except Exception:
+            pass
+        else:
+            raise TypeError(
+                'This low-level function only operates on np.ndarray '
+                f'instances. To get a {kind} {name} instance, use a method '
+                f'like `inst_new = inst.copy().{alternative}(...)` '
+                'instead.')
+    validate_type(x, (np.ndarray, list, tuple))
+    x = np.asanyarray(x)
+    if x.dtype != np.float64:
+        raise ValueError('Data to be %s must be real floating, got %s'
+                         % (kind, x.dtype,))
+    return x
 
 
 ###############################################################################

@@ -9,9 +9,21 @@ from bids import BIDSLayout
 from bids.layout import BIDSFile
 from mne_bids import read_raw_bids, BIDSPath
 
-from mt_filter import Signal, line_filter
-from timefreq.utils import to_samples
-from utils.utils import PathLike, LAB_root
+import sys
+from pathlib import Path  # if you haven't already done so
+
+file = Path(__file__).resolve()
+parent, root = file.parent, file.parents[1]
+sys.path.append(str(root))
+
+# Additionally remove the current file's directory from sys.path
+try:
+    sys.path.remove(str(parent))
+except ValueError:  # Already removed
+    pass
+
+from PreProcess.timefreq.utils import to_samples, Signal  # noqa: E402
+from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
 RunDict = Dict[int, mne.io.Raw]
 SubDict = Dict[str, RunDict]
@@ -55,7 +67,7 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
 
 
 def raw_from_layout(layout: BIDSLayout, subject: str,
-                    run: Union[List[int], int] = None,
+                    run: Union[List[int], int] = None, preload: bool = False,
                     extension: str = ".edf") -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
 
@@ -67,6 +79,8 @@ def raw_from_layout(layout: BIDSLayout, subject: str,
         The subject to search for.
     run : Union[List[int], int], optional
         The run to search for, by default None
+    preload: bool
+        Whether or not to laod the data into memory
     extension : str, optional
         The file extension to search for, by default ".edf"
     """
@@ -88,6 +102,8 @@ def raw_from_layout(layout: BIDSLayout, subject: str,
         BIDS_path = bidspath_from_layout(layout, subject=subject,
                                          extension=extension)
         whole_raw = read_raw_bids(bids_path=BIDS_path)
+    if preload:
+        whole_raw.load_data()
     return whole_raw
 
 
@@ -123,7 +139,7 @@ def open_dat_file(file_path: str, channels: List[str],
         case _:
             raise NotImplementedError("Unit " + units + " not implemented yet")
     info = mne.create_info(channels, sfreq, types)
-    raw = mne.io.RawArray(array * factor, info, preload=False)
+    raw = mne.io.RawArray(array * factor, info)
     return raw
 
 
@@ -150,44 +166,64 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
 
 
 def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
-    '''
+    """
     Takes raw file with annotated events and crop the file so that the raw
     file starts at the first event and stops an amount of time in seconds
     given by end_pad after the last event
-    '''
+    """
+
+    crop_list = []
 
     start_pad = to_samples(start_pad, raw.info['sfreq']) / raw.info['sfreq']
     end_pad = to_samples(end_pad, raw.info['sfreq']) / raw.info['sfreq']
 
-    # get start and stop time from raw.annotations onset attribute
-    t_min = raw.annotations.onset[0] - start_pad
-    t_max = raw.annotations.onset[-1] + end_pad
+    # split annotations into blocks
+    annot = raw.annotations.copy()
+    block_idx = [idx + 1 for idx, val in
+                 enumerate(annot) if val['description'] == 'BAD boundary']
+    block_annot = [annot[i: j] for i, j in
+                   zip([0] + block_idx, block_idx +
+                       ([len(annot)] if block_idx[-1] != len(annot) else []))]
 
-    # create new cropped raw file
-    new_raw = raw.copy().crop(tmin=t_min, tmax=t_max)
+    for block_an in block_annot:
+        # remove boundary events from annotations
+        no_bound = None
+        for an in block_an:
+            if 'boundary' not in an['description']:
+                if no_bound is None:
+                    no_bound = mne.Annotations(**an)
+                else:
+                    an.pop('orig_time')
+                    no_bound.append(**an)
 
-    return new_raw
+        # get start and stop time from raw.annotations onset attribute
+        t_min = no_bound.onset[0] - start_pad
+        t_max = no_bound.onset[-1] + end_pad
+
+        # create new cropped raw file
+        crop_list.append(raw.copy().crop(tmin=t_min, tmax=t_max))
+
+    return mne.concatenate_raws(crop_list)
 
 
-def channel_outlier_marker(input_raw: mne.io.Raw,
-                           outlier_sd: int = 3) -> mne.io.Raw:
+def channel_outlier_marker(input_raw: mne.io.Raw, outlier_sd: int = 3):
     """
     Marks a channel as 'bad' if the mean of the channel is different from
     the mean across channels by a factor of the cross channel std given by
     outlier_sd
     """
-    data = input_raw.get_data()
+
+    data = input_raw.get_data('data')
     mu = np.mean(data)  # take the mean across all channels and time series
     sig = np.std(data)  # take standard deviation across all time series
 
     # Loop over each channel, calculate mean, and append channel to 'bad'
     # in input_raw if the difference in means is more than the given outlier_sd
     # factor (default is 3 standard deviations)
-    for ii, ch in enumerate(input_raw.ch_names):
+    for ii, ch in enumerate(input_raw.copy().pick('data').ch_names):
         mu_ch = np.mean(data[ii, :])
         if abs(mu_ch - mu) > (outlier_sd * sig):
             input_raw.info['bads'].append(ch)
-    return input_raw
 
 
 if __name__ == "__main__":
@@ -210,15 +246,15 @@ if __name__ == "__main__":
     auds = mne.Epochs(filt, events, event_id, tmin=-1, tmax=1, baseline=(
         -1., -.5))['Audio']
     mne.time_frequency.tfr_array_multitaper(auds.get_data(
-        ), auds.info['sfreq'], freqs, time_bandwidth=5.0)
+    ), auds.info['sfreq'], freqs, time_bandwidth=5.0)
     # Crop raw data to minimize processing time
     new = crop_data(filt)
 
     # Mark channel outliers as bad
-    marked = channel_outlier_marker(new)
+    channel_outlier_marker(new)
 
     # Exclude bad channels
-    good: Signal = marked.copy().drop_channels(marked.info['bads'])
+    good: Signal = new.copy().drop_channels(new.info['bads'])
 
     # CAR
     good_CAR = good.set_eeg_reference(ref_channels="average")

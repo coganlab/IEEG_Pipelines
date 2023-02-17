@@ -1,9 +1,17 @@
 from typing import TypeVar
+from functools import singledispatch
 
 import numpy as np
 from mne.utils import logger, warn, verbose
+from mne.epochs import BaseEpochs
+from mne.io.base import BaseRaw
+from mne.time_frequency import AverageTFR, tfr_multitaper
+from mne import events_from_annotations, Epochs, event
 from numpy.typing import ArrayLike
 from scipy import signal, fft
+
+from PreProcess.timefreq.utils import crop_pad, to_samples
+from PreProcess.timefreq.fastmath import rescale
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
@@ -91,7 +99,7 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
 
 
 def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
-            n_fft: int = None) -> (ArrayLike, ArrayLike):
+            n_fft: int = None, pad_fact: int = 3) -> (ArrayLike, ArrayLike):
     """Compute significant tapered spectra.
     Parameters
     ----------
@@ -112,7 +120,7 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
         The frequency points in Hz of the spectra
     """
     if n_fft is None:
-        n_fft = x.shape[-1]
+        n_fft = round(sfreq * round(x.shape[-1]*pad_fact/sfreq))
 
     # remove mean (do not use in-place subtraction as it may modify input x)
     x = x - np.mean(x, axis=-1, keepdims=True)
@@ -135,8 +143,9 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
 
 
 @verbose
-def params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
-           adaptive: bool, verbose: bool = None):
+def params(n_times: int, sfreq: float, bandwidth: float,
+           low_bias: bool = True, adaptive: bool = False,
+           verbose: bool = None):
     """Triage windowing and multitaper parameters."""
     # Compute standardized half-bandwidth
     if isinstance(bandwidth, str):
@@ -168,3 +177,88 @@ def params(n_times, sfreq: float, bandwidth: float, low_bias: bool,
         adaptive = False
 
     return window_fun, eigvals, adaptive
+
+
+# def tfr(line, freqs, n_cycles, **kwargs):
+#
+#     if 'picks' in kwargs.keys():
+#         line = line.copy().picks(kwargs.pop('picks'))
+#
+#     num_chans = len(line.info['ch_names'])
+#
+#     out = np.empty((num_chans, len(freqs), line._data.shape[2]))
+#
+#     # calculate time frequency response
+#     for i, times in enumerate(n_cycles / freqs):
+#         samps = to_samples(str(times) + "s", line.info['sfreq'])
+#         window_fun, _, _ = params(samps, line.info['sfreq'], 10.0)
+#         for j in range(num_chans):
+#             x_p, freqs_new = spectra(line._data[:,j],
+#             window_fun,line.info['sfreq'], pad_fact=1)
+#             out[i, j, :] = x_p
+#
+#     power = AverageTFR(line.info, out, n_cycles / freqs, freqs,
+#                         1, None, 'multitaper-power')
+
+
+@singledispatch
+@verbose
+def spectrogram(line: BaseEpochs, freqs: np.ndarray,
+                baseline: BaseEpochs = None, n_cycles: np.ndarray = None,
+                pad: str = "0s", correction: str = 'ratio',
+                verbose: int = None, **kwargs) -> AverageTFR:
+    """Calculate the multitapered, baseline corrected spectrogram
+
+    """
+    if n_cycles is None:
+        n_cycles = freqs / 2
+
+    power, itc = tfr_multitaper(line, freqs, n_cycles, verbose=verbose,
+                                **kwargs)
+
+    # crop the padding off the spectral estimates
+    crop_pad(power, pad)
+
+    if baseline is None:
+        return power
+
+    # apply baseline correction
+    basepower, bitc = tfr_multitaper(baseline, freqs, n_cycles,
+                                     verbose=verbose, **kwargs)
+    crop_pad(basepower, pad)
+
+    # set output data
+    corrected_data = rescale(power._data, basepower._data, correction)
+
+    return AverageTFR(power.info, corrected_data, power.times, freqs,
+                      power.nave, power.comment, power.method)
+
+
+@spectrogram.register
+def _(line: BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
+      tmax: float, base_event: str = None, base_tmin: float = None,
+      base_tmax: float = None, n_cycles: np.ndarray = None, pad: str = "500ms",
+      correction: str = 'ratio', **kwargs) -> AverageTFR:
+
+    # determine the events
+    events, ids = events_from_annotations(line)
+    dat_ids = [ids[i] for i in event.match_event_names(ids, line_event)]
+
+    # pad the data
+    pad_secs = to_samples(pad, line.info['sfreq']) / line.info['sfreq']
+
+    # Epoch the data
+    data = Epochs(line, events, dat_ids, tmin - pad_secs,
+                  tmax + pad_secs, baseline=None, preload=True)
+
+    # run baseline corrected version
+    if base_event is None:
+        return spectrogram(data, freqs, None, n_cycles, pad, correction,
+                           **kwargs)
+
+    base_ids = [ids[i] for i in event.match_event_names(ids, base_event)]
+    baseline = Epochs(line, events, base_ids, base_tmin - pad_secs,
+                      base_tmax + pad_secs, baseline=None, preload=True)
+
+    return spectrogram(data, freqs, baseline, n_cycles, pad, correction,
+                       **kwargs)

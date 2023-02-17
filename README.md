@@ -10,6 +10,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 [![MATLAB latest](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml)
 
+[![codecov](https://codecov.io/gh/coganlab/IEEG_Pipelines/branch/main/graph/badge.svg?token=X4IAFGOBGN)](https://codecov.io/gh/coganlab/IEEG_Pipelines)
 ## Installation
 
 ### MATLAB
@@ -25,7 +26,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 ### Python
 
-Version 3.8 or 3.9 supported
+Version 3.10 supported
 
 #### Conda
 
