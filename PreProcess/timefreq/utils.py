@@ -5,11 +5,12 @@ from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
+from mne.time_frequency import _BaseTFR
 from scipy.signal import get_window
 
 from PreProcess.utils.utils import validate_type, ensure_int, parallelize
 
-Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked)
+Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked, _BaseTFR)
 
 
 def to_samples(filter_length: Union[str, int], sfreq: float) -> int:

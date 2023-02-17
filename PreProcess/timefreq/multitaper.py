@@ -181,7 +181,7 @@ def params(n_times: int, sfreq: float, bandwidth: float, low_bias: bool,
 @singledispatch
 def spectrogram(line: BaseEpochs, freqs: np.ndarray,
                 baseline: BaseEpochs = None, n_cycles: np.ndarray = None,
-                pad: str = "500ms", correction: str = 'ratio', **kwargs
+                pad: str = "0s", correction: str = 'ratio', **kwargs
                 ) -> AverageTFR:
     """Calculate the multitapered, baseline corrected spectrogram
 
@@ -213,7 +213,7 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
 def _(line: BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
       tmax: float, base_event: str = None, base_tmin: float = None,
       base_tmax: float = None, n_cycles: np.ndarray = None, pad: str = "500ms",
-      **kwargs) -> AverageTFR:
+      correction: str = 'ratio', **kwargs) -> AverageTFR:
 
     # determine the events
     events, ids = events_from_annotations(line)
@@ -227,10 +227,12 @@ def _(line: BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
                   tmax + pad_secs, baseline=None, preload=True)
 
     if base_event is None:
-        return spectrogram(data, freqs, None, n_cycles, pad, **kwargs)
+        return spectrogram(data, freqs, None, n_cycles, pad, correction,
+                           **kwargs)
 
     base_ids = [ids[i] for i in event.match_event_names(ids, base_event)]
     baseline = Epochs(line, events, base_ids, base_tmin - pad_secs,
                       base_tmax + pad_secs, baseline=None, preload=True)
 
-    return spectrogram(data, freqs, baseline, n_cycles, pad, **kwargs)
+    return spectrogram(data, freqs, baseline, n_cycles, pad, correction,
+                       **kwargs)
