@@ -179,9 +179,10 @@ def params(n_times: int, sfreq: float, bandwidth: float, low_bias: bool,
 
 
 @singledispatch
-def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
-                n_cycles: np.ndarray = None, pad: str = "500ms",
-                correction: str = 'ratio', **kwargs) -> AverageTFR:
+def spectrogram(line: BaseEpochs, freqs: np.ndarray,
+                baseline: BaseEpochs = None, n_cycles: np.ndarray = None,
+                pad: str = "500ms", correction: str = 'ratio', **kwargs
+                ) -> AverageTFR:
     """Calculate the multitapered, baseline corrected spectrogram
 
     """
@@ -190,10 +191,15 @@ def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
 
     # calculate time frequency response
     power, itc = tfr_multitaper(line, freqs, n_cycles, **kwargs)
-    basepower, bitc = tfr_multitaper(baseline, freqs, n_cycles, **kwargs)
 
     # crop the padding off the spectral estimates
     crop_pad(power, pad)
+
+    if baseline is None:
+        return power
+
+    # apply baseline correction
+    basepower, bitc = tfr_multitaper(baseline, freqs, n_cycles, **kwargs)
     crop_pad(basepower, pad)
 
     # set output data
@@ -204,14 +210,14 @@ def spectrogram(line: BaseEpochs, baseline: BaseEpochs, freqs: np.ndarray,
 
 
 @spectrogram.register
-def _(line: BaseRaw, line_event: str, tmin: float, tmax: float, base_event: str,
-      base_tmin: float, base_tmax: float, freqs: np.ndarray,
-      n_cycles: np.ndarray = None, pad: str = "500ms", **kwargs) -> AverageTFR:
+def _(line: BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
+      tmax: float, base_event: str = None, base_tmin: float = None,
+      base_tmax: float = None, n_cycles: np.ndarray = None, pad: str = "500ms",
+      **kwargs) -> AverageTFR:
 
     # determine the events
     events, ids = events_from_annotations(line)
     dat_ids = [ids[i] for i in event.match_event_names(ids, line_event)]
-    base_ids = [ids[i] for i in event.match_event_names(ids, base_event)]
 
     # pad the data
     pad_secs = to_samples(pad, line.info['sfreq']) / line.info['sfreq']
@@ -219,7 +225,12 @@ def _(line: BaseRaw, line_event: str, tmin: float, tmax: float, base_event: str,
     # Epoch the data
     data = Epochs(line, events, dat_ids, tmin - pad_secs,
                   tmax + pad_secs, baseline=None, preload=True)
+
+    if base_event is None:
+        return spectrogram(data, freqs, None, n_cycles, pad, **kwargs)
+
+    base_ids = [ids[i] for i in event.match_event_names(ids, base_event)]
     baseline = Epochs(line, events, base_ids, base_tmin - pad_secs,
                       base_tmax + pad_secs, baseline=None, preload=True)
 
-    return spectrogram(data, baseline, freqs, n_cycles, pad, **kwargs)
+    return spectrogram(data, freqs, baseline, n_cycles, pad, **kwargs)

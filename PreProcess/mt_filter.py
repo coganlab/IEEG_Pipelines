@@ -297,17 +297,17 @@ if __name__ == "__main__":
     layout = BIDSLayout(bids_root)
     raw = raw_from_layout(layout, subject="pt1", extension=".vhdr")
     raw.load_data()
-    layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
-    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
-        29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
+    # layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
+    # filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
+    #     29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
 
     # %% filter data
-    # filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
-    #                    filter_length='700ms', verbose=10,
-    #                    freqs=[60], notch_widths=20, p_value=.05)
-    # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-    #                     filter_length='20s', verbose=10,
-    #                     freqs=[120, 180, 240], notch_widths=20, p_value=.05)
+    filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+                       filter_length='700ms', verbose=10,
+                       freqs=[60], notch_widths=20, p_value=.05)
+    filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+                        filter_length='20s', verbose=10,
+                        freqs=[120, 180, 240], notch_widths=20, p_value=.05)
 
     # # %% plot results
     # data = [raw, filt, filt2, raw_dat, dat]
@@ -321,30 +321,3 @@ if __name__ == "__main__":
     #               bandwidth=0.5, n_jobs=8)
     # fpsd = filt.compute_psd(**params)
     # fpsd.plot()
-
-    # %% plot results
-    is_sent = False
-    annot = None
-    for event in filt.annotations:
-        if event['description'] in ['Audio']:
-            if event['duration'] > 1:
-                is_sent = True
-            else:
-                is_sent = False
-        if event['description'] not in ['Listen', ':=:']:
-            if is_sent:
-                trial_type = "Sentence/"
-            else:
-                trial_type = "Word/"
-        else:
-            trial_type = "Start/"
-        event['description'] = trial_type + event['description']
-        if annot is None:
-            annot = mne.Annotations(**event)
-        else:
-            event.pop('orig_time')
-            annot.append(**event)
-    filt.set_annotations(annot)
-    freqs = np.arange(10, 200., 2.)
-    spect = multitaper.spectrogram(filt, 'Word/Audio', -0.5, 1.5, 'Start', -0.5, 0, freqs, n_jobs=-1, verbose=10)
-    spect.plot()
