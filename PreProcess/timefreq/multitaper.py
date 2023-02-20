@@ -112,6 +112,9 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
     n_fft : int | None
         Length of the FFT. If None, the number of samples in the input signal
         will be used.
+    pad_fact : int
+        The factor by which to pad the signal. The number of samples in the
+        padded signal will be ``n_fft * pad_fact``.
     Returns
     -------
     x_mt : array, shape=(..., n_tapers, n_times)

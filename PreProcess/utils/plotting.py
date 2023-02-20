@@ -47,9 +47,9 @@ def add_arrows(axes: plt.Axes):
                      width=0.1, head_width=3, length_includes_head=True)
 
 
-def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = None,
+def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
               plot_func: callable = None, picks: list[Union[str, int]] = None,
-              **kwargs) -> plt.Figure:
+              **kwargs) -> list[plt.Figure]:
     """Plot a grid of the channels of a Signal object
 
     Parameters
@@ -83,23 +83,45 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = None,
     else:
         raise TypeError("picks must be a list of str or int")
 
-    fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False)
-    for i, chan in enumerate(chans):
-        if i + 1 % n_cols == 0 or i == len(chans) - 1:
-            bar = True
-        else:
-            bar = False
-        if "colorbar" in plot_func.__code__.co_varnames:
-            kwargs["colorbar"] = bar
-        plot_func(picks=[chan], axes=axs[i], **kwargs)
-        axs[i].set_title(chan)
-        axs[i].set_xlabel("")
-        axs[i].set_ylabel("")
+    per_fig = n_cols * n_rows
+    numfigs = int(np.ceil(len(chans) / per_fig))
+    figs = []
+    for i in range(numfigs):
+        fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False)
+        for j, chan in enumerate(chans[i * per_fig:(i + 1) * per_fig]):
+            if j + 1 % n_cols == 0 or i == len(chans) - 1:
+                bar = True
+            else:
+                bar = False
+            if "colorbar" in plot_func.__code__.co_varnames:
+                kwargs["colorbar"] = bar
+            ax = axs.flatten()[j]
+            plot_func(picks=[chan], axes=ax, show=False, **kwargs)
+            ax.set_title(chan, fontsize=8, pad=0)
+            ax.tick_params(axis='both', which='major', labelsize=6,
+                           direction="in")
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            gc.collect()
+        fig.supxlabel("Time (s)")
+        fig.supylabel("Frequency (Hz)")
+        if i == numfigs - 1:
+            while j + 1 < n_cols * n_rows:
+                j += 1
+                ax = axs.flatten()[j]
+                ax.axis("off")
+        figs.append(fig)
+        figs[i].show()
+    return figs
 
-    while i + 1 < n_cols * n_rows:
-        i += 1
-        axs[i].axis("off")
 
-    fig.supxlabel("Time (s)")
-    fig.supylabel("Frequency (Hz)")
-    return fig
+if __name__ == "__main__":
+    import mne
+    import numpy as np
+
+    with open("../spectra.npy", "rb") as f:
+        spectra = np.load(f, allow_pickle=True)[0]
+    # spectra2 = np.load("spectra.npy", allow_pickle=True,)['spectra']
+    from PreProcess.utils import plotting
+
+    plotting.chan_grid(spectra, vmin=0.7, vmax=1.4)

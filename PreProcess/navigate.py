@@ -214,6 +214,7 @@ def channel_outlier_marker(input_raw: mne.io.Raw, outlier_sd: int = 3):
     """
 
     data = input_raw.get_data('data')
+    my_norm = np.linalg.norm(data, axis=0)
     mu = np.mean(data)  # take the mean across all channels and time series
     sig = np.std(data)  # take standard deviation across all time series
 
