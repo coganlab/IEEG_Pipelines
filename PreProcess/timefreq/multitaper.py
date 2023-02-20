@@ -209,6 +209,27 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
                 verbose: int = None, **kwargs) -> AverageTFR:
     """Calculate the multitapered, baseline corrected spectrogram
 
+    Parameters
+    ----------
+    line : BaseEpochs
+        The data to be processed
+    freqs : array-like
+        The frequencies to be used in the spectrogram
+    baseline : BaseEpochs
+        The baseline to be used for correction
+    n_cycles : array-like
+        The number of cycles to be used in the spectrogram
+    pad : str
+        The amount of padding to be used in the spectrogram
+    correction : str
+        The type of baseline correction to be used
+    verbose : int
+        Whether to log status messages
+
+    Returns
+    -------
+    power : AverageTFR
+        The multitapered, baseline corrected spectrogram
     """
     if n_cycles is None:
         n_cycles = freqs / 2
@@ -239,6 +260,38 @@ def _(line: BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
       tmax: float, base_event: str = None, base_tmin: float = None,
       base_tmax: float = None, n_cycles: np.ndarray = None, pad: str = "500ms",
       correction: str = 'ratio', **kwargs) -> AverageTFR:
+    """Calculate the multitapered, baseline corrected spectrogram
+
+    Parameters
+    ----------
+    line : BaseRaw
+        The data to be processed
+    freqs : array-like
+        The frequencies to be used in the spectrogram
+    line_event : str
+        The event to be used for the spectrogram
+    tmin : float
+        The start time of the spectrogram
+    tmax : float
+        The end time of the spectrogram
+    base_event : str
+        The event to be used for the baseline
+    base_tmin : float
+        The start time of the baseline
+    base_tmax : float
+        The end time of the baseline
+    n_cycles : array-like
+        The number of cycles to be used in the spectrogram
+    pad : str
+        The amount of padding to be used in the spectrogram
+    correction : str
+        The type of baseline correction to be used
+
+    Returns
+    -------
+    power : AverageTFR
+        The multitapered, baseline corrected spectrogram
+    """
 
     # determine the events
     events, ids = events_from_annotations(line)
