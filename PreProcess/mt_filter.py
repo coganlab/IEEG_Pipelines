@@ -285,10 +285,7 @@ def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
 if __name__ == "__main__":
     import mne
     from bids import BIDSLayout
-    from PreProcess.navigate import raw_from_layout, get_data, open_dat_file
-    import PreProcess.utils.plotting
-    from PreProcess.timefreq.multitaper import spectrogram
-    from task.SentenceRep.events import fix_annotations
+    from PreProcess.navigate import raw_from_layout, LAB_root, save_derivative
 
     # %% Set up logging
     mne.set_log_file("output.log",
@@ -296,19 +293,11 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
 
-    # bids_root = mne.datasets.epilepsy_ecog.data_path()
-    # layout = BIDSLayout(bids_root)
-    # raw = raw_from_layout(layout, subject="pt1", extension=".vhdr",
-    #                       preload=True)
-    layout, raw, D_dat_raw, D_dat_filt = get_data(29, "SentenceRep")
-    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
-        29) + "_" + "SentenceRep" + "_filt_ieeg.fif")
-    fix_annotations(filt)
-    freqs = np.arange(10, 200., 2.)
-    spectra = spectrogram(filt, freqs, 'Word/Audio', -0.5, 1.5, 'Start', -0.5,
-                          0,
-                          n_jobs=6, verbose=10)
-    spectra.plot([57], vmin=0.7, vmax=1.4)
+    bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
+    layout = BIDSLayout(bids_root)
+    subj = "D0057"
+    raw = raw_from_layout(layout, subject=subj, extension=".edf",
+                          preload=False)
 
     # %% filter data
     # filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
@@ -317,6 +306,8 @@ if __name__ == "__main__":
     # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
     #                     filter_length='20s', verbose=10,
     #                     freqs=[120, 180, 240], notch_widths=20, p_value=.05)
+    # %% Save the data
+    save_derivative(raw, layout, "filt", True)
 
     # # %% plot results
     # data = [raw, filt, filt2, raw_dat, dat]

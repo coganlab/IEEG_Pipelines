@@ -1,13 +1,13 @@
 import os.path as op
 import re
-from os import walk, listdir
+from os import walk, listdir, mkdir
 from typing import Union, List, Tuple, Dict, Any
 
 import mne
 import numpy as np
 from bids import BIDSLayout
-from bids.layout import BIDSFile
-from mne_bids import read_raw_bids, BIDSPath
+from bids.layout import BIDSFile, parse_file_entities
+from mne_bids import read_raw_bids, BIDSPath, write_raw_bids
 
 import sys
 from pathlib import Path  # if you haven't already done so
@@ -225,6 +225,22 @@ def channel_outlier_marker(input_raw: mne.io.Raw, outlier_sd: int = 3):
         mu_ch = np.mean(data[ii, :])
         if abs(mu_ch - mu) > (outlier_sd * sig):
             input_raw.info['bads'].append(ch)
+
+
+def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
+                    overwrite=False):
+    save_dir = op.join(layout.root, "derivatives", pipeline)
+    if not op.isdir(save_dir):
+        mkdir(save_dir)
+    bounds = inst.annotations.copy()
+    bounds = bounds[np.where(bounds.description == 'BAD boundary')[0]]
+    bounds = [0] + list(bounds.onset) + [inst.times[-1]]
+    for i, file in enumerate(inst.filenames):
+        entities = parse_file_entities(file)
+        bids_path = BIDSPath(**entities, root=save_dir)
+        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
+        write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
+                       acpc_aligned=True, overwrite=overwrite)
 
 
 if __name__ == "__main__":
