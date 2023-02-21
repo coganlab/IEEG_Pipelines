@@ -66,9 +66,8 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     return BIDS_path
 
 
-def raw_from_layout(layout: BIDSLayout, subject: str,
-                    run: Union[List[int], int] = None, preload: bool = False,
-                    extension: str = ".edf") -> mne.io.Raw:
+def raw_from_layout(layout: BIDSLayout, preload: bool = False,
+                    **kwargs) -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
 
     Parameters
@@ -84,23 +83,18 @@ def raw_from_layout(layout: BIDSLayout, subject: str,
     extension : str, optional
         The file extension to search for, by default ".edf"
     """
-    kwargs: Dict[str, Any] = dict(subject=subject)
-    if run:
-        kwargs["run"] = run
     runs = layout.get(return_type="id", target="run", **kwargs)
     raw: List[mne.io.Raw] = []
     if runs:
         for r in runs:
-            BIDS_path = bidspath_from_layout(layout, subject=subject, run=r,
-                                             extension=extension)
+            BIDS_path = bidspath_from_layout(layout, run=r, **kwargs)
             new_raw = read_raw_bids(bids_path=BIDS_path)
             new_raw.load_data()
             raw.append(new_raw.copy())
             del new_raw
         whole_raw: mne.io.Raw = mne.concatenate_raws(raw)
     else:
-        BIDS_path = bidspath_from_layout(layout, subject=subject,
-                                         extension=extension)
+        BIDS_path = bidspath_from_layout(layout, **kwargs)
         whole_raw = read_raw_bids(bids_path=BIDS_path)
     if preload:
         whole_raw.load_data()
@@ -237,6 +231,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
     bounds = [0] + list(bounds.onset) + [inst.times[-1]]
     for i, file in enumerate(inst.filenames):
         entities = parse_file_entities(file)
+        entities['desc'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
         write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
