@@ -3,8 +3,7 @@ from functools import singledispatch
 import numpy as np
 from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
-from mne.time_frequency import EpochsSpectrum
-from typing import Union
+from scipy import stats
 
 
 def sum_squared(x: np.ndarray) -> np.ndarray:
@@ -27,7 +26,22 @@ def sum_squared(x: np.ndarray) -> np.ndarray:
 #     fastmath=True, cache=True)
 def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
                 ) -> (np.ndarray, np.ndarray):
-    """computes the F-statistic for sine wave in locally-white noise"""
+    """computes the F-statistic for sine wave in locally-white noise.
+
+    Parameters
+    ----------
+    window_fun : array
+        The tapers used to calculate the multitaper spectrum.
+    x_p : array
+        The tapered time series.
+
+    Returns
+    -------
+    f_stat : array
+        The F-statistic for each frequency.
+    A : array
+        The amplitude of the sine wave at each frequency.
+    """
     # drop the even tapers
     n_tapers = len(window_fun)
     tapers_odd = np.arange(0, n_tapers, 2)
@@ -76,6 +90,7 @@ def _log_rescale(baseline, mode='mean'):
 def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
             copy: bool = True) -> np.ndarray:
     """Rescale (baseline correct) data.
+
     Parameters
     ----------
     data : array
@@ -142,14 +157,32 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 
 
 @rescale.register
+@verbose
 def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
       copy: bool = True, picks: list = 'data', verbose=None) -> BaseEpochs:
+    """Rescale (baseline correct) epochs.
+
+    Parameters
+    ----------
+    line : instance of Epochs
+        The epochs to rescale.
+    baseline : instance of Epochs
+        The epochs to use for baseline correction.
+    %(baseline_rescale)s
+    %(baseline_rescale_epochs)s
+    %(baseline_rescale_picks)s
+    %(verbose)s
+    Returns
+    -------
+    line : instance of Epochs
+        The rescaled epochs.
+    """
     if copy:
-        line = line.copy()
+        line: BaseEpochs = line.copy()
     if verbose is not False:
         msg = _log_rescale(baseline, mode)
         logger.info(msg)
     basedata = baseline.pick(picks)._data
-    line.pick(picks)._data = rescale(line.pick(picks)._data, basedata,
-                                     mode, False)
+    line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
+                                     False)
     return line

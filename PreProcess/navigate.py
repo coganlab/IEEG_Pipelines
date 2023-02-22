@@ -30,7 +30,18 @@ SubDict = Dict[str, RunDict]
 
 
 def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
-    """Looks for the .dat file in a specified folder"""
+    """Looks for the .dat file in a specified folder
+
+    Parameters
+    ----------
+    folder : PathLike
+        The folder to search in.
+
+    Returns
+    -------
+    Tuple[PathLike, PathLike]
+        The paths to the ieeg and cleanieeg files.
+    """
     cleanieeg = None
     ieeg = None
     for root, _, files in walk(folder):
@@ -53,6 +64,11 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
         The BIDSLayout to search.
     **kwargs : dict
         The parameters to search for. See BIDSFile.get() for more info.
+
+    Returns
+    -------
+    BIDSPath
+        The BIDSPath to the file.
     """
     my_search: List[BIDSFile] = layout.get(**kwargs)
     if len(my_search) >= 2:
@@ -74,14 +90,16 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = False,
     ----------
     layout : BIDSLayout
         The BIDSLayout to search.
-    subject : str
-        The subject to search for.
     run : Union[List[int], int], optional
         The run to search for, by default None
     preload: bool
-        Whether or not to laod the data into memory
-    extension : str, optional
-        The file extension to search for, by default ".edf"
+        Whether to laod the data into memory or not, by default False
+    **kwargs : dict
+        The parameters to search for. See BIDSFile.get() for more info.
+
+    Returns
+    -------
+    mne.io.Raw
     """
     if run is None:
         runs = layout.get(return_type="id", target="run", **kwargs)
@@ -119,6 +137,12 @@ def open_dat_file(file_path: str, channels: List[str],
         The sampling frequency, by default 2048
     types : str, optional
         The channel types, by default "seeg"
+    units : str, optional
+        The units of the data, by default "uV"
+
+    Returns
+    -------
+    mne.io.RawArray
     """
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
@@ -142,8 +166,31 @@ def open_dat_file(file_path: str, channels: List[str],
 
 def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
              BIDS_root: PathLike = None, lab_root=LAB_root):
-    """
+    """Gets the data for a subject and task.
 
+    Parameters
+    ----------
+    sub_num : int, optional
+        The subject number, by default 53
+    task : str, optional
+        The task to get the data for, by default "SentenceRep"
+    run : int, optional
+        The run to get the data for, by default None
+    BIDS_root : PathLike, optional
+        The path to the BIDS directory, by default None
+    lab_root : PathLike, optional
+        The path to the lab directory, by default LAB_root
+
+    Returns
+    -------
+    layout : BIDSLayout
+        The BIDSLayout for the subject.
+    raw : mne.io.Raw
+        The raw data.
+    D_dat_raw : mne.io.Raw
+        The raw data from the D_Data folder.
+    D_dat_filt : mne.io.Raw
+        The filtered data from the D_Data folder.
     """
     for dir in listdir(lab_root):
         if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(
@@ -162,11 +209,27 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
     return layout, raw, D_dat_raw, D_dat_filt
 
 
-def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
-    """
-    Takes raw file with annotated events and crop the file so that the raw
-    file starts at the first event and stops an amount of time in seconds
-    given by end_pad after the last event
+def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
+              ) -> mne.io.Raw:
+    """Crops out long stretches of data with no events.
+
+    Takes raw instance with annotated events and crops the instance so that the
+    raw file starts at start_pad before the first event and stops an amount of
+    time in seconds given by end_pad after the last event.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw file to crop.
+    start_pad : str, optional
+        The amount of time to pad the start of the file, by default "10s"
+    end_pad : str, optional
+        The amount of time to pad the end of the file, by default "10s"
+
+    Returns
+    -------
+    mne.io.Raw
+        The cropped raw file.
     """
 
     crop_list = []
@@ -207,10 +270,25 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
 def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
                            max_rounds: int = np.inf, verbose: bool = True
                            ) -> list[str]:
-    """
-    Marks a channel as 'bad' if the mean of the channel is different from
-    the mean across channels by a factor of the cross channel std given by
-    outlier_sd
+    """Identify bad channels by variance.
+
+    Parameters
+    ----------
+    input_raw : Signal
+        Raw data to be analyzed.
+    outlier_sd : int, optional
+        Number of standard deviations above the mean to be considered an
+        outlier, by default 3
+    max_rounds : int, optional
+        Maximum number of varience estimations, by default runs until no
+        more bad channels are found.
+    verbose : bool, optional
+        Print removed channels per estimation, by default True
+
+    Returns
+    -------
+    list[str]
+        List of bad channel names.
     """
 
     data = input_raw.get_data('data')  # (trials X) channels X time
@@ -252,6 +330,19 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
                     overwrite=False):
+    """Save an intermediate data instance from a pipeline to a BIDS folder.
+
+    Parameters
+    ----------
+    inst : Signal
+        The data instance to save.
+    layout : BIDSLayout
+        The BIDSLayout of the original data.
+    pipeline : str
+        The name of the pipeline.
+    overwrite : bool, optional
+        Whether to overwrite existing files, by default False
+    """
     save_dir = op.join(layout.root, "derivatives", pipeline)
     if not op.isdir(save_dir):
         mkdir(save_dir)
