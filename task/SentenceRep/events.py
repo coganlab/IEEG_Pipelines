@@ -5,7 +5,7 @@ def fix_annotations(inst):
     # fix SentenceRep events
     is_sent = False
     annot = None
-    for event in inst.annotations:
+    for i, event in enumerate(inst.annotations):
         if event['description'] in ['Audio']:
             if event['duration'] > 1:
                 is_sent = True
@@ -18,7 +18,18 @@ def fix_annotations(inst):
                 trial_type = "Word/"
         else:
             trial_type = "Start/"
-        event['description'] = trial_type + event['description']
+            if event['description'] in [':=:']:
+                cond = "/JL"
+            elif 'Mime' in inst.annotations[i + 2]['description']:
+                cond = "/LM"
+            elif event['description'] in ['Listen'] and \
+                    'Response' in inst.annotations[i + 3]['description']:
+                cond = "/LS"
+            else:
+                raise ValueError("Condition {} could not be determined {}"
+                                 "".format(i, event['description']))
+
+        event['description'] = trial_type + event['description'] + cond
         if annot is None:
             annot = mne.Annotations(**event)
         else:
