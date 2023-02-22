@@ -205,39 +205,48 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
 
 @mne.utils.verbose
 def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
-                           max_rounds: int = np.inf, verbose: bool = True) -> list[str]:
+                           max_rounds: int = np.inf, verbose: bool = True
+                           ) -> list[str]:
     """
     Marks a channel as 'bad' if the mean of the channel is different from
     the mean across channels by a factor of the cross channel std given by
     outlier_sd
     """
 
-    data = input_raw.get_data('data')
+    data = input_raw.get_data('data')  # (trials X) channels X time
     names = input_raw.copy().pick('data').ch_names
-    # data = data * 1e6
-    # r = np.reshape(data, (data.shape[1], data.shape[0]*data.shape[2]))
-    R2 = np.square(data)  # channels X time
+    bads = []  # output for bad channel names
+
+    # Square the data and set zeros to small positive number
+    R2 = np.square(data)
     R2[np.where(R2 == 0)] = 1e-9
     ch_dim = range(len(data.shape))[-2]  # dimension corresponding to channels
-    axis = tuple(i for i in range(len(data.shape)) if not i == ch_dim)
 
-    # Loop over each channel, calculate mean, and append channel to 'bad'
-    # in input_raw if the difference in means is more than the given outlier_sd
-    # factor (default is 3 standard deviations)
-    bads = []
-    sig = np.std(R2, axis)  # take standard deviation of each channel
-    compare = (outlier_sd * np.std(sig)) + np.mean(sig)
+    # find all axes that are not channels (example: time, trials)
+    axes = tuple(i for i in range(len(data.shape)) if not i == ch_dim)
+
+    # Initialize stats loop
+    sig = np.std(R2, axes)  # take standard deviation of each channel
+    cutoff = (outlier_sd * np.std(sig)) + np.mean(sig)  # outlier cutoff
     i = 1
-    while np.any(np.where(sig > compare)) and i < max_rounds:
+
+    # remove bad channels and re-calculate variance until no outliers are left
+    while np.any(np.where(sig > cutoff)) and i <= max_rounds:
+
+        # Pop out names to bads output using comprehension list
         [bads.append(names.pop(out-j)) for j, out in enumerate(
-            np.where(sig > compare)[0])]
+            np.where(sig > cutoff)[0])]
+
+        # log channels excluded per round
         if verbose:
             mne.utils.logger.info(f'outlier round {i} channels: {bads}')
-        R2 = R2[..., np.where(sig < compare)[0], :]
-        sig = np.std(R2,
-                     axis)  # take standard deviation across all time series
-        compare = (outlier_sd * np.std(sig)) + np.mean(sig)
+
+        # re-calculate per channel variance
+        R2 = R2[..., np.where(sig < cutoff)[0], :]
+        sig = np.std(R2, axes)
+        cutoff = (outlier_sd * np.std(sig)) + np.mean(sig)
         i += 1
+
     return bads
 
 
