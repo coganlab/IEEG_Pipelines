@@ -6,4 +6,3 @@ IEEG_Pipelines
 
    PreProcess
    task
-   tests
