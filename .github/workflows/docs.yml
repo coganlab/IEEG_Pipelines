@@ -27,7 +27,7 @@ jobs:
       - run: pip install -r envs/requirements.txt pdocs
       # ADJUST THIS: build your documentation into docs/.
       # We use a custom build script for pdoc itself, ideally you just run `pdoc -o docs/ ...` here.
-      - run: pdoc -o docs/ --docformat numpy PreProcess task
+      - run: pdoc -o docs/ --docformat numpy PreProcess
 
       - uses: actions/upload-pages-artifact@v1
         with:
