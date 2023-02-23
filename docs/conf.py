@@ -71,6 +71,7 @@ def linkcode_resolve(domain, info):
     filename = info['module'].replace('.', '/')
     return "https://github.com/coganlab/IEEG_Pipelines/%s.py" % filename
 
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
