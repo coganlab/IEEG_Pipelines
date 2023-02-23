@@ -8,6 +8,7 @@ from scipy import stats
 
 def sum_squared(x: np.ndarray) -> np.ndarray:
     """Compute norm of an array.
+
     Parameters
     ----------
     x : array
@@ -99,20 +100,21 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
     basedata : array
         It can be of any shape. The last dimension should be time, and the
         first dimension should equal data.
-    mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio'
+    mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio',\
+        default 'mean', optional
         Perform baseline correction by
         - subtracting the mean of baseline values ('mean')
         - dividing by the mean of baseline values ('ratio')
         - dividing by the mean of baseline values and taking the log
-          ('logratio')
+        ('logratio')
         - subtracting the mean of baseline values followed by dividing by
-          the mean of baseline values ('percent')
+        the mean of baseline values ('percent')
         - subtracting the mean of baseline values and dividing by the
-          standard deviation of baseline values ('zscore')
+        standard deviation of baseline values ('zscore')
         - dividing by the mean of baseline values, taking the log, and
-          dividing by the standard deviation of log baseline values
-          ('zlogratio')
-    copy : bool
+        dividing by the standard deviation of log baseline values
+        ('zlogratio')
+    copy : bool, optional
         Whether to return a new instance or modify in place.
 
     Returns
@@ -186,7 +188,8 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
     picks : list of int | 'data' | 'grad' | 'mag' | 'eeg' | 'seeg' | 'ecog'
         Channels to include. If None only good data channels are kept.
         Defaults to 'data'.
-    %(verbose)s
+    verbose : bool, str, int, or None
+        If not None, override default verbose level (see mne.verbose).
 
     Returns
     -------

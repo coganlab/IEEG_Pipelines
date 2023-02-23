@@ -50,53 +50,54 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
 
     Parameters
     ----------
-    raw : Signal
+    raw : mt_utils.Signal
         Signal to filter.
-    fs : float
+    fs : float, optional
         Sampling rate in Hz. Default is taken from the raw object.
-    freqs : float | array-like of float
+    freqs : float | array-like of float, optional
         Frequencies to notch filter in Hz, e.g. np.arange(60, 241, 60).
         None can only be used with the mode 'spectrum_fit', where an F
         test is used to find sinusoidal components.
-    filter_length : str | int
+    filter_length : str | int, optional
         Length of the filter to use. If str, assumed to be human-readable time
         in units of "s" or "ms" (e.g., "10s" or "5500ms"). If an int, it
         is assumed to be in samples and used directly.
-    notch_widths : float | array of float
+    notch_widths : float | array of float, optional
         Width of the stop band (centred at each freq in freqs) in Hz.
         Default is 10.
-    mt_bandwidth : float
+    mt_bandwidth : float, optional
         The bandwidth of the multitaper windowing function in Hz. Default will
         set the half frequency bathwidth to 4 Hz.
-    p_value : float
+    p_value : float, optional
         P-value to use in F-test thresholding to determine significant
         sinusoidal components to remove. Note that this will be Bonferroni
         corrected for the number of frequencies, so large p-values may be
         justified.
-    picks : list of int | list of str
+    picks : list of int | list of str, optional
         Channels to filter. If None, all channels will be filtered.
-    n_jobs : int
+    n_jobs : int, optional
         Number of jobs to run in parallel. Default is number of cores on
         machine.
-    adaptive : bool
+    adaptive : bool, optional
         Use adaptive weights to combine the tapered spectra into PSD.
         Default is True.
-    low_bias : bool
-        Only use tapers with more than 90% spectral concentration within
+    low_bias : bool, optional
+        Only use tapers with more than 90 percent spectral concentration within
         bandwidth. Default is True.
-    copy : bool
+    copy : bool, optional
         If True, a copy of x, filtered, is returned. Otherwise, it operates
         on x in place.
-    %(verbose)s
+    verbose : bool, str, int, or None, optional
+        If not None, override default verbose level (see mne.verbose).
 
     Returns
     -------
-    xf : Signal
+    filt : mt_utils.Signal
         The signal instance with the filtered data.
 
     See Also
     --------
-    https://mne.tools/stable/generated/mne.filter.notch_filter.html
+    <https://mne.tools/stable/generated/mne.filter.notch_filter.html>
 
     Notes
     -----
@@ -109,6 +110,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
         0-|              -
           |         |    |    |         |
           0        Fp1 freq  Fp2       Nyq
+
     For each freq in freqs, where ``Fp1 = freq - trans_bandwidth / 2`` and
     ``Fs2 = freq + trans_bandwidth / 2``.
 

@@ -2,7 +2,7 @@ import mne
 
 
 def fix_annotations(inst):
-    # fix SentenceRep events
+    """fix SentenceRep events"""
     is_sent = False
     annot = None
     for i, event in enumerate(inst.annotations):
@@ -36,10 +36,3 @@ def fix_annotations(inst):
             event.pop('orig_time')
             annot.append(**event)
     inst.set_annotations(annot)
-
-# events, event_id = mne.events_from_annotations(good)
-# events = mne.merge_events(events, [1, 2], 14, replace_events=True)
-# event_id['Start'] = 14
-# event_id = dict([(value, key) for key, value in event_id.items()])
-# annot = mne.annotations_from_events(events, filt.info['sfreq'], event_id)
-# filt.set_annotations(annot)
