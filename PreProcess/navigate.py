@@ -328,8 +328,9 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
     return bads
 
 
+@mne.utils.verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
-                    overwrite=False):
+                    overwrite=False, verbose = None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
@@ -355,7 +356,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
         write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
-                       acpc_aligned=True, overwrite=overwrite)
+                       acpc_aligned=True, overwrite=overwrite, verbose=verbose)
 
 
 if __name__ == "__main__":
