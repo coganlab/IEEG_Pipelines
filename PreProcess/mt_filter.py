@@ -25,7 +25,7 @@ from PreProcess.timefreq import multitaper, fastmath, \
     utils as mt_utils  # noqa: E402
 from PreProcess.utils.utils import is_number  # noqa: E402
 
-ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
+ListNum = Union[int, float, np.ndarray, list, tuple]
 
 
 @verbose
@@ -101,10 +101,11 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
 
     Notes
     -----
-    The frequency response is (approximately) given by::
+    The frequency response is (approximately) given by
+    ::
         1-|----------         -----------
           |          \\       /
-      |H| |           \\     /
+          |           \\     /
           |            \\   /
           |             \\ /
         0-|              -
@@ -231,8 +232,8 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         x_out[..., idx[0]:stop] += x_
         idx[0] = stop
 
-    mt_utils._COLA(process, store, n_times, n_samples, n_overlap, sfreq,
-                   n_jobs=n_jobs, verbose=verbose).feed(x)
+    mt_utils.COLA(process, store, n_times, n_samples, n_overlap, sfreq,
+                  n_jobs=n_jobs, verbose=verbose).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
@@ -326,12 +327,12 @@ if __name__ == "__main__":
             filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
                                filter_length='700ms', verbose=10,
                                freqs=[60], notch_widths=20, p_value=.05)
-            filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                                filter_length='20s', verbose=10,
-                                freqs=[120, 180, 240], notch_widths=20,
-                                p_value=.05)
+            # filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
+            #                     filter_length='20s', verbose=10,
+            #                     freqs=[120, 180, 240], notch_widths=20,
+            #                     p_value=.05)
             # %% Save the data
-            save_derivative(filt2, layout, "filt")
+            save_derivative(filt, layout, "filt")
         except Exception as e:
             logger.error(e)
 

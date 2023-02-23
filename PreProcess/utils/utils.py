@@ -11,7 +11,7 @@ from mne.utils import config
 
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
-PathLike = TypeVar("PathLike", str, PL)
+PathLike = Union[str, PL]
 
 
 def ensure_int(x, name='unknown', must_be='an int', *, extra=''):

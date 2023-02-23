@@ -1,4 +1,4 @@
-from typing import TypeVar
+from typing import Union
 from functools import singledispatch
 
 import numpy as np
@@ -13,15 +13,17 @@ from scipy import signal, fft
 from PreProcess.timefreq.utils import crop_pad, to_samples
 from PreProcess.timefreq.fastmath import rescale
 
-ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
+ListNum = Union[int, float, np.ndarray, list, tuple]
 
 
-def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
-                 interp_from=None, interp_kind=None):
+def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True):
     """Compute Discrete Prolate Spheroidal Sequences.
+
     Will give of orders [0,Kmax-1] for a given frequency-spacing multiple
     NW and sequence length N.
+
     .. note:: Copied from NiTime.
+
     Parameters
     ----------
     N : int
@@ -32,58 +34,36 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
     Kmax : int
         Number of DPSS windows to return is Kmax (orders 0 through Kmax-1).
     sym : bool
-        Whether to generate a symmetric window (``True``, for filter design) or
-        a periodic window (``False``, for spectral analysis). Default is
-        ``True``.
-        .. versionadded:: 1.3
-    norm : 2 | ``'approximate'`` | ``'subsample'`` | None
+        Whether to generate a symmetric window (`True`, for filter design) or
+        a periodic window (`False`, for spectral analysis). Default is
+        `True`.
+    norm : 2 | 'approximate' | 'subsample' | None
         Window normalization method. If ``'approximate'`` or ``'subsample'``,
         windows are normalized by the maximum, and a correction scale-factor
         for even-length windows is applied either using
         ``N**2/(N**2+half_nbw)`` ("approximate") or a FFT-based subsample shift
         ("subsample"). ``2`` uses the L2 norm. ``None`` (the default) uses
         ``"approximate"`` when ``Kmax=None`` and ``2`` otherwise.
-        .. versionadded:: 1.3
+
     low_bias : bool
-        Keep only tapers with eigenvalues > 0.9.
-    interp_from : int | None
-        The dpss can be calculated using interpolation from a set of dpss
-        with the same NW and Kmax, but shorter N. This is the length of this
-        shorter set of dpss windows.
-        .. deprecated:: 1.3
-           The ``interp_from`` option is deprecated and will be
-           removed in version 1.4. Modern implementations can handle large
-           values of ``N`` so interpolation is no longer necessary; any value
-           passed here will be ignored.
-    interp_kind : str | None
-        This input variable is passed to scipy.interpolate.interp1d and
-        specifies the kind of interpolation as a string ('linear', 'nearest',
-        'zero', 'slinear', 'quadratic, 'cubic') or as an integer specifying the
-        order of the spline interpolator to use.
-        .. deprecated:: 1.3
-           The ``interp_kind`` option is deprecated and will be
-           removed in version 1.4. Modern implementations can handle large
-           values of ``N`` so interpolation is no longer necessary; any value
-           passed here will be ignored.
+        Keep only tapers with eigenvalues > 0.9. Default is ``True``.
+
     Returns
     -------
     v, e : tuple,
         The v array contains DPSS windows shaped (Kmax, N).
         e are the eigenvalues.
+
     Notes
     -----
-    Tridiagonal form of DPSS calculation from :footcite:`Slepian1978`.
+    Tridiagonal form of DPSS calculation (Slepian, 1978)
+
     References
     ----------
-    .. footbibliography::
+    David S. Slepian. Prolate spheroidal wave functions, fourier analysis, and
+    uncertainty-V: the discrete case. Bell System Technical Journal,
+    57(5):1371–1430, 1978. doi:10.1002/j.1538-7305.1978.tb02104.x.
     """
-
-    if interp_from is not None:
-        warn('The ``interp_from`` option is deprecated and will be removed in '
-             'version 1.4.', FutureWarning)
-    if interp_kind is not None:
-        warn('The ``interp_kind`` option is deprecated and will be removed in '
-             'version 1.4.', FutureWarning)
 
     dpss, eigvals = signal.windows.dpss(
         N, half_nbw, Kmax, sym=sym, norm=norm, return_ratios=True)
@@ -101,6 +81,7 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True,
 def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
             n_fft: int = None, pad_fact: int = 3) -> (ArrayLike, ArrayLike):
     """Compute significant tapered spectra.
+
     Parameters
     ----------
     x : array, shape=(..., n_times)
@@ -115,6 +96,7 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
     pad_fact : int
         The factor by which to pad the signal. The number of samples in the
         padded signal will be ``n_fft * pad_fact``.
+
     Returns
     -------
     x_mt : array, shape=(..., n_tapers, n_times)

@@ -111,8 +111,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
         - subtracting the mean of baseline values and dividing by the
         standard deviation of baseline values ('zscore')
         - dividing by the mean of baseline values, taking the log, and
-        dividing by the standard deviation of log baseline values
-        ('zlogratio')
+        dividing by the standard deviation of log baseline values ('zlogratio')
     copy : bool, optional
         Whether to return a new instance or modify in place.
 

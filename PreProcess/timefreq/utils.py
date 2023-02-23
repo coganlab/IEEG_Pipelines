@@ -1,4 +1,4 @@
-from typing import Union, TypeVar
+from typing import Union
 
 import numpy as np
 from mne.utils import logger, verbose
@@ -10,7 +10,7 @@ from scipy.signal import get_window
 
 from PreProcess.utils.utils import validate_type, ensure_int, parallelize
 
-Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked, _BaseTFR)
+Signal = Union[base.BaseRaw, BaseEpochs, Evoked, _BaseTFR]
 
 
 def to_samples(time_length: Union[str, int], sfreq: float) -> int:
@@ -124,16 +124,17 @@ def _check_store(store):
     return store
 
 
-class _COLA:
-    r"""Constant overlap-add processing helper.
+class COLA:
+    """Constant overlap-add processing helper.
+
     Parameters
     ----------
     process : callable
         A function that takes a chunk of input data with shape
-        ``(n_channels, n_samples)`` and processes it.
+        `(n_channels, n_samples)` and processes it.
     store : callable | ndarray
         A function that takes a completed chunk of output data.
-        Can also be an ``ndarray``, in which case it is treated as the
+        Can also be an `ndarray`, in which case it is treated as the
         output data in which to store the results.
     n_total : int
         The total number of samples.
@@ -154,13 +155,14 @@ class _COLA:
     -----
     This will process data using overlapping windows to achieve a constant
     output value. For example, for ``n_total=27``, ``n_samples=10``,
-    ``n_overlap=5`` and ``window='triang'``::
+    ``n_overlap=5`` and ``window='triang'``
+    ::
         1 _____               _______
-          |    \   /\   /\   /
-          |     \ /  \ /  \ /
+          |    \\   /\\   /\\   /
+          |     \\ /  \\ /  \\ /
           |      x    x    x
-          |     / \  / \  / \
-          |    /   \/   \/   \
+          |     / \\  / \\  / \\
+          |    /   \\/   \\/   \\
         0 +----|----|----|----|----|-
           0    5   10   15   20   25
     This produces four windows: the first three are the requested length

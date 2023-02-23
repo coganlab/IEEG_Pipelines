@@ -377,3 +377,4 @@ if __name__ == "__main__":
     auds = mne.Epochs(filt, events, event_id['Audio'], baseline=None, tmin=-2,
                       tmax=5, preload=True, detrend=1)
     bads = channel_outlier_marker(auds)
+    auds.info['bads'] = bads

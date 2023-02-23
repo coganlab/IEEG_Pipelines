@@ -35,7 +35,10 @@ extensions = ['myst_parser',
               'sphinx.ext.doctest',
               'sphinx.ext.autodoc',
               'sphinx.ext.autosummary',
-              'sphinx.ext.napoleon']
+              'sphinx.ext.napoleon',
+              'sphinx.ext.intersphinx',
+              'sphinx.ext.linkcode',
+              'sphinx.ext.viewcode']
 
 # Napoleon settings
 napoleon_google_docstring = False
@@ -44,14 +47,29 @@ napoleon_include_init_with_doc = False
 napoleon_include_private_with_doc = False
 napoleon_include_special_with_doc = True
 napoleon_use_admonition_for_examples = False
-napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_notes = True
 napoleon_use_admonition_for_references = False
-napoleon_use_ivar = False
+napoleon_use_ivar = True
 napoleon_use_param = True
 napoleon_use_rtype = True
-napoleon_preprocess_types = False
+napoleon_preprocess_types = True
 napoleon_type_aliases = None
 napoleon_attr_annotations = True
+
+intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
+                       'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+                       'mne': ('https://mne.tools/stable/', None),
+                       'scipy': ('https://docs.scipy.org/doc/scipy/reference/',
+                                 None)}
+
+
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+    filename = info['module'].replace('.', '/')
+    return "https://github.com/coganlab/IEEG_Pipelines/%s.py" % filename
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -67,7 +85,7 @@ exclude_patterns = ['tests']
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-# html_theme = 'alabaster'
+html_theme = 'default'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
