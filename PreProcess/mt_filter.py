@@ -21,7 +21,8 @@ try:
 except ValueError:  # Already removed
     pass
 
-from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils  # noqa: E402
+from PreProcess.timefreq import multitaper, fastmath, \
+    utils as mt_utils  # noqa: E402
 from PreProcess.utils.utils import is_number  # noqa: E402
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
@@ -35,7 +36,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                 adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
                 ) -> mt_utils.Signal:
-    r"""Line noise notch filter for the signal instance.
+    """Line noise notch filter for the signal instance.
 
     Applies a multitaper power line noise notch filter to the signal, operating
     on the last dimension. Uses the F-test to find significant sinusoidal
@@ -101,10 +102,10 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     -----
     The frequency response is (approximately) given by::
         1-|----------         -----------
-          |          \       /
-      |H| |           \     /
-          |            \   /
-          |             \ /
+          |          \\       /
+      |H| |           \\     /
+          |            \\   /
+          |             \\ /
         0-|              -
           |         |    |    |         |
           0        Fp1 freq  Fp2       Nyq
@@ -205,6 +206,7 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                    notch_width: ListNum, get_thresh: callable,
                    n_jobs: int = None, verbose: bool = None
                    ) -> (ArrayLike, List[float]):
+    """Remove line frequencies from data using multitaper method."""
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
     n_times = x.shape[-1]
