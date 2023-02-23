@@ -330,7 +330,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 
 @mne.utils.verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
-                    overwrite=False, verbose = None):
+                    overwrite=False, verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
