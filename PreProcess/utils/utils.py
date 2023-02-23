@@ -14,10 +14,20 @@ LAB_root = op.join(HOME, "Box", "CoganLab")
 PathLike = TypeVar("PathLike", str, PL)
 
 
-# plotting funcs
-
 def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
-    """Ensure a variable is an integer."""
+    """Ensure a variable is an integer.
+
+    Parameters
+    ----------
+    x : object
+        The object to check.
+    name : str
+        The name of the variable to check.
+    must_be : str
+        The type of the variable to check.
+    extra : str
+        Extra text to add to the error message.
+    """
     # This is preferred over numbers.Integral, see:
     # https://github.com/scipy/scipy/pull/7351#issuecomment-299713159
     extra = f' {extra}' if extra else extra
@@ -33,6 +43,15 @@ def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
 
 
 def validate_type(item, types):
+    """Validate the type of an object.
+
+    Parameters
+    ----------
+    item : object
+        The object to check.
+    types : type
+        The type to check against.
+    """
     try:
         if isinstance(types, TypeVar):
             check = isinstance(item, types.__constraints__)
@@ -52,6 +71,18 @@ def validate_type(item, types):
 
 
 def is_number(s) -> bool:
+    """Check if an object is a number
+
+    Parameters
+    ----------
+    s : object
+        The object to check
+
+    Returns
+    -------
+    bool
+        True if the object is a number, False otherwise
+    """
     if isinstance(s, str):
         try:
             float(s)
@@ -78,6 +109,27 @@ def is_number(s) -> bool:
 
 def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
                 **kwargs) -> list:
+    """Parallelize a function to run on multiple processors.
+
+    Parameters
+    ----------
+    func : callable
+        The function to parallelize
+    par_var : Iterable
+        The iterable to parallelize over
+    n_jobs : int
+        The number of jobs to run in parallel. If None, will use all
+        available cores. If -1, will use all available cores.
+    *args
+        Additional arguments to pass to the function
+    **kwargs
+        Additional keyword arguments to pass to the function
+
+    Returns
+    -------
+    list
+        The output of the function for each element in par_var
+    """
     if 'n_jobs' in kwargs.keys():
         n_jobs = kwargs.pop('n_jobs')
     elif n_jobs is None:
@@ -102,6 +154,7 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
 
 
 def get_mem() -> Union[float, int]:
+    """Get the amount of memory to use for parallelization."""
     from psutil import virtual_memory
     ram_per = virtual_memory()[3]/cpu_count()
     return ram_per

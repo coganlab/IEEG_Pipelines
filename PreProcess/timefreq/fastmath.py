@@ -99,7 +99,6 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
     basedata : array
         It can be of any shape. The last dimension should be time, and the
         first dimension should equal data.
-    %(baseline_rescale)s
     mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio'
         Perform baseline correction by
         - subtracting the mean of baseline values ('mean')
@@ -115,6 +114,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
           ('zlogratio')
     copy : bool
         Whether to return a new instance or modify in place.
+
     Returns
     -------
     data_scaled: array
@@ -168,10 +168,26 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
         The epochs to rescale.
     baseline : instance of Epochs
         The epochs to use for baseline correction.
-    %(baseline_rescale)s
-    %(baseline_rescale_epochs)s
-    %(baseline_rescale_picks)s
+    mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio'
+        Perform baseline correction by
+        - subtracting the mean of baseline values ('mean')
+        - dividing by the mean of baseline values ('ratio')
+        - dividing by the mean of baseline values and taking the log
+          ('logratio')
+        - subtracting the mean of baseline values followed by dividing by
+          the mean of baseline values ('percent')
+        - subtracting the mean of baseline values and dividing by the
+          standard deviation of baseline values ('zscore')
+        - dividing by the mean of baseline values, taking the log, and
+          dividing by the standard deviation of log baseline values
+          ('zlogratio')
+    copy : bool
+        Whether to return a new instance or modify in place.
+    picks : list of int | 'data' | 'grad' | 'mag' | 'eeg' | 'seeg' | 'ecog'
+        Channels to include. If None only good data channels are kept.
+        Defaults to 'data'.
     %(verbose)s
+
     Returns
     -------
     line : instance of Epochs

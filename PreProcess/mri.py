@@ -20,13 +20,25 @@ try:
 except ValueError:  # Already removed
     pass
 
-from PreProcess.navigate import get_data  # noqa: E402
+from PreProcess.timefreq.utils import Signal  # noqa: E402
 from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
                  title: str, thresh: float = None):
-    """Define a helper function for comparing plots."""
+    """Plots an overlay of two images
+
+    Parameters
+    ----------
+    image : nib.Nifti1Image
+        The image to plot
+    compare : nib.Nifti1Image
+        The image to overlay
+    title : str
+        The title of the plot
+    thresh : float, optional
+        The threshold to apply to the overlay, by default None
+    """
     image = nib.orientations.apply_orientation(
         np.asarray(image.dataobj), nib.orientations.axcodes2ornt(
             nib.orientations.aff2axcodes(image.affine))).astype(np.float32)
@@ -49,6 +61,22 @@ def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
 
 def allign_CT(t1_path: PathLike, ct_path: PathLike, reg_affine=None
               ) -> nib.spatialimages.SpatialImage:
+    """Alligns a CT scan to a T1 scan
+
+    Parameters
+    ----------
+    t1_path : PathLike
+        The path to the T1 scan
+    ct_path : PathLike
+        The path to the CT scan
+    reg_affine : np.ndarray, optional
+        The affine to use for registration, by default None
+
+    Returns
+    -------
+    nib.spatialimages.SpatialImage
+        The alligned CT scan
+    """
     T1 = nib.load(t1_path)
     CT_orig = nib.load(ct_path)
     sdr_morph = None
@@ -61,9 +89,25 @@ def allign_CT(t1_path: PathLike, ct_path: PathLike, reg_affine=None
     return CT_aligned
 
 
-def show_brain(my_raw: mne.io.Raw, trans: mne.transforms.Transform,
+def show_brain(my_raw: Signal, trans: mne.transforms.Transform,
                sub_id: PathLike, subjects_dir: PathLike = None,
                overwrite: bool = False):
+    """Shows the brain with the electrodes projected onto it
+
+    Parameters
+    ----------
+    my_raw : Signal
+        The data to plot
+    trans : mne.transforms.Transform
+        The transformation to use
+    sub_id : PathLike
+        The subject id
+    subjects_dir : PathLike, optional
+        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
+    overwrite : bool, optional
+        Whether to overwrite the watershed bem, by default False
+    """
+    subjects_dir = get_sub_dir(subjects_dir)
     try:
         mne.bem.make_watershed_bem(sub_id, subjects_dir, overwrite=overwrite)
     except RuntimeError:
@@ -79,8 +123,18 @@ def show_brain(my_raw: mne.io.Raw, trans: mne.transforms.Transform,
     brain.show_view(**view_kwargs)
 
 
-def head_to_mni(inst: Union[mne.io.Raw, mne.Epochs, mne.Evoked],
-                sub: str, subj_dir: PathLike = None):
+def head_to_mni(inst: Signal, sub: str, subj_dir: PathLike = None):
+    """Transforms the head coordinates to MNI Talairach coordinates
+
+    Parameters
+    ----------
+    inst : Union[mne.io.Raw, mne.Epochs, mne.Evoked]
+        The data to transform
+    sub : str
+        The subject id
+    subj_dir : PathLike, optional
+        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
+    """
     subj_dir = get_sub_dir(subj_dir)
     montage = inst.get_montage()
 
@@ -105,12 +159,35 @@ def head_to_mni(inst: Union[mne.io.Raw, mne.Epochs, mne.Evoked],
 
 
 def get_sub_dir(subj_dir: PathLike = None):
+    """Gets the subjects directory
+
+    Parameters
+    ----------
+    subj_dir : PathLike, optional
+        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
+
+    Returns
+    -------
+    PathLike
+        The subjects directory
+    """
     if subj_dir is None:
         subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     return subj_dir
 
 
 def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
+    """Plots the gamma power over time
+
+    Parameters
+    ----------
+    evoked : mne.Evoked
+        The data to plot
+    subjects_dir : PathLike, optional
+        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
+    **kwargs
+        Additional arguments to pass to plot_on_average
+        """
     data = evoked.copy().filter(30, 150).apply_hilbert(envelope=True)._data
     fig = plot_on_average(evoked.info, subjects_dir=subjects_dir, **kwargs)
     mne.viz.set_3d_view(fig, azimuth=0, elevation=70)
@@ -143,6 +220,30 @@ def plot_on_average(info: mne.Info, trans: str = 'fsaverage',
                     sub: str = 'fsaverage', subj_dir: PathLike = None,
                     surfaces: List[str] = None, coord_frame: str = 'head',
                     **kwargs) -> matplotlib.figure.Figure:
+    """Plots the average brain
+
+    Parameters
+    ----------
+    info : mne.Info
+        The info to plot
+    trans : str, optional
+        The transformation to use, by default 'fsaverage'
+    sub : str, optional
+        The subject id, by default 'fsaverage'
+    subj_dir : PathLike, optional
+        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
+    surfaces : List[str], optional
+        The surfaces to plot, by default ['pial']
+    coord_frame : str, optional
+        The coordinate frame to use, by default 'head'
+    **kwargs
+        Additional arguments to pass to plot_alignment
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure
+    """
     subj_dir = get_sub_dir(subj_dir)
     if surfaces is None:
         surfaces = ['pial']
@@ -153,6 +254,7 @@ def plot_on_average(info: mne.Info, trans: str = 'fsaverage',
 
 
 if __name__ == "__main__":
+    from PreProcess.navigate import get_data
     # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")
