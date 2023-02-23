@@ -3,14 +3,15 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Pipelines's documentation!
+IEEG_Pipelines documentation
 =====================================
 
 .. toctree::
    :maxdepth: 4
    :caption: Contents:
 
-
+   PreProcess
+   task
 
 Indices and tables
 ==================
