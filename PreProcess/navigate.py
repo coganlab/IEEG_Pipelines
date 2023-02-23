@@ -351,7 +351,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
     bounds = [0] + list(bounds.onset) + [inst.times[-1]]
     for i, file in enumerate(inst.filenames):
         entities = parse_file_entities(file)
-        entities['desc'] = pipeline
+        entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
         write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
