@@ -3,7 +3,6 @@ from functools import singledispatch
 import numpy as np
 from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
-from scipy import stats
 
 
 def sum_squared(x: np.ndarray) -> np.ndarray:

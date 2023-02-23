@@ -1,0 +1,11 @@
+{% extends "default/index.html.jinja2" %}
+
+{% block content %}
+    <main class="pdoc">
+    Preprocessing pipeline API reference
+    </main>
+{% endblock %}
+
+{% block nav_footer %}
+    <footer>My Package v{{ env["VERSION"] | default("0.1") }}</footer>
+{% endblock %}
