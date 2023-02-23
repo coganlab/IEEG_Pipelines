@@ -13,4 +13,4 @@ dependencies:
   - pytz
   - notebook
   - pip:
-    - --user -r requirements.txt
+    - -r requirements.txt

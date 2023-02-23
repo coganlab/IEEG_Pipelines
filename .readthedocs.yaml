@@ -19,6 +19,7 @@ build:
     # golang: "1.19"
   jobs:
     pre_build:
+      - pip install myst_parser
       - sphinx-apidoc -f -o docs .
 
 # Build documentation in the docs/ directory with Sphinx

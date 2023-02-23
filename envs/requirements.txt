@@ -3,7 +3,6 @@ pytest-pycodestyle
 pytest-cov
 pytest-xdist
 coverage
-myst_parser
 bids>=0.0
 nipype
 EDFlib-Python
