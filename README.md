@@ -2,7 +2,11 @@
 
 A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganlab.org/)
 
-## [Lab Wiki](https://coganlab.pages.oit.duke.edu/wiki//)
+## Documentation
+
+[![Documentation Status](https://readthedocs.org/projects/ieeg-pipelines/badge/?version=latest)](https://ieeg-pipelines.readthedocs.io/en/latest/?badge=latest)
+
+[Lab Wiki](https://coganlab.pages.oit.duke.edu/wiki//)
 
 ## Pipeline Functionality
 
@@ -11,6 +15,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 [![MATLAB latest](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml)
 
 [![codecov](https://codecov.io/gh/coganlab/IEEG_Pipelines/branch/main/graph/badge.svg?token=X4IAFGOBGN)](https://codecov.io/gh/coganlab/IEEG_Pipelines)
+
 ## Installation
 
 ### MATLAB

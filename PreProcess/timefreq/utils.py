@@ -13,33 +13,70 @@ from PreProcess.utils.utils import validate_type, ensure_int, parallelize
 Signal = TypeVar("Signal", base.BaseRaw, BaseEpochs, Evoked, _BaseTFR)
 
 
-def to_samples(filter_length: Union[str, int], sfreq: float) -> int:
-    validate_type(filter_length, (str, int))
-    if isinstance(filter_length, str):
-        filter_length = filter_length.lower()
+def to_samples(time_length: Union[str, int], sfreq: float) -> int:
+    """Convert a time length to a number of samples.
+
+    Parameters
+    ----------
+    time_length : str | int
+        The time length to convert. If a string, it must be a human-readable
+        time, e.g. "10s".
+    sfreq : float
+        The sampling frequency.
+
+    Returns
+    -------
+    samples : int
+        The number of samples.
+    """
+    validate_type(time_length, (str, int))
+    if isinstance(time_length, str):
+        time_length = time_length.lower()
         err_msg = ('filter_length, if a string, must be a '
-                   'human-readable time, e.g. "10s", or "auto", not '
-                   '"%s"' % filter_length)
-        if filter_length.lower().endswith('ms'):
+                   'human-readable time, e.g. "0.7s", or "700ms", not '
+                   '"%s"' % time_length)
+        low = time_length.lower()
+        if low.endswith('us'):
+            mult_fact = 1e-6
+            time_length = time_length[:-2]
+        elif low.endswith('ms'):
             mult_fact = 1e-3
-            filter_length = filter_length[:-2]
-        elif filter_length[-1].lower() == 's':
+            time_length = time_length[:-2]
+        elif low[-1] == 's':
             mult_fact = 1
-            filter_length = filter_length[:-1]
+            time_length = time_length[:-1]
+        elif low.endswith('sec'):
+            mult_fact = 1
+            time_length = time_length[:-3]
+        elif low[-1] == 'm':
+            mult_fact = 60
+            time_length = time_length[:-1]
+        elif low.endswith('min'):
+            mult_fact = 60
+            time_length = time_length[:-3]
         else:
             raise ValueError(err_msg)
         # now get the number
         try:
-            filter_length = float(filter_length)
+            time_length = float(time_length)
         except ValueError:
             raise ValueError(err_msg)
-        filter_length = max(int(np.ceil(filter_length * mult_fact *
-                                        sfreq)), 1)
-    filter_length = ensure_int(filter_length, 'filter_length')
-    return filter_length
+        time_length = max(int(np.ceil(time_length * mult_fact * sfreq)), 1)
+    time_length = ensure_int(time_length, 'filter_length')
+    return time_length
 
 
 def crop_pad(inst: Signal, pad: str):
+    """Crop and pad an instance.
+
+    Parameters
+    ----------
+    inst : instance of Raw, Epochs, or Evoked
+        The instance to crop and pad.
+    pad : str
+        The amount of time to pad the instance. If a string, it must be a
+        human-readable time, e.g. "10s".
+    """
     pad = to_samples(pad, inst.info['sfreq']) / inst.info['sfreq']
     inst.crop(tmin=inst.tmin + pad, tmax=inst.tmax - pad)
 
@@ -108,6 +145,11 @@ class _COLA:
         The window to use. Default is "hann".
     tol : float
         The tolerance for COLA checking.
+    n_jobs : int
+        The number of jobs to run in parallel.
+    verbose : bool
+        If True, print a message when the COLA condition is not met.
+
     Notes
     -----
     This will process data using overlapping windows to achieve a constant

@@ -3,7 +3,7 @@ import numpy as np
 from bids import BIDSLayout
 from mne.io import BaseRaw
 from mne_bids import BIDSPath
-from ..navigate import raw_from_layout
+from PreProcess.navigate import raw_from_layout
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 # sample_path = mne.datasets.sample.data_path()
@@ -21,7 +21,7 @@ def test_bids():
 
 
 def test_bidspath_from_layout():
-    from ..navigate import bidspath_from_layout
+    from PreProcess.navigate import bidspath_from_layout
     expected = "sub-pt1_ses-presurgery_task-ictal_ieeg.eeg"
     bidspath = bidspath_from_layout(layout, subject="pt1",
                                     extension=".eeg")
@@ -35,7 +35,7 @@ def test_raw_from_layout():
 
 
 def test_line_filter():
-    from ..mt_filter import line_filter
+    from PreProcess.mt_filter import line_filter
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
     filt = line_filter(raw, raw.info['sfreq'], [60])
@@ -50,7 +50,7 @@ def test_line_filter():
 
 
 def test_spectrogram():
-    from ..timefreq.multitaper import spectrogram
+    from PreProcess.timefreq.multitaper import spectrogram
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
     freqs = np.arange(10, 50, 2)

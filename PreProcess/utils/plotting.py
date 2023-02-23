@@ -18,7 +18,21 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 def figure_compare(raw: list[Raw], labels: list[str], avg: bool = True,
                    n_jobs: int = None, **kwargs):
-    """Plots the psd of a list of raw objects"""
+    """Plots the psd of a list of raw objects
+
+    Parameters
+    ----------
+    raw : list[Raw]
+        The raw objects to plot
+    labels : list[str]
+        The labels for the raw objects
+    avg : bool, optional
+        Whether to average the psd over channels, by default True
+    n_jobs : int, optional
+        The number of jobs to use for the computation, by default None
+    **kwargs
+        Additional keyword arguments to pass to Raw.compute_psd()
+    """
     if n_jobs is None:
         n_jobs = cpu_count() - 2
     for title, data in zip(labels, raw):

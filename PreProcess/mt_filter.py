@@ -21,82 +21,105 @@ try:
 except ValueError:  # Already removed
     pass
 
-from PreProcess.timefreq import multitaper, fastmath, utils as mt_utils  # noqa: E402
+from PreProcess.timefreq import multitaper, fastmath, \
+    utils as mt_utils  # noqa: E402
 from PreProcess.utils.utils import is_number  # noqa: E402
 
 ListNum = TypeVar("ListNum", int, float, np.ndarray, list, tuple)
 
 
 @verbose
-def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = None,
-                filter_length: str = 'auto',
-                notch_widths: Union[ListNum, int] = None,
+def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
+                filter_length: str = '10s', notch_widths: ListNum = 10.,
                 mt_bandwidth: float = None, p_value: float = 0.05,
-                picks: ListNum = None, n_jobs: int = None,
+                picks: list[Union[int, str]] = None, n_jobs: int = None,
                 adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
                 ) -> mt_utils.Signal:
-    r"""Notch filter for the signal x.
-    Applies a multitaper notch filter to the signal x, operating on the last
-    dimension.
+    """Line noise notch filter for the signal instance.
+
+    Applies a multitaper power line noise notch filter to the signal, operating
+    on the last dimension. Uses the F-test to find significant sinusoidal
+    components to remove. This is done by fitting a sinusoid to the power
+    spectrum at each time point and frequency, and testing whether the
+    resulting fit is significantly different from a flat spectrum. The
+    significance test is done using an F-test, which requires fitting two
+    models (one flat, one sinusoidal) at each time point and frequency. The
+    F-test is corrected for multiple comparisons using the Benjamini-Hochberg
+    procedure.
+
     Parameters
     ----------
-    raw : array
+    raw : mt_utils.Signal
         Signal to filter.
-    fs : float
-        Sampling rate in Hz.
-    freqs : float | array of float | None
+    fs : float, optional
+        Sampling rate in Hz. Default is taken from the raw object.
+    freqs : float | array-like of float, optional
         Frequencies to notch filter in Hz, e.g. np.arange(60, 241, 60).
         None can only be used with the mode 'spectrum_fit', where an F
         test is used to find sinusoidal components.
-    %(filter_length_notch)s
-    notch_widths : float | array of float | None
+    filter_length : str | int, optional
+        Length of the filter to use. If str, assumed to be human-readable time
+        in units of "s" or "ms" (e.g., "10s" or "5500ms"). If an int, it
+        is assumed to be in samples and used directly.
+    notch_widths : float | array of float, optional
         Width of the stop band (centred at each freq in freqs) in Hz.
-        If None, freqs / 200 is used.
-    mt_bandwidth : float | None
-        The bandwidth of the multitaper windowing function in Hz.
-        Only used in 'spectrum_fit' mode.
-    p_value : float
+        Default is 10.
+    mt_bandwidth : float, optional
+        The bandwidth of the multitaper windowing function in Hz. Default will
+        set the half frequency bathwidth to 4 Hz.
+    p_value : float, optional
         P-value to use in F-test thresholding to determine significant
-        sinusoidal components to remove when method='spectrum_fit' and
-        freqs=None. Note that this will be Bonferroni corrected for the
-        number of frequencies, so large p-values may be justified.
-    %(picks_nostr)s
-        Only supported for 2D (n_channels, n_times) and 3D
-        (n_epochs, n_channels, n_times) data.
-    %(n_jobs_fir)s
-    copy : bool
+        sinusoidal components to remove. Note that this will be Bonferroni
+        corrected for the number of frequencies, so large p-values may be
+        justified.
+    picks : list of int | list of str, optional
+        Channels to filter. If None, all channels will be filtered.
+    n_jobs : int, optional
+        Number of jobs to run in parallel. Default is number of cores on
+        machine.
+    adaptive : bool, optional
+        Use adaptive weights to combine the tapered spectra into PSD.
+        Default is True.
+    low_bias : bool, optional
+        Only use tapers with more than 90 percent spectral concentration within
+        bandwidth. Default is True.
+    copy : bool, optional
         If True, a copy of x, filtered, is returned. Otherwise, it operates
         on x in place.
-    %(phase)s
-    %(verbose)s
+    verbose : bool, str, int, or None, optional
+        If not None, override default verbose level (see mne.verbose).
+
     Returns
     -------
-    xf : array
-        The x array filtered.
+    filt : mt_utils.Signal
+        The signal instance with the filtered data.
+
     See Also
     --------
-    filter_data
-    resample
+    <https://mne.tools/stable/generated/mne.filter.notch_filter.html>
+
     Notes
     -----
     The frequency response is (approximately) given by::
         1-|----------         -----------
-          |          \       /
-      |H| |           \     /
-          |            \   /
-          |             \ /
+          |          \\       /
+      |H| |           \\     /
+          |            \\   /
+          |             \\ /
         0-|              -
           |         |    |    |         |
           0        Fp1 freq  Fp2       Nyq
+
     For each freq in freqs, where ``Fp1 = freq - trans_bandwidth / 2`` and
     ``Fs2 = freq + trans_bandwidth / 2``.
+
     References
     ----------
     Multi-taper removal is inspired by code from the Chronux toolbox, see
     www.chronux.org and the book "Observed Brain Dynamics" by Partha Mitra
     & Hemant Bokil, Oxford University Press, New York, 2008. Please
-    cite this in publications if method 'spectrum_fit' is used.
+    cite this in publications if this function is used.
     """
     if fs is None:
         fs = raw.info["sfreq"]
@@ -125,8 +148,6 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = None,
                             ) for ch_t in raw.get_channel_types()]
 
     # convert filter length to samples
-    if isinstance(filter_length, str) and filter_length == 'auto':
-        filter_length = '10s'
     if filter_length is None:
         filter_length = x.shape[-1]
 
@@ -185,8 +206,9 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
 @verbose
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                    notch_width: ListNum, get_thresh: callable,
-                   n_jobs: int = None,
-                   verbose: bool = None) -> (ArrayLike, List[float]):
+                   n_jobs: int = None, verbose: bool = None
+                   ) -> (ArrayLike, List[float]):
+    """Remove line frequencies from data using multitaper method."""
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
     n_times = x.shape[-1]
@@ -319,9 +341,3 @@ if __name__ == "__main__":
     #                       ""], avg=True, verbose=10, proj=True, fmax=250)
     # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
     #                       ""], avg=False, verbose=10, proj=True, fmax=250)
-
-    # %% plot results
-    # params = dict(method='multitaper', fmin=55, fmax=65, tmax=200,
-    #               bandwidth=0.5, n_jobs=8)
-    # fpsd = filt.compute_psd(**params)
-    # fpsd.plot()

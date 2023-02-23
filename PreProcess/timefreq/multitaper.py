@@ -149,7 +149,32 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
 def params(n_times: int, sfreq: float, bandwidth: float,
            low_bias: bool = True, adaptive: bool = False,
            verbose: bool = None):
-    """Triage windowing and multitaper parameters."""
+    """Triage windowing and multitaper parameters.
+
+    Parameters
+    ----------
+    n_times : int
+        The number of time points.
+    sfreq : float
+        The sampling frequency.
+    bandwidth : float | None
+        The bandwidth of the windows in Hz. If None, the half bandwidth will be
+        4 Hz.
+    low_bias : bool
+        Keep only tapers with eigenvalues > 0.9.
+    adaptive : bool
+        Use adaptive weights to combine the tapered spectra into PSD.
+    %(verbose)s
+
+    Returns
+    -------
+    window_fun : array, shape=(n_tapers, n_times)
+        The window functions for each taper.
+    eigenvals : array, shape=(n_tapers,)
+        The eigenvalues for each taper.
+    adaptive : bool
+        Whether to use adaptive weights to combine the tapered spectra into PSD
+        """
     # Compute standardized half-bandwidth
     if isinstance(bandwidth, str):
         logger.info('    Using standard spectrum estimation with "%s" window'

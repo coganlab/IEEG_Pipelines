@@ -1,7 +1,7 @@
 import os.path as op
 import re
 from os import walk, listdir, mkdir
-from typing import Union, List, Tuple, Dict, Any
+from typing import Union, List, Tuple, Dict
 
 import mne
 import numpy as np
@@ -30,7 +30,18 @@ SubDict = Dict[str, RunDict]
 
 
 def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
-    """Looks for the .dat file in a specified folder"""
+    """Looks for the .dat file in a specified folder
+
+    Parameters
+    ----------
+    folder : PathLike
+        The folder to search in.
+
+    Returns
+    -------
+    Tuple[PathLike, PathLike]
+        The paths to the ieeg and cleanieeg files.
+    """
     cleanieeg = None
     ieeg = None
     for root, _, files in walk(folder):
@@ -53,6 +64,11 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
         The BIDSLayout to search.
     **kwargs : dict
         The parameters to search for. See BIDSFile.get() for more info.
+
+    Returns
+    -------
+    BIDSPath
+        The BIDSPath to the file.
     """
     my_search: List[BIDSFile] = layout.get(**kwargs)
     if len(my_search) >= 2:
@@ -67,23 +83,28 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
 
 
 def raw_from_layout(layout: BIDSLayout, preload: bool = False,
-                    **kwargs) -> mne.io.Raw:
+                    run: Union[list[int], int] = None, **kwargs) -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
 
     Parameters
     ----------
     layout : BIDSLayout
         The BIDSLayout to search.
-    subject : str
-        The subject to search for.
     run : Union[List[int], int], optional
         The run to search for, by default None
     preload: bool
-        Whether or not to laod the data into memory
-    extension : str, optional
-        The file extension to search for, by default ".edf"
+        Whether to laod the data into memory or not, by default False
+    **kwargs : dict
+        The parameters to search for. See BIDSFile.get() for more info.
+
+    Returns
+    -------
+    mne.io.Raw
     """
-    runs = layout.get(return_type="id", target="run", **kwargs)
+    if run is None:
+        runs = layout.get(return_type="id", target="run", **kwargs)
+    else:
+        runs = list(run)
     raw: List[mne.io.Raw] = []
     if runs:
         for r in runs:
@@ -116,6 +137,12 @@ def open_dat_file(file_path: str, channels: List[str],
         The sampling frequency, by default 2048
     types : str, optional
         The channel types, by default "seeg"
+    units : str, optional
+        The units of the data, by default "uV"
+
+    Returns
+    -------
+    mne.io.RawArray
     """
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
@@ -139,8 +166,31 @@ def open_dat_file(file_path: str, channels: List[str],
 
 def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
              BIDS_root: PathLike = None, lab_root=LAB_root):
-    """
+    """Gets the data for a subject and task.
 
+    Parameters
+    ----------
+    sub_num : int, optional
+        The subject number, by default 53
+    task : str, optional
+        The task to get the data for, by default "SentenceRep"
+    run : int, optional
+        The run to get the data for, by default None
+    BIDS_root : PathLike, optional
+        The path to the BIDS directory, by default None
+    lab_root : PathLike, optional
+        The path to the lab directory, by default LAB_root
+
+    Returns
+    -------
+    layout : BIDSLayout
+        The BIDSLayout for the subject.
+    raw : mne.io.Raw
+        The raw data.
+    D_dat_raw : mne.io.Raw
+        The raw data from the D_Data folder.
+    D_dat_filt : mne.io.Raw
+        The filtered data from the D_Data folder.
     """
     for dir in listdir(lab_root):
         if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(
@@ -153,17 +203,33 @@ def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
     sub_pad = "D" + "{}".format(sub_num).zfill(4)
     subject = "D{}".format(sub_num)
     layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, sub_pad, run)
+    raw = raw_from_layout(layout, run=run, subject=sub_pad, extension='.edf')
     D_dat_raw, D_dat_filt = find_dat(op.join(lab_root, "D_Data",
                                              task, subject))
     return layout, raw, D_dat_raw, D_dat_filt
 
 
-def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
-    """
-    Takes raw file with annotated events and crop the file so that the raw
-    file starts at the first event and stops an amount of time in seconds
-    given by end_pad after the last event
+def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
+              ) -> mne.io.Raw:
+    """Crops out long stretches of data with no events.
+
+    Takes raw instance with annotated events and crops the instance so that the
+    raw file starts at start_pad before the first event and stops an amount of
+    time in seconds given by end_pad after the last event.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw file to crop.
+    start_pad : str, optional
+        The amount of time to pad the start of the file, by default "10s"
+    end_pad : str, optional
+        The amount of time to pad the end of the file, by default "10s"
+
+    Returns
+    -------
+    mne.io.Raw
+        The cropped raw file.
     """
 
     crop_list = []
@@ -200,29 +266,83 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"):
     return mne.concatenate_raws(crop_list)
 
 
-def channel_outlier_marker(input_raw: mne.io.Raw, outlier_sd: int = 3):
-    """
-    Marks a channel as 'bad' if the mean of the channel is different from
-    the mean across channels by a factor of the cross channel std given by
-    outlier_sd
+@mne.utils.verbose
+def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
+                           max_rounds: int = np.inf, verbose: bool = True
+                           ) -> list[str]:
+    """Identify bad channels by variance.
+
+    Parameters
+    ----------
+    input_raw : Signal
+        Raw data to be analyzed.
+    outlier_sd : int, optional
+        Number of standard deviations above the mean to be considered an
+        outlier, by default 3
+    max_rounds : int, optional
+        Maximum number of varience estimations, by default runs until no
+        more bad channels are found.
+    verbose : bool, optional
+        Print removed channels per estimation, by default True
+
+    Returns
+    -------
+    list[str]
+        List of bad channel names.
     """
 
-    data = input_raw.get_data('data')
-    my_norm = np.linalg.norm(data, axis=0)
-    mu = np.mean(data)  # take the mean across all channels and time series
-    sig = np.std(data)  # take standard deviation across all time series
+    data = input_raw.get_data('data')  # (trials X) channels X time
+    names = input_raw.copy().pick('data').ch_names
+    bads = []  # output for bad channel names
 
-    # Loop over each channel, calculate mean, and append channel to 'bad'
-    # in input_raw if the difference in means is more than the given outlier_sd
-    # factor (default is 3 standard deviations)
-    for ii, ch in enumerate(input_raw.copy().pick('data').ch_names):
-        mu_ch = np.mean(data[ii, :])
-        if abs(mu_ch - mu) > (outlier_sd * sig):
-            input_raw.info['bads'].append(ch)
+    # Square the data and set zeros to small positive number
+    R2 = np.square(data)
+    R2[np.where(R2 == 0)] = 1e-9
+    ch_dim = range(len(data.shape))[-2]  # dimension corresponding to channels
+
+    # find all axes that are not channels (example: time, trials)
+    axes = tuple(i for i in range(len(data.shape)) if not i == ch_dim)
+
+    # Initialize stats loop
+    sig = np.std(R2, axes)  # take standard deviation of each channel
+    cutoff = (outlier_sd * np.std(sig)) + np.mean(sig)  # outlier cutoff
+    i = 1
+
+    # remove bad channels and re-calculate variance until no outliers are left
+    while np.any(np.where(sig > cutoff)) and i <= max_rounds:
+
+        # Pop out names to bads output using comprehension list
+        [bads.append(names.pop(out-j)) for j, out in enumerate(
+            np.where(sig > cutoff)[0])]
+
+        # log channels excluded per round
+        if verbose:
+            mne.utils.logger.info(f'outlier round {i} channels: {bads}')
+
+        # re-calculate per channel variance
+        R2 = R2[..., np.where(sig < cutoff)[0], :]
+        sig = np.std(R2, axes)
+        cutoff = (outlier_sd * np.std(sig)) + np.mean(sig)
+        i += 1
+
+    return bads
 
 
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
                     overwrite=False):
+    """Save an intermediate data instance from a pipeline to a BIDS folder.
+
+    Parameters
+    ----------
+    inst : Signal
+        The data instance to save.
+    layout : BIDSLayout
+        The BIDSLayout of the original data.
+    pipeline : str
+        The name of the pipeline.
+    overwrite : bool, optional
+        Whether to overwrite existing files, by default False
+    """
     save_dir = op.join(layout.root, "derivatives", pipeline)
     if not op.isdir(save_dir):
         mkdir(save_dir)
@@ -248,25 +368,12 @@ if __name__ == "__main__":
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
     sub_num = 29
-    layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
+    # layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
+    bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
+    layout = BIDSLayout(bids_root)
     filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
         sub_num) + "_" + TASK + "_filt_ieeg.fif")
-
-    # Spectrograms
-    freqs = np.arange(10, 150., 10.)
     events, event_id = mne.events_from_annotations(filt)
-    auds = mne.Epochs(filt, events, event_id, tmin=-1, tmax=1, baseline=(
-        -1., -.5))['Audio']
-    mne.time_frequency.tfr_array_multitaper(auds.get_data(
-    ), auds.info['sfreq'], freqs, time_bandwidth=5.0)
-    # Crop raw data to minimize processing time
-    new = crop_data(filt)
-
-    # Mark channel outliers as bad
-    channel_outlier_marker(new)
-
-    # Exclude bad channels
-    good: Signal = new.copy().drop_channels(new.info['bads'])
-
-    # CAR
-    good_CAR = good.set_eeg_reference(ref_channels="average")
+    auds = mne.Epochs(filt, events, event_id['Audio'], baseline=None, tmin=-2,
+                      tmax=5, preload=True, detrend=1)
+    bads = channel_outlier_marker(auds)
