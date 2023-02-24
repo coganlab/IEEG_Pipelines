@@ -252,8 +252,8 @@ class COLA:
                                 % (self._in_buffers[di].dtype,
                                    self._in_buffers[di].shape[:-1],
                                    data.dtype, data.shape[:-1]))
-            logger.debug('    + Appending %d->%d'
-                         % (self._in_offset, self._in_offset + data.shape[-1]))
+            # logger.debug('    + Appending %d->%d'
+            #              % (self._in_offset, self._in_offset + data.shape[-1]))
             self._in_buffers[di] = np.concatenate(
                 [self._in_buffers[di], data], -1)
             if self._in_offset > self.stops[-1]:
@@ -289,7 +289,7 @@ class COLA:
                 for offset in range(self._n_samples - self._step, 0,
                                     -self._step):
                     this_window[:offset] += self._window[-offset:]
-            logger.debug('    * Processing %d->%d' % (start, stop))
+            # logger.debug('    * Processing %d->%d' % (start, stop))
             this_proc = [in_[..., :this_len].copy()
                          for in_ in self._in_buffers]
             if not all(proc.shape[-1] == this_len == this_window.size
@@ -311,8 +311,8 @@ class COLA:
             delta = next_start - self.starts[self._idx - 1]
             for di in range(len(self._in_buffers)):
                 self._in_buffers[di] = self._in_buffers[di][..., delta:]
-            logger.debug('    - Shifting input/output buffers by %d samples'
-                         % (delta,))
+            # logger.debug('    - Shifting input/output buffers by %d samples'
+            #              % (delta,))
             self._store(*[o[..., :delta] for o in self._out_buffers])
             for ob in self._out_buffers:
                 ob[..., :-delta] = ob[..., delta:]

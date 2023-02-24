@@ -328,11 +328,11 @@ if __name__ == "__main__":
                                filter_length='700ms', verbose=10,
                                freqs=[60], notch_widths=20, p_value=.05)
             filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                                filter_length='20s', verbose=10,
+                                filter_length='15s', verbose=10,
                                 freqs=[60, 120, 180, 240], notch_widths=20,
                                 p_value=.05)
             # %% Save the data
-            save_derivative(filt, layout, "filt")
+            save_derivative(filt2, layout, "filt")
         except Exception as e:
             logger.error(e)
 
