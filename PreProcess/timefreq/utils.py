@@ -253,7 +253,8 @@ class COLA:
                                    self._in_buffers[di].shape[:-1],
                                    data.dtype, data.shape[:-1]))
             # logger.debug('    + Appending %d->%d'
-            #              % (self._in_offset, self._in_offset + data.shape[-1]))
+            #              % (self._in_offset, self._in_offset + data.shape[
+            #              -1]))
             self._in_buffers[di] = np.concatenate(
                 [self._in_buffers[di], data], -1)
             if self._in_offset > self.stops[-1]:

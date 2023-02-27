@@ -78,6 +78,8 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
         raise FileNotFoundError("No files match your search terms")
     found = my_search[0]
     entities = found.get_entities()
+    if 'desc' in entities:
+        entities['description'] = entities.pop('desc')
     BIDS_path = BIDSPath(root=layout.root, **entities)
     return BIDS_path
 
@@ -371,9 +373,9 @@ if __name__ == "__main__":
     sub_num = 29
     # layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
     bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
-    layout = BIDSLayout(bids_root)
-    filt = mne.io.read_raw_fif(layout.root + "/derivatives/sub-D00" + str(
-        sub_num) + "_" + TASK + "_filt_ieeg.fif")
+    layout = BIDSLayout(bids_root, derivatives=True)
+    filt = raw_from_layout(layout.derivatives['filt'], subject='D0029',
+                           extension='.edf', preload=True)
     events, event_id = mne.events_from_annotations(filt)
     auds = mne.Epochs(filt, events, event_id['Audio'], baseline=None, tmin=-2,
                       tmax=5, preload=True, detrend=1)

@@ -7,7 +7,7 @@ from typing import TypeVar, Iterable, Union
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed, cpu_count
-from mne.utils import config
+from mne.utils import config, logger
 
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")

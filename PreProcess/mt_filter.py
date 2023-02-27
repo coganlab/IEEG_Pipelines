@@ -145,8 +145,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                 raise ValueError('notch_widths must be None, scalar, or the '
                                  'same length as freqs')
 
-    data_idx = [ch_t in set(raw.get_channel_types(only_data_chs=True)
-                            ) for ch_t in raw.get_channel_types()]
+    data_idx = np.where([ch_t in set(raw.get_channel_types(only_data_chs=True)
+                            ) for ch_t in raw.get_channel_types()])
 
     # convert filter length to samples
     if filter_length is None:
@@ -309,6 +309,7 @@ if __name__ == "__main__":
     import mne
     from bids import BIDSLayout
     from PreProcess.navigate import raw_from_layout, LAB_root, save_derivative
+    from PreProcess.utils.plotting import figure_compare
 
     # %% Set up logging
     mne.set_log_file("output.log",
@@ -319,20 +320,22 @@ if __name__ == "__main__":
     bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root)
     for subj in layout.get(return_type="id", target="subject"):
+        if subj != "D0029":
+            continue
         try:
             raw = raw_from_layout(layout, subject=subj, extension=".edf",
                                   preload=False)
-
+            raw.drop_channels(raw.ch_names[3:])
             # %% filter data
             filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
                                filter_length='700ms', verbose=10,
-                               freqs=[60], notch_widths=20, p_value=.05)
-            filt2 = line_filter(filt, mt_bandwidth=10.0, n_jobs=-1,
-                                filter_length='15s', verbose=10,
-                                freqs=[60, 120, 180, 240], notch_widths=20,
-                                p_value=.05)
+                               freqs=[60], notch_widths=20)
+            filt2 = line_filter(filt, mt_bandwidth=10., n_jobs=-1,
+                                filter_length='20s', verbose=10,
+                                freqs=[60, 120, 180, 240], notch_widths=20)
             # %% Save the data
-            save_derivative(filt2, layout, "filt")
+            # save_derivative(filt2, layout, "filt")
+            figure_compare([raw, filt2], ["Un", ""], fmax=250)
         except Exception as e:
             logger.error(e)
 
