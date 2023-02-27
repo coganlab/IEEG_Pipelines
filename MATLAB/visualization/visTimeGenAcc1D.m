@@ -31,7 +31,7 @@ yline(options.chanceVal, '--','chance','LineWidth',1);
 xlabel("Time from " + options.axisLabel + " onset (s)")
 ylabel(options.clabel);
 set(gca,'FontSize',10);
-axis square;
+% axis square;
 formatTicks(gca);
 
 end

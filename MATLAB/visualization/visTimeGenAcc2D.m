@@ -59,7 +59,8 @@ for iTrain = 1:size(pValTime,1)
     [cutoff,pmasked] = fdr(pValTime(iTrain,:),pVal2Cutoff);
     pmask(iTrain,:) = pmasked;
 end
-
+ %[pmask]=cluster_permutation_test(pValTime,pVal2Cutoff);
+ %[pmask,corrected_p] = cluster_correction(pValTime,pVal2Cutoff);
 [~,cont2] = contour(timeGridX,timeGridY,pmask,[1 ,1]);
 %[~,cont2] = contour(timeGridX,timeGridY,pValTime,[pVal2Cutoff ,pVal2Cutoff]);
 

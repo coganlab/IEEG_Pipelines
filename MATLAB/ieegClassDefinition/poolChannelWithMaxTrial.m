@@ -1,8 +1,6 @@
 function [ieegStructAll,phonemeTrialAll,channelNameAll] = poolChannelWithMaxTrial(ieegHGStruct,trialInfoStruct)
-%POOLCHANNELWITHMINTRIAL Summary of this function goes here
-%   Detailed explanation goes here
+%POOLCHANNELWITHMAXTRIAL Summary of this function goes here
 
-assert(length(ieegHGStruct)==length(trialInfoStruct),'Number of Subjects mismatch');
 
 ieegHGStructDummy = ieegHGStruct(1).ieegHGNorm;
 uniqueToken = 0;

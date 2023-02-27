@@ -1,4 +1,4 @@
-function [accAll,ytestAll,ypredAll,optimVarAll,aucAll] = pcaLinearDecoderWrap(ieegSplit,labels,tw,etw,varVector,numFolds,isauc)
+function [accAll,ytestAll,ypredAll,optimVarAll,aucAll, modelWeightsAll] = pcaLinearDecoderWrap(ieegSplit,labels,tw,etw,varVector,numFolds,isauc)
 % The function performs supervised PCA-LDA decoding on ephys time-series dataset;
 % Step 1: Hyperparameter optimization through nested cross-validation to
 % identify the optimal number of PC dimensions
@@ -26,6 +26,7 @@ ypredAll = [];
 optimVarAll = [];
 aucAll = [];
 lossVectAll = [];
+modelWeightsAll = [];
 if(numFolds>0)
     cvp = cvpartition(labels,'KFold',numFolds,'Stratify',true);
 else
@@ -59,7 +60,7 @@ end
             optimVar = varVector;
         end
 %        mean(squeeze(aucVect(:,nDim,:)),1)
-        [lossMod,Cmat,yhat,aucVect] = pcaDecodeVariance(gTrain,gTest,pTrain,...
+        [lossMod,Cmat,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(gTrain,gTest,pTrain,...
                        pTest,optimVar,isauc);
     optimVarAll = [optimVarAll optimVar];
 %     size(pTest)
@@ -67,6 +68,8 @@ end
     ytestAll = [ytestAll pTest];
     ypredAll = [ypredAll yhat'];
     accAll = accAll + 1 - lossMod;
+    modelWeightsAll{nCv} = modelweights;
+
     if(isauc)
     aucAll = [aucAll; aucVect];
     end

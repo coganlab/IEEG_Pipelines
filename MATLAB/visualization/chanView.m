@@ -5,7 +5,7 @@ arguments
     chanMap double
     options.selectedChannels double = sort(chanMap(~isnan(chanMap)))';
     options.nonChan logical = isnan(chanMap);
-    options.titl {mustBeTextScalar} = 'channel map values'
+    options.titl {mustBeTextScalar} = 'channel map activation'
     options.cval double = []
     options.pixRange double = []
     options.isSmooth logical = 0

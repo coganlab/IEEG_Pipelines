@@ -4,18 +4,18 @@ arguments
     sig2Movie double % sig2Movie: channels x timepoints
     chanMap double % chanMap: 2D channel map
     timeAll double % timeAll: 1 x timepoints (in seconds)
-    options.etw double = timeAll % etw: epoch time window in seconds (e.g. [-1 1] to print movie
+    options.etw double = [timeAll(1) timeAll(end)] % etw: epoch time window in seconds (e.g. [-1 1] to print movie
             % between -1 to 1 seconds
     options.clim double = [0 20]  % clim: Colorbar range in uV or z-score value (e.g. [0 20])
     options.frameRate double =  120 % frameRate: Frame rate of the movie (e.g. 120)
-    options.movTitle string = 'patient_space_time_activation' % movTitle: Filename to be saved (e.g. 'S23_highGamma')
+    options.movTitle char = 'patient_space_time_activation' % movTitle: Filename to be saved (e.g. 'S23_highGamma')
     options.colbarTitle string = '\muV' % colbarTitle: Color axis label (e.g. 'z-score')
 end
 
         etw = options.etw; 
         clim = options.clim; 
         frameRate = options.frameRate ;
-        movTitle = options.movTitle; 
+        movTitle = options.movTitle;
         colbarTitle = options.colbarTitle; 
         
         selectedChannels = sort(chanMap(~isnan(chanMap)))';
@@ -51,7 +51,7 @@ end
             axis equal
             axis tight
             set(gca,'FontSize',20);
-            colormap(parula(4096))
+            colormap(jet(4096))
             
          title([num2str(round(timeSelect(iTime),2)) ' s'])
            M(iTime)=getframe(gcf);

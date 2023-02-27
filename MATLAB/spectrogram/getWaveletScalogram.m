@@ -9,8 +9,12 @@ arguments
     params.k0 double = 6 % the mother wavelet parameter (wavenumber), default is 6.
     params.waitc logical = 0 % a handle to the qiqi waitbar.
 end
+fLow = params.fLow;
+fHigh = params.fHigh;
+k0 = params.k0;
+waitc = params.waitc;
 for iChan = 1:size(ieeg,1)
-    [wave,period]=basewave5(squeeze(ieeg(iChan,:,:)),fs,params.fLow,params.fHigh,params.k0,params.waitc);
+    [wave,period]=basewave5(squeeze(ieeg(iChan,:,:)),fs,fLow,fHigh,k0,waitc);
     waveSpec.spec{iChan} = permute(abs(wave),[1 3 2]); % changing format to trials x time x frequency;
 end
 waveSpec.fscale = 1./period;
