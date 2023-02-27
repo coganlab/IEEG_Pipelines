@@ -320,12 +320,9 @@ if __name__ == "__main__":
     bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root)
     for subj in layout.get(return_type="id", target="subject"):
-        if subj != "D0029":
-            continue
         try:
             raw = raw_from_layout(layout, subject=subj, extension=".edf",
                                   preload=False)
-            raw.drop_channels(raw.ch_names[3:])
             # %% filter data
             filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
                                filter_length='700ms', verbose=10,
@@ -334,8 +331,7 @@ if __name__ == "__main__":
                                 filter_length='20s', verbose=10,
                                 freqs=[60, 120, 180, 240], notch_widths=20)
             # %% Save the data
-            # save_derivative(filt2, layout, "filt")
-            figure_compare([raw, filt2], ["Un", ""], fmax=250)
+            save_derivative(filt2, layout, "filt")
         except Exception as e:
             logger.error(e)
 
