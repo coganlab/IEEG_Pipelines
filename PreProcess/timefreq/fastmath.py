@@ -149,9 +149,10 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
                 d /= s
         case _:
             raise NotImplementedError()
-
-    mean = np.mean(basedata, axis=-1, keepdims=True)
-    std = np.std(basedata, axis=-1, keepdims=True)
+    axes = list(range(data.ndim))
+    axes.pop(-2)
+    mean = np.mean(basedata, axis=tuple(axes), keepdims=True)
+    std = np.std(basedata, axis=tuple(axes), keepdims=True)
     fun(data, mean, std)
     return data
 
