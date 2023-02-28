@@ -338,9 +338,12 @@ def main(subject: str = None):
     else:
         do_subj = layout.get(return_type="id", target="subject")
     do_subj.sort()
-    numCPUs = int(os.environ['SLURM_CPUS_PER_TASK'])
-    taskID = int(os.environ['SLURM_ARRAY_TASK_ID'])
-    for subj in do_subj:
+    if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
+        taskIDs = [int(os.environ['SLURM_ARRAY_TASK_ID'])]
+    else:
+        taskIDs = list(range(len(do_subj)))
+    for id in taskIDs:
+        subj = do_subj[id]
         try:
             raw = raw_from_layout(layout, subject=subj, extension=".edf",
                                   preload=False)
