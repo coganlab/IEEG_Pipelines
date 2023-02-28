@@ -1,5 +1,6 @@
 from collections import Counter
-from typing import TypeVar, Union, List
+from typing import Union, List
+import argparse
 
 import numpy as np
 from mne.io import pick
@@ -9,6 +10,7 @@ from scipy import stats
 from tqdm import tqdm
 
 import sys
+import os
 from pathlib import Path  # if you haven't already done so
 
 file = Path(__file__).resolve()
@@ -305,11 +307,23 @@ def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     return x, orig_shape, picks
 
 
-if __name__ == "__main__":
+def get_parser():
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter, description="""
+            """,
+        epilog="""
+            Made by Aaron Earle-Richardson (ae166@duke.edu)
+            """)
+
+    parser.add_argument("-s", "--subject", required=False, default=None,
+                        help="data subject to clean")
+    return parser
+
+
+def main(subject: str = None):
     import mne
     from bids import BIDSLayout
     from PreProcess.navigate import raw_from_layout, LAB_root, save_derivative
-    from PreProcess.utils.plotting import figure_compare
 
     # %% Set up logging
     mne.set_log_file("output.log",
@@ -319,12 +333,19 @@ if __name__ == "__main__":
 
     bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root)
-    for subj in layout.get(return_type="id", target="subject"):
+    if subject is not None:
+        do_subj = [subject]
+    else:
+        do_subj = layout.get(return_type="id", target="subject")
+    do_subj.sort()
+    numCPUs = int(os.environ['SLURM_CPUS_PER_TASK'])
+    taskID = int(os.environ['SLURM_ARRAY_TASK_ID'])
+    for subj in do_subj:
         try:
             raw = raw_from_layout(layout, subject=subj, extension=".edf",
                                   preload=False)
             # %% filter data
-            filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+            filt = line_filter(raw, mt_bandwidth=10., n_jobs=-1,
                                filter_length='700ms', verbose=10,
                                freqs=[60], notch_widths=20)
             filt2 = line_filter(filt, mt_bandwidth=10., n_jobs=-1,
@@ -335,9 +356,7 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(e)
 
-    # # %% plot results
-    # data = [raw, filt, filt2, raw_dat, dat]
-    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-    #                       ""], avg=True, verbose=10, proj=True, fmax=250)
-    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-    #                       ""], avg=False, verbose=10, proj=True, fmax=250)
+
+if __name__ == "__main__":
+    args = get_parser().parse_args()
+    main(**vars(args))
