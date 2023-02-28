@@ -355,7 +355,7 @@ def main(subject: str = None):
                                 filter_length='20s', verbose=10,
                                 freqs=[60, 120, 180, 240], notch_widths=20)
             # %% Save the data
-            save_derivative(filt2, layout, "filt")
+            save_derivative(filt2, layout, "clean")
         except Exception as e:
             logger.error(e)
 
