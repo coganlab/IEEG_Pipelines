@@ -16,7 +16,9 @@ from PreProcess.timefreq.fastmath import rescale
 ListNum = Union[int, float, np.ndarray, list, tuple]
 
 
-def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True):
+def dpss_windows(N: int, half_nbw: float, Kmax: int, *, sym: bool = True,
+                 norm: Union[int, str] = None, low_bias: bool = True
+                 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute Discrete Prolate Spheroidal Sequences.
 
     Will give of orders [0,Kmax-1] for a given frequency-spacing multiple
@@ -79,7 +81,7 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True):
 
 
 def spectra(x: np.ndarray, dpss: np.ndarray, sfreq: float,
-            n_fft: int = None) -> tuple(np.ndarray, np.ndarray):
+            n_fft: int = None) -> tuple[np.ndarray, np.ndarray]:
     """Compute significant tapered spectra.
 
     Parameters
@@ -127,7 +129,7 @@ def spectra(x: np.ndarray, dpss: np.ndarray, sfreq: float,
 @verbose
 def params(n_times: int, sfreq: float, bandwidth: float,
            low_bias: bool = True, adaptive: bool = False,
-           verbose: bool = None) -> tuple(np.ndarray, np.ndarray, bool):
+           verbose: bool = None) -> tuple[np.ndarray, np.ndarray, bool]:
     """Triage windowing and multitaper parameters.
 
     Parameters

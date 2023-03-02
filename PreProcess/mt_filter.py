@@ -159,7 +159,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
 
     # Define adaptive windowing function
     def get_window_thresh(n_times: int = filter_length
-                          ) -> tuple(np.ndarray, float):
+                          ) -> tuple[np.ndarray, float]:
         # figure out what tapers to use
         window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
                                              low_bias, adaptive,
@@ -211,7 +211,7 @@ def mt_spectrum_proc(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                    notch_width: ListNum, get_thresh: callable,
                    n_jobs: int = None, verbose: bool = None
-                   ) -> tuple(np.ndarray, List[float]):
+                   ) -> tuple[np.ndarray, List[float]]:
     """Remove line frequencies from data using multitaper method."""
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
@@ -244,7 +244,7 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                notch_widths: ListNum, window_fun: np.ndarray,
                threshold: float, get_thresh: callable,
-               ) -> tuple(np.ndarray, List[float]):
+               ) -> tuple[np.ndarray, List[float]]:
     """Use MT-spectrum to remove line frequencies.
     Based on Chronux. If line_freqs is specified, all freqs within notch_width
     of each line_freq is set to zero.
@@ -289,7 +289,7 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
 
 def _prep_for_filtering(x: np.ndarray, picks: list = None
-                        ) -> tuple(np.ndarray, tuple, int):
+                        ) -> tuple[np.ndarray, tuple, int]:
     """Set up array as 2D for filtering ease."""
     x = mt_utils._check_filterable(x)
     orig_shape = x.shape
