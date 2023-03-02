@@ -118,7 +118,7 @@ classdef ieegStructClass
             % Extracts normalization factors for ieeg; mean & standard
             % deviation
              normFactor = zeros(size(obj.data,1),2);
-            parfor iChan = 1:size(obj.data,1)
+            for iChan = 1:size(obj.data,1)
                 normFactor(iChan,:) = [mean2(squeeze(obj.data(iChan,:,:))) std2(squeeze(obj.data(iChan,:,:)))];
             end
         end % Extracting HG normalization factors    
@@ -154,7 +154,7 @@ classdef ieegStructClass
         end
         function ieegHiGammaNorm = normHiGamma(obj1,normFactor, normType)
             ieegHiGammaNormData = obj1.data;
-            parfor iChan = 1:size(obj1.data,1)
+            for iChan = 1:size(obj1.data,1)
                 if(normType==1)
                     ieegHiGammaNormData(iChan,:,:) = (obj1.data(iChan,:,:)-normFactor(iChan,1))./normFactor(iChan,2);
                 end
