@@ -374,8 +374,10 @@ if __name__ == "__main__":
     # layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
     bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root, derivatives=True)
-    filt = raw_from_layout(layout.derivatives['filt'], subject='D0029',
-                           extension='.edf', preload=True)
+    filt = raw_from_layout(layout.derivatives['filt'], subject='D0057',
+                           extension='.edf', desc='filt', preload=True)
+    raw = raw_from_layout(layout, subject='D0057', extension='.edf', desc=None,
+                          preload=True)
     events, event_id = mne.events_from_annotations(filt)
     auds = mne.Epochs(filt, events, event_id['Audio'], baseline=None, tmin=-2,
                       tmax=5, preload=True, detrend=1)

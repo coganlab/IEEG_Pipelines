@@ -78,8 +78,8 @@ def dpss_windows(N, half_nbw, Kmax, *, sym=True, norm=None, low_bias=True):
     return dpss, eigvals
 
 
-def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
-            n_fft: int = None) -> (ArrayLike, ArrayLike):
+def spectra(x: np.ndarray, dpss: np.ndarray, sfreq: float,
+            n_fft: int = None) -> tuple(np.ndarray, np.ndarray):
     """Compute significant tapered spectra.
 
     Parameters
@@ -127,7 +127,7 @@ def spectra(x: ArrayLike, dpss: ArrayLike, sfreq: float,
 @verbose
 def params(n_times: int, sfreq: float, bandwidth: float,
            low_bias: bool = True, adaptive: bool = False,
-           verbose: bool = None):
+           verbose: bool = None) -> tuple(np.ndarray, np.ndarray, bool):
     """Triage windowing and multitaper parameters.
 
     Parameters

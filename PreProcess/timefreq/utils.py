@@ -263,8 +263,8 @@ class COLA:
                                  % (data.shape, self._in_offset,
                                     self.stops[-1]))
         # preallocate data to chunks
-        data_chunks = [data[start:stop] for start, stop in zip(self.starts,
-                                                               self.stops)]
+        data_chunks = list(map(lambda x: data[x[0]:x[1]], zip(self.starts,
+                                                              self.stops)))
 
         # Process the data
         if not self.n_jobs == 1:
