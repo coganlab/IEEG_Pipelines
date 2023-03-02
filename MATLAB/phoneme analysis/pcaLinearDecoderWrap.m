@@ -55,6 +55,7 @@ end
              %phonErrorVectAll(nCv,:) = mean(phonErrorVect,1);
             [~,optimVarId] = min(mean(lossVect,1)); % Selecting the optimal principal components
             optimVar = varVector(optimVarId);
+            disp(optimVar)
         else
             optimVar = varVector;
         end

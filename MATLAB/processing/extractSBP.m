@@ -4,6 +4,7 @@ function [ieegSpikeBand, ieegSBP] = extractSBP(data, fs, fDown, tw, gtw, name, n
     %
     % Input:
     % data - ieeg data channels x trials x timepoints
+    % fs - Sampling frequency of the data
     % fDown - Downsampled frequency (Optional; if not present use
     %   same sampling frequency)
     % tw - time window of the data
