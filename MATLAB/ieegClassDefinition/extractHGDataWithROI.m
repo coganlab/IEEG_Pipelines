@@ -5,6 +5,7 @@ arguments
     options.Time (1,2) double = [-1 1]; % Epoch time window
     options.roi = '' % anatomical extraction; e.g., 'precentral', 'superiortemporal'
     options.normFactor = [];
+    options.normType = 2; % 1 - z-score, 2 - mean normalization
     options.fDown double = 200;
     options.baseTimeRange = [-0.5 0]; 
     options.baseName = 'Start'
@@ -14,7 +15,7 @@ arguments
     options.remNoResponseTrials logical = true; % true to remove all no-response trials 
     options.remWMchannels logical = true;
 end
-
+normType = options.normType;
 timePad = 0.5;
 if(isempty(options.normFactor))
     disp('No normalization factors provided');
@@ -56,7 +57,7 @@ for iSubject = 1:length(Subject)
             continue;
     end
     ieegFieldHG = extractHiGamma(ieegFieldStruct(iSubject).ieegStruct,...
-        options.fDown, options.Time,normFactorSubject{iSubject},2);
+        options.fDown, options.Time,normFactorSubject{iSubject},normType);
     ieegHGAll(iSubject).ieegHGNorm = ieegFieldHG;
     ieegHGAll(iSubject).channelName = ieegFieldStruct(iSubject).channelName;
     ieegHGAll(iSubject).trialInfo = ieegFieldStruct(iSubject).trialInfo;

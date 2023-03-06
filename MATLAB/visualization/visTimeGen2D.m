@@ -47,7 +47,7 @@ pValTime = decodeStruct.pValTime;
 
 figure; 
 imagesc(timeRange,timeRange,r2Time);
-caxis([0 max(r2Time(:))+0.1]);
+caxis([0 max(r2Time(:))]);
 hold on;
 cb=colorbar;
 ylabel(cb,options.clabel);
