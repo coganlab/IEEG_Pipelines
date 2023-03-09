@@ -123,6 +123,7 @@ def spectra(x: np.ndarray, dpss: np.ndarray, sfreq: float,
         x_mt[..., -1] /= np.sqrt(2.)
     return x_mt, freqs
 
+
 @fill_doc
 @verbose
 def params(n_times: int, sfreq: float, bandwidth: float,
@@ -226,7 +227,7 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
         The baseline to be used for correction
     %(n_cycles_tfr)s
     pad : str
-        The amount of padding to be used in the spectrogram
+        The amount of padding to be removed in the spectrogram
     correction : str
         The type of baseline correction to be used
     %(verbose)s

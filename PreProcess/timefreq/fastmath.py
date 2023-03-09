@@ -2,7 +2,7 @@ from functools import singledispatch
 
 import numpy as np
 from mne.utils import logger, verbose
-from mne.epochs import BaseEpochs
+from mne import Epochs
 
 
 def sum_squared(x: np.ndarray) -> np.ndarray:
@@ -98,7 +98,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
         dimension should be time.
     basedata : array
         It can be of any shape. The last dimension should be time, and the
-        first dimension should equal data.
+        other dimensions should be the same as data.
     mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio',\
         default 'mean', optional
         Perform baseline correction by
@@ -149,18 +149,16 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
                 d /= s
         case _:
             raise NotImplementedError()
-    axes = list(range(data.ndim))
-    axes.pop(-2)
-    mean = np.mean(basedata, axis=tuple(axes), keepdims=True)
-    std = np.std(basedata, axis=tuple(axes), keepdims=True)
+    mean = np.mean(basedata, axis=-1, keepdims=True)
+    std = np.std(basedata, axis=-1, keepdims=True)
     fun(data, mean, std)
     return data
 
 
 @rescale.register
 @verbose
-def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
-      copy: bool = True, picks: list = 'data', verbose=None) -> BaseEpochs:
+def _(line: Epochs, baseline: Epochs, mode: str = 'mean',
+      copy: bool = True, picks: list = 'data', verbose=None) -> Epochs:
     """Rescale (baseline correct) epochs.
 
     Parameters
@@ -196,11 +194,13 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
         The rescaled epochs.
     """
     if copy:
-        line: BaseEpochs = line.copy()
+        line: Epochs = line.copy()
     if verbose is not False:
         msg = _log_rescale(baseline, mode)
         logger.info(msg)
-    basedata = baseline.pick(picks)._data
+
+    # Average the baseline across epochs
+    basedata = np.mean(baseline.pick(picks)._data, axis=0, keepdims=True)
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
                                      False)
     return line

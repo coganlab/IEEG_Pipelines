@@ -87,7 +87,6 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
 
 
 @fill_doc
-@verbose
 def raw_from_layout(layout: BIDSLayout, preload: bool = False,
                     run: Union[list[int], int] = None, **kwargs) -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
@@ -99,7 +98,6 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = False,
     run : Union[List[int], int], optional
         The run to search for, by default None
     %(preload)s
-    %(verbose)s
     **kwargs : dict
         The parameters passed to bids.BIDSLayout.get()
 
@@ -337,7 +335,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 @fill_doc
 @verbose
 def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
-               **kwargs) -> mne.Epochs:
+               verbose=None, **kwargs) -> mne.Epochs:
     """Epochs data from an iEEG file.
 
     Parameters
@@ -370,7 +368,8 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
 
     # epoch the data
     epochs = mne.Epochs(raw, events, event_id=dat_ids, tmin=times[0],
-                        tmax=times[1], baseline=None, **kwargs)
+                        tmax=times[1], baseline=None, verbose=verbose,
+                        **kwargs)
     return epochs
 
 

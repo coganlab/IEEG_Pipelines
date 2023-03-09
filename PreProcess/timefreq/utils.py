@@ -157,6 +157,7 @@ class COLA:
     output value. For example, for ``n_total=27``, ``n_samples=10``,
     ``n_overlap=5`` and ``window='triang'``
     ::
+
         1 _____               _______
           |    \\   /\\   /\\   /
           |     \\ /  \\ /  \\ /
