@@ -165,6 +165,7 @@ class COLA:
           |    /   \\/   \\/   \\
         0 +----|----|----|----|----|-
           0    5   10   15   20   25
+
     This produces four windows: the first three are the requested length
     (10 samples) and the last one is longer (12 samples). The first and last
     window are asymmetric.

@@ -4,6 +4,7 @@ from os import walk, listdir, mkdir
 from typing import Union, List, Tuple, Dict
 
 import mne
+from mne.utils import verbose, fill_doc
 import numpy as np
 from bids import BIDSLayout
 from bids.layout import BIDSFile, parse_file_entities
@@ -56,18 +57,19 @@ def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
 
 
 def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
-    """Searches a BIDSLayout for a file and returns a BIDSPath to it.
+    """Searches a :class:`BIDSLayout` for a file and returns a
+    :class:`BIDSPath` to it.
 
     Parameters
     ----------
     layout : BIDSLayout
-        The BIDSLayout to search.
+        The :class:`BIDSLayout` to search.
     **kwargs : dict
-        The parameters to search for. See BIDSFile.get() for more info.
+        The parameters passed to :func:`BIDSLayout.get`
 
     Returns
     -------
-    BIDSPath
+    BIDS_path: BIDSPath
         The BIDSPath to the file.
     """
     my_search: List[BIDSFile] = layout.get(**kwargs)
@@ -84,6 +86,8 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     return BIDS_path
 
 
+@fill_doc
+@verbose
 def raw_from_layout(layout: BIDSLayout, preload: bool = False,
                     run: Union[list[int], int] = None, **kwargs) -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
@@ -94,10 +98,10 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = False,
         The BIDSLayout to search.
     run : Union[List[int], int], optional
         The run to search for, by default None
-    preload: bool
-        Whether to laod the data into memory or not, by default False
+    %(preload)s
+    %(verbose)s
     **kwargs : dict
-        The parameters to search for. See BIDSFile.get() for more info.
+        The parameters passed to bids.BIDSLayout.get()
 
     Returns
     -------
@@ -268,7 +272,8 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
     return mne.concatenate_raws(crop_list)
 
 
-@mne.utils.verbose
+@fill_doc
+@verbose
 def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
                            max_rounds: int = np.inf, verbose: bool = True
                            ) -> list[str]:
@@ -284,8 +289,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
     max_rounds : int, optional
         Maximum number of varience estimations, by default runs until no
         more bad channels are found.
-    verbose : bool, optional
-        Print removed channels per estimation, by default True
+    %(verbose)s
 
     Returns
     -------
@@ -330,7 +334,48 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
     return bads
 
 
-@mne.utils.verbose
+@fill_doc
+@verbose
+def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
+               **kwargs) -> mne.Epochs:
+    """Epochs data from an iEEG file.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw data to epoch.
+    event : str
+        The event to epoch around.
+    times : tuple[float, float]
+        The time window to epoch around the event.
+    %(picks_all)s
+    %(reject_epochs)s
+    %(flat)s
+    %(decim)s
+    %(epochs_reject_tmin_tmax)s
+    %(detrend_epochs)s
+    %(proj_epochs)s
+    %(on_missing_epochs)s
+    %(verbose)s
+
+    Returns
+    -------
+    mne.Epochs
+        The epoched data.
+    """
+
+    # determine the events
+    events, ids = mne.events_from_annotations(raw)
+    dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
+
+    # epoch the data
+    epochs = mne.Epochs(raw, events, event_id=dat_ids, tmin=times[0],
+                        tmax=times[1], baseline=None, **kwargs)
+    return epochs
+
+
+@fill_doc
+@verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
                     overwrite=False, verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
@@ -343,8 +388,8 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
         The BIDSLayout of the original data.
     pipeline : str
         The name of the pipeline.
-    overwrite : bool, optional
-        Whether to overwrite existing files, by default False
+    %(overwrite)s
+    %(verbose)s
     """
     save_dir = op.join(layout.root, "derivatives", pipeline)
     if not op.isdir(save_dir):

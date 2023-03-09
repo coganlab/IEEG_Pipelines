@@ -2,12 +2,11 @@ from typing import Union
 from functools import singledispatch
 
 import numpy as np
-from mne.utils import logger, warn, verbose
+from mne.utils import logger, warn, verbose, fill_doc
 from mne.epochs import BaseEpochs
 from mne.io.base import BaseRaw
 from mne.time_frequency import AverageTFR, tfr_multitaper
 from mne import events_from_annotations, Epochs, event
-from numpy.typing import ArrayLike
 from scipy import signal, fft
 
 from PreProcess.timefreq.utils import crop_pad, to_samples
@@ -46,7 +45,6 @@ def dpss_windows(N: int, half_nbw: float, Kmax: int, *, sym: bool = True,
         ``N**2/(N**2+half_nbw)`` ("approximate") or a FFT-based subsample shift
         ("subsample"). ``2`` uses the L2 norm. ``None`` (the default) uses
         ``"approximate"`` when ``Kmax=None`` and ``2`` otherwise.
-
     low_bias : bool
         Keep only tapers with eigenvalues > 0.9. Default is ``True``.
 
@@ -125,7 +123,7 @@ def spectra(x: np.ndarray, dpss: np.ndarray, sfreq: float,
         x_mt[..., -1] /= np.sqrt(2.)
     return x_mt, freqs
 
-
+@fill_doc
 @verbose
 def params(n_times: int, sfreq: float, bandwidth: float,
            low_bias: bool = True, adaptive: bool = False,
@@ -210,6 +208,7 @@ def params(n_times: int, sfreq: float, bandwidth: float,
 #                         1, None, 'multitaper-power')
 
 
+@fill_doc
 @singledispatch
 @verbose
 def spectrogram(line: BaseEpochs, freqs: np.ndarray,
@@ -222,18 +221,20 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
     ----------
     line : BaseEpochs
         The data to be processed
-    freqs : array-like
-        The frequencies to be used in the spectrogram
+     %(freqs_tfr)s
     baseline : BaseEpochs
         The baseline to be used for correction
-    n_cycles : array-like
-        The number of cycles to be used in the spectrogram
+    %(n_cycles_tfr)s
     pad : str
         The amount of padding to be used in the spectrogram
     correction : str
         The type of baseline correction to be used
-    verbose : int
-        Whether to log status messages
+    %(verbose)s
+
+    Notes
+    -----
+    %(time_bandwidth_tfr_notes)s
+    %(temporal-window_tfr_notes)s
 
     Returns
     -------

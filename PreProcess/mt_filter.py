@@ -4,8 +4,7 @@ import argparse
 
 import numpy as np
 from mne.io import pick
-from mne.utils import logger, _pl, verbose
-from numpy.typing import ArrayLike
+from mne.utils import logger, _pl, verbose, fill_doc
 from scipy import stats
 from tqdm import tqdm
 
@@ -30,6 +29,7 @@ from PreProcess.utils.utils import is_number  # noqa: E402
 ListNum = Union[int, float, np.ndarray, list, tuple]
 
 
+@fill_doc
 @verbose
 def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                 filter_length: str = '10s', notch_widths: ListNum = 10.,
@@ -38,7 +38,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                 adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
                 ) -> mt_utils.Signal:
-    """Line noise notch filter for the signal instance.
+    """Apply a multitaper line noise notch filter for the signal instance.
 
     Applies a multitaper power line noise notch filter to the signal, operating
     on the last dimension. Uses the F-test to find significant sinusoidal
@@ -75,11 +75,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
         sinusoidal components to remove. Note that this will be Bonferroni
         corrected for the number of frequencies, so large p-values may be
         justified.
-    picks : list of int | list of str, optional
-        Channels to filter. If None, all channels will be filtered.
-    n_jobs : int, optional
-        Number of jobs to run in parallel. Default is number of cores on
-        machine.
+    %(picks_all)s
+    %(n_jobs)s
     adaptive : bool, optional
         Use adaptive weights to combine the tapered spectra into PSD.
         Default is True.
@@ -89,8 +86,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     copy : bool, optional
         If True, a copy of x, filtered, is returned. Otherwise, it operates
         on x in place.
-    verbose : bool, str, int, or None, optional
-        If not None, override default verbose level (see mne.verbose).
+    %(verbose)s
 
     Returns
     -------
@@ -105,6 +101,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     -----
     The frequency response is (approximately) given by
     ::
+
         1-|----------         -----------
           |          \\       /
           |           \\     /
@@ -309,7 +306,7 @@ def _prep_for_filtering(x: np.ndarray, picks: list = None
     return x, orig_shape, picks
 
 
-def get_parser() -> argparse.ArgumentParser:
+def _get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter, description="""
             """,
@@ -363,5 +360,5 @@ def main(subject: str = None):
 
 
 if __name__ == "__main__":
-    args = get_parser().parse_args()
+    args = _get_parser().parse_args()
     main(**vars(args))
