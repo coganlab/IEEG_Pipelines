@@ -95,9 +95,9 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = False,
     ----------
     layout : BIDSLayout
         The BIDSLayout to search.
+    %(preload)s
     run : Union[List[int], int], optional
         The run to search for, by default None
-    %(preload)s
     **kwargs : dict
         The parameters passed to bids.BIDSLayout.get()
 
@@ -168,49 +168,32 @@ def open_dat_file(file_path: str, channels: List[str],
     return raw
 
 
-def get_data(sub_num: int = 53, task: str = "SentenceRep", run: int = None,
-             BIDS_root: PathLike = None, lab_root=LAB_root):
+def get_data(task: str = "SentenceRep", root: str = LAB_root) -> BIDSLayout:
     """Gets the data for a subject and task.
 
     Parameters
     ----------
-    sub_num : int, optional
-        The subject number, by default 53
     task : str, optional
         The task to get the data for, by default "SentenceRep"
-    run : int, optional
-        The run to get the data for, by default None
-    BIDS_root : PathLike, optional
-        The path to the BIDS directory, by default None
-    lab_root : PathLike, optional
+    root : PathLike, optional
         The path to the lab directory, by default LAB_root
 
     Returns
     -------
     layout : BIDSLayout
         The BIDSLayout for the subject.
-    raw : mne.io.Raw
-        The raw data.
-    D_dat_raw : mne.io.Raw
-        The raw data from the D_Data folder.
-    D_dat_filt : mne.io.Raw
-        The filtered data from the D_Data folder.
     """
-    for dir in listdir(lab_root):
+    BIDS_root = None
+    for dir in listdir(root):
         if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(
-                lab_root, dir)):
-            BIDS_root = op.join(lab_root, dir, "BIDS")
+                root, dir)):
+            BIDS_root = op.join(root, dir, "BIDS")
             break
     if BIDS_root is None:
         raise FileNotFoundError("Could not find BIDS directory in {} for task "
-                                "{}".format(lab_root, task))
-    sub_pad = "D" + "{}".format(sub_num).zfill(4)
-    subject = "D{}".format(sub_num)
+                                "{}".format(root, task))
     layout = BIDSLayout(BIDS_root)
-    raw = raw_from_layout(layout, run=run, subject=sub_pad, extension='.edf')
-    D_dat_raw, D_dat_filt = find_dat(op.join(lab_root, "D_Data",
-                                             task, subject))
-    return layout, raw, D_dat_raw, D_dat_filt
+    return layout
 
 
 def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"

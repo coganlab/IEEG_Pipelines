@@ -5,6 +5,6 @@
 docs/build/*
 .idea/*
 *.log
-*.ipynb*
+*.ipynb_checkpoints*
 *.rst
 !docs/index.rst

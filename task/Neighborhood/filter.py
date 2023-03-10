@@ -1,5 +1,4 @@
 from PreProcess.navigate import get_data, save_derivative
-from PreProcess.utils.plotting import figure_compare
 from PreProcess.mt_filter import line_filter
 import os.path as op
 import mne
@@ -19,8 +18,7 @@ if __name__ == "__main__":
         sub_num = 29
     HOME = op.expanduser("~")
     LAB_root = op.join(HOME, "Box", "CoganLab")
-    layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK,
-                                                  lab_root=LAB_root)
+    layout, raw = get_data(sub_num, TASK, lab_root=LAB_root)
     # %% filter data
     filt = line_filter(raw, mt_bandwidth=10., n_jobs=-1,
                        filter_length='700ms', verbose=10,
