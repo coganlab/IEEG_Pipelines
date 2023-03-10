@@ -63,10 +63,10 @@ classdef decoderClass
             ytestall = [];
             for iTer = 1:obj.nIter
                 if(trainTestDiff==0)
-                    [~,ytest,ypred,~,aucAll] = pcaLinearDecoderWrap(ieegInput,decoderUnit,ieegStruct.tw,d_time_window,obj.varExplained,obj.numFold,isAuc);
+                    [~,ytest,ypred,~,~,modelWeightsAll] = pcaLinearDecoderWrap(ieegInput,decoderUnit,ieegStruct.tw,d_time_window,obj.varExplained,obj.numFold,isAuc);
                     %[~,ytest,ypred] = stmfDecodeWrap(ieegInput,decoderUnit,ieegStruct.tw,d_time_window,obj.numFold,isauc);
                 else
-                    [~,ytest,ypred] = pcaLinearDecoderWrapTrainTest(ieegInput,decoderUnit,ieegStruct.tw,d_time_window(1,:), d_time_window(2,:), obj.varExplained,obj.numFold,isAuc);
+                    [~,ytest,ypred,~,~,modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegInput,decoderUnit,ieegStruct.tw,d_time_window(1,:), d_time_window(2,:), obj.varExplained,obj.numFold,isAuc);
                 end
                 ytestall = [ytestall ytest];
                 Cmat = confusionmat(ytest,ypred);
@@ -81,6 +81,7 @@ classdef decoderClass
             decodeResultStruct.cmat = CmatCatNorm;
             
             decodeResultStruct.p = StatThInv(ytestall,decodeResultStruct.accPhoneme.*100);           
+            decodeResultStruct.modelWeights = modelWeightsAll;
         end
 
         function decodeResultStruct = baseRegress(obj,ieegStruct,decoderUnit, d_time_window,selectChannel,selectTrial)
@@ -115,67 +116,106 @@ classdef decoderClass
             decodeResultStruct.r2 = r2;
             decodeResultStruct.pVal = pVal;            
         end            
-        function decodeTimeStruct = tempGenClassify1D(obj,ieegStruct,decoderUnit,timeRes,timeWin,selectChannels,selectTrials)
+        function decodeTimeStruct = tempGenClassify1D(obj,ieegStruct,decoderUnit,options)
             arguments
                 obj {mustBeA(obj,'decoderClass')} % decoder class object
                 ieegStruct {mustBeA(ieegStruct,'ieegStructClass')} % ieeg class object
                 decoderUnit double {mustBeVector} % Decoder labels
-                timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
-                timeWin double = 0.2;
-                selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
-                selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+                options.timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
+                options.timeWin double = 0.2;
+                options.selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
+                options.selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
                
             end
+
+            timeRes = options.timeRes;
+            timeWin = options.timeWin;
+            selectChannels = options.selectChannels;
+            selectTrials = options.selectTrials;
             timeRange = ieegStruct.tw(1):timeRes:ieegStruct.tw(2)-timeWin;
             accTime = zeros(1,length(timeRange));
             pValTime = zeros(1,length(timeRange));
-            for iTime = 1:length(timeRange)
+            nTime = length(timeRange);
+            modelweightTime = cell(1,length(timeRange));
+            
+            parfor iTime = 1:nTime
                 decodeResultStruct = baseClassify(obj,ieegStruct,decoderUnit,[timeRange(iTime) timeRange(iTime)+timeWin],selectChannels,selectTrials,0);
                 accTime(iTime) = decodeResultStruct.accPhoneme;
                 pValTime(iTime) = decodeResultStruct.p;
+                modelweightTime{iTime} = extractPcaLdaModelWeights(decodeResultStruct.modelWeights,...
+                    size(decodeResultStruct.cmat,1),length(selectChannels),timeWin.*ieegStruct.fs);
             end
             decodeTimeStruct.accTime = accTime;
             decodeTimeStruct.timeRange = timeRange;
             decodeTimeStruct.pValTime = pValTime;
+            decodeTimeStruct.modelweightTime = modelweightTime;
         end
-        function decodeTimeStruct = tempGenClassify2D(obj,ieegStruct,decoderUnit,timeRes,timeWin,selectChannels,selectTrials)
+        function decodeTimeStruct = tempGenClassify2D(obj,ieegStruct,decoderUnit,options)
              arguments
                 obj {mustBeA(obj,'decoderClass')} % decoder class object
                 ieegStruct {mustBeA(ieegStruct,'ieegStructClass')} % ieeg class object
                 decoderUnit double {mustBeVector} % Decoder labels
-                timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
-                timeWin double = 0.2;
-                selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
-                selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+                options.timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
+                options.timeWin double = 0.2;
+                options.selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
+                options.selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
                
-            end
+             end
+            timeRes = options.timeRes;
+            timeWin = options.timeWin;
+            selectChannels = options.selectChannels;
+            selectTrials = options.selectTrials;
             timeRange = ieegStruct.tw(1):timeRes:ieegStruct.tw(2)-timeWin;
             accTime = zeros(length(timeRange),length(timeRange));
             pValTime = zeros(length(timeRange),length(timeRange));
-            f = waitbar(0, 'Starting');
-            for iTimeTrain = 1:length(timeRange) 
+            %f = waitbar(0, 'Starting');
+            nTime = length(timeRange);
+            
+%             modelweightTime = [];
+            parfor iTimeTrain = 1:nTime
                 tsTrain = [timeRange(iTimeTrain) timeRange(iTimeTrain)+timeWin];
-                for iTimeTest = 1:length(timeRange)        
+                for iTimeTest = 1:nTime        
                     tsTest = [timeRange(iTimeTest) timeRange(iTimeTest)+timeWin];                  
                     decodeResultStruct = baseClassify(obj,ieegStruct,decoderUnit,[tsTrain; tsTest],selectChannels,selectTrials,0);
                     accTime(iTimeTrain,iTimeTest) = decodeResultStruct.accPhoneme;
                     pValTime(iTimeTrain,iTimeTest) = decodeResultStruct.p;
+%                     modelweightTimeTemp = extractPcaLdaModelWeights(decodeResultStruct.modelWeights,...
+%                     size(decodeResultStruct.cmat,1),length(selectChannels),timeWin.*ieegStruct.fs);
+%                     modelweightTime{iTimeTrain,iTimeTest} = modelweightTimeTemp.modelweightChan;
                 end
-                waitbar(iTimeTrain/length(timeRange), f, sprintf('Progress: %d %%', floor(iTimeTrain/length(timeRange)*100)));
-                pause(0.1);
+%                 waitbar(iTimeTrain/length(timeRange), f, sprintf('Progress: %d %%', floor(iTimeTrain/length(timeRange)*100)));
+%                 pause(0.1);
             end
-            close(f);
+            %close(f);
             decodeTimeStruct.accTime = accTime;   
             decodeTimeStruct.pValTime = pValTime; 
             decodeTimeStruct.timeRange = timeRange;
+%             decodeTimeStruct.modelweightTime = modelweightTime;
         end
         
-        function decodeTimeStruct = tempGenRegress1D(obj,ieegStruct,decoderUnit,timeRes,timeWin,selectChannel,selectTrial)
+        function decodeTimeStruct = tempGenRegress1D(obj,ieegStruct,decoderUnit,options)
+            arguments
+                obj {mustBeA(obj,'decoderClass')} % decoder class object
+                ieegStruct {mustBeA(ieegStruct,'ieegStructClass')} % ieeg class object
+                decoderUnit double {mustBeVector} % Decoder labels
+                options.timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
+                options.timeWin double = 0.2;
+                options.selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
+                options.selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+               
+             end
+            timeRes = options.timeRes;
+            timeWin = options.timeWin;
+            selectChannels = options.selectChannels;
+            selectTrials = options.selectTrials;
             timeRange = ieegStruct.tw(1):timeRes:ieegStruct.tw(2)-timeWin;
             r2Time = zeros(1,length(timeRange));
             pValTime = nan(1,length(timeRange));
-            for iTime = 1:length(timeRange)
-                decodeResultStruct = baseRegress(obj,ieegStruct,decoderUnit,[timeRange(iTime) timeRange(iTime)+timeWin],selectChannel,selectTrial);
+            nTime = length(timeRange);
+           
+            
+            parfor iTime = 1:nTime
+                decodeResultStruct = baseRegress(obj,ieegStruct,decoderUnit,[timeRange(iTime) timeRange(iTime)+timeWin],selectChannels,selectTrials);
                 r2Time(iTime) = decodeResultStruct.r2;
                 pValTime(iTime) = decodeResultStruct.pVal;
             end
@@ -183,22 +223,39 @@ classdef decoderClass
             decodeTimeStruct.pValTime = pValTime;
             decodeTimeStruct.timeRange = timeRange;
         end  
-        function decodeTimeStruct = tempGenRegress2D(obj,ieegStruct,decoderUnit,timeRes,timeWin,selectChannel,selectTrial)
+        function decodeTimeStruct = tempGenRegress2D(obj,ieegStruct,decoderUnit,options)
+            arguments
+                obj {mustBeA(obj,'decoderClass')} % decoder class object
+                ieegStruct {mustBeA(ieegStruct,'ieegStructClass')} % ieeg class object
+                decoderUnit double {mustBeVector} % Decoder labels
+                options.timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
+                options.timeWin double = 0.2;
+                options.selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
+                options.selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+               
+             end
+            timeRes = options.timeRes;
+            timeWin = options.timeWin;
+            selectChannels = options.selectChannels;
+            selectTrials = options.selectTrials;
             timeRange = ieegStruct.tw(1):timeRes:ieegStruct.tw(2)-timeWin;
+            nTime = length(timeRange);
             r2Time = zeros(length(timeRange),length(timeRange));
             pValTime =nan(length(timeRange),length(timeRange));
-            f = waitbar(0, 'Starting');
-            for iTimeTrain = 1:length(timeRange)    
+            %f = waitbar(0, 'Starting');
+           
+            
+            parfor iTimeTrain = 1:nTime   
                 tsTrain = [timeRange(iTimeTrain) timeRange(iTimeTrain)+timeWin];
-                for iTimeTest = 1:length(timeRange)        
+                for iTimeTest = 1:nTime        
                     tsTest = [timeRange(iTimeTest) timeRange(iTimeTest)+timeWin];
-                    decodeResultStruct = baseRegress(obj,ieegStruct,decoderUnit,[tsTrain; tsTest],selectChannel,selectTrial);
+                    decodeResultStruct = baseRegress(obj,ieegStruct,decoderUnit,[tsTrain; tsTest],selectChannels,selectTrials);
                     r2Time(iTimeTrain,iTimeTest) = decodeResultStruct.r2;
                     pValTime(iTimeTrain,iTimeTest) = decodeResultStruct.pVal;                    
                 end
-                waitbar(iTimeTrain/length(timeRange), f, sprintf('Progress: %d %%', floor(iTimeTrain/length(timeRange)*100)));
+                %waitbar(iTimeTrain/length(timeRange), f, sprintf('Progress: %d %%', floor(iTimeTrain/length(timeRange)*100)));
             end
-            close(f);
+            %close(f);
             decodeTimeStruct.r2Time = r2Time;
             decodeTimeStruct.pValTime = pValTime;
             decodeTimeStruct.timeRange = timeRange;

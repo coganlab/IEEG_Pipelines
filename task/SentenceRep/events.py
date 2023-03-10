@@ -4,7 +4,9 @@ import mne
 def fix_annotations(inst):
     """fix SentenceRep events"""
     is_sent = False
+    is_bad = False
     annot = None
+    no_response = []
     for i, event in enumerate(inst.annotations):
         if event['description'] in ['Audio']:
             if event['duration'] > 1:
@@ -12,19 +14,25 @@ def fix_annotations(inst):
             else:
                 is_sent = False
         if event['description'] not in ['Listen', ':=:']:
-            if is_sent:
+            if is_bad:
+                trial_type = "BAD "
+            elif is_sent:
                 trial_type = "Sentence/"
             else:
                 trial_type = "Word/"
         else:
             trial_type = "Start/"
+            is_bad = False
             if event['description'] in [':=:']:
                 cond = "/JL"
             elif 'Mime' in inst.annotations[i + 2]['description']:
                 cond = "/LM"
             elif event['description'] in ['Listen'] and \
-                    'Response' in inst.annotations[i + 3]['description']:
+                    'Speak' in inst.annotations[i + 2]['description']:
                 cond = "/LS"
+                if 'Response' not in inst.annotations[i + 3]['description']:
+                    is_bad = True
+                    no_response.append(i)
             else:
                 raise ValueError("Condition {} could not be determined {}"
                                  "".format(i, event['description']))
@@ -36,3 +44,4 @@ def fix_annotations(inst):
             event.pop('orig_time')
             annot.append(**event)
     inst.set_annotations(annot)
+    return no_response

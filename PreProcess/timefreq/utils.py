@@ -157,6 +157,7 @@ class COLA:
     output value. For example, for ``n_total=27``, ``n_samples=10``,
     ``n_overlap=5`` and ``window='triang'``
     ::
+
         1 _____               _______
           |    \\   /\\   /\\   /
           |     \\ /  \\ /  \\ /
@@ -165,6 +166,7 @@ class COLA:
           |    /   \\/   \\/   \\
         0 +----|----|----|----|----|-
           0    5   10   15   20   25
+
     This produces four windows: the first three are the requested length
     (10 samples) and the last one is longer (12 samples). The first and last
     window are asymmetric.
@@ -263,8 +265,8 @@ class COLA:
                                  % (data.shape, self._in_offset,
                                     self.stops[-1]))
         # preallocate data to chunks
-        data_chunks = [data[start:stop] for start, stop in zip(self.starts,
-                                                               self.stops)]
+        data_chunks = list(map(lambda x: data[x[0]:x[1]], zip(self.starts,
+                                                              self.stops)))
 
         # Process the data
         if not self.n_jobs == 1:

@@ -67,7 +67,7 @@ classdef phonemeSequenceTrialParser
                         else
                             obj.phonoTactic(iTrial,:) = table2array(PhonemeSequencingInfoS1(phonid,2:11));
                         end
-                     obj.tokenName{iTrial} = trialNames;
+                     obj.tokenName{iTrial} =  phonSequence{iTrial} ;
                 end
                 
             end

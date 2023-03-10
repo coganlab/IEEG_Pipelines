@@ -2,3 +2,9 @@
 *.vs/*
 *.vscode/*
 *.asv
+docs/build/*
+.idea/*
+*.log
+*.ipynb*
+*.rst
+!docs/index.rst

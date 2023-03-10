@@ -2,7 +2,7 @@ from functools import singledispatch
 
 import numpy as np
 from mne.utils import logger, verbose
-from mne.epochs import BaseEpochs
+from mne import Epochs
 
 
 def sum_squared(x: np.ndarray) -> np.ndarray:
@@ -98,7 +98,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
         dimension should be time.
     basedata : array
         It can be of any shape. The last dimension should be time, and the
-        first dimension should equal data.
+        other dimensions should be the same as data.
     mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio',\
         default 'mean', optional
         Perform baseline correction by
@@ -149,7 +149,6 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
                 d /= s
         case _:
             raise NotImplementedError()
-
     mean = np.mean(basedata, axis=-1, keepdims=True)
     std = np.std(basedata, axis=-1, keepdims=True)
     fun(data, mean, std)
@@ -158,48 +157,17 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 
 @rescale.register
 @verbose
-def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
-      copy: bool = True, picks: list = 'data', verbose=None) -> BaseEpochs:
-    """Rescale (baseline correct) epochs.
-
-    Parameters
-    ----------
-    line : instance of Epochs
-        The epochs to rescale.
-    baseline : instance of Epochs
-        The epochs to use for baseline correction.
-    mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio'
-        Perform baseline correction by
-        - subtracting the mean of baseline values ('mean')
-        - dividing by the mean of baseline values ('ratio')
-        - dividing by the mean of baseline values and taking the log
-          ('logratio')
-        - subtracting the mean of baseline values followed by dividing by
-          the mean of baseline values ('percent')
-        - subtracting the mean of baseline values and dividing by the
-          standard deviation of baseline values ('zscore')
-        - dividing by the mean of baseline values, taking the log, and
-          dividing by the standard deviation of log baseline values
-          ('zlogratio')
-    copy : bool
-        Whether to return a new instance or modify in place.
-    picks : list of int | 'data' | 'grad' | 'mag' | 'eeg' | 'seeg' | 'ecog'
-        Channels to include. If None only good data channels are kept.
-        Defaults to 'data'.
-    verbose : bool, str, int, or None
-        If not None, override default verbose level (see mne.verbose).
-
-    Returns
-    -------
-    line : instance of Epochs
-        The rescaled epochs.
-    """
+def _(line: Epochs, baseline: Epochs, mode: str = 'mean',
+      copy: bool = True, picks: list = 'data', verbose=None) -> Epochs:
+    """Rescale (baseline correct) Epochs"""
     if copy:
-        line: BaseEpochs = line.copy()
+        line: Epochs = line.copy()
     if verbose is not False:
         msg = _log_rescale(baseline, mode)
         logger.info(msg)
-    basedata = baseline.pick(picks)._data
+
+    # Average the baseline across epochs
+    basedata = np.mean(baseline.pick(picks)._data, axis=0, keepdims=True)
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
                                      False)
     return line

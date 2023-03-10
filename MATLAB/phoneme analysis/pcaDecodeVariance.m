@@ -1,4 +1,4 @@
-function [lossMod,Cmat,yhat,aucVect,nModes] = pcaDecodeVariance(sigTrain,sigTest,YTrain,YTest,varPercent, isauc)
+function [lossMod,Cmat,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(sigTrain,sigTest,YTrain,YTest,varPercent, isauc)
 %         meanTrain = mean(sigTrain,1);
 %         stdTrain = std(sigTrain,0,1);
         %sigTrainNorm = (sigTrain - meanTrain)./stdTrain;
@@ -8,9 +8,14 @@ function [lossMod,Cmat,yhat,aucVect,nModes] = pcaDecodeVariance(sigTrain,sigTest
         %sigTestNorm = (sigTest - meanTrain)./stdTrain;
         scoreTest = sigTest*coeffTrain;
         
+        
         scoreTrainGrid = scoreTrain(:,1:nModes);
         scoreTestGrid = scoreTest(:,1:nModes);
         linearModel = fitcdiscr((scoreTrainGrid),YTrain,'CrossVal','off','DiscrimType','linear'); 
+        modelweights.pcaScore = coeffTrain(:,1:nModes);
+        modelweights.ldamodel = linearModel;
+        modelweights.nmodes = nModes;
+        
 %          tempLinear = templateDiscriminant('DiscrimType','linear');
 %          linearModel = fitcensemble((scoreTrainGrid),YTrain,'CrossVal','off','Method','SubSpace','Learners',tempLinear, 'NumLearningCycles',500,'NPredToSample',15);
         %linearModel = fitcknn((scoreTrainGrid),YTrain,'CrossVal','off'); 

@@ -56,11 +56,18 @@ napoleon_preprocess_types = True
 napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
+autodoc_typehints = 'both'
+
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
                        'numpy': ('https://docs.scipy.org/doc/numpy/', None),
                        'mne': ('https://mne.tools/stable/', None),
+                       'mne_bids': ('https://mne.tools/mne-bids/stable/',
+                                    None),
                        'scipy': ('https://docs.scipy.org/doc/scipy/reference/',
-                                 None)}
+                                 None),
+                       'matplotlib': ('https://matplotlib.org/', None),
+                       'bids': ('https://bids-standard.github.io/pybids/',
+                                None)}
 
 
 def linkcode_resolve(domain, info):

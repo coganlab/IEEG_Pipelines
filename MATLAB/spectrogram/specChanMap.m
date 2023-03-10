@@ -20,7 +20,7 @@ if(isIndView)
                 specMeanPower = mean2(squeeze(specMeanAll(iChan,F>=gammaF(1)&F<=gammaF(2),tspec>=etw(1)&tspec<=etw(2))));
 
            
-            imagesc(tspec,F,20.*log10(sq(specMean)'))
+            imagesc(tspec,[],20.*log10(sq(specMean)'))
 %             if(sum(ismember(sigChannel,iChan)))
 %                     axis on;
 %                     set(gca,'linewidth',2)

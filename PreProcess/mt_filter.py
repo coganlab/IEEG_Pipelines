@@ -1,14 +1,15 @@
 from collections import Counter
-from typing import TypeVar, Union, List
+from typing import Union, List
+import argparse
 
 import numpy as np
 from mne.io import pick
-from mne.utils import logger, _pl, verbose
-from numpy.typing import ArrayLike
+from mne.utils import logger, _pl, verbose, fill_doc
 from scipy import stats
 from tqdm import tqdm
 
 import sys
+import os
 from pathlib import Path  # if you haven't already done so
 
 file = Path(__file__).resolve()
@@ -28,6 +29,7 @@ from PreProcess.utils.utils import is_number  # noqa: E402
 ListNum = Union[int, float, np.ndarray, list, tuple]
 
 
+@fill_doc
 @verbose
 def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                 filter_length: str = '10s', notch_widths: ListNum = 10.,
@@ -36,7 +38,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                 adaptive: bool = True, low_bias: bool = True,
                 copy: bool = True, *, verbose: Union[int, bool, str] = None
                 ) -> mt_utils.Signal:
-    """Line noise notch filter for the signal instance.
+    """Apply a multitaper line noise notch filter for the signal instance.
 
     Applies a multitaper power line noise notch filter to the signal, operating
     on the last dimension. Uses the F-test to find significant sinusoidal
@@ -73,11 +75,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
         sinusoidal components to remove. Note that this will be Bonferroni
         corrected for the number of frequencies, so large p-values may be
         justified.
-    picks : list of int | list of str, optional
-        Channels to filter. If None, all channels will be filtered.
-    n_jobs : int, optional
-        Number of jobs to run in parallel. Default is number of cores on
-        machine.
+    %(picks_all)s
+    %(n_jobs)s
     adaptive : bool, optional
         Use adaptive weights to combine the tapered spectra into PSD.
         Default is True.
@@ -87,8 +86,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     copy : bool, optional
         If True, a copy of x, filtered, is returned. Otherwise, it operates
         on x in place.
-    verbose : bool, str, int, or None, optional
-        If not None, override default verbose level (see mne.verbose).
+    %(verbose)s
 
     Returns
     -------
@@ -103,6 +101,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     -----
     The frequency response is (approximately) given by
     ::
+
         1-|----------         -----------
           |          \\       /
           |           \\     /
@@ -145,8 +144,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                 raise ValueError('notch_widths must be None, scalar, or the '
                                  'same length as freqs')
 
-    data_idx = np.where([ch_t in set(raw.get_channel_types(only_data_chs=True)
-                            ) for ch_t in raw.get_channel_types()])
+    data_idx = np.where([ch_t in set(raw.get_channel_types(
+        only_data_chs=True)) for ch_t in raw.get_channel_types()])[0]
 
     # convert filter length to samples
     if filter_length is None:
@@ -156,7 +155,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                              x.shape[-1])
 
     # Define adaptive windowing function
-    def get_window_thresh(n_times: int = filter_length) -> (ArrayLike, float):
+    def get_window_thresh(n_times: int = filter_length
+                          ) -> tuple[np.ndarray, float]:
         # figure out what tapers to use
         window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
                                              low_bias, adaptive,
@@ -173,9 +173,9 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     return filt
 
 
-def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
+def mt_spectrum_proc(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                      notch_widths: ListNum, picks: list, n_jobs: int,
-                     get_wt: callable) -> ArrayLike:
+                     get_wt: callable) -> np.ndarray:
     """Call _mt_spectrum_remove."""
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
@@ -208,7 +208,7 @@ def mt_spectrum_proc(x: ArrayLike, sfreq: float, line_freqs: ListNum,
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                    notch_width: ListNum, get_thresh: callable,
                    n_jobs: int = None, verbose: bool = None
-                   ) -> (ArrayLike, List[float]):
+                   ) -> tuple[np.ndarray, List[float]]:
     """Remove line frequencies from data using multitaper method."""
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
@@ -241,7 +241,7 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                notch_widths: ListNum, window_fun: np.ndarray,
                threshold: float, get_thresh: callable,
-               ) -> (ArrayLike, List[float]):
+               ) -> tuple[np.ndarray, List[float]]:
     """Use MT-spectrum to remove line frequencies.
     Based on Chronux. If line_freqs is specified, all freqs within notch_width
     of each line_freq is set to zero.
@@ -285,7 +285,8 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     return x - datafit, freqs[indices]
 
 
-def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
+def _prep_for_filtering(x: np.ndarray, picks: list = None
+                        ) -> tuple[np.ndarray, tuple, int]:
     """Set up array as 2D for filtering ease."""
     x = mt_utils._check_filterable(x)
     orig_shape = x.shape
@@ -305,11 +306,23 @@ def _prep_for_filtering(x: ArrayLike, picks: list = None) -> ArrayLike:
     return x, orig_shape, picks
 
 
-if __name__ == "__main__":
+def _get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter, description="""
+            """,
+        epilog="""
+            Made by Aaron Earle-Richardson (ae166@duke.edu)
+            """)
+
+    parser.add_argument("-s", "--subject", required=False, default=None,
+                        help="data subject to clean")
+    return parser
+
+
+def main(subject: str = None):
     import mne
     from bids import BIDSLayout
     from PreProcess.navigate import raw_from_layout, LAB_root, save_derivative
-    from PreProcess.utils.plotting import figure_compare
 
     # %% Set up logging
     mne.set_log_file("output.log",
@@ -319,25 +332,33 @@ if __name__ == "__main__":
 
     bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root)
-    for subj in layout.get(return_type="id", target="subject"):
+    if subject is not None:
+        do_subj = [subject]
+    else:
+        do_subj = layout.get(return_type="id", target="subject")
+    do_subj.sort()
+    if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
+        taskIDs = [int(os.environ['SLURM_ARRAY_TASK_ID'])]
+    else:
+        taskIDs = list(range(len(do_subj)))
+    for id in taskIDs:
+        subj = do_subj[id]
         try:
             raw = raw_from_layout(layout, subject=subj, extension=".edf",
                                   preload=False)
             # %% filter data
-            filt = line_filter(raw, mt_bandwidth=10.0, n_jobs=-1,
+            filt = line_filter(raw, mt_bandwidth=10., n_jobs=-1,
                                filter_length='700ms', verbose=10,
                                freqs=[60], notch_widths=20)
             filt2 = line_filter(filt, mt_bandwidth=10., n_jobs=-1,
                                 filter_length='20s', verbose=10,
                                 freqs=[60, 120, 180, 240], notch_widths=20)
             # %% Save the data
-            save_derivative(filt2, layout, "filt")
+            save_derivative(filt2, layout, "clean")
         except Exception as e:
             logger.error(e)
 
-    # # %% plot results
-    # data = [raw, filt, filt2, raw_dat, dat]
-    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-    #                       ""], avg=True, verbose=10, proj=True, fmax=250)
-    # figure_compare(data, ["BIDS Un", "BIDS 700ms ", "BIDS 20s+700ms ", "Un",
-    #                       ""], avg=False, verbose=10, proj=True, fmax=250)
+
+if __name__ == "__main__":
+    args = _get_parser().parse_args()
+    main(**vars(args))
