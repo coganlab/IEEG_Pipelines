@@ -69,9 +69,9 @@ def test_spect_2():
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
     freqs = np.arange(10, 20, 2)
-    on1 = trial_ieeg(raw, 'onset', (-1.5, 0))
-    on2 = trial_ieeg(raw, 'onset', (-1, 1))
+    on1 = trial_ieeg(raw, 'onset', (-1, 1))
+    on2 = trial_ieeg(raw, 'onset', (-1.5, 0))
     spectra = spectrogram(on1, freqs, on2, n_jobs=-1, picks=[0, 1], decim=10,
                           pad="0.5s")
-    out2 = spectra._data
+    out = spectra._data
     assert np.allclose(out, spec_check)
