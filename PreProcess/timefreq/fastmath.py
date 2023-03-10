@@ -159,40 +159,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 @verbose
 def _(line: Epochs, baseline: Epochs, mode: str = 'mean',
       copy: bool = True, picks: list = 'data', verbose=None) -> Epochs:
-    """Rescale (baseline correct) epochs.
-
-    Parameters
-    ----------
-    line : instance of Epochs
-        The epochs to rescale.
-    baseline : instance of Epochs
-        The epochs to use for baseline correction.
-    mode : 'mean' | 'ratio' | 'logratio' | 'percent' | 'zscore' | 'zlogratio'
-        Perform baseline correction by
-        - subtracting the mean of baseline values ('mean')
-        - dividing by the mean of baseline values ('ratio')
-        - dividing by the mean of baseline values and taking the log
-          ('logratio')
-        - subtracting the mean of baseline values followed by dividing by
-          the mean of baseline values ('percent')
-        - subtracting the mean of baseline values and dividing by the
-          standard deviation of baseline values ('zscore')
-        - dividing by the mean of baseline values, taking the log, and
-          dividing by the standard deviation of log baseline values
-          ('zlogratio')
-    copy : bool
-        Whether to return a new instance or modify in place.
-    picks : list of int | 'data' | 'grad' | 'mag' | 'eeg' | 'seeg' | 'ecog'
-        Channels to include. If None only good data channels are kept.
-        Defaults to 'data'.
-    verbose : bool, str, int, or None
-        If not None, override default verbose level (see mne.verbose).
-
-    Returns
-    -------
-    line : instance of Epochs
-        The rescaled epochs.
-    """
+    """Rescale (baseline correct) Epochs"""
     if copy:
         line: Epochs = line.copy()
     if verbose is not False:
