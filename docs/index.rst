@@ -12,6 +12,7 @@ IEEG_Pipelines documentation
 
    PreProcess
    task
+   auto_examples/index
 
 Indices and tables
 ==================

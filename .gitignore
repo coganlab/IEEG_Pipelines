@@ -3,6 +3,7 @@
 *.vscode/*
 *.asv
 docs/build/*
+docs/auto_examples/*
 .idea/*
 *.log
 *.ipynb_checkpoints*

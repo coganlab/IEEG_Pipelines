@@ -1,3 +1,10 @@
+"""
+"This" is my example-script
+===========================
+
+This example doesn't do much, it just makes a simple plot
+"""
+
 import mne
 import os
 from PreProcess.navigate import get_data, raw_from_layout, save_derivative

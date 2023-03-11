@@ -31,7 +31,7 @@ release = '0.1'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = ['myst_nb',
-              'sphinx_gallery.load_style',
+              'sphinx_gallery.gen_gallery',
               'sphinx.ext.duration',
               'sphinx.ext.doctest',
               'sphinx.ext.autodoc',
@@ -40,6 +40,10 @@ extensions = ['myst_nb',
               'sphinx.ext.intersphinx',
               'sphinx.ext.linkcode',
               'sphinx.ext.viewcode']
+sphinx_gallery_conf = {
+    'examples_dirs': ['../task/SentenceRep/'],
+    'gallery_dirs': ['auto_examples', 'tutorials'],
+}
 
 myst_enable_extensions = [
     "amsmath",
