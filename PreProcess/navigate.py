@@ -192,7 +192,7 @@ def get_data(task: str = "SentenceRep", root: str = LAB_root) -> BIDSLayout:
     if BIDS_root is None:
         raise FileNotFoundError("Could not find BIDS directory in {} for task "
                                 "{}".format(root, task))
-    layout = BIDSLayout(BIDS_root)
+    layout = BIDSLayout(BIDS_root, derivatives=True)
     return layout
 
 

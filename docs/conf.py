@@ -30,7 +30,8 @@ release = '0.1'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['myst_parser',
+extensions = ['myst_nb',
+              'sphinx_gallery.load_style',
               'sphinx.ext.duration',
               'sphinx.ext.doctest',
               'sphinx.ext.autodoc',
@@ -39,6 +40,15 @@ extensions = ['myst_parser',
               'sphinx.ext.intersphinx',
               'sphinx.ext.linkcode',
               'sphinx.ext.viewcode']
+
+myst_enable_extensions = [
+    "amsmath",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "html_image",
+]
+myst_url_schemes = ("http", "https", "mailto")
 
 # Napoleon settings
 napoleon_google_docstring = False
@@ -57,6 +67,8 @@ napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
 autodoc_typehints = 'both'
+
+# nb_execution_mode = 'off'
 
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
                        'numpy': ('https://docs.scipy.org/doc/numpy/', None),
