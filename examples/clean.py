@@ -54,13 +54,13 @@ plotting.figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,
                         verbose=10, proj=True, fmax=250)
 
 # %% Unfiltered
-# .. image:: unfilt.png
+# .. image:: ./unfilt.png
 #  :width: 400
 #  :alt: Unfiltered
 #
 
 # %% Filtered
-# .. image:: filt.png
+# .. image:: ./filt.png
 #  :width: 400
 #  :alt: Filtered
 #

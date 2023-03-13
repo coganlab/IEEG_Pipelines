@@ -13,16 +13,22 @@ from PreProcess.navigate import crop_data, channel_outlier_marker, \
 from task.SentenceRep.events import fix_annotations
 import numpy as np
 import matplotlib as mpl
+import mne
 try:
     mpl.use("TkAgg")
 except ImportError:
     pass
 
 # %%
-layout = BIDSLayout(utils.LAB_root + "/BIDS-1.0_SentenceRep/BIDS",
-                    derivatives=True)
-filt = raw_from_layout(layout.derivatives['clean'], subject='D0029',
-                       extension='.edf', desc='clean', preload=True)
+# layout = BIDSLayout(utils.LAB_root + "/BIDS-1.0_SentenceRep/BIDS",
+#                     derivatives=True)
+# filt = raw_from_layout(layout.derivatives['clean'], subject='D0029',
+#                        extension='.edf', desc='clean', preload=True)
+bids_root = mne.datasets.epilepsy_ecog.data_path()
+# sample_path = mne.datasets.sample.data_path()
+layout = BIDSLayout(bids_root)
+filt = raw_from_layout(layout, subject="pt1", preload=True,
+                          extension=".vhdr")
 
 # %% Crop raw data to minimize processing time
 #
@@ -37,19 +43,22 @@ good = new.copy().drop_channels(new.info['bads'])
 good.load_data()
 
 # CAR
-good.set_eeg_reference(ref_channels="average", ch_type='seeg')
+# good.set_eeg_reference(ref_channels="average", ch_type='seeg')
 
 # Remove intermediates from mem
 del new
 
 # %%
-fix_annotations(good)
+# fix_annotations(good)
 
 # %%
 freq = np.arange(10, 200., 2.)
 # resp = trial_ieeg(good, "Word/Response", (-1.5, 1.5))
-spectra = spectrogram(good, freq, 'Word/Audio', -1, 1.5, 'Start', -0.5, 0,
+# spectra = spectrogram(good, freq, 'Word/Audio', -1, 1.5, 'Start', -0.5, 0,
+#                       n_jobs=6, verbose=10, time_bandwidth=10, n_cycles=freq/2)
+spectra = spectrogram(good, freq, 'PD', -1, 1.5, 'onset', -0.5, 0,
                       n_jobs=6, verbose=10, time_bandwidth=10, n_cycles=freq/2)
+
 # %%
 # with open("spectra.npy", "rb") as f:
 #     spectra = np.load(f, allow_pickle=True)[0]
@@ -57,6 +66,6 @@ spectra = spectrogram(good, freq, 'Word/Audio', -1, 1.5, 'Start', -0.5, 0,
 plotting.chan_grid(spectra, vmin=0.7, vmax=1.4)
 
 # %% example output
-# .. image:: D29_spec.png
+# .. image:: ./D29_spec.png
 #  :width: 700
 #  :alt: spectrogram
