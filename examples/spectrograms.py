@@ -41,8 +41,10 @@ good.set_eeg_reference(ref_channels="average", ch_type='seeg')
 
 # Remove intermediates from mem
 del new
+
 # %%
 fix_annotations(good)
+
 # %%
 freq = np.arange(10, 200., 2.)
 # resp = trial_ieeg(good, "Word/Response", (-1.5, 1.5))
@@ -53,3 +55,8 @@ spectra = spectrogram(good, freq, 'Word/Audio', -1, 1.5, 'Start', -0.5, 0,
 #     spectra = np.load(f, allow_pickle=True)[0]
 
 plotting.chan_grid(spectra, vmin=0.7, vmax=1.4)
+
+# %% example output
+# .. image:: D29_spec.png
+#  :width: 700
+#  :alt: spectrogram
