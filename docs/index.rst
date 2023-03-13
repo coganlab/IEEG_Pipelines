@@ -18,6 +18,7 @@ Instructions
 ============
 
 .. include:: ../README.md
+   :parser: myst_parser.sphinx_
 
 Indices and tables
 ==================
