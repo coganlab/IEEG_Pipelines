@@ -32,7 +32,7 @@ raw = raw_from_layout(layout, subject="pt1", preload=True,
                       extension=".vhdr")
 
 # %% filter data
-filt = line_filter(raw, mt_bandwidth=10., n_jobs=-1,
+filt = line_filter(raw, mt_bandwidth=10., n_jobs=6,
                    filter_length='700ms', verbose=10,
                    freqs=[60], notch_widths=20)
 # filt2 = line_filter(filt, mt_bandwidth=10., n_jobs=-1,
