@@ -43,7 +43,7 @@ extensions = ['myst_nb',
 sphinx_gallery_conf = {
     'examples_dirs': ['../examples'],
     'gallery_dirs': ['auto_examples', 'tutorials'],
-    'notebook_images': 'https://ieeg-pipelines.readthedocs.io/en/latest/'
+    'filename_pattern': '/plot_'
 }
 notebook_images = True
 myst_enable_extensions = [

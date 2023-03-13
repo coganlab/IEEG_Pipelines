@@ -78,6 +78,6 @@ Version 3.10 supported
     layout = BIDSLayout(BIDS_root)
     data = pre.raw_from_layout(layout)
     ```
-2. [Perform line noise filtering](examples/clean.py)
+2. [Perform line noise filtering](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_clean.html)
 
-3. [Check Spectrograms](examples/spectrograms.py)
+3. [Check Spectrograms](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_spectrograms.html)
