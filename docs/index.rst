@@ -18,7 +18,6 @@ Instructions
 ============
 
 .. include:: ../README.md
-   :parser: myst_nb.docutils_
 
 Indices and tables
 ==================

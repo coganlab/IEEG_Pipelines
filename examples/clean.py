@@ -32,8 +32,6 @@ else:  # if not then set box directory
 TASK = "SentenceRep"
 sub_num = 29
 subj = "D" + str(sub_num).zfill(4)
-HOME = os.path.expanduser("~")
-LAB_root = os.path.join(HOME, "Box", "CoganLab")
 layout = get_data("SentenceRep", root=LAB_root)
 raw = raw_from_layout(layout, subject=subj, extension=".edf", desc=None,
                       preload=False)
