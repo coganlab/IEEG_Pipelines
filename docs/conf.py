@@ -41,10 +41,11 @@ extensions = ['myst_nb',
               'sphinx.ext.linkcode',
               'sphinx.ext.viewcode']
 sphinx_gallery_conf = {
-    'examples_dirs': ['../task/SentenceRep/'],
+    'examples_dirs': ['../examples'],
     'gallery_dirs': ['auto_examples', 'tutorials'],
+    'notebook_images': 'https://ieeg-pipelines.readthedocs.io/en/latest/'
 }
-
+notebook_images = True
 myst_enable_extensions = [
     "amsmath",
     "colon_fence",
