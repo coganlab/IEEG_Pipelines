@@ -52,8 +52,8 @@ filt2 = line_filter(filt, mt_bandwidth=10., n_jobs=-1,
 
 # %% plot the data
 data = [raw, filt, raw_dat, dat]
-plotting.figure_compare(data, ["BIDS Un", "BIDS ", "Un",""], avg=True, verbose=10, proj=True, fmax=250)
-plotting.figure_compare(data, ["BIDS Un", "BIDS ", "Un",""], avg=False, verbose=10, proj=True, fmax=250)
+plotting.figure_compare(data, ["BIDS Un", "BIDS ", "Un", ""], avg=True,
+                        verbose=10, proj=True, fmax=250)
 
 # %% Unfiltered
 # .. image:: unfilt.png

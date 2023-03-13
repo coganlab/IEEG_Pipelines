@@ -4,15 +4,12 @@ Example spectrogram plot
 
 Below is a gallery of examples
 """
-import os
-import sys
-sys.path.insert(0, os.path.abspath('../task'))
-
 from PreProcess.utils import plotting
 from bids import BIDSLayout
 from PreProcess.utils import utils
 from PreProcess.timefreq.multitaper import spectrogram
-from PreProcess.navigate import crop_data, channel_outlier_marker, raw_from_layout
+from PreProcess.navigate import crop_data, channel_outlier_marker, \
+    raw_from_layout
 from task.SentenceRep.events import fix_annotations
 import numpy as np
 import matplotlib as mpl
@@ -47,9 +44,10 @@ del new
 # %%
 fix_annotations(good)
 # %%
-freqs = np.arange(10, 200., 2.)
+freq = np.arange(10, 200., 2.)
 # resp = trial_ieeg(good, "Word/Response", (-1.5, 1.5))
-spectra = spectrogram(good, freqs, 'Word/Audio', -1, 1.5, 'Start', -0.5, 0, n_jobs=6, verbose=10, time_bandwidth=10, n_cycles=freqs/2)
+spectra = spectrogram(good, freq, 'Word/Audio', -1, 1.5, 'Start', -0.5, 0,
+                      n_jobs=6, verbose=10, time_bandwidth=10, n_cycles=freq/2)
 # %%
 # with open("spectra.npy", "rb") as f:
 #     spectra = np.load(f, allow_pickle=True)[0]

@@ -19,7 +19,7 @@ build:
     # golang: "1.19"
   jobs:
     pre_build:
-      - pip install --upgrade myst-nb
+      - pip install --upgrade myst-nb sphinx_gallery
       - sphinx-apidoc -f -o docs .
 
 # Build documentation in the docs/ directory with Sphinx
