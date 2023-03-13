@@ -62,15 +62,15 @@ Version 3.10 supported
 
 ## Usage
 
-### MATLAB ([INCOMPLETE](https://github.com/coganlab/IEEG_Pipelines/issues/21#issue-1229145282))
+### MATLAB (INCOMPLETE)
 
 1. Load `.dat` file using [convert_OpenE_rec2mat.m](MATLAB/ieeg%20file%20reading/convert_OpenE_rec2mat.m)
 2. Create the ieeg data structure from the [ieegStructClass.m](MATLAB/ieegClassDefinition/ieegStructClass.m)
 3. `TBD`
 
-### Python ([INCOMPLETE](https://github.com/coganlab/IEEG_Pipelines/issues/22#issue-1229152846))
+### Python ([INCOMPLETE](https://github.com/orgs/coganlab/projects/7))
 
-1. Load BIDS files from BIDS directory using `pybids` and [preProcess.py](Python/PreProcess/preProcess.py)
+1. Load BIDS files from BIDS directory using `pybids`
     
     ```(python)
     from bids import BIDSLayout
@@ -78,9 +78,6 @@ Version 3.10 supported
     layout = BIDSLayout(BIDS_root)
     data = pre.raw_from_layout(layout)
     ```
-2. Perform line noise filtering
+2. [Perform line noise filtering](examples/clean.py)
 
-    ```(python)
-    filt = pre.line_filter(data)
-    ```
-3. `TBD`
+3. [Check Spectrograms](examples/spectrograms.py)
