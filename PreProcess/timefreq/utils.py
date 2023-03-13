@@ -1,7 +1,7 @@
 from typing import Union
 
 import numpy as np
-from mne.utils import logger, verbose
+from mne.utils import logger, verbose, fill_doc
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
@@ -66,7 +66,8 @@ def to_samples(time_length: Union[str, int], sfreq: float) -> int:
     return time_length
 
 
-def crop_pad(inst: Signal, pad: str):
+@fill_doc
+def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
     """Crop and pad an instance.
 
     Parameters
@@ -76,9 +77,22 @@ def crop_pad(inst: Signal, pad: str):
     pad : str
         The amount of time to pad the instance. If a string, it must be a
         human-readable time, e.g. "10s".
+    copy : bool, optional
+        If True, a copy of x, filtered, is returned. Otherwise, it operates
+        on x in place. Defaults to False.
+
+    Returns
+    -------
+    inst : instance of Raw, Epochs, or Evoked
+        The cropped and de-padded instance.
     """
+    if copy:
+        out = inst.copy()
+    else:
+        out = inst
     pad = to_samples(pad, inst.info['sfreq']) / inst.info['sfreq']
-    inst.crop(tmin=inst.tmin + pad, tmax=inst.tmax - pad)
+    out.crop(tmin=inst.tmin + pad, tmax=inst.tmax - pad)
+    return out
 
 
 def _check_filterable(x: Union[Signal, np.ndarray],

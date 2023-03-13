@@ -45,6 +45,7 @@ def figure_compare(raw: list[Raw], labels: list[str], avg: bool = True,
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
         add_arrows(fig.axes[:2])
+        fig.show()
         gc.collect()
 
 

@@ -11,7 +11,14 @@ IEEG_Pipelines documentation
    :caption: Contents:
 
    PreProcess
-   task
+   auto_examples/index
+
+
+Instructions
+============
+
+.. include:: ../README.md
+   :parser: myst_nb.docutils_
 
 Indices and tables
 ==================
