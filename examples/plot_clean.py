@@ -8,7 +8,7 @@ environment checks for SLURM jobs for convenience
 
 import mne
 import os
-from PreProcess.navigate import raw_from_layout
+from PreProcess.navigate import raw_from_layout, save_derivative
 from PreProcess.mt_filter import line_filter
 from PreProcess.utils import plotting
 from bids import BIDSLayout
@@ -25,21 +25,11 @@ else:  # if not then set box directory
     subject = 5
 
 # %% Load Data
-# TASK = "SentenceRep"
-# sub_num = 29
-# subj = "D" + str(sub_num).zfill(4)
-# layout = get_data("SentenceRep", root=LAB_root)
-# raw = raw_from_layout(layout, subject=subj, extension=".edf", desc=None,
-#                       preload=False)
-# D_dat_raw, D_dat_filt = find_dat(os.path.join(LAB_root, "D_Data", TASK,
-#                                               "D" + str(sub_num)))
-# raw_dat = open_dat_file(D_dat_raw, raw.copy().ch_names)
-# dat = open_dat_file(D_dat_filt, raw.copy().ch_names)
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 # sample_path = mne.datasets.sample.data_path()
 layout = BIDSLayout(bids_root)
 raw = raw_from_layout(layout, subject="pt1", preload=True,
-                          extension=".vhdr")
+                      extension=".vhdr")
 
 # %% filter data
 filt = line_filter(raw, mt_bandwidth=10., n_jobs=-1,

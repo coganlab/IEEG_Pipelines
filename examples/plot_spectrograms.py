@@ -22,7 +22,7 @@ bids_root = mne.datasets.epilepsy_ecog.data_path()
 # sample_path = mne.datasets.sample.data_path()
 layout = BIDSLayout(bids_root)
 filt = raw_from_layout(layout, subject="pt1", preload=True,
-                          extension=".vhdr")
+                       extension=".vhdr")
 
 # %% Crop raw data to minimize processing time
 #
