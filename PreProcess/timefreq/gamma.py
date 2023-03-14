@@ -87,3 +87,71 @@ def _(inst: Evoked, fs: int = None,
       copy: bool = True, n_jobs=-1) -> Evoked:
     return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs)
 
+
+def _my_hilt(x, fs, Wn=[1, 150], n_jobs=-1):
+
+    # Set default window function and threshold
+    cfs = get_centers(x, Wn)
+    n_times = x.shape[0]
+    chunk_size = n_times * x.shape[1] * len(cfs)
+    n_samples = int(min([chunk_size, get_mem()]) /
+                    (cpu_count() * x.shape[1] * len(cfs)))
+    n_overlap = (n_samples + 1) // 2
+    x_out = np.zeros_like(x)
+    idx = [0]
+
+    # Define how to process a chunk of data
+    def process(x_):
+        out = filterbank_hilbert(x_, fs, Wn, 1)
+        env = np.sum(out[1], axis=-1)
+        return (env,)  # must return a tuple
+
+    # Define how to store a chunk of fully processed data (it's trivial)
+    def store(x_):
+        stop = idx[0] + x_.shape[-1]
+        x_out[..., idx[0]:stop] += x_
+        idx[0] = stop
+
+    COLA(process, store, n_times, n_samples, n_overlap, fs,
+         n_jobs=n_jobs).feed(x)
+    assert idx[0] == n_times
+    return x_out
+
+
+def get_centers(x, Wn):
+
+    # create filter bank
+    a = np.array([np.log10(0.39), 0.5])
+    f0 = 0.018
+    octSpace = 1. / 7
+    minf, maxf = Wn
+    if minf >= maxf:
+        raise ValueError(
+            f'Upper bound of frequency range must be greater than lower '
+            f'bound, but got lower bound of {minf} and upper bound of {maxf}')
+    maxfo = np.log2(maxf / f0)  # octave of max freq
+
+    cfs = [f0]
+    sigma_f = 10 ** (a[0] + a[1] * np.log10(cfs[-1]))
+
+    while np.log2(cfs[-1] / f0) < maxfo:
+
+        if cfs[-1] < 4:
+            cfs.append(cfs[-1] + sigma_f)
+        else:  # switches to log spacing at 4 Hz
+            cfo = np.log2(cfs[-1] / f0)  # current freq octave
+            cfo += octSpace  # new freq octave
+            cfs.append(f0 * (2 ** (cfo)))
+
+        sigma_f = 10 ** (a[0] + a[1] * np.log10(cfs[-1]))
+
+    cfs = np.array(cfs)
+    if np.logical_and(cfs >= minf, cfs <= maxf).sum() == 0:
+        raise ValueError(
+            f'Frequency band is too narrow, so no filters in filterbank are '
+            f'placed inside. Try a wider frequency band.')
+
+    cfs = cfs[np.logical_and(cfs >= minf,
+                             cfs <= maxf)]  # choose those that lie in the
+    # input freqRange
+    return cfs
