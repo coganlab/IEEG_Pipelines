@@ -227,7 +227,7 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
     # split annotations into blocks
     annot = raw.annotations.copy()
     block_idx = [idx + 1 for idx, val in
-                 enumerate(annot) if val['description'] == 'BAD boundary']
+                 enumerate(annot) if 'BAD boundary' in val['description'] ]
     block_annot = [annot[i: j] for i, j in
                    zip([0] + block_idx, block_idx +
                        ([len(annot)] if block_idx[-1] != len(annot) else []))]
