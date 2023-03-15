@@ -357,7 +357,7 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
     # determine the events
     events, ids = mne.events_from_annotations(raw)
     dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
-    event_ids = {key.replace(event, ""): value for key, value in
+    event_ids = {key.replace(event, "").strip("/"): value for key, value in
                  ids.items() if value in dat_ids}
     # epoch the data
 
@@ -374,8 +374,6 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
     base = trial_ieeg(raw, baseline, basetimes, **kwargs)
     rescale(epochs, base)
     return epochs
-
-
 
 
 @fill_doc
