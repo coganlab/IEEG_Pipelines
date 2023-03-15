@@ -1,6 +1,7 @@
-from PreProcess.navigate import crop_data, channel_outlier_marker, \
+from PreProcess.navigate import channel_outlier_marker, \
     raw_from_layout, trial_ieeg
 from PreProcess.timefreq.utils import crop_pad
+from PreProcess.timefreq import gamma
 from bids import BIDSLayout
 import mne
 
@@ -28,7 +29,7 @@ del raw
 good.set_eeg_reference()
 
 # %% High Gamma Filter
-from PreProcess.timefreq import gamma
+
 ev1 = trial_ieeg(good, "AD1-4, ATT1,2", (-1, 2), "onset", (-1, 0.5))
 
 HG_ev1 = gamma.extract(ev1)

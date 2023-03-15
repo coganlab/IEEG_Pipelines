@@ -23,8 +23,8 @@ try:
 except ValueError:  # Already removed
     pass
 
-from PreProcess.timefreq.utils import to_samples, Signal, crop_pad  # noqa: E402
-from PreProcess.timefreq.fastmath import rescale
+from PreProcess.timefreq.utils import to_samples, Signal  # noqa: E402
+from PreProcess.timefreq.fastmath import rescale  # noqa: E402
 from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
 RunDict = Dict[int, mne.io.Raw]
@@ -228,7 +228,7 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
     # split annotations into blocks
     annot = raw.annotations.copy()
     block_idx = [idx + 1 for idx, val in
-                 enumerate(annot) if 'BAD boundary' in val['description'] ]
+                 enumerate(annot) if 'BAD boundary' in val['description']]
     block_annot = [annot[i: j] for i, j in
                    zip([0] + block_idx, block_idx +
                        ([len(annot)] if block_idx[-1] != len(annot) else []))]
