@@ -8,7 +8,7 @@ import numpy as np
 
 
 @singledispatch
-def extract(data: np.ndarray | Signal, fs: int,
+def extract(data: np.ndarray, fs: int,
             passband: tuple[int, int] = (70, 150), copy: bool = True,
             n_jobs=-1) -> np.ndarray:
     """Extract gamma band envelope from data.
