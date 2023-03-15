@@ -24,6 +24,7 @@ except ValueError:  # Already removed
     pass
 
 from PreProcess.timefreq.utils import to_samples, Signal  # noqa: E402
+from PreProcess.timefreq.fastmath import rescale  # noqa: E402
 from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
 RunDict = Dict[int, mne.io.Raw]
@@ -227,7 +228,7 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
     # split annotations into blocks
     annot = raw.annotations.copy()
     block_idx = [idx + 1 for idx, val in
-                 enumerate(annot) if val['description'] == 'BAD boundary']
+                 enumerate(annot) if 'BAD boundary' in val['description']]
     block_annot = [annot[i: j] for i, j in
                    zip([0] + block_idx, block_idx +
                        ([len(annot)] if block_idx[-1] != len(annot) else []))]
@@ -243,6 +244,9 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
                     an.pop('orig_time')
                     no_bound.append(**an)
 
+        # If block is all boundary events
+        if no_bound is None:
+            continue
         # get start and stop time from raw.annotations onset attribute
         t_min = no_bound.onset[0] - start_pad
         t_max = no_bound.onset[-1] + end_pad
@@ -318,6 +322,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 @fill_doc
 @verbose
 def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
+               baseline: str = None, basetimes: tuple[float, float] = None,
                verbose=None, **kwargs) -> mne.Epochs:
     """Epochs data from an iEEG file.
 
@@ -329,6 +334,10 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
         The event to epoch around.
     times : tuple[float, float]
         The time window to epoch around the event.
+    baseline : str
+        The event to epoch the baseline.
+    basetimes : tuple[float, float]
+        The time window to epoch around the baseline event.
     %(picks_all)s
     %(reject_epochs)s
     %(flat)s
@@ -348,11 +357,22 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
     # determine the events
     events, ids = mne.events_from_annotations(raw)
     dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
-
+    event_ids = {key.replace(event, "").strip("/"): value for key, value in
+                 ids.items() if value in dat_ids}
     # epoch the data
-    epochs = mne.Epochs(raw, events, event_id=dat_ids, tmin=times[0],
-                        tmax=times[1], baseline=None, verbose=verbose,
-                        **kwargs)
+
+    if baseline is None:
+        epochs = mne.Epochs(raw, events, event_id=event_ids, tmin=times[0],
+                            tmax=times[1], baseline=None, verbose=verbose,
+                            **kwargs)
+        return epochs
+    elif basetimes is None:
+        raise ValueError("Baseline event input {} must be paired with times"
+                         "".format(baseline))
+    kwargs['preload'] = True
+    epochs = trial_ieeg(raw, event, times, **kwargs)
+    base = trial_ieeg(raw, baseline, basetimes, **kwargs)
+    rescale(epochs, base)
     return epochs
 
 

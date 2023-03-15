@@ -5,6 +5,7 @@ pytest-xdist
 coverage
 bids>=0.0
 nipype
+naplib
 EDFlib-Python
 mne
 mne-bids

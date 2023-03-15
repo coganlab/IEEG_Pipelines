@@ -4,7 +4,7 @@ from functools import singledispatch
 import numpy as np
 from mne.utils import logger, warn, verbose, fill_doc
 from mne.epochs import BaseEpochs
-from mne.io.base import BaseRaw
+from mne.io import base, Raw
 from mne.time_frequency import AverageTFR, tfr_multitaper
 from mne import events_from_annotations, Epochs, event
 from scipy import signal, fft
@@ -220,10 +220,10 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
 
     Parameters
     ----------
-    line : BaseEpochs
+    line : Epochs
         The data to be processed
      %(freqs_tfr)s
-    baseline : BaseEpochs
+    baseline : Epochs
         The baseline to be used for correction
     %(n_cycles_tfr)s
     pad : str
@@ -267,7 +267,7 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
 
 
 @spectrogram.register
-def _(line: BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
+def _(line: base.BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
       tmax: float, base_event: str = None, base_tmin: float = None,
       base_tmax: float = None, n_cycles: np.ndarray = None, pad: str = "500ms",
       correction: str = 'ratio', **kwargs) -> AverageTFR:
@@ -275,7 +275,7 @@ def _(line: BaseRaw, freqs: np.ndarray, line_event: str, tmin: float,
 
     Parameters
     ----------
-    line : BaseRaw
+    line : Raw
         The data to be processed
     freqs : array-like
         The frequencies to be used in the spectrogram
