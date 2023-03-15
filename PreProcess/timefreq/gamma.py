@@ -43,10 +43,12 @@ def extract(data: np.ndarray, fs: int, passband: tuple[int, int] = (70, 150),
 
     if len(in_data.shape) == 3:  # Assume shape is (trials, channels, time)
         for trial in range(in_data.shape[0]):
-            _, env[trial, :, :], _ = filterbank_hilbert(in_data[trial, :, :].T,
-                                                        fs, passband, n_jobs)
+            _, out, _ = filterbank_hilbert(in_data[trial, :, :].T, fs,
+                                           passband, n_jobs)
+            env[trial, :, :] = np.sum(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
-        _, env, _ = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
+        _, out, _ = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
+        env = np.sum(out, axis=-1).T
     else:
         raise ValueError("number of dims should be either 2 or 3, not {}"
                          "".format(len(in_data.shape)))
@@ -88,7 +90,7 @@ def _(inst: Evoked, fs: int = None,
     return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs)
 
 
-def _my_hilt(x, fs, Wn=[1, 150], n_jobs=-1):
+def _my_hilt(x, fs, Wn=(1, 150), n_jobs=-1):
 
     # Set default window function and threshold
     cfs = get_centers(x, Wn)
