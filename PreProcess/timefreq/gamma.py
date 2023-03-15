@@ -14,7 +14,7 @@ def extract(data: np.ndarray, fs: int, passband: tuple[int, int] = (70, 150),
 
     Parameters
     ----------
-    data : (np.ndarray, shape (..., channels)) | Signal
+    data : (np.ndarray, shape ((epochs) ,channels, samples)) | Signal
         Data to extract gamma envelope from. If Signal, will use the _data
         attribute.
     fs : int, optional
@@ -53,7 +53,7 @@ def extract(data: np.ndarray, fs: int, passband: tuple[int, int] = (70, 150),
         raise ValueError("number of dims should be either 2 or 3, not {}"
                          "".format(len(in_data.shape)))
 
-    return env.T
+    return env
 
 
 def _extract_inst(inst: Signal, fs: int, copy: bool, **kwargs) -> Signal:
@@ -90,37 +90,36 @@ def _(inst: Evoked, fs: int = None,
     return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs)
 
 
-def _my_hilt(x, fs, Wn=(1, 150), n_jobs=-1):
+def _my_hilt(x: np.ndarray, fs, Wn=(1, 150), n_jobs=-1):
 
     # Set default window function and threshold
-    cfs = get_centers(x, Wn)
+    cfs = get_centers(Wn)
     n_times = x.shape[0]
-    chunk_size = n_times * x.shape[1] * len(cfs)
-    n_samples = int(min([chunk_size, get_mem()]) /
-                    (cpu_count() * x.shape[1] * len(cfs)))
+    bytes_per = 16  # numpy complex128 is 16 bytes per num
+    chunk_size = min([x.size * bytes_per * len(cfs), get_mem()])
+    n_samples = int(chunk_size / (cpu_count() * x.shape[1] * len(cfs)))
     n_overlap = (n_samples + 1) // 2
-    x_out = np.zeros_like(x)
+    x_out = np.zeros_like(x.T)
     idx = [0]
 
     # Define how to process a chunk of data
     def process(x_):
         out = filterbank_hilbert(x_, fs, Wn, 1)
-        env = np.sum(out[1], axis=-1)
-        return (env,)  # must return a tuple
+        return (out[1])  # must return a tuple
 
     # Define how to store a chunk of fully processed data (it's trivial)
     def store(x_):
-        stop = idx[0] + x_.shape[-1]
-        x_out[..., idx[0]:stop] += x_
+        stop = idx[0] + x_.T.shape[-1]
+        x_out[..., idx[0]:stop] += x_.T
         idx[0] = stop
 
     COLA(process, store, n_times, n_samples, n_overlap, fs,
          n_jobs=n_jobs).feed(x)
     assert idx[0] == n_times
-    return x_out
+    return x_out, cfs
 
 
-def get_centers(x, Wn):
+def get_centers(Wn):
 
     # create filter bank
     a = np.array([np.log10(0.39), 0.5])
