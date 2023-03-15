@@ -243,6 +243,9 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
                     an.pop('orig_time')
                     no_bound.append(**an)
 
+        # If block is all boundary events
+        if no_bound is None:
+            continue
         # get start and stop time from raw.annotations onset attribute
         t_min = no_bound.onset[0] - start_pad
         t_max = no_bound.onset[-1] + end_pad
