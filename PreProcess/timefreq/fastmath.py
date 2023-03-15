@@ -2,6 +2,7 @@ from functools import singledispatch
 
 import numpy as np
 from mne.utils import logger, verbose
+from mne.epochs import BaseEpochs
 from mne import Epochs
 
 
@@ -88,7 +89,7 @@ def _log_rescale(baseline, mode='mean'):
 
 @singledispatch
 def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
-            copy: bool = True) -> np.ndarray:
+            copy: bool = False) -> np.ndarray:
     """Rescale (baseline correct) data.
 
     Parameters
@@ -157,8 +158,8 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 
 @rescale.register
 @verbose
-def _(line: Epochs, baseline: Epochs, mode: str = 'mean',
-      copy: bool = True, picks: list = 'data', verbose=None) -> Epochs:
+def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
+      copy: bool = False, picks: list = 'data', verbose=None) -> Epochs:
     """Rescale (baseline correct) Epochs"""
     if copy:
         line: Epochs = line.copy()
