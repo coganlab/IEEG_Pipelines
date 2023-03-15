@@ -120,6 +120,18 @@ def _my_hilt(x: np.ndarray, fs, Wn=(1, 150), n_jobs=-1):
 
 
 def get_centers(Wn):
+    """Get center frequencies for filter bank.
+
+    Parameters
+    ----------
+    Wn : tuple
+        Frequency range to use for filter bank.
+
+    Returns
+    -------
+    cfs : list
+        Center frequencies for filter bank.
+        """
 
     # create filter bank
     a = np.array([np.log10(0.39), 0.5])
