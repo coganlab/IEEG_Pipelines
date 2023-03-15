@@ -8,8 +8,9 @@ import numpy as np
 
 
 @singledispatch
-def extract(data: np.ndarray, fs: int, passband: tuple[int, int] = (70, 150),
-            copy: bool = True, n_jobs=-1) -> np.ndarray:
+def extract(data: np.ndarray | Signal, fs: int,
+            passband: tuple[int, int] = (70, 150), copy: bool = True,
+            n_jobs=-1) -> np.ndarray:
     """Extract gamma band envelope from data.
 
     Parameters
@@ -31,6 +32,15 @@ def extract(data: np.ndarray, fs: int, passband: tuple[int, int] = (70, 150),
     -------
     np.ndarray
         Gamma envelope.
+
+    Notes
+    -----
+    This function is a wrapper for
+    `filterbank_hilbert <https://naplib-python.readthedocs.io/en/latest/referen
+    ces/preprocessing.html#naplib.preprocessing.filterbank_hilbert>`_. It is a
+    convenience function for extracting the gamma envelope from data. It is
+    optimized for speed, but not memory. If you have a lot of data, you may
+    want to epoch your data first and then extract the envelope.
     """
 
     if copy:
