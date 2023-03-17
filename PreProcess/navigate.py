@@ -89,7 +89,7 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
 
 
 @fill_doc
-def raw_from_layout(layout: BIDSLayout, preload: bool = False,
+def raw_from_layout(layout: BIDSLayout, preload: bool = True,
                     run: Union[list[int], int] = None, **kwargs) -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
 
@@ -116,9 +116,7 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = False,
         for r in runs:
             BIDS_path = bidspath_from_layout(layout, run=r, **kwargs)
             new_raw = read_raw_bids(bids_path=BIDS_path)
-            new_raw.load_data()
             raw.append(new_raw.copy())
-            del new_raw
         whole_raw: mne.io.Raw = mne.concatenate_raws(raw)
     else:
         BIDS_path = bidspath_from_layout(layout, **kwargs)
