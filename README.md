@@ -81,3 +81,5 @@ Version 3.10 supported
 2. [Perform line noise filtering](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_clean.html)
 
 3. [Check Spectrograms](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_spectrograms.html)
+
+4. [Plot the high gamma responses](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_HG.html)

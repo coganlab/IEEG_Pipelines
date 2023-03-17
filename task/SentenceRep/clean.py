@@ -1,28 +1,26 @@
+# %%
 import mne
 import os
 from PreProcess.navigate import get_data, raw_from_layout, save_derivative
 from PreProcess.mt_filter import line_filter
 
+# %%
 if __name__ == "__main__":
-    # %% Set up logging
-    mne.set_log_file("output.log",
-                     "%(levelname)s: %(message)s - %(asctime)s",
-                     overwrite=True)
-    mne.set_log_level("INFO")
-    HOME = os.path.expanduser("~")
-
     # %% check if currently running a slurm job
+    HOME = os.path.expanduser("~")
     if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
         LAB_root = os.path.join(HOME, "workspace", "CoganLab")
         subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
     else:  # if not then set box directory
         LAB_root = os.path.join(HOME, "Box", "CoganLab")
-        subject = 5
+        subject = 8
 
     # %% Load Data
     layout = get_data("SentenceRep", LAB_root)
-    subj = layout.get_subjects().sort()[subject]
-    raw = raw_from_layout(layout, subject=subj, extension=".edf",
+    subjlist = layout.get_subjects()
+    subjlist.sort()
+    subj = subjlist[subject]
+    raw = raw_from_layout(layout, subject=subj, extension=".edf", desc=None,
                           preload=False)
 
     # %% filter data

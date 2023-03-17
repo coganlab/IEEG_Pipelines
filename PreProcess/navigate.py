@@ -75,8 +75,9 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     """
     my_search: List[BIDSFile] = layout.get(**kwargs)
     if len(my_search) >= 2:
-        raise FileNotFoundError("Search terms matched more than one file, "
-                                "try adding more search terms")
+        raise FileNotFoundError("Search terms matched more than one file: \n"
+                                "{} \n try adding more search terms"
+                                "".format(my_search))
     elif len(my_search) == 0:
         raise FileNotFoundError("No files match your search terms")
     found = my_search[0]
@@ -244,7 +245,7 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
                     an.pop('orig_time')
                     no_bound.append(**an)
 
-        # If block is all boundary events
+        # Skip if block is all boundary events
         if no_bound is None:
             continue
         # get start and stop time from raw.annotations onset attribute
@@ -272,7 +273,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
         Number of standard deviations above the mean to be considered an
         outlier, by default 3
     max_rounds : int, optional
-        Maximum number of varience estimations, by default runs until no
+        Maximum number of variance estimations, by default runs until no
         more bad channels are found.
     %(verbose)s
 
@@ -323,8 +324,12 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 @verbose
 def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
                baseline: str = None, basetimes: tuple[float, float] = None,
-               verbose=None, **kwargs) -> mne.Epochs:
-    """Epochs data from an iEEG file.
+               mode: str = "mean", verbose=None, **kwargs) -> mne.Epochs:
+    """Epochs data from a mne Raw iEEG instance.
+
+    Takes a mne Raw instance and epochs the data around a specified event. If
+    baseline is specified, the data is also epoched around the baseline event
+    and the baseline is subtracted from the data epochs.
 
     Parameters
     ----------
@@ -338,6 +343,9 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
         The event to epoch the baseline.
     basetimes : tuple[float, float]
         The time window to epoch around the baseline event.
+    mode : str
+        The mode to use for baseline rescaling. See `mne.baseline.rescale` for
+        more information.
     %(picks_all)s
     %(reject_epochs)s
     %(flat)s
@@ -372,7 +380,7 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
     kwargs['preload'] = True
     epochs = trial_ieeg(raw, event, times, **kwargs)
     base = trial_ieeg(raw, baseline, basetimes, **kwargs)
-    rescale(epochs, base)
+    rescale(epochs, base, mode=mode, copy=False)
     return epochs
 
 
@@ -418,12 +426,13 @@ if __name__ == "__main__":
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
     sub_num = 29
+    subj = "D" + str(sub_num).zfill(4)
     # layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
     bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root, derivatives=True)
-    filt = raw_from_layout(layout.derivatives['filt'], subject='D0057',
+    filt = raw_from_layout(layout.derivatives['filt'], subject=subj,
                            extension='.edf', desc='filt', preload=True)
-    raw = raw_from_layout(layout, subject='D0057', extension='.edf', desc=None,
+    raw = raw_from_layout(layout, subject=subj, extension='.edf', desc=None,
                           preload=True)
     events, event_id = mne.events_from_annotations(filt)
     auds = mne.Epochs(filt, events, event_id['Audio'], baseline=None, tmin=-2,
