@@ -30,4 +30,4 @@ if __name__ == "__main__":
                 filter_length='20s', freqs=[60, 120, 180, 240],
                 notch_widths=20)
     # %% Save the data
-    save_derivative(raw, layout, "clean")
+    save_derivative(raw, layout, "clean", overwrite=True)
