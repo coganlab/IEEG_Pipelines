@@ -21,14 +21,13 @@ if __name__ == "__main__":
     subjlist.sort()
     subj = subjlist[subject]
     raw = raw_from_layout(layout, subject=subj, extension=".edf", desc=None,
-                          preload=False)
+                          preload=True)
 
     # %% filter data
-    filt = line_filter(raw, mt_bandwidth=10., n_jobs=-1,
-                       filter_length='700ms', verbose=10,
-                       freqs=[60], notch_widths=20)
-    filt2 = line_filter(filt, mt_bandwidth=10., n_jobs=-1,
-                        filter_length='20s', verbose=10,
-                        freqs=[60, 120, 180, 240], notch_widths=20)
+    line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
+                filter_length='700ms', freqs=[60], notch_widths=20)
+    line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
+                filter_length='20s', freqs=[60, 120, 180, 240],
+                notch_widths=20)
     # %% Save the data
-    save_derivative(filt2, layout, "clean")
+    save_derivative(raw, layout, "clean")
