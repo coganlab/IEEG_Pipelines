@@ -13,7 +13,7 @@ if __name__ == "__main__":
         subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
     else:  # if not then set box directory
         LAB_root = os.path.join(HOME, "Box", "CoganLab")
-        subject = 8
+        subject = 0
 
     # %% Load Data
     layout = get_data("SentenceRep", LAB_root)
@@ -30,4 +30,4 @@ if __name__ == "__main__":
                 filter_length='20s', freqs=[60, 120, 180, 240],
                 notch_widths=20)
     # %% Save the data
-    save_derivative(raw, layout, "clean", overwrite=True)
+    save_derivative(raw, layout, "clean")
