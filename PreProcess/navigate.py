@@ -1,7 +1,7 @@
 import os.path as op
 import re
 from os import walk, listdir, mkdir
-from typing import Union, List, Tuple, Dict
+from typing import Union, List, Tuple, Dict, Iterable
 
 import mne
 from mne.utils import verbose, fill_doc
@@ -320,8 +320,8 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 
 @fill_doc
 @verbose
-def trial_ieeg(raw: mne.io.Raw, event: str, times: tuple[float, float],
-               baseline: str = None, basetimes: tuple[float, float] = None,
+def trial_ieeg(raw: mne.io.Raw, event: str, times: Iterable[float, float],
+               baseline: str = None, basetimes: Iterable[float, float] = None,
                mode: str = "mean", verbose=None, **kwargs) -> mne.Epochs:
     """Epochs data from a mne Raw iEEG instance.
 

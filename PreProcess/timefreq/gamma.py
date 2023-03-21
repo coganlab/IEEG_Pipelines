@@ -8,7 +8,7 @@ import numpy as np
 
 
 @singledispatch
-def extract(data: np.ndarray, fs: int,
+def extract(data: np.ndarray, fs: int = None,
             passband: tuple[int, int] = (70, 150), copy: bool = True,
             n_jobs=-1) -> np.ndarray:
     """Extract gamma band envelope from data.
@@ -42,6 +42,9 @@ def extract(data: np.ndarray, fs: int,
     optimized for speed, but not memory. If you have a lot of data, you may
     want to epoch your data first and then extract the envelope.
     """
+
+    if fs is None:
+        raise ValueError("fs must be provided if data is not a Signal")
 
     if copy:
         in_data = data.copy()
