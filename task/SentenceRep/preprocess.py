@@ -37,11 +37,11 @@ del new
 from task.SentenceRep.events import fix_annotations
 fix_annotations(good)
 
-# %% High Gamma Filter
+# %% High Gamma Filter and epoching
 out = []
 from PreProcess.timefreq import gamma, utils, fastmath
-for epoch, t in zip(("Start", "Word/Response", "Word/Audio"),
-                        ((-0.5, 0), (-1, 1), (-0.5, 1.5))):
+for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
+                    ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5))):
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
@@ -51,6 +51,7 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio"),
     out.append(trials)
 resp = fastmath.rescale(out[1], out[0])
 aud = fastmath.rescale(out[2], out[0])
+go = fastmath.rescale(out[3], out[0])
 
 # %%
 resp_evoke = resp.average()
