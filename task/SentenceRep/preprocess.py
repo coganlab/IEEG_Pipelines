@@ -21,7 +21,7 @@ filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
 new = crop_data(filt)
 
 # Mark channel outliers as bad
-new.info['bads'] = channel_outlier_marker(new, 3, 2)
+new.info['bads'] = channel_outlier_marker(new, 5)
 
 # Exclude bad channels
 good = new.copy().drop_channels(new.info['bads'])

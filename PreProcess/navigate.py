@@ -1,7 +1,6 @@
 import os.path as op
 import re
 from os import walk, listdir, mkdir
-from typing import Union, List, Tuple, Dict, Iterable
 
 import mne
 from mne.utils import verbose, fill_doc
@@ -27,11 +26,12 @@ from PreProcess.timefreq.utils import to_samples, Signal  # noqa: E402
 from PreProcess.timefreq.fastmath import rescale  # noqa: E402
 from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
-RunDict = Dict[int, mne.io.Raw]
-SubDict = Dict[str, RunDict]
+RunDict = dict[int, mne.io.Raw]
+SubDict = dict[str, RunDict]
+Doubles = tuple[float, float] | list[float, float] | np.ndarray
 
 
-def find_dat(folder: PathLike) -> Tuple[PathLike, PathLike]:
+def find_dat(folder: PathLike) -> (PathLike, PathLike):
     """Looks for the .dat file in a specified folder
 
     Parameters
@@ -73,7 +73,7 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     BIDS_path: BIDSPath
         The BIDSPath to the file.
     """
-    my_search: List[BIDSFile] = layout.get(**kwargs)
+    my_search: list[BIDSFile] = layout.get(**kwargs)
     if len(my_search) >= 2:
         raise FileNotFoundError("Search terms matched more than one file: \n"
                                 "{} \n try adding more search terms"
@@ -90,7 +90,7 @@ def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
 
 @fill_doc
 def raw_from_layout(layout: BIDSLayout, preload: bool = True,
-                    run: Union[list[int], int] = None, **kwargs) -> mne.io.Raw:
+                    run: list[int] | int = None, **kwargs) -> mne.io.Raw:
     """Searches a BIDSLayout for a raw file and returns a mne Raw object.
 
     Parameters
@@ -111,7 +111,7 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
         runs = layout.get(return_type="id", target="run", **kwargs)
     else:
         runs = list(run)
-    raw: List[mne.io.Raw] = []
+    raw: list[mne.io.Raw] = []
     if runs:
         for r in runs:
             BIDS_path = bidspath_from_layout(layout, run=r, **kwargs)
@@ -126,7 +126,7 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     return whole_raw
 
 
-def open_dat_file(file_path: str, channels: List[str],
+def open_dat_file(file_path: str, channels: list[str],
                   sfreq: int = 2048, types: str = "seeg",
                   units: str = "uV") -> mne.io.RawArray:
     """Opens a .dat file and returns a mne.io.RawArray object.
@@ -320,8 +320,8 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 
 @fill_doc
 @verbose
-def trial_ieeg(raw: mne.io.Raw, event: str, times: Iterable[float, float],
-               baseline: str = None, basetimes: Iterable[float, float] = None,
+def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
+               baseline: str = None, basetimes: Doubles = None,
                mode: str = "mean", verbose=None, **kwargs) -> mne.Epochs:
     """Epochs data from a mne Raw iEEG instance.
 
@@ -385,7 +385,7 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Iterable[float, float],
 @fill_doc
 @verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
-                    overwrite=False, verbose=None):
+                    overwrite: bool = False, verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
