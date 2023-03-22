@@ -178,6 +178,12 @@ def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
                    ignore_axis: int | tuple[int] = None) -> np.ndarray:
     """Make data_fix the same shape as data_like.
 
+    Reshapes data_fix to match the shape of data_like, ignoring the
+    specified axis. If data_fix is already the same shape as data_like,
+    it is returned unchanged. If data_fix is larger in the ignored
+    axis and smaller in another unignored axis, the data is split along
+    the ignored axis and appended to the end of the unignored one.
+
     Parameters
     ----------
     data_fix : array
@@ -210,14 +216,14 @@ def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
             if len(ignore_axis) == 0:
                 raise ValueError('data_fix and data_like must have the same '
                                  'shape if ignore_axis is None')
-            else:
-                repeats = int(s2 / s1)
-                reduce_axis = ignore_axis[0]
-                shape_fix[reduce_axis] = shape_fix[reduce_axis] // repeats
-                shape_fix[i] = shape_fix[i] * repeats
-                data = np.reshape(data, shape_fix)
-                out_pad = [(0, 0) if j != i else (0, s2 - (s1 * repeats)) for j in range(len(shape_fix))]
-                data = np.pad(data, out_pad, 'wrap')
+            repeats = int(s2 / s1)
+            reduce_axis = ignore_axis[0]
+            shape_fix[reduce_axis] = shape_fix[reduce_axis] // repeats
+            shape_fix[i] = shape_fix[i] * repeats
+            data = np.reshape(data, shape_fix)
+            out_pad = [(0, 0) if j != i else (0, s2 - (s1 * repeats)) for j in
+                       range(len(shape_fix))]
+            data = np.pad(data, out_pad, 'wrap')
 
     return data
 
@@ -248,7 +254,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         The p-values for each time point.
         """
 
-    # Repeat and pad signal 2 so that it has the same number of time points as
+    # Reshape and pad signal 2 so that it has the same number of time points as
     # signal 1
     sig2 = make_data_same(sig2, sig1, ignore_axis=0)
 
