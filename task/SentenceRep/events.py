@@ -33,16 +33,19 @@ def fix_annotations(inst):
                 cond = "/JL"
             elif 'Mime' in inst.annotations[i + 2]['description']:
                 cond = "/LM"
-            elif event['description'].strip() in ['Listen'] and \
-                    'Speak' in inst.annotations[i + 2]['description']:
+            elif event['description'].strip() in ['Listen']:
                 cond = "/LS"
+                if 'Speak' not in inst.annotations[i + 2]['description']:
+                    mne.utils.logger.warn("Speak cue not found for condition #"
+                                          "{} {}".format(i, event['description'
+                                                                  ]))
                 if 'Response' not in inst.annotations[i + 3]['description']:
                     is_bad = True
                     no_response.append(i)
+
             else:
                 raise ValueError("Condition {} could not be determined {}"
                                  "".format(i, event['description']))
-
         event['description'] = trial_type + event['description'] + cond
         if annot is None:
             annot = mne.Annotations(**event)

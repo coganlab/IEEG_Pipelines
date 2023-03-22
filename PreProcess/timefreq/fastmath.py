@@ -172,3 +172,63 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
                                      False)
     return line
+
+
+def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
+                      tails: int = 1) -> np.ndarray:
+    """Time permutation cluster test between two time series.
+
+    The test is performed by shuffling the trials of the two time series and
+    calculating the difference between the two groups at each time point. The
+    p-value is the proportion of times the difference between the two groups
+    is greater than the original observed difference.
+
+    Parameters
+    ----------
+    sig1 : array, shape (trials, time)
+        Active signal.
+    sig2 : array, shape (trials, time)
+        Passive signal.
+    n_perm : int, optional
+        The number of permutations to perform.
+    tails : int, optional
+        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+
+    Returns
+    -------
+    p : np.ndarray, shape (time,)
+        The p-values for each time point.
+        """
+
+    # Repeat and pad signal 2 so that it has the same number of time points as
+    # signal 1
+    out_pad = [(0, 0) if i != len(sig1.shape) - 1 else (0, sig1.shape[
+        -1] - sig2.shape[-1]) for i in range(len(sig1.shape))]
+    repeats = int(sig1.shape[-1]/sig2.shape[-1])
+    sig2 = np.repeat(sig2, repeats, axis=-1)
+    sig2 = np.pad(sig2, out_pad, mode='wrap')
+
+    # Concatenate the two signals for trial shuffling
+    all_trial = np.concatenate((sig1, sig2), axis=0)
+    labels = np.concatenate((np.zeros(sig1.shape[0]), np.ones(sig2.shape[0])))
+
+    # Calculate the observed difference
+    obs_diff = np.mean(sig1, axis=0) - np.mean(sig2, axis=0)
+
+    # Shuffle labels and calculate the difference at each time point
+    diff = np.zeros((n_perm,) + sig1.shape[1:])
+    for i in range(n_perm):
+        np.random.shuffle(labels)
+        for j in range(sig1.shape[-1]):
+            diff[i, ..., j] = np.mean(all_trial[labels == 0, ..., j], axis=0) \
+                              - np.mean(all_trial[labels == 1, ..., j], axis=0)
+
+    # Calculate the p-value
+    if tails == 1:
+        p = np.sum(diff > obs_diff, axis=0) / n_perm
+    elif tails == 2:
+        p = np.sum(np.abs(diff) > np.abs(obs_diff), axis=0) / n_perm
+    else:
+        raise ValueError('tails must be 1 or 2')
+
+    return p

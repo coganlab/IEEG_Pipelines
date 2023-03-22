@@ -9,7 +9,7 @@ except ImportError:
 
 # %% Load the data
 TASK = "SentenceRep"
-sub_num = 29
+sub_num = 24
 subj = "D" + str(sub_num).zfill(4)
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
@@ -28,7 +28,7 @@ good = new.copy().drop_channels(new.info['bads'])
 good.load_data()
 
 # CAR
-good.set_eeg_reference(ref_channels="average", ch_type='seeg')
+good.set_eeg_reference(ref_channels="average", ch_type='ecog')
 
 # Remove intermediates from mem
 del new
@@ -45,14 +45,16 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
-    trials = trial_ieeg(good, epoch, times, preload=True)
+    trials = trial_ieeg(good, epoch, times, preload=True,)
     gamma.extract(trials, copy=False)
     utils.crop_pad(trials, "0.5s")
     out.append(trials)
-resp = fastmath.rescale(out[1], out[0])
-aud = fastmath.rescale(out[2], out[0])
-go = fastmath.rescale(out[3], out[0])
-
+# resp = fastmath.rescale(out[1], out[0], copy=True)
+# aud = fastmath.rescale(out[2], out[0], copy=True)
+# go = fastmath.rescale(out[3], out[0], copy=True)
+resp = out[1]
+base = out[0]
 # %%
-resp_evoke = resp.average()
-resp_evoke.plot()
+# resp_evoke = resp.average()
+# resp_evoke.plot()
+p_pvals = fastmath.time_perm_cluster(resp._data, base._data)
