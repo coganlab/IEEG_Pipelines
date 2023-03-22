@@ -202,10 +202,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     # Repeat and pad signal 2 so that it has the same number of time points as
     # signal 1
-    out_pad = [(0, 0) if i != len(sig1.shape) - 1 else (0, sig1.shape[
-        -1] - sig2.shape[-1]) for i in range(len(sig1.shape))]
     repeats = int(sig1.shape[-1]/sig2.shape[-1])
     sig2 = np.repeat(sig2, repeats, axis=-1)
+    out_pad = [(0, 0) if i != len(sig1.shape) - 1 else (0, sig1.shape[
+        -1] - sig2.shape[-1]) for i in range(len(sig1.shape))]
     sig2 = np.pad(sig2, out_pad, mode='wrap')
 
     # Concatenate the two signals for trial shuffling
