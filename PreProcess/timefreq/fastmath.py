@@ -174,6 +174,54 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
     return line
 
 
+def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
+                   ignore_axis: int | tuple[int] = None) -> np.ndarray:
+    """Make data_fix the same shape as data_like.
+
+    Parameters
+    ----------
+    data_fix : array
+        The data to reshape.
+    data_like : array
+        The data to match the shape of.
+    ignore_axis : int | tuple[int], optional
+        The axis to ignore. If None, all axes are used.
+
+    Returns
+    -------
+    data_fix : array
+        The reshaped data.
+    """
+    if ignore_axis is None:
+        ignore_axis = tuple()
+    elif isinstance(ignore_axis, int):
+        ignore_axis = (ignore_axis,)
+    else:
+        ignore_axis = tuple(ignore_axis)
+
+    data = data_fix.copy()
+    shape_fix = list(data_fix.shape)
+    shape_like = data_like.shape
+    if len(shape_fix) != len(shape_like):
+        raise ValueError('data_fix and data_like must have the same number of '
+                         'dimensions')
+    for i, (s1, s2) in enumerate(zip(shape_fix, shape_like)):
+        if i not in ignore_axis and s1 != s2:
+            if len(ignore_axis) == 0:
+                raise ValueError('data_fix and data_like must have the same '
+                                 'shape if ignore_axis is None')
+            else:
+                repeats = int(s2 / s1)
+                reduce_axis = ignore_axis[0]
+                shape_fix[reduce_axis] = shape_fix[reduce_axis] // repeats
+                shape_fix[i] = shape_fix[i] * repeats
+                data = np.reshape(data, shape_fix)
+                out_pad = [(0, 0) if j != i else (0, s2 - (s1 * repeats)) for j in range(len(shape_fix))]
+                data = np.pad(data, out_pad, 'wrap')
+
+    return data
+
+
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
                       tails: int = 1) -> np.ndarray:
     """Time permutation cluster test between two time series.
@@ -185,10 +233,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     Parameters
     ----------
-    sig1 : array, shape (trials, time)
-        Active signal.
-    sig2 : array, shape (trials, time)
-        Passive signal.
+    sig1 : array, shape (trials, ..., time)
+        Active signal. The first dimension is assumed to be the trials
+    sig2 : array, shape (trials, ..., time)
+        Passive signal. The first dimension is assumed to be the trials
     n_perm : int, optional
         The number of permutations to perform.
     tails : int, optional
@@ -196,17 +244,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     Returns
     -------
-    p : np.ndarray, shape (time,)
+    p : np.ndarray, shape (..., time)
         The p-values for each time point.
         """
 
     # Repeat and pad signal 2 so that it has the same number of time points as
     # signal 1
-    repeats = int(sig1.shape[-1]/sig2.shape[-1])
-    sig2 = np.repeat(sig2, repeats, axis=-1)
-    out_pad = [(0, 0) if i != len(sig1.shape) - 1 else (0, sig1.shape[
-        -1] - sig2.shape[-1]) for i in range(len(sig1.shape))]
-    sig2 = np.pad(sig2, out_pad, mode='wrap')
+    sig2 = make_data_same(sig2, sig1, ignore_axis=0)
 
     # Concatenate the two signals for trial shuffling
     all_trial = np.concatenate((sig1, sig2), axis=0)
@@ -220,6 +264,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     for i in range(n_perm):
         np.random.shuffle(labels)
         for j in range(sig1.shape[-1]):
+            # Calculate the difference between the two groups averaged across
+            # trials at each time point
             diff[i, ..., j] = np.mean(all_trial[labels == 0, ..., j], axis=0) \
                               - np.mean(all_trial[labels == 1, ..., j], axis=0)
 
