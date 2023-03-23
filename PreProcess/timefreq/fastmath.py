@@ -218,6 +218,8 @@ def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
                                  'shape if ignore_axis is None')
             repeats = int(s2 / s1)
             reduce_axis = ignore_axis[0]
+            while shape_fix[reduce_axis] % repeats != 0:
+                repeats -= 1
             shape_fix[reduce_axis] = shape_fix[reduce_axis] // repeats
             shape_fix[i] = shape_fix[i] * repeats
             data = np.reshape(data, shape_fix)
@@ -254,9 +256,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         The p-values for each time point.
         """
 
-    # Reshape and pad signal 2 so that it has the same number of time points as
-    # signal 1
-    sig2 = make_data_same(sig2, sig1, ignore_axis=0)
+    # flatten and repeat the passive signal over all time points
+
+
 
     # Concatenate the two signals for trial shuffling
     all_trial = np.concatenate((sig1, sig2), axis=0)
@@ -280,6 +282,48 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         p = np.sum(diff > obs_diff, axis=0) / n_perm
     elif tails == 2:
         p = np.sum(np.abs(diff) > np.abs(obs_diff), axis=0) / n_perm
+    else:
+        raise ValueError('tails must be 1 or 2')
+
+    return p
+
+
+def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
+                      tails: int = 1) -> np.ndarray:
+
+    # Reshape and pad signal 2 so that it has the same number of time points as
+    # signal 1
+    sig2 = make_data_same(sig2, sig1, ignore_axis=0)
+
+    p = np.zeros(sig1.shape[1:])
+    for i in range(sig1.shape[-1]):
+        p[i] = shuffle_test(sig1[..., i], sig2[..., i], n_perm, tails)
+
+    return p
+
+
+def shuffle_test(sig1, sig2, n_perm=1000, tails=1):
+
+    # Concatenate the two signals for trial shuffling
+    all_trial = np.concatenate((sig1, sig2), axis=0)
+    labels = np.concatenate((np.zeros(sig1.shape[0]), np.ones(sig2.shape[0])))
+
+    # Calculate the observed difference
+    obs_diff = np.mean(sig1, axis=0) - np.mean(sig2, axis=0)
+
+    # Shuffle labels and calculate the difference at each time point
+    diff = np.zeros((n_perm,))
+    for i in range(n_perm):
+        np.random.shuffle(labels)
+        # Calculate the difference between the two groups averaged across
+        # trials at each time point
+        diff[i] = np.mean(all_trial[labels == 0]) - np.mean(all_trial[labels == 1])
+
+    # Calculate the p-value
+    if tails == 1:
+        p = np.sum(diff > obs_diff) / n_perm
+    elif tails == 2:
+        p = np.sum(np.abs(diff) > np.abs(obs_diff)) / n_perm
     else:
         raise ValueError('tails must be 1 or 2')
 
