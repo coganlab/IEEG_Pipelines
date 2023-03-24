@@ -51,6 +51,8 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
     gamma.extract(trials, copy=False)
     utils.crop_pad(trials, "0.5s")
     out.append(trials)
+    if len(out) == 2:
+        break
 # resp = fastmath.rescale(out[1], out[0], copy=True)
 # aud = fastmath.rescale(out[2], out[0], copy=True)
 # go = fastmath.rescale(out[3], out[0], copy=True)
@@ -63,34 +65,10 @@ z = z_vals.average()
 power = fastmath.rescale(resp, base, 'mean', True).average()
 # %%
 import mne
-def shuffle_test(sig1, sig2, n_perm=1000, tails=1, axis=0):
-
-    # Calculate the observed difference
-    obs_diff = np.mean(sig1, axis=axis) - np.mean(sig2, axis=axis)
-
-    # Shuffle indices
-    all_indices = np.arange(sig1.shape[0] + sig2.shape[0])
-    diff = np.zeros((n_perm,) + sig1.shape[1:])
-    for i in range(n_perm):
-        permuted_indices = np.random.permutation(all_indices)
-        permuted_sig1 = sig1[permuted_indices[:sig1.shape[0]]]
-        permuted_sig2 = sig2[permuted_indices[sig1.shape[0]:]]
-        mean_diff = np.mean(permuted_sig1, axis=0) - np.mean(permuted_sig2, axis=0)
-        diff[i] = mean_diff
-
-    # Calculate the p-value
-    if tails == 1:
-        p = np.sum(diff > obs_diff) / n_perm
-    elif tails == 2:
-        p = np.sum(np.abs(diff) > np.abs(obs_diff)) / n_perm
-    else:
-        raise ValueError('tails must be 1 or 2')
-
-    return p
 # resp_evoke = resp.average()
 # resp_evoke.plot()
 sigA = resp.copy()._data
-sigB = fastmath.make_data_same(base._data.copy(), sigA, ignore_axis=0)
+sigB = fastmath.make_data_same(base._data.copy(), sigA, ignore_axis=0).T
 # sigB = np.array([np.repeat(np.array([base._data.copy()[:,i,:].flatten()]
 #                                     ).T,sigA.shape[2], axis=1) for i in range(sigA.shape[1])]).T
 sigA = np.swapaxes(sigA, 1, 2)

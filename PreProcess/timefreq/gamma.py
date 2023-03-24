@@ -4,6 +4,7 @@ from PreProcess.utils.utils import get_mem, cpu_count
 from mne.io import base, Raw
 from mne import Epochs
 from functools import singledispatch
+from tqdm import tqdm
 import numpy as np
 
 
@@ -55,7 +56,7 @@ def extract(data: np.ndarray, fs: int = None,
     env = np.zeros(in_data.shape)
 
     if len(in_data.shape) == 3:  # Assume shape is (trials, channels, time)
-        for trial in range(in_data.shape[0]):
+        for trial in tqdm(range(in_data.shape[0])):
             _, out, _ = filterbank_hilbert(in_data[trial, :, :].T, fs,
                                            passband, n_jobs)
             env[trial, :, :] = np.sum(out, axis=-1).T
