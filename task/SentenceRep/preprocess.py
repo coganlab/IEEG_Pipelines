@@ -63,22 +63,20 @@ z = z_vals.average()
 power = fastmath.rescale(resp, base, 'mean', True).average()
 # %%
 import mne
-def shuffle_test(sig1, sig2, n_perm=10, tails=1, axis=0):
-
-    # Concatenate the two signals for trial shuffling
-    all_trial = np.concatenate((sig1, sig2), axis=0)
-    labels = np.concatenate((np.zeros(sig1.shape[0]), np.ones(sig2.shape[0])))
+def shuffle_test(sig1, sig2, n_perm=1000, tails=1, axis=0):
 
     # Calculate the observed difference
-    obs_diff = np.mean(sig1, axis=0) - np.mean(sig2, axis=0)
+    obs_diff = np.mean(sig1, axis=axis) - np.mean(sig2, axis=axis)
 
-    # Shuffle labels and calculate the difference at each time point
-    diff = np.zeros((n_perm,))
+    # Shuffle indices
+    all_indices = np.arange(sig1.shape[0] + sig2.shape[0])
+    diff = np.zeros((n_perm,) + sig1.shape[1:])
     for i in range(n_perm):
-        np.random.shuffle(labels)
-        # Calculate the difference between the two groups averaged across
-        # trials at each time point
-        diff[i] = np.mean(all_trial[labels == 0], axis=0) - np.mean(all_trial[labels == 1], axis=0)
+        permuted_indices = np.random.permutation(all_indices)
+        permuted_sig1 = sig1[permuted_indices[:sig1.shape[0]]]
+        permuted_sig2 = sig2[permuted_indices[sig1.shape[0]:]]
+        mean_diff = np.mean(permuted_sig1, axis=0) - np.mean(permuted_sig2, axis=0)
+        diff[i] = mean_diff
 
     # Calculate the p-value
     if tails == 1:
@@ -92,20 +90,20 @@ def shuffle_test(sig1, sig2, n_perm=10, tails=1, axis=0):
 # resp_evoke = resp.average()
 # resp_evoke.plot()
 sigA = resp.copy()._data
-# sigB = fastmath.make_data_same(base._data.copy(), sigA, ignore_axis=0)
-sigB = np.array([np.repeat(np.array([base._data.copy()[:,i,:].flatten()]
-                                    ).T,sigA.shape[2], axis=1) for i in range(sigA.shape[1])])
-# sigA = np.swapaxes(sigA, 1, 2)
+sigB = fastmath.make_data_same(base._data.copy(), sigA, ignore_axis=0)
+# sigB = np.array([np.repeat(np.array([base._data.copy()[:,i,:].flatten()]
+#                                     ).T,sigA.shape[2], axis=1) for i in range(sigA.shape[1])]).T
+sigA = np.swapaxes(sigA, 1, 2)
 sigB = np.swapaxes(sigB, 0, 1)
 # sigC = np.swapaxes(power._data, 1, 2)
 # allsig = np.concatenate([sigA[:, :, 0], sigB[:, :, 0]], axis=0)
-# p_vals = fastmath.time_perm_cluster(sigA[:, :, 0], sigB[:, :, 0])
+p_vals = fastmath.time_perm_cluster(sigA, sigB)
 sensor_adjacency, ch_names = mne.channels.find_ch_adjacency(power.info, None)
-F_obs, clusters, cluster_p_values, H0 = \
-    mne.stats.permutation_cluster_test([sigA, sigB], out_type='mask', n_jobs =-1, # stat_fun=shuffle_test,
-                             n_permutations=100, threshold=None, tail=1, adjacency=None)
+# F_obs, clusters, cluster_p_values, H0 = \
+#     mne.stats.permutation_cluster_test([sigA, sigB], out_type='mask', n_jobs =-1, stat_fun=shuffle_test,
+#                              n_permutations=100, threshold=None, tail=1, adjacency=None)
 # F_obs, clusters, cluster_p_values, H0 = \
 #     mne.stats.permutation_cluster_1samp_test([z_vals._data.copy()], out_type='mask', n_jobs =-1, # stat_fun=shuffle_test,
 #                              n_permutations=100, threshold=None, tail=1, adjacency=None)
-clust = np.sum(np.array(clusters),0)
-mpl.pyplot.imshow(clust)
+# clust = np.sum(np.array(clusters),0)
+# mpl.pyplot.imshow(clust)

@@ -5,6 +5,8 @@ from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
 from mne import Epochs
 
+from numba import njit
+
 
 def sum_squared(x: np.ndarray) -> np.ndarray:
     """Compute norm of an array.
@@ -230,14 +232,16 @@ def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
     return data
 
 
+@njit()
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                      tails: int = 1) -> np.ndarray:
+                      tails: int = 1, axis: int = 0) -> np.ndarray:
     """Time permutation cluster test between two time series.
 
     The test is performed by shuffling the trials of the two time series and
     calculating the difference between the two groups at each time point. The
     p-value is the proportion of times the difference between the two groups
-    is greater than the original observed difference.
+    is greater than the original observed difference. The number of trials in
+    each group does not need to be the same.
 
     Parameters
     ----------
@@ -255,33 +259,29 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     p : np.ndarray, shape (..., time)
         The p-values for each time point.
         """
-
-    # flatten and repeat the passive signal over all time points
-
-
-
     # Concatenate the two signals for trial shuffling
-    all_trial = np.concatenate((sig1, sig2), axis=0)
-    labels = np.concatenate((np.zeros(sig1.shape[0]), np.ones(sig2.shape[0])))
+    all_trial = np.concatenate((sig1, sig2), axis=axis)
+    labels = np.concatenate((np.zeros(sig1.shape[axis]),
+                             np.ones(sig2.shape[axis])))
 
     # Calculate the observed difference
-    obs_diff = np.mean(sig1, axis=0) - np.mean(sig2, axis=0)
+    obs_diff = np.mean(sig1, axis=axis) - np.mean(sig2, axis=axis)
 
     # Shuffle labels and calculate the difference at each time point
-    diff = np.zeros((n_perm,) + sig1.shape[1:])
+    diff = np.zeros((n_perm) + tuple(obs_diff.shape))
     for i in range(n_perm):
         np.random.shuffle(labels)
-        for j in range(sig1.shape[-1]):
-            # Calculate the difference between the two groups averaged across
-            # trials at each time point
-            diff[i, ..., j] = np.mean(all_trial[labels == 0, ..., j], axis=0) \
-                              - np.mean(all_trial[labels == 1, ..., j], axis=0)
+        # Calculate the difference between the two groups averaged across
+        # trials at each time point
+        fake_sig1 = np.take(all_trial, np.where(labels == 0)[axis], axis=axis)
+        fake_sig2 = np.take(all_trial, np.where(labels == 1)[axis], axis=axis)
+        diff[i] = np.mean(fake_sig1, axis=axis) - np.mean(fake_sig2, axis=axis)
 
     # Calculate the p-value
     if tails == 1:
-        p = np.sum(diff > obs_diff, axis=0) / n_perm
+        p = np.sum(diff > obs_diff, axis=axis) / n_perm
     elif tails == 2:
-        p = np.sum(np.abs(diff) > np.abs(obs_diff), axis=0) / n_perm
+        p = np.sum(np.abs(diff) > np.abs(obs_diff), axis=axis) / n_perm
     else:
         raise ValueError('tails must be 1 or 2')
 

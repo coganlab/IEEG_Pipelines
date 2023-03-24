@@ -1,8 +1,8 @@
 name: preprocess
 channels:
-  - conda-forge
+  - defaults
 dependencies:
-  - python<3.12
+  - python<3.11
   - pip
   - numpy
   - matplotlib
@@ -12,5 +12,6 @@ dependencies:
   - tqdm
   - pytz
   - notebook
+  - numba
   - pip:
     - -r requirements.txt
