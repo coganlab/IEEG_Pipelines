@@ -5,6 +5,7 @@ from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
 from mne import Epochs
 
+from tqdm import tqdm
 from numba import njit
 
 
@@ -251,7 +252,6 @@ def mean(data: np.ndarray, axis: int = 0) -> np.ndarray:
     return np.sum(data, axis=axis) / data.shape[axis]
 
 
-@njit()
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0) -> np.ndarray:
     """Time permutation cluster test between two time series.
@@ -287,22 +287,23 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     obs_diff = mean(sig1, axis) - mean(sig2, axis)
 
     # Shuffle labels and calculate the difference at each time point
-    diff = np.zeros((n_perm,) + tuple(obs_diff.shape))
-    for i in range(n_perm):
+    larger = np.full((n_perm,) + tuple(obs_diff.shape), False)
+    for i in tqdm(range(n_perm)):
         np.random.shuffle(labels)
         # Calculate the difference between the two groups averaged across
         # trials at each time point
         fake_sig1 = np.take(all_trial, np.where(labels == 0)[axis], axis=axis)
         fake_sig2 = np.take(all_trial, np.where(labels == 1)[axis], axis=axis)
-        diff[i] = mean(fake_sig1, axis=axis) - mean(fake_sig2, axis=axis)
+        diff = mean(fake_sig1, axis=axis) - mean(fake_sig2, axis=axis)
+        if tails == 1:
+            larger[i] = diff > obs_diff
+        elif tails == 2:
+            larger[i] = np.abs(diff) > np.abs(obs_diff)
+        else:
+            raise ValueError('tails must be 1 or 2')
 
     # Calculate the p-value
-    if tails == 1:
-        p = np.sum(diff > obs_diff, axis=axis) / n_perm
-    elif tails == 2:
-        p = np.sum(np.abs(diff) > np.abs(obs_diff), axis=axis) / n_perm
-    else:
-        raise ValueError('tails must be 1 or 2')
+    p = np.sum(larger, axis=0) / n_perm
 
     return p
 
