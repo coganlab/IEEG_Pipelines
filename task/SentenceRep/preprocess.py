@@ -104,11 +104,11 @@ sigA = resp.copy()._data
 sigB = np.array([np.repeat(np.array([base._data.copy()[:,i,:].flatten()]
                                     ).T,sigA.shape[2], axis=1) for i in range(sigA.shape[1])])
 sigB = np.swapaxes(sigB,0,1)
-sigA = np.swapaxes(sigA, 1, 2)
-sigB = np.swapaxes(sigB, 1, 2)
+# sigA = np.swapaxes(sigA, 1, 2)
+# sigB = np.swapaxes(sigB, 1, 2)
 # sigC = np.swapaxes(power._data, 1, 2)
 # allsig = np.concatenate([sigA[:, :, 0], sigB[:, :, 0]], axis=0)
-p_vals = time_perm_cluster(sigA, sigB)
+p_vals = fastmath.time_perm_cluster(sigA, sigB)
 # sensor_adjacency, ch_names = mne.channels.find_ch_adjacency(power.info, None)
 # df = 150-1  # degrees of freedom
 # func = lambda x : scipy.stats.kruskal(*x)
