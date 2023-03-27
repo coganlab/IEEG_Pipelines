@@ -72,28 +72,30 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     labels = np.concatenate((np.zeros(sig1.shape[axis]),
                              np.ones(sig2.shape[axis])))
 
+    all_labels = np.array([np.random.permutation(labels) == 1 for _ in range(n_perm)])
+    trials_perm = np.array([all_trial for _ in range(n_perm)])
+
     # Calculate the observed difference
     obs_diff = np.mean(sig1, axis) - np.mean(sig2, axis)
 
-    # Shuffle labels and calculate the difference at each time point
-    diff = np.zeros((n_perm,) + tuple(obs_diff.shape))
-    for i in range(n_perm):
-        np.random.shuffle(labels)
-        # Calculate the difference between the two groups averaged across
-        # trials at each time point
-        fake_sig1 = np.take(all_trial, labels == 0, axis=axis)
-        fake_sig2 = np.take(all_trial, labels == 1, axis=axis)
-        diff[i] = np.mean(fake_sig1, axis=axis) - np.mean(fake_sig2, axis=axis)
-
-    # Calculate the p-value
+    # Calculate the difference between the two groups averaged across
+    # trials at each time point
+    fake_sig1 = np.array([np.take(all_trial, np.where(
+        all_labels[i] == 0)[0], axis=axis) for i in range(n_perm)])
+    fake_sig2 = np.array([np.take(all_trial, np.where(
+        all_labels[i] == 1)[0], axis=axis) for i in range(n_perm)])
+    diff = np.mean(fake_sig1, axis=axis) - np.mean(fake_sig2, axis=axis)
     if tails == 1:
-        p = np.sum(diff > obs_diff, axis=axis) / n_perm
+        larger = diff > obs_diff
     elif tails == 2:
-        p = np.sum(np.abs(diff) > np.abs(obs_diff), axis=axis) / n_perm
+        larger = np.abs(diff) > np.abs(obs_diff)
     else:
         raise ValueError('tails must be 1 or 2')
 
-    return 1-p
+    # Calculate the p-value
+    p = np.sum(larger, axis=0) / n_perm
+
+    return p
 # %%
 import mne
 import scipy
@@ -103,12 +105,12 @@ sigA = resp.copy()._data
 # sigB = fastmath.make_data_same(base._data.copy(), sigA, ignore_axis=0)
 sigB = np.array([np.repeat(np.array([base._data.copy()[:,i,:].flatten()]
                                     ).T,sigA.shape[2], axis=1) for i in range(sigA.shape[1])])
-sigB = np.swapaxes(sigB,0,1)
+sigB = np.swapaxes(sigB, 0, 1)
 # sigA = np.swapaxes(sigA, 1, 2)
 # sigB = np.swapaxes(sigB, 1, 2)
 # sigC = np.swapaxes(power._data, 1, 2)
 # allsig = np.concatenate([sigA[:, :, 0], sigB[:, :, 0]], axis=0)
-p_vals = fastmath.time_perm_cluster(sigA, sigB)
+p_vals = time_perm_cluster(sigA, sigB, 100)
 # sensor_adjacency, ch_names = mne.channels.find_ch_adjacency(power.info, None)
 # df = 150-1  # degrees of freedom
 # func = lambda x : scipy.stats.kruskal(*x)
