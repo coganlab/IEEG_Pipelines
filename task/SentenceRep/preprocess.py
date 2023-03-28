@@ -73,7 +73,6 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
                              np.ones(sig2.shape[axis])))
 
     all_labels = np.array([np.random.permutation(labels) == 1 for _ in range(n_perm)])
-    trials_perm = np.array([all_trial for _ in range(n_perm)])
 
     # Calculate the observed difference
     obs_diff = np.mean(sig1, axis) - np.mean(sig2, axis)
@@ -84,7 +83,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         all_labels[i] == 0)[0], axis=axis) for i in range(n_perm)])
     fake_sig2 = np.array([np.take(all_trial, np.where(
         all_labels[i] == 1)[0], axis=axis) for i in range(n_perm)])
-    diff = np.mean(fake_sig1, axis=axis) - np.mean(fake_sig2, axis=axis)
+    diff = np.mean(fake_sig1, axis=axis+1) - np.mean(fake_sig2, axis=axis+1)
     if tails == 1:
         larger = diff > obs_diff
     elif tails == 2:
@@ -97,30 +96,43 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     return p
 # %%
+sigA = resp.copy()._data
+
+# sigB = fastmath.make_data_same(base._data.copy(), sigA, ignore_axis=0)
+
+# sigB = np.array([np.repeat(np.array([base._data.copy()[:,i,:].flatten(
+#     )]).T,sigA.shape[2], axis=1) for i in range(sigA.shape[1])])
+
+trials = int(base._data.copy()[:, 0, :].size / sigA.shape[-1])
+sigB = np.full((trials, *sigA.shape[1:]), np.nan)
+for i in range(sigA.shape[1]):
+    sigB[:, i, :].flat = base._data.copy()[:, i, :].flat
+del trials
+
+p_vals = time_perm_cluster(sigA, sigB, 10000)
+
+# %%
 import mne
 import scipy
-# resp_evoke = resp.average()
-# resp_evoke.plot()
-sigA = resp.copy()._data
-# sigB = fastmath.make_data_same(base._data.copy(), sigA, ignore_axis=0)
-sigB = np.array([np.repeat(np.array([base._data.copy()[:,i,:].flatten()]
-                                    ).T,sigA.shape[2], axis=1) for i in range(sigA.shape[1])])
-sigB = np.swapaxes(sigB, 0, 1)
-# sigA = np.swapaxes(sigA, 1, 2)
-# sigB = np.swapaxes(sigB, 1, 2)
+
+# sigB = np.swapaxes(sigB, 0, 1)
+
 # sigC = np.swapaxes(power._data, 1, 2)
 # allsig = np.concatenate([sigA[:, :, 0], sigB[:, :, 0]], axis=0)
-p_vals = time_perm_cluster(sigA, sigB, 100)
+
+# H, p = scipy.stats.kruskal(sigA, sigB)
 # sensor_adjacency, ch_names = mne.channels.find_ch_adjacency(power.info, None)
 # df = 150-1  # degrees of freedom
 # func = lambda x : scipy.stats.kruskal(*x)
 # t_lim = scipy.stats.distributions.t.ppf(1 - 0.001 / 2, df=df)
+# sigA = np.swapaxes(sigA, 1, 2)
+# sigB = np.swapaxes(sigB, 1, 2)
 # F_obs, clusters, cluster_p_values, H0 = \
-#     mne.stats.permutation_cluster_test([sigA, sigB], out_type='mask', n_jobs =-1, stat_fun=scipy.stats.kruskal,
-#                              n_permutations=100, threshold=10, tail=1, adjacency=sensor_adjacency
+#     mne.stats.permutation_cluster_test([sigA, sigB], out_type='mask', n_jobs =-1, # stat_fun=scipy.stats.kruskal,
+#                              n_permutations=1000, threshold=None, tail=1, adjacency=sensor_adjacency
 #                                        )
-# # F_obs, clusters, cluster_p_values, H0 = \
-# #     mne.stats.permutation_cluster_1samp_test([z_vals._data.copy()], out_type='mask', n_jobs =-1, # stat_fun=shuffle_test,
-# #                              n_permutations=100, threshold=None, tail=1, adjacency=None)
+# # # F_obs, clusters, cluster_p_values, H0 = \
+# # #     mne.stats.permutation_cluster_1samp_test([z_vals._data.copy()], out_type='mask', n_jobs =-1, # stat_fun=shuffle_test,
+# # #                              n_permutations=100, threshold=None, tail=1, adjacency=None)
 # clust = np.sum(np.array(clusters),0)
-# mpl.pyplot.imshow(clust)
+# mpl.pyplot.imshow(clust.T)
