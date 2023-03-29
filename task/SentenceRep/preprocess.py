@@ -109,30 +109,31 @@ for i in range(sigA.shape[1]):
     sigB[:, i, :].flat = base._data.copy()[:, i, :].flat
 del trials
 
-p_vals = time_perm_cluster(sigA, sigB, 10000)
+# p_vals = time_perm_cluster(sigA, sigB, 10000)
 
 # %%
 import mne
-import scipy
+func = lambda s1, s2: np.mean(s1, axis=0) - np.mean(s2, axis=0)
+# find the 95th percentile of the null distribution
+threshold = np.percentile(func(sigA, sigB), 95)
+Z, clusters, cluster_p_values, H0 = mne.stats.permutation_cluster_test(
+    [sigA, sigB], out_type='mask', n_jobs =-1, stat_fun=func,
+    n_permutations=1000, threshold=threshold, tail=1, t_power=0)
+clust = np.sum(np.array(clusters), 0)
+mpl.pyplot.imshow(clust)
 
-# sigB = np.swapaxes(sigB, 0, 1)
-
-# sigC = np.swapaxes(power._data, 1, 2)
-# allsig = np.concatenate([sigA[:, :, 0], sigB[:, :, 0]], axis=0)
-
-# H, p = scipy.stats.kruskal(sigA, sigB)
-# sensor_adjacency, ch_names = mne.channels.find_ch_adjacency(power.info, None)
-# df = 150-1  # degrees of freedom
-# func = lambda x : scipy.stats.kruskal(*x)
-# t_lim = scipy.stats.distributions.t.ppf(1 - 0.001 / 2, df=df)
-# sigA = np.swapaxes(sigA, 1, 2)
-# sigB = np.swapaxes(sigB, 1, 2)
-# F_obs, clusters, cluster_p_values, H0 = \
-#     mne.stats.permutation_cluster_test([sigA, sigB], out_type='mask', n_jobs =-1, # stat_fun=scipy.stats.kruskal,
-#                              n_permutations=1000, threshold=None, tail=1, adjacency=sensor_adjacency
-#                                        )
-# # # F_obs, clusters, cluster_p_values, H0 = \
-# # #     mne.stats.permutation_cluster_1samp_test([z_vals._data.copy()], out_type='mask', n_jobs =-1, # stat_fun=shuffle_test,
-# # #                              n_permutations=100, threshold=None, tail=1, adjacency=None)
-# clust = np.sum(np.array(clusters),0)
-# mpl.pyplot.imshow(clust.T)
+# %%
+# Z = np.full(sigA.shape[1:], 0.)
+# clust = []
+# for i in range(threshold.shape[0]):
+#     Z[i], clusters, cluster_p_values, H0 = \
+#         mne.stats.permutation_cluster_test([sigA[:,i,:], sigB[:,i,:]], out_type='mask', n_jobs =-1, stat_fun=func,
+#                                  n_permutations=1000, threshold=threshold[i], tail=1
+#                                            )
+#     if not clusters:
+#         clust.append(np.zeros((sigA.shape[2],)))
+#     else:
+#         clust.append(np.array(clusters))
+# # clust = np.array(clust)
+# clust = np.sum(np.array(clust),0)
+# mpl.pyplot.imshow(Z)
