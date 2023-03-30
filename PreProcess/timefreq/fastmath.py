@@ -7,6 +7,7 @@ from mne import Epochs
 
 from tqdm import tqdm
 from numba import njit
+from ..utils.utils import parallelize
 
 
 def sum_squared(x: np.ndarray) -> np.ndarray:
@@ -233,7 +234,7 @@ def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
     return data
 
 
-@njit()
+@njit(fastmath=True)
 def mean(data: np.ndarray, axis: int = 0) -> np.ndarray:
     """Calculate the mean of an array using numba compatable methods.
 
@@ -283,68 +284,64 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     labels = np.concatenate((np.zeros(sig1.shape[axis]),
                              np.ones(sig2.shape[axis])))
 
-    # Calculate the observed difference
-    obs_diff = mean(sig1, axis) - mean(sig2, axis)
+    all_labels = np.array(
+        [np.random.permutation(labels) for _ in range(n_perm)])
 
-    # Shuffle labels and calculate the difference at each time point
-    larger = np.full((n_perm,) + tuple(obs_diff.shape), False)
-    for i in tqdm(range(n_perm)):
-        np.random.shuffle(labels)
-        # Calculate the difference between the two groups averaged across
-        # trials at each time point
-        fake_sig1 = np.take(all_trial, np.where(labels == 0)[axis], axis=axis)
-        fake_sig2 = np.take(all_trial, np.where(labels == 1)[axis], axis=axis)
-        diff = mean(fake_sig1, axis=axis) - mean(fake_sig2, axis=axis)
-        if tails == 1:
-            larger[i] = diff > obs_diff
-        elif tails == 2:
-            larger[i] = np.abs(diff) > np.abs(obs_diff)
-        else:
-            raise ValueError('tails must be 1 or 2')
+    # Calculate the observed difference
+    obs_diff = np.mean(sig1, axis) - np.mean(sig2, axis)
+
+    # Calculate the difference between the two groups averaged across
+    # trials at each time point
+    fake_sig1 = np.array([np.take(all_trial, np.where(
+        all_labels[i] == 0)[0], axis=axis) for i in range(n_perm)])
+    fake_sig2 = np.array([np.take(all_trial, np.where(
+        all_labels[i] == 1)[0], axis=axis) for i in range(n_perm)])
+    diff = np.mean(fake_sig1, axis=axis + 1) - np.mean(fake_sig2,
+                                                       axis=axis + 1)
+    if tails == 1:
+        larger = diff > obs_diff
+    elif tails == 2:
+        larger = np.abs(diff) > np.abs(obs_diff)
+    else:
+        raise ValueError('tails must be 1 or 2')
 
     # Calculate the p-value
-    p = np.sum(larger, axis=0) / n_perm
+    p = np.mean(larger, axis=0)
 
     return p
 
 
 def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                      tails: int = 1) -> np.ndarray:
-
-    # Reshape and pad signal 2 so that it has the same number of time points as
-    # signal 1
-    sig2 = make_data_same(sig2, sig1, ignore_axis=0)
-
-    p = np.zeros(sig1.shape[1:])
-    for i in range(sig1.shape[-1]):
-        p[i] = shuffle_test(sig1[..., i], sig2[..., i], n_perm, tails)
-
-    return p
-
-
-def shuffle_test(sig1, sig2, n_perm=1000, tails=1):
-
+                      tails: int = 1, axis: int = 0, verbose: bool = True) -> np.ndarray:
     # Concatenate the two signals for trial shuffling
-    all_trial = np.concatenate((sig1, sig2), axis=0)
-    labels = np.concatenate((np.zeros(sig1.shape[0]), np.ones(sig2.shape[0])))
+    all_trial = np.concatenate((sig1, sig2), axis=axis)
+    labels = np.concatenate((np.zeros(sig1.shape[axis]),
+                             np.ones(sig2.shape[axis])))
+
+    all_labels = [np.random.permutation(labels) for _ in range(n_perm)]
+    if verbose:
+        all_labels = tqdm(all_labels)
 
     # Calculate the observed difference
-    obs_diff = np.mean(sig1, axis=0) - np.mean(sig2, axis=0)
+    obs_diff = np.mean(sig1, axis) - np.mean(sig2, axis)
+    # larger = np.full((n_perm,) + tuple(obs_diff.shape), False)
 
-    # Shuffle labels and calculate the difference at each time point
-    diff = np.zeros((n_perm,))
-    for i in range(n_perm):
-        np.random.shuffle(labels)
-        # Calculate the difference between the two groups averaged across
-        # trials at each time point
-        diff[i] = np.mean(all_trial[labels == 0]) - np.mean(all_trial[labels == 1])
+    larger = parallelize(sample_test, all_labels, all_trial=all_trial,
+                         obs_diff=obs_diff, tails=tails, axis=axis, n_jobs=-1)
 
-    # Calculate the p-value
+    return np.mean(np.array(larger), axis=0)
+
+
+def sample_test(labels: np.ndarray, all_trial: np.ndarray, obs_diff: np.ndarray,
+                 tails: int = 1, axis: int = 0):
+    # Calculate the difference between the two groups averaged across
+    # trials at each time point
+    fake_sig1 = np.take(all_trial, np.where(labels == 0)[axis], axis=axis)
+    fake_sig2 = np.take(all_trial, np.where(labels == 1)[axis], axis=axis)
+    diff = mean(fake_sig1, axis=axis) - mean(fake_sig2, axis=axis)
     if tails == 1:
-        p = np.sum(diff > obs_diff) / n_perm
+        return diff > obs_diff
     elif tails == 2:
-        p = np.sum(np.abs(diff) > np.abs(obs_diff)) / n_perm
+        return np.abs(diff) > np.abs(obs_diff)
     else:
         raise ValueError('tails must be 1 or 2')
-
-    return p
