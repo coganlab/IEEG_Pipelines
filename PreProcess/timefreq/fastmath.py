@@ -255,6 +255,19 @@ def mean(data: np.ndarray, axis: int = 0) -> np.ndarray:
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0) -> np.ndarray:
+    
+    if len(sig1.shape) > 2:
+        if any(sig1.shape[1:-2] != sig2.shape[1:-2]):
+            trials = int(sig2[:, 0, ..., :].size / sig1.shape[-1])
+            sigB = np.full((trials, *sig1.shape[1:]), np.nan)
+            for i in range(sig1.shape[1]):
+                sigB[:, i, :].flat = sig2[:, i, :].flat
+            sig2 = sigB.copy()
+            del trials, sigB
+
+
+def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
+                      tails: int = 1, axis: int = 0) -> np.ndarray:
     """Time permutation cluster test between two time series.
 
     The test is performed by shuffling the trials of the two time series and
@@ -281,10 +294,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         """
     # Concatenate the two signals for trial shuffling
     all_trial = np.concatenate((sig1, sig2), axis=axis)
-    labels = np.concatenate((np.zeros(sig1.shape[axis]),
-                             np.ones(sig2.shape[axis])))
+    labels = np.concatenate((np.full(sig1.shape[axis], False, dtype=bool),
+                             np.full(sig2.shape[axis], True, dtype=bool)))
 
-    all_labels = np.array(
+    perm_labels = np.array(
         [np.random.permutation(labels) for _ in range(n_perm)])
 
     # Calculate the observed difference
@@ -292,10 +305,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     # Calculate the difference between the two groups averaged across
     # trials at each time point
-    fake_sig1 = np.array([np.take(all_trial, np.where(
-        all_labels[i] == 0)[0], axis=axis) for i in range(n_perm)])
-    fake_sig2 = np.array([np.take(all_trial, np.where(
-        all_labels[i] == 1)[0], axis=axis) for i in range(n_perm)])
+    fake_sig1 = np.array([np.take(all_trial, np.where(  # where False
+        np.invert(perm_labels[i]))[0], axis=axis) for i in range(n_perm)])
+    fake_sig2 = np.array([np.take(all_trial, np.where(  # where True
+        perm_labels[i])[0], axis=axis) for i in range(n_perm)])
     diff = np.mean(fake_sig1, axis=axis + 1) - np.mean(fake_sig2,
                                                        axis=axis + 1)
     if tails == 1:
@@ -311,7 +324,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     return p
 
 
-def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
+def time_perm_shuff2(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0, verbose: bool = True) -> np.ndarray:
     # Concatenate the two signals for trial shuffling
     all_trial = np.concatenate((sig1, sig2), axis=axis)
