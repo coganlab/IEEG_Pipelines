@@ -11,7 +11,7 @@ import numpy as np
 @singledispatch
 def extract(data: np.ndarray, fs: int = None,
             passband: tuple[int, int] = (70, 150), copy: bool = True,
-            n_jobs=-1) -> np.ndarray:
+            n_jobs=-1, verbose: bool = True) -> np.ndarray:
     """Extract gamma band envelope from data.
 
     Parameters
@@ -56,7 +56,10 @@ def extract(data: np.ndarray, fs: int = None,
     env = np.zeros(in_data.shape)
 
     if len(in_data.shape) == 3:  # Assume shape is (trials, channels, time)
-        for trial in tqdm(range(in_data.shape[0])):
+        trials = range(in_data.shape[0])
+        if verbose:
+            trials = tqdm(trials)
+        for trial in trials:
             _, out, _ = filterbank_hilbert(in_data[trial, :, :].T, fs,
                                            passband, n_jobs)
             env[trial, :, :] = np.sum(out, axis=-1).T
@@ -86,22 +89,25 @@ def _extract_inst(inst: Signal, fs: int, copy: bool, **kwargs) -> Signal:
 @extract.register
 def _(inst: base.BaseRaw, fs: int = None,
       passband: tuple[int, int] = (70, 150),
-      copy: bool = True, n_jobs=-1) -> Raw:
-    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs)
+      copy: bool = True, n_jobs=-1, verbose: bool = True) -> Raw:
+    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
+                         verbose=verbose)
 
 
 @extract.register
 def _(inst: BaseEpochs, fs: int = None,
       passband: tuple[int, int] = (70, 150),
-      copy: bool = True, n_jobs=-1) -> Epochs:
-    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs)
+      copy: bool = True, n_jobs=-1, verbose: bool = True) -> Epochs:
+    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
+                         verbose=verbose)
 
 
 @extract.register
 def _(inst: Evoked, fs: int = None,
       passband: tuple[int, int] = (70, 150),
-      copy: bool = True, n_jobs=-1) -> Evoked:
-    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs)
+      copy: bool = True, n_jobs=-1, verbose: bool = True) -> Evoked:
+    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
+                         verbose=verbose)
 
 
 def _my_hilt(x: np.ndarray, fs, Wn=(1, 150), n_jobs=-1):
