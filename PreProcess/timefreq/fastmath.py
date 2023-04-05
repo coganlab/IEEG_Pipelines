@@ -257,7 +257,7 @@ def mean(data: np.ndarray, axis: int = 0) -> np.ndarray:
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
                       n_perm: int = 1000, tails: int = 1, axis: int = 0
                       ) -> np.ndarray:
-    """ Calculate significant clusters using permutation testing.
+    """ Calculate significant clusters using permutation testing and cluster correction.
 
     Parameters
     ----------
@@ -279,7 +279,6 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
     clusters : array, shape (..., time)
         The binary array of significant clusters.
     """
-    from scipy import ndimage
 
     # reshape the data to so that the last dimension of sig 2 is the same as
     # the last dimension of sig 1
