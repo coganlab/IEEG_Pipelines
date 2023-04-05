@@ -286,13 +286,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
     # reshape the data to so that the last dimension of sig 2 is the same as
     # the last dimension of sig 1
     if len(sig1.shape) > 2:
-        if any(list(sig1.shape[1:-2] != sig2.shape[1:-2])):
+        if sig1.shape[-1] != sig2.shape[-1]:
             trials = int(sig2[:, 0, ..., :].size / sig1.shape[-1])
-            sigB = np.full((trials, *sig1.shape[1:]), np.nan)
+            temp = np.full((trials, *sig1.shape[1:]), np.nan)
             for i in range(sig1.shape[1]):
-                sigB[:, i, :].flat = sig2[:, i, :].flat
-            sig2 = sigB.copy()
-            del trials, sigB
+                temp[:, i, :].flat = sig2[:, i, :].flat
+            sig2 = temp.copy()
+            del trials, temp
 
     # Calculate the p value of difference between the two groups
     p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True)
@@ -319,31 +319,35 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
     # Remove clusters that are smaller than 3 time points TODO: fix this
     clusters = ndimage.binary_opening(b_act, structure=np.ones(3))
 
-
-    # Remove clusters that are not significantly larger than the permutation
-    # distribution
-    clusters = b_act.copy()
-    for i in range(clusters.shape[0]):
-        if np.sum(clusters[i]) > 0:
-            larger = tail_compare(b_act[i], b_perm[:, i], tails)
-            clusters[i] = np.logical_and(clusters[i], np.mean(larger, axis=0))
+    # Find clusters
+    clusters = np.zeros(b_act.shape, dtype=int)
+    for i in range(b_act.shape[0]):
+        clusters_p = time_cluster(b_act[i], b_perm[:, i])
+        clusters[i] = clusters_p > 0.95
 
     return clusters
 
 
-def time_cluster(act: np.ndarray, perm: np.ndarray,
-                 tails: int = 1, axis: int = 0) -> np.ndarray:
+def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
+                 tails: int = 1) -> np.ndarray:
     """Cluster correction for time series data.
+
+    1. Creates an index of all the binary clusters in the active and permuted
+        passive data.
+    2. For each permutation in the passive data, determine the maximum cluster
+        size.
+    3. For each cluster in the active data, determine the proportion of
+        permutations that have a cluster of the same size or larger.
+
+
     
     Parameters
     ----------
 
-    act : array, shape (..., time)
+    act : array, shape (time)
         The active data.
-    perm : array, shape (n_perm, ..., time)
+    perm : array, shape (n_perm, time)
         The permutation passive data.
-    diff : array, shape (..., time)
-        Difference between the two groups.
     tails : int, optional
         The number of tails to use. 1 for one-tailed, 2 for two-tailed.
     axis : int, optional
@@ -354,45 +358,41 @@ def time_cluster(act: np.ndarray, perm: np.ndarray,
     clusters : array, shape (..., time)
         The clusters.
     """
-    from scipy import ndimage
 
-    # Calculate the number of significant time points
-    n_sig = np.sum(act, axis=axis)
+    # Create an index of all the binary clusters in the active and permuted
+    # passive data
+    from skimage import measure
+    act_clusters = measure.label(act, connectivity=1)
+    perm_clusters = measure.label(perm, connectivity=1)
 
-    # Calculate the number of significant time points in the permutation
-    # distribution
-    n_sig_perm = np.sum(perm, axis=axis)
+    # For each permutation in the passive data, determine the maximum cluster
+    # size
+    max_perm_cluster = np.zeros(perm_clusters.shape)
+    for i in range(perm_clusters.shape[0]):
+        for j in range(1, perm_clusters.max()+1):
+            max_perm_cluster[i] = np.maximum(max_perm_cluster[i],
+                                             perm_clusters[i] == j)
 
-    # Calculate the number of significant time points in the permutation
-    # distribution that are larger than the number of significant time points
-    # in the active data
-    if tails == 1:
-        n_sig_perm = np.sum(n_sig_perm > n_sig, axis=0)
-    elif tails == 2:
-        n_sig_perm = np.sum(np.abs(n_sig_perm) > np.abs(n_sig), axis=0)
-    elif tails == -1:
-        n_sig_perm = np.sum(n_sig_perm < n_sig, axis=0)
+    # For each cluster in the active data, determine the proportion of
+    # permutations that have a cluster of the same size or larger
+    cluster_p_values = np.zeros(act_clusters.shape)
+    for i in range(act_clusters.max()):
+        # Get the cluster
+        act_cluster = act_clusters == i+1
+        # Get the cluster size
+        act_cluster_size = np.sum(act_cluster)
+        # Determine the proportion of permutations that have a cluster of the
+        # same size or larger
+        larger = tail_compare(act_cluster_size,
+                              np.sum(max_perm_cluster, axis=1))
+        cluster_p_values[act_cluster] = np.mean(larger, axis=0)
+
+    # If p_val is not None, return the boolean array indicating whether the
+    # cluster is significant
+    if p_val is not None:
+        return tail_compare(cluster_p_values, p_val, tails)
     else:
-        raise ValueError('tails must be 1, 2, or -1')
-
-    # Calculate the p value of the number of significant time points in the
-    # permutation distribution that are larger than the number of significant
-    # time points in the active data
-    p_sig = n_sig_perm / perm.shape[0]
-
-    # Convert p values to z scores
-    p_sig[p_sig == 0] = 1 / perm.shape[0]
-    p_sig[p_sig == 1] = 1 - (1 / perm.shape[0])
-    z_sig = norm.ppf(1 - p_sig)
-
-    # Create binary clusters using the z scores
-    clusters = tail_compare(z_sig, norm.ppf(1 - 0.05), tails)
-
-    # Remove clusters that are smaller than 3 time points
-    clusters = ndimage.binary_opening(clusters, structure=np.ones(3))
-
-
-    return clusters
+        return cluster_p_values
 
 
 def tail_compare(diff: np.ndarray | float | int,
