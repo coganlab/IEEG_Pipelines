@@ -259,8 +259,6 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
                       ) -> np.ndarray:
     """ Calculate significant clusters using permutation testing.
 
-
-
     Parameters
     ----------
     sig1 : array, shape (trials, ..., time)
@@ -299,7 +297,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
 
     # Calculate the p value of the permutation distribution
     p_perm = np.zeros(diff.shape)
-    for i in range(diff.shape[0]):
+    for i in tqdm(range(diff.shape[0])):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance
         larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
@@ -316,12 +314,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
     b_act = b_all[0]
     b_perm = b_all[1:]
 
-    # Remove clusters that are smaller than 3 time points TODO: fix this
-    clusters = ndimage.binary_opening(b_act, structure=np.ones(3))
-
     # Find clusters
     clusters = np.zeros(b_act.shape, dtype=int)
-    for i in range(b_act.shape[0]):
+    for i in tqdm(range(b_act.shape[0])):
         clusters_p = time_cluster(b_act[i], b_perm[:, i])
         clusters[i] = clusters_p > 0.95
 
@@ -339,8 +334,6 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
     3. For each cluster in the active data, determine the proportion of
         permutations that have a cluster of the same size or larger.
 
-
-    
     Parameters
     ----------
 
