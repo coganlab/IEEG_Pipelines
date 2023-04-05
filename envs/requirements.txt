@@ -13,6 +13,7 @@ numpy
 numba
 matplotlib
 scipy
+scikit-image
 pandas
 joblib
 psutil
