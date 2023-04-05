@@ -316,7 +316,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
     b_act = b_all[0]
     b_perm = b_all[1:]
 
-    # Remove clusters that are smaller than 3 time points
+    # Remove clusters that are smaller than 3 time points TODO: fix this
     clusters = ndimage.binary_opening(b_act, structure=np.ones(3))
 
 
