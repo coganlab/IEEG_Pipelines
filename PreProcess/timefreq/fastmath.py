@@ -4,6 +4,7 @@ import numpy as np
 from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
 from mne import Epochs
+from scipy.stats import norm
 
 from tqdm import tqdm
 from numba import njit
@@ -253,11 +254,39 @@ def mean(data: np.ndarray, axis: int = 0) -> np.ndarray:
     return np.sum(data, axis=axis) / data.shape[axis]
 
 
-def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                      tails: int = 1, axis: int = 0) -> np.ndarray:
-    
+def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
+                      n_perm: int = 1000, tails: int = 1, axis: int = 0
+                      ) -> np.ndarray:
+    """ Calculate significant clusters using permutation testing.
+
+
+
+    Parameters
+    ----------
+    sig1 : array, shape (trials, ..., time)
+        Active signal. The first dimension is assumed to be the trials
+    sig2 : array, shape (trials, ..., time)
+        Passive signal. The first dimension is assumed to be the trials
+    z_thresh : float
+        The z-score threshold to use for determining significant clusters.
+    n_perm : int, optional
+        The number of permutations to perform.
+    tails : int, optional
+        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+    axis : int, optional
+        The axis to perform the permutation test across.
+
+    Returns
+    -------
+    clusters : array, shape (..., time)
+        The binary array of significant clusters.
+    """
+    from scipy import ndimage
+
+    # reshape the data to so that the last dimension of sig 2 is the same as
+    # the last dimension of sig 1
     if len(sig1.shape) > 2:
-        if any(sig1.shape[1:-2] != sig2.shape[1:-2]):
+        if any(list(sig1.shape[1:-2] != sig2.shape[1:-2])):
             trials = int(sig2[:, 0, ..., :].size / sig1.shape[-1])
             sigB = np.full((trials, *sig1.shape[1:]), np.nan)
             for i in range(sig1.shape[1]):
@@ -265,9 +294,143 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
             sig2 = sigB.copy()
             del trials, sigB
 
+    # Calculate the p value of difference between the two groups
+    p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True)
+
+    # Calculate the p value of the permutation distribution
+    p_perm = np.zeros(diff.shape)
+    for i in range(diff.shape[0]):
+        # p_perm is the probability of observing a difference as large as the
+        # other permutations, or larger, by chance
+        larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
+        p_perm[i] = np.mean(larger, axis=0)
+    p_all = np.concatenate((np.expand_dims(p_act, 0), p_perm), axis=0)
+
+    # Convert p values to z scores
+    p_all[p_all == 0] = 1 / n_perm
+    p_all[p_all == 1] = 1 - (1 / n_perm)
+    z_all = norm.ppf(1 - p_all)
+
+    # Create binary clusters using the z scores
+    b_all = tail_compare(z_all, z_thresh, tails)
+    b_act = b_all[0]
+    b_perm = b_all[1:]
+
+    # Remove clusters that are smaller than 3 time points
+    clusters = ndimage.binary_opening(b_act, structure=np.ones(3))
+
+
+    # Remove clusters that are not significantly larger than the permutation
+    # distribution
+    clusters = b_act.copy()
+    for i in range(clusters.shape[0]):
+        if np.sum(clusters[i]) > 0:
+            larger = tail_compare(b_act[i], b_perm[:, i], tails)
+            clusters[i] = np.logical_and(clusters[i], np.mean(larger, axis=0))
+
+    return clusters
+
+
+def time_cluster(act: np.ndarray, perm: np.ndarray,
+                 tails: int = 1, axis: int = 0) -> np.ndarray:
+    """Cluster correction for time series data.
+    
+    Parameters
+    ----------
+
+    act : array, shape (..., time)
+        The active data.
+    perm : array, shape (n_perm, ..., time)
+        The permutation passive data.
+    diff : array, shape (..., time)
+        Difference between the two groups.
+    tails : int, optional
+        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+    axis : int, optional
+        The axis to perform the permutation test across.
+
+    Returns
+    -------
+    clusters : array, shape (..., time)
+        The clusters.
+    """
+    from scipy import ndimage
+
+    # Calculate the number of significant time points
+    n_sig = np.sum(act, axis=axis)
+
+    # Calculate the number of significant time points in the permutation
+    # distribution
+    n_sig_perm = np.sum(perm, axis=axis)
+
+    # Calculate the number of significant time points in the permutation
+    # distribution that are larger than the number of significant time points
+    # in the active data
+    if tails == 1:
+        n_sig_perm = np.sum(n_sig_perm > n_sig, axis=0)
+    elif tails == 2:
+        n_sig_perm = np.sum(np.abs(n_sig_perm) > np.abs(n_sig), axis=0)
+    elif tails == -1:
+        n_sig_perm = np.sum(n_sig_perm < n_sig, axis=0)
+    else:
+        raise ValueError('tails must be 1, 2, or -1')
+
+    # Calculate the p value of the number of significant time points in the
+    # permutation distribution that are larger than the number of significant
+    # time points in the active data
+    p_sig = n_sig_perm / perm.shape[0]
+
+    # Convert p values to z scores
+    p_sig[p_sig == 0] = 1 / perm.shape[0]
+    p_sig[p_sig == 1] = 1 - (1 / perm.shape[0])
+    z_sig = norm.ppf(1 - p_sig)
+
+    # Create binary clusters using the z scores
+    clusters = tail_compare(z_sig, norm.ppf(1 - 0.05), tails)
+
+    # Remove clusters that are smaller than 3 time points
+    clusters = ndimage.binary_opening(clusters, structure=np.ones(3))
+
+
+    return clusters
+
+
+def tail_compare(diff: np.ndarray | float | int,
+                 obs_diff: np.ndarray | float | int, tails: int = 1
+                 ) -> np.ndarray:
+    """Compare the difference between two groups to the observed difference.
+
+    Parameters
+    ----------
+    diff : array, shape (..., time)
+        The difference between the two groups.
+    obs_diff : array, shape (..., time)
+        The observed difference between the two groups.
+    tails : int, optional
+        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+
+    Returns
+    -------
+    larger : array, shape (..., time)
+        The boolean array indicating whether the difference between the two
+        groups is larger than the observed difference.
+    """
+    # Account for one or two tailed test
+    if tails == 1:
+        larger = diff > obs_diff
+    elif tails == 2:
+        larger = np.abs(diff) > np.abs(obs_diff)
+    elif tails == -1:
+        larger = diff < obs_diff
+    else:
+        raise ValueError('tails must be 1 or 2')
+
+    return larger
+
 
 def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                      tails: int = 1, axis: int = 0) -> np.ndarray:
+                      tails: int = 1, axis: int = 0, return_perm: bool = False
+                      ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Time permutation cluster test between two time series.
 
     The test is performed by shuffling the trials of the two time series and
@@ -286,6 +449,10 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         The number of permutations to perform.
     tails : int, optional
         The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+    axis : int, optional
+        The axis to perform the permutation test across.
+    return_perm : bool, optional
+        If True, return the permutation distribution.
 
     Returns
     -------
@@ -311,17 +478,16 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         perm_labels[i])[0], axis=axis) for i in range(n_perm)])
     diff = np.mean(fake_sig1, axis=axis + 1) - np.mean(fake_sig2,
                                                        axis=axis + 1)
-    if tails == 1:
-        larger = diff > obs_diff
-    elif tails == 2:
-        larger = np.abs(diff) > np.abs(obs_diff)
-    else:
-        raise ValueError('tails must be 1 or 2')
+
+    larger = tail_compare(diff, obs_diff, tails)
 
     # Calculate the p-value
     p = np.mean(larger, axis=0)
 
-    return p
+    if return_perm:
+        return p, diff
+    else:
+        return p
 
 
 def time_perm_shuff2(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
@@ -352,9 +518,4 @@ def sample_test(labels: np.ndarray, all_trial: np.ndarray, obs_diff: np.ndarray,
     fake_sig1 = np.take(all_trial, np.where(labels == 0)[axis], axis=axis)
     fake_sig2 = np.take(all_trial, np.where(labels == 1)[axis], axis=axis)
     diff = mean(fake_sig1, axis=axis) - mean(fake_sig2, axis=axis)
-    if tails == 1:
-        return diff > obs_diff
-    elif tails == 2:
-        return np.abs(diff) > np.abs(obs_diff)
-    else:
-        raise ValueError('tails must be 1 or 2')
+    return tail_compare(diff, obs_diff, tails)
