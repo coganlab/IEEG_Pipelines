@@ -23,7 +23,7 @@ except ValueError:  # Already removed
     pass
 
 from PreProcess.timefreq.utils import to_samples, Signal  # noqa: E402
-from PreProcess.timefreq.fastmath import rescale  # noqa: E402
+from PreProcess.math.scaling import rescale  # noqa: E402
 from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
 
 RunDict = dict[int, mne.io.Raw]

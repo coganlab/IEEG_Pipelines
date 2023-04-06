@@ -10,7 +10,7 @@ from mne import events_from_annotations, Epochs, event
 from scipy import signal, fft
 
 from PreProcess.timefreq.utils import crop_pad, to_samples
-from PreProcess.timefreq.fastmath import rescale
+from PreProcess.math.scaling import rescale
 
 ListNum = Union[int, float, np.ndarray, list, tuple]
 

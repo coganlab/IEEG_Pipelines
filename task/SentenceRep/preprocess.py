@@ -1,5 +1,3 @@
-import numpy as np
-
 from PreProcess.navigate import get_data, crop_data, \
     channel_outlier_marker, raw_from_layout, trial_ieeg
 import os.path as op
@@ -41,7 +39,9 @@ fix_annotations(good)
 
 # %% High Gamma Filter and epoching
 out = []
-from PreProcess.timefreq import gamma, utils, fastmath
+from PreProcess.timefreq import gamma, utils
+from PreProcess.math import scaling
+
 for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
                     ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5))):
     times = [None, None]
@@ -65,4 +65,4 @@ z = z_vals.average()
 power = fastmath.rescale(resp, base, 'mean', True).average()
 # %% run time cluster stats
 mask = fastmath.time_perm_cluster(resp.copy()._data, base.copy()._data, 1.645)
-mpl.pyplot.imshow(mask)
+# mpl.pyplot.imshow(mask)

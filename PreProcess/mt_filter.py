@@ -22,8 +22,8 @@ try:
 except ValueError:  # Already removed
     pass
 
-from PreProcess.timefreq import multitaper, fastmath, \
-    utils as mt_utils  # noqa: E402
+from PreProcess.timefreq import multitaper, utils as mt_utils  # noqa: E402
+from PreProcess.math import stats
 from PreProcess.utils.utils import is_number  # noqa: E402
 
 ListNum = Union[int, float, np.ndarray, list, tuple]
@@ -252,7 +252,7 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         window_fun, threshold = get_thresh(x.shape[-1])
     # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
     x_p, freqs = multitaper.spectra(x[np.newaxis, :], window_fun, sfreq)
-    f_stat, A = fastmath.sine_f_test(window_fun, x_p)
+    f_stat, A = stats.sine_f_test(window_fun, x_p)
 
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]

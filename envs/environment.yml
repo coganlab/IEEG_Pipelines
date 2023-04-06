@@ -13,6 +13,5 @@ dependencies:
   - tqdm
   - pytz
   - notebook
-  - numba
   - pip:
     - -r requirements.txt

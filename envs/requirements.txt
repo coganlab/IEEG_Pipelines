@@ -10,7 +10,6 @@ EDFlib-Python
 mne
 mne-bids
 numpy
-numba
 matplotlib
 scipy
 scikit-image
@@ -19,3 +18,4 @@ joblib
 psutil
 pyvistaqt
 pytz
+tqdm
