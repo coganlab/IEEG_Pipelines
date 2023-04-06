@@ -179,15 +179,16 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
     return line
 
 
-def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
-                   ignore_axis: int | tuple[int] = None) -> np.ndarray:
-    """Make data_fix the same shape as data_like.
+def make_data_same(data_fix: np.ndarray, data_like: np.ndarray) -> np.ndarray:
+    """Force the last dimension of data_fix to match the last dimension of
+    data_like.
 
-    Reshapes data_fix to match the shape of data_like, ignoring the
-    specified axis. If data_fix is already the same shape as data_like,
-    it is returned unchanged. If data_fix is larger in the ignored
-    axis and smaller in another unignored axis, the data is split along
-    the ignored axis and appended to the end of the unignored one.
+    Takes the two arrays and checks if the last dimension of data_fix is
+    smaller than the last dimension of data_like. If there's more than two
+    dimensions, it will rearrange the data to match the shape of data_like.
+    If there's only two dimensions, it will repeat the signal to match the
+    shape of data_like. If the last dimension of data_fix is larger than the
+    last dimension of data_like, it will return a subset of data_fix.
 
     Parameters
     ----------
@@ -195,44 +196,26 @@ def make_data_same(data_fix: np.ndarray, data_like: np.ndarray,
         The data to reshape.
     data_like : array
         The data to match the shape of.
-    ignore_axis : int | tuple[int], optional
-        The axis to ignore. If None, all axes are used.
 
     Returns
     -------
     data_fix : array
         The reshaped data.
     """
-    if ignore_axis is None:
-        ignore_axis = tuple()
-    elif isinstance(ignore_axis, int):
-        ignore_axis = (ignore_axis,)
-    else:
-        ignore_axis = tuple(ignore_axis)
+    if data_like.shape[-1] > data_fix.shape[-1]:
+        if len(data_like.shape) > 2:
+            trials = int(data_fix[:, 0].size / data_like.shape[-1])
+            temp = np.full((trials, *data_like.shape[1:]), np.nan)
+            for i in range(data_like.shape[1]):
+                temp[:, i].flat = data_fix[:, i].flat
+            data_fix = temp.copy()
+        else:  # repeat the signal if it is only 2D
+            data_fix = np.pad(data_fix, ((0, 0), (
+                0, data_like.shape[-1] - data_fix.shape[-1])), 'reflect')
+    elif data_like.shape[-1] < data_fix.shape[-1]:
+        data_fix = data_fix[:, :data_like.shape[-1]]
 
-    data = data_fix.copy()
-    shape_fix = list(data_fix.shape)
-    shape_like = data_like.shape
-    if len(shape_fix) != len(shape_like):
-        raise ValueError('data_fix and data_like must have the same number of '
-                         'dimensions')
-    for i, (s1, s2) in enumerate(zip(shape_fix, shape_like)):
-        if i not in ignore_axis and s1 != s2:
-            if len(ignore_axis) == 0:
-                raise ValueError('data_fix and data_like must have the same '
-                                 'shape if ignore_axis is None')
-            repeats = int(s2 / s1)
-            reduce_axis = ignore_axis[0]
-            while shape_fix[reduce_axis] % repeats != 0:
-                repeats -= 1
-            shape_fix[reduce_axis] = shape_fix[reduce_axis] // repeats
-            shape_fix[i] = shape_fix[i] * repeats
-            data = np.reshape(data, shape_fix)
-            out_pad = [(0, 0) if j != i else (0, s2 - (s1 * repeats)) for j in
-                       range(len(shape_fix))]
-            data = np.pad(data, out_pad, 'wrap')
-
-    return data
+    return data_fix
 
 
 @njit(fastmath=True)
@@ -254,9 +237,9 @@ def mean(data: np.ndarray, axis: int = 0) -> np.ndarray:
     return np.sum(data, axis=axis) / data.shape[axis]
 
 
-def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
-                      n_perm: int = 1000, tails: int = 1, axis: int = 0
-                      ) -> np.ndarray:
+def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
+                      p_cluster: float = None, n_perm: int = 1000, tails: int = 1,
+                      axis: int = 0) -> np.ndarray:
     """ Calculate significant clusters using permutation testing and cluster correction.
 
     Parameters
@@ -265,8 +248,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
         Active signal. The first dimension is assumed to be the trials
     sig2 : array, shape (trials, ..., time)
         Passive signal. The first dimension is assumed to be the trials
-    z_thresh : float
-        The z-score threshold to use for determining significant clusters.
+    p_thresh : float
+        The p-value threshold to use for determining significant time points.
+    p_cluster : float, optional
+        The p-value threshold to use for determining significant clusters.
     n_perm : int, optional
         The number of permutations to perform.
     tails : int, optional
@@ -279,17 +264,16 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
     clusters : array, shape (..., time)
         The binary array of significant clusters.
     """
+    # check inputs
+    if p_cluster is None:
+        p_cluster = p_thresh
+    if tails not in [1, 2, -1]:
+        raise ValueError('tails must be 1, 2, or -1')
+    if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
+        raise ValueError('p_thresh and p_cluster must be between 0 and 1')
 
-    # reshape the data to so that the last dimension of sig 2 is the same as
-    # the last dimension of sig 1
-    if len(sig1.shape) > 2:
-        if sig1.shape[-1] != sig2.shape[-1]:
-            trials = int(sig2[:, 0, ..., :].size / sig1.shape[-1])
-            temp = np.full((trials, *sig1.shape[1:]), np.nan)
-            for i in range(sig1.shape[1]):
-                temp[:, i, :].flat = sig2[:, i, :].flat
-            sig2 = temp.copy()
-            del trials, temp
+    # Make sure the data is the same shape
+    sig2 = make_data_same(sig2, sig1)
 
     # Calculate the p value of difference between the two groups
     p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True)
@@ -303,13 +287,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
         p_perm[i] = np.mean(larger, axis=0)
     p_all = np.concatenate((np.expand_dims(p_act, 0), p_perm), axis=0)
 
-    # Convert p values to z scores
-    p_all[p_all == 0] = 1 / n_perm
-    p_all[p_all == 1] = 1 - (1 / n_perm)
-    z_all = norm.ppf(1 - p_all)
-
     # Create binary clusters using the z scores
-    b_all = tail_compare(z_all, z_thresh, tails)
+    b_all = tail_compare(p_all, 1 - p_thresh, tails)
     b_act = b_all[0]
     b_perm = b_all[1:]
 
@@ -317,7 +296,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, z_thresh: float,
     clusters = np.zeros(b_act.shape, dtype=int)
     for i in tqdm(range(b_act.shape[0])):
         clusters_p = time_cluster(b_act[i], b_perm[:, i])
-        clusters[i] = clusters_p > 0.95
+        clusters[i] = clusters_p > (1 - p_cluster)
 
     return clusters
 
