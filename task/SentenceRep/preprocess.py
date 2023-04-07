@@ -40,7 +40,7 @@ fix_annotations(good)
 # %% High Gamma Filter and epoching
 out = []
 from PreProcess.timefreq import gamma, utils
-from PreProcess.math import scaling
+from PreProcess.math import scaling, stats
 
 for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
                     ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5))):
@@ -60,9 +60,9 @@ resp = out[1].copy()
 resp.decimate(20)
 base = out[0].copy()
 base.decimate(20)
-z_vals = fastmath.rescale(resp, base, 'zscore', True)
+z_vals = scaling.rescale(resp, base, 'zscore', True)
 z = z_vals.average()
-power = fastmath.rescale(resp, base, 'mean', True).average()
+power = scaling.rescale(resp, base, 'mean', True).average()
 # %% run time cluster stats
-mask = fastmath.time_perm_cluster(resp.copy()._data, base.copy()._data, 1.645)
-# mpl.pyplot.imshow(mask)
+mask = stats.time_perm_cluster(resp.copy()._data, base.copy()._data, 0.05)
+mpl.pyplot.imshow(mask)

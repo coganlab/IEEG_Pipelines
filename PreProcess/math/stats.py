@@ -1,8 +1,6 @@
 import numpy as np
-import scipy.stats as stats
 
 from tqdm import tqdm
-from numba import njit
 from ..utils.utils import parallelize
 
 
@@ -50,20 +48,21 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of the permutation distribution
     p_perm = np.zeros(diff.shape)
+    print('Calculating permutation distribution')
     for i in tqdm(range(diff.shape[0])):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance
         larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
         p_perm[i] = np.mean(larger, axis=0)
-    p_all = np.concatenate((np.expand_dims(p_act, 0), p_perm), axis=0)
 
-    # Create binary clusters using the z scores
-    b_all = tail_compare(p_all, 1 - p_thresh, tails)
-    b_act = b_all[0]
-    b_perm = b_all[1:]
+    # Create binary clusters using the p value threshold
+    b_act = tail_compare(p_act, 1 - p_thresh, tails)
+    b_perm = tail_compare(p_perm, 1 - p_thresh, tails)
 
     # Find clusters
     clusters = np.zeros(b_act.shape, dtype=int)
+    print('Finding clusters')
+    clustering_vect = np.vectorize(time_cluster)
     for i in tqdm(range(b_act.shape[0])):
         clusters_p = time_cluster(b_act[i], b_perm[:, i])
         clusters[i] = clusters_p > (1 - p_cluster)
@@ -158,7 +157,7 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
     cluster_p_values = np.zeros(act_clusters.shape)
     for i in range(act_clusters.max()):
         # Get the cluster
-        act_cluster = act_clusters == i+1
+        act_cluster = act_clusters == i + 1
         # Get the cluster size
         act_cluster_size = np.sum(act_cluster)
         # Determine the proportion of permutations that have a cluster of the
