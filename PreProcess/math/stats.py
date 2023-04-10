@@ -47,9 +47,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True)
 
     # Calculate the p value of the permutation distribution
-    p_perm = np.zeros(diff.shape)
     print('Calculating permutation distribution')
-    for i in tqdm(range(diff.shape[0])):
+    p_perm = np.zeros(diff.shape)
+    for i in tqdm(range(diff.shape[0]), 'Permutations'):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance
         larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
@@ -61,7 +61,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     print('Finding clusters')
     clusters = np.zeros(b_act.shape, dtype=int)
-    for i in tqdm(range(b_act.shape[0])):
+    for i in tqdm(range(b_act.shape[0]), 'Channels'):
         clusters[i] = time_cluster(b_act[i], b_perm[:, i], 1 - p_cluster)
 
     return clusters
