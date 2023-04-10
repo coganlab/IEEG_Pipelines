@@ -1,7 +1,6 @@
 import numpy as np
 
 from tqdm import tqdm
-from numba import njit, float64, bool_, int32
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
@@ -41,7 +40,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
 
     # Make sure the data is the same shape
-    sig2 = make_data_same(sig2, sig1)
+    sig2 = make_data_shape(sig2, sig1.shape)
 
     # Calculate the p value of difference between the two groups
     print('Permuting events in shuffle test')
@@ -60,51 +59,49 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
-    # Find clusters
     print('Finding clusters')
     clusters = np.zeros(b_act.shape, dtype=int)
     for i in tqdm(range(b_act.shape[0])):
-        clusters_p = time_cluster(b_act[i], b_perm[:, i])
-        clusters[i] = clusters_p > (1 - p_cluster)
+        clusters[i] = time_cluster(b_act[i], b_perm[:, i], 1 - p_cluster)
 
     return clusters
 
 
-def make_data_same(data_fix: np.ndarray, data_like: np.ndarray) -> np.ndarray:
+def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
     """Force the last dimension of data_fix to match the last dimension of
-    data_like.
+    shape.
 
     Takes the two arrays and checks if the last dimension of data_fix is
-    smaller than the last dimension of data_like. If there's more than two
-    dimensions, it will rearrange the data to match the shape of data_like.
-    If there's only two dimensions, it will repeat the signal to match the
-    shape of data_like. If the last dimension of data_fix is larger than the
-    last dimension of data_like, it will return a subset of data_fix.
+    smaller than the last dimension of shape. If there's more than two
+    dimensions, it will rearrange the data to match the shape. If there's only
+    two dimensions, it will repeat the signal to match the shape of data_like.
+    If the last dimension of data_fix is larger than the last dimension of
+    shape, it will return a subset of data_fix.
 
     Parameters
     ----------
     data_fix : array
         The data to reshape.
-    data_like : array
-        The data to match the shape of.
+    shape : list | tuple
+        The shape of data to match.
 
     Returns
     -------
     data_fix : array
         The reshaped data.
     """
-    if data_like.shape[-1] > data_fix.shape[-1]:
-        if len(data_like.shape) > 2:
-            trials = int(data_fix[:, 0].size / data_like.shape[-1])
-            temp = np.full((trials, *data_like.shape[1:]), np.nan)
-            for i in range(data_like.shape[1]):
+    if shape[-1] > data_fix.shape[-1]:
+        if len(shape) > 2:
+            trials = int(data_fix[:, 0].size / shape[-1])
+            temp = np.full((trials, *shape[1:]), np.nan)
+            for i in range(shape[1]):
                 temp[:, i].flat = data_fix[:, i].flat
             data_fix = temp.copy()
         else:  # repeat the signal if it is only 2D
             data_fix = np.pad(data_fix, ((0, 0), (
-                0, data_like.shape[-1] - data_fix.shape[-1])), 'reflect')
-    elif data_like.shape[-1] < data_fix.shape[-1]:
-        data_fix = data_fix[:, :data_like.shape[-1]]
+                0, shape[-1] - data_fix.shape[-1])), 'reflect')
+    elif shape[-1] < data_fix.shape[-1]:
+        data_fix = data_fix[:, :shape[-1]]
 
     return data_fix
 
@@ -142,28 +139,29 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
     # passive data
     from skimage.measure import label
     act_clusters = label(act, connectivity=1)
-    perm_clusters = label(perm, connectivity=1)
+    perm_clusters = np.zeros(perm.shape, dtype=int)
+    for i in range(perm.shape[0]):
+        perm_clusters[i] = label(perm[i], connectivity=1)
 
     # For each permutation in the passive data, determine the maximum cluster
     # size
-    max_perm_cluster = np.zeros(perm_clusters.shape)
+    max_cluster_len = np.zeros(perm_clusters.shape[0])
     for i in range(perm_clusters.shape[0]):
-        for j in range(1, perm_clusters.max()+1):
-            max_perm_cluster[i] = np.maximum(max_perm_cluster[i],
-                                             perm_clusters[i] == j)
+        for j in range(1, perm_clusters.max() + 1):
+            max_cluster_len[i] = np.maximum(max_cluster_len[i], np.sum(
+                perm_clusters[i] == j))
 
     # For each cluster in the active data, determine the proportion of
     # permutations that have a cluster of the same size or larger
     cluster_p_values = np.zeros(act_clusters.shape)
-    for i in range(act_clusters.max()):
+    for i in range(1, act_clusters.max() + 1):
         # Get the cluster
-        act_cluster = act_clusters == i + 1
+        act_cluster = act_clusters == i
         # Get the cluster size
         act_cluster_size = np.sum(act_cluster)
         # Determine the proportion of permutations that have a cluster of the
         # same size or larger
-        larger = tail_compare(act_cluster_size,
-                              np.sum(max_perm_cluster, axis=1))
+        larger = tail_compare(act_cluster_size, max_cluster_len, tails)
         cluster_p_values[act_cluster] = np.mean(larger, axis=0)
 
     # If p_val is not None, return the boolean array indicating whether the
