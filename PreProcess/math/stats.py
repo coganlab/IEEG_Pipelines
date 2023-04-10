@@ -1,7 +1,7 @@
 import numpy as np
 
 from tqdm import tqdm
-from ..utils.utils import parallelize
+from numba import njit, float64, bool_, int32
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
@@ -44,6 +44,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     sig2 = make_data_same(sig2, sig1)
 
     # Calculate the p value of difference between the two groups
+    print('Permuting events in shuffle test')
     p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True)
 
     # Calculate the p value of the permutation distribution
@@ -56,13 +57,12 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         p_perm[i] = np.mean(larger, axis=0)
 
     # Create binary clusters using the p value threshold
-    b_act = tail_compare(p_act, 1 - p_thresh, tails)
-    b_perm = tail_compare(p_perm, 1 - p_thresh, tails)
+    b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
+    b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
     # Find clusters
-    clusters = np.zeros(b_act.shape, dtype=int)
     print('Finding clusters')
-    clustering_vect = np.vectorize(time_cluster)
+    clusters = np.zeros(b_act.shape, dtype=int)
     for i in tqdm(range(b_act.shape[0])):
         clusters_p = time_cluster(b_act[i], b_perm[:, i])
         clusters[i] = clusters_p > (1 - p_cluster)
@@ -140,9 +140,9 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
 
     # Create an index of all the binary clusters in the active and permuted
     # passive data
-    from skimage import measure
-    act_clusters = measure.label(act, connectivity=1)
-    perm_clusters = measure.label(perm, connectivity=1)
+    from skimage.measure import label
+    act_clusters = label(act, connectivity=1)
+    perm_clusters = label(perm, connectivity=1)
 
     # For each permutation in the passive data, determine the maximum cluster
     # size
@@ -195,14 +195,15 @@ def tail_compare(diff: np.ndarray | float | int,
         groups is larger than the observed difference.
     """
     # Account for one or two tailed test
-    if tails == 1:
-        larger = diff > obs_diff
-    elif tails == 2:
-        larger = np.abs(diff) > np.abs(obs_diff)
-    elif tails == -1:
-        larger = diff < obs_diff
-    else:
-        raise ValueError('tails must be 1 or 2')
+    match tails:
+        case 1:
+            larger = diff > obs_diff
+        case 2:
+            larger = np.abs(diff) > np.abs(obs_diff)
+        case -1:
+            larger = diff < obs_diff
+        case _:
+            raise ValueError('tails must be 1, 2, or -1')
 
     return larger
 

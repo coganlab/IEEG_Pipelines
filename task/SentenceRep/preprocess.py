@@ -64,5 +64,5 @@ z_vals = scaling.rescale(resp, base, 'zscore', True)
 z = z_vals.average()
 power = scaling.rescale(resp, base, 'mean', True).average()
 # %% run time cluster stats
-mask = stats.time_perm_cluster(resp.copy()._data, base.copy()._data, 0.05)
+mask = stats.time_perm_cluster(resp.copy()._data, base.copy()._data, 0.05, n_perm=1000)
 mpl.pyplot.imshow(mask)
