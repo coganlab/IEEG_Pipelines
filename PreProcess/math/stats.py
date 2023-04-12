@@ -297,7 +297,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
                              np.full(sig2.shape[axis], True, dtype=bool)))
 
     # Calculate the observed difference
-    obs_diff = func(sig1, sig2, axis)
+    obs_diff = func(sig1, sig2, axis=axis)
 
     # Calculate the difference between the two groups averaged across
     # trials at each time point
@@ -307,7 +307,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         fake_sig1 = np.take(all_trial, np.where(np.invert(perm_labels))[0],
                             axis=axis)
         fake_sig2 = np.take(all_trial, np.where(perm_labels)[0], axis=axis)
-        diff[i] = func(fake_sig1, fake_sig2, axis)
+        diff[i] = func(fake_sig1, fake_sig2, axis=axis)
 
     # Calculate the p-value
     p = np.mean(tail_compare(diff, obs_diff, tails), axis=0)

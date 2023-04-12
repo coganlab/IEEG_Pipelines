@@ -41,6 +41,7 @@ fix_annotations(good)
 out = []
 from PreProcess.timefreq import gamma, utils
 from PreProcess.math import scaling, stats
+import scipy
 
 for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
                     ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5))):
@@ -64,5 +65,6 @@ z_vals = scaling.rescale(resp, base, 'zscore', True)
 z = z_vals.average()
 power = scaling.rescale(resp, base, 'mean', True).average()
 # %% run time cluster stats
-mask = stats.time_perm_cluster(resp.copy()._data, base.copy()._data, 0.05, n_perm=1000)
+mask = stats.time_perm_cluster(resp.copy()._data, base.copy()._data, 0.05,
+                               n_perm=1000, stat_func=scipy.stats.f_oneway)
 mpl.pyplot.imshow(mask)
