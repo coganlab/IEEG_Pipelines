@@ -2,6 +2,7 @@ import numpy as np
 
 from skimage import measure
 from tqdm import tqdm
+from mne.utils import logger
 
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
@@ -86,12 +87,12 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     sig2 = make_data_shape(sig2, sig1.shape)
 
     # Calculate the p value of difference between the two groups
-    print('Permuting events in shuffle test')
+    logger.info('Permuting events in shuffle test')
     p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True,
                                     stat_func)
 
     # Calculate the p value of the permutation distribution
-    print('Calculating permutation distribution')
+    logger.info('Calculating permutation distribution')
     p_perm = np.zeros(diff.shape)
     for i in tqdm(range(diff.shape[0]), 'Permutations'):
         # p_perm is the probability of observing a difference as large as the
@@ -107,7 +108,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
-    print('Finding clusters')
+    logger.info('Finding clusters')
     clusters = np.zeros(b_act.shape, dtype=int)
     for i in tqdm(range(b_act.shape[0]), 'Channels'):
         clusters[i] = time_cluster(b_act[i], b_perm[:, i], 1 - p_cluster)
@@ -298,6 +299,15 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     # Calculate the observed difference
     obs_diff = func(sig1, sig2, axis=axis)
+    if isinstance(obs_diff, tuple):
+        logger.warn('Given stats function has more than one output. Accepting'
+                    ' only the first output')
+        obs_diff = obs_diff[0]
+        orig_func = func
+
+        def func(s1, s2, axis):
+            return orig_func(s1, s2, axis=axis)[0]
+
 
     # Calculate the difference between the two groups averaged across
     # trials at each time point
