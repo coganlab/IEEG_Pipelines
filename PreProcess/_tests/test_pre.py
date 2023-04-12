@@ -1,4 +1,5 @@
-import mne.datasets
+import mne
+import pytest
 import numpy as np
 from bids import BIDSLayout
 from mne.io import BaseRaw
@@ -6,7 +7,8 @@ from mne_bids import BIDSPath
 from PreProcess.navigate import raw_from_layout
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
-# sample_path = mne.datasets.sample.data_path()
+seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
+                       'seeg' / 'sample_seeg_ieeg.fif')
 layout = BIDSLayout(bids_root)
 log_filename = "output.log"
 # op.join(LAB_root, "Aaron_test", "Information.log")
@@ -75,3 +77,15 @@ def test_spect_2():
                           pad="0.5s")
     out = spectra._data
     assert np.allclose(out, spec_check)
+
+
+
+def test_outlier():
+    from PreProcess.navigate import channel_outlier_marker
+    outs = channel_outlier_marker(seeg, 3)
+    assert outs == ['LAMY 7', 'LBRI 3']
+
+
+@pytest.mark.parametrize()
+def test_stats():
+    pass
