@@ -39,16 +39,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     correction.
 
     Takes two time series signals, finding clusters of activation defined as
-    significant contiguous time points. The clusters are then corrected for
-    multiple comparisons using the cluster-based permutation test. The
-    permutation test is performed by randomly permuting the labels of the
-    observations in the two groups. The null hypothesis is that the two groups
-    are the same. The alternative hypothesis is that the two groups are
-    different. The p-value of the permutation test is the probability of
-    observing a difference as large as the observed difference, or larger, by
-    chance. The p-value of the cluster-based permutation test is the
-    probability of observing a cluster as large as the observed cluster, or
-    larger, by chance.
+    significant contiguous time points with a p value less than the p_thresh
+    (greater if tails is -1, and both if tails is 2). The p value is the
+    proportion of times that the difference in the statistic value for signal 1
+    with respect to signal 2 is greater than the statistic for a random
+    sampling of signal 1 and 2 with respect to a random sampling of signal 1
+    and 2. The clusters are then corrected by only keeping clusters that are in
+    the (1 - p_cluster)'th percentile of cluster lengths for signal 2.
 
     Parameters
     ----------
@@ -65,15 +62,23 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     tails : int, optional
         The number of tails to use. 1 for one-tailed, 2 for two-tailed.
     axis : int, optional
-        The axis to perform the permutation test across.
+        The axis to perform the permutation test across. Also known as the
+        observations axis
     stat_func : callable, optional
         The statistical function to use to compare populations. Requires an
         axis keyword input to denote observations (trials, for example).
+        Default function is `mean_diff`, but may be substituted with other test
+        functions found here:
+        https://scipy.github.io/devdocs/reference/stats.html#independent-sample-tests
 
     Returns
     -------
     clusters : array, shape (..., time)
         The binary array of significant clusters.
+
+    References
+    ----------
+    1. https://www.sciencedirect.com/science/article/pii/S0165027007001707
     """
     # check inputs
     if p_cluster is None:
@@ -300,8 +305,8 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     # Calculate the observed difference
     obs_diff = func(sig1, sig2, axis=axis)
     if isinstance(obs_diff, tuple):
-        logger.warn('Given stats function has more than one output. Accepting'
-                    ' only the first output')
+        logger.warn('Given stats function has more than one output. Accepting '
+                    'only the first output')
         obs_diff = obs_diff[0]
         orig_func = func
 
