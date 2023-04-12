@@ -6,6 +6,23 @@ from tqdm import tqdm
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
               axis: int | tuple[int] = None) -> np.ndarray | float:
+    """ Calculate the mean difference between two groups.
+
+    Parameters
+    ----------
+    group1 : array, shape (..., time)
+        The first group of observations.
+    group2 : array, shape (..., time)
+        The second group of observations.
+    axis : int or tuple of ints, optional
+        The axis or axes along which to compute the mean difference. If None,
+        compute the mean difference over all axes.
+
+    Returns
+    -------
+    avg1 - avg2 : array or float
+        The mean difference between the two groups.
+    """
 
     avg1 = np.mean(group1, axis=axis)
     avg2 = np.mean(group2, axis=axis)
@@ -21,6 +38,16 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     correction.
 
     Takes two time series signals, finding clusters of activation defined as
+    significant contiguous time points. The clusters are then corrected for
+    multiple comparisons using the cluster-based permutation test. The
+    permutation test is performed by randomly permuting the labels of the
+    observations in the two groups. The null hypothesis is that the two groups
+    are the same. The alternative hypothesis is that the two groups are
+    different. The p-value of the permutation test is the probability of
+    observing a difference as large as the observed difference, or larger, by
+    chance. The p-value of the cluster-based permutation test is the
+    probability of observing a cluster as large as the observed cluster, or
+    larger, by chance.
 
     Parameters
     ----------
@@ -197,6 +224,9 @@ def tail_compare(diff: np.ndarray | float | int,
                  ) -> np.ndarray | bool:
     """Compare the difference between two groups to the observed difference.
 
+    This function applies the appropriate comparison based on the number of
+    tails.
+
     Parameters
     ----------
     diff : array, shape (..., time)
@@ -288,7 +318,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         return p
 
 
-def sum_squared(x: np.ndarray) -> np.ndarray:
+def sum_squared(x: np.ndarray) -> np.ndarray | float:
     """Compute norm of an array.
 
     Parameters
@@ -310,6 +340,21 @@ def sum_squared(x: np.ndarray) -> np.ndarray:
 def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
                 ) -> (np.ndarray, np.ndarray):
     """computes the F-statistic for sine wave in locally-white noise.
+
+    This function computes the F-statistic for a sine wave in locally-white
+    noise. The sine wave is assumed to be of the form:
+    .. math::
+        x(t) = A \sin(2 \pi f t + \phi)
+    where :math:`A` is the amplitude of the sine wave, :math:`f` is the
+    frequency of the sine wave, and :math:`\phi` is the phase of the sine wave.
+    The F-statistic is computed by taking the ratio of the variance of the
+    sine wave to the variance of the noise. The variance of the sine wave is
+    computed by taking the sum of the squares of the sine wave across tapers
+    and then dividing by the number of tapers. The variance of the noise is
+    computed by taking the sum of the squares of the residuals across tapers
+    and then dividing by the number of tapers minus one. The F-statistic is
+    then computed by taking the ratio of the variance of the sine wave to the
+    variance of the noise.
 
     Parameters
     ----------
