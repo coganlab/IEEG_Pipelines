@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from mne.io import pick
 from mne.utils import logger, _pl, verbose, fill_doc
-from scipy import stats
+import scipy
 from tqdm import tqdm
 
 import sys
@@ -23,7 +23,7 @@ except ValueError:  # Already removed
     pass
 
 from PreProcess.timefreq import multitaper, utils as mt_utils  # noqa: E402
-from PreProcess.math import stats
+from PreProcess.math import stats  # noqa: E402
 from PreProcess.utils.utils import is_number  # noqa: E402
 
 ListNum = Union[int, float, np.ndarray, list, tuple]
@@ -163,8 +163,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                                              verbose=verbose)
 
         # F-stat of 1-p point
-        threshold = stats.f.ppf(1 - p_value / n_times, 2,
-                                2 * len(window_fun) - 2)
+        threshold = scipy.stats.f.ppf(1 - p_value / n_times, 2,
+                                      2 * len(window_fun) - 2)
         return window_fun, threshold
 
     filt._data[data_idx] = mt_spectrum_proc(

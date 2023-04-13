@@ -1,5 +1,7 @@
 from PreProcess.navigate import get_data, crop_data, \
     channel_outlier_marker, raw_from_layout, trial_ieeg
+from PreProcess.timefreq import gamma, utils
+from PreProcess.math import scaling, stats
 import os.path as op
 import matplotlib as mpl
 try:
@@ -34,13 +36,11 @@ good.set_eeg_reference(ref_channels="average", ch_type='seeg')
 del new
 
 # %% fix SentenceRep events
-from task.SentenceRep.events import fix_annotations
+from task.SentenceRep.events import fix_annotations  # noqa E402
 fix_annotations(good)
 
 # %% High Gamma Filter and epoching
 out = []
-from PreProcess.timefreq import gamma, utils
-from PreProcess.math import scaling, stats
 
 for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
                     ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5))):

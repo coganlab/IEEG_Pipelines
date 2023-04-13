@@ -313,7 +313,6 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         def func(s1, s2, axis):
             return orig_func(s1, s2, axis=axis)[0]
 
-
     # Calculate the difference between the two groups averaged across
     # trials at each time point
     diff = np.zeros((n_perm, *obs_diff.shape))
@@ -359,12 +358,12 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
     This function computes the F-statistic for a sine wave in locally-white
     noise. The sine wave is assumed to be of the form:
     .. math::
-        x(t) = A \sin(2 \pi f t + \phi)
+        x(t) = A \\sin(2 \\pi f t + \\phi)
     where :math:`A` is the amplitude of the sine wave, :math:`f` is the
-    frequency of the sine wave, and :math:`\phi` is the phase of the sine wave.
-    The F-statistic is computed by taking the ratio of the variance of the
-    sine wave to the variance of the noise. The variance of the sine wave is
-    computed by taking the sum of the squares of the sine wave across tapers
+    frequency of the sine wave, and :math:`\\phi` is the phase of the sine
+    wave. The F-statistic is computed by taking the ratio of the variance of
+    the sine wave to the variance of the noise. The variance of the sine wave
+    is computed by taking the sum of the squares of the sine wave across tapers
     and then dividing by the number of tapers. The variance of the noise is
     computed by taking the sum of the squares of the residuals across tapers
     and then dividing by the number of tapers minus one. The F-statistic is

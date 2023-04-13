@@ -11,6 +11,11 @@ from PreProcess.timefreq import gamma
 from PreProcess.math import stats
 import matplotlib as mpl
 import mne
+try:
+    mpl.use("TkAgg")
+except ImportError:
+    pass
+
 # %% Load Data
 
 misc_path = mne.datasets.misc.data_path()
@@ -42,7 +47,8 @@ base = out[0].copy()
 base.decimate(2)
 
 # %% run time cluster stats
-import scipy
+
+# import scipy
 mask = stats.time_perm_cluster(resp.copy()._data, base.copy()._data, 0.05,
                                # stat_func=scipy.stats.ttest_ind,
                                n_perm=1000)
