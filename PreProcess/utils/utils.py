@@ -6,6 +6,7 @@ from typing import TypeVar, Iterable, Union
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 from joblib import Parallel, delayed, cpu_count
 from mne.utils import config, logger
 
@@ -110,6 +111,22 @@ def is_number(s) -> bool:
 def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
                 **kwargs) -> list:
     """Parallelize a function to run on multiple processors.
+
+    This function is a wrapper for joblib.Parallel. It will automatically
+    determine the number of jobs to run in parallel based on the number of
+    cores available on the system. It will also automatically set the
+    temp_folder and max_nbytes parameters for joblib.Parallel based on the
+    MNE_CACHE_DIR and MNE_MEMMAP_MIN_SIZE parameters in mne-python's
+    configuration file.
+
+    Notes
+    -----
+    If the elements of the par_var iterable are tuples, the function will be
+    called with the tuple unpacked, setting each item in the tuple to be
+    assigned to a separate argument. If the elements of the par_var iterable
+    are not tuples, the function will be called with the element as the first
+    argument.
+
 
     Parameters
     ----------

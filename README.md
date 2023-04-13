@@ -83,3 +83,5 @@ Version 3.10 supported
 3. [Check Spectrograms](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_spectrograms.html)
 
 4. [Plot the high gamma responses](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_HG.html)
+
+5. [Run the cluster correction and permutation test](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_stats.html)

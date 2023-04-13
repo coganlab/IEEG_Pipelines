@@ -12,8 +12,10 @@ mne-bids
 numpy
 matplotlib
 scipy
+scikit-image
 pandas
 joblib
 psutil
 pyvistaqt
 pytz
+tqdm

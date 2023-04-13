@@ -41,7 +41,7 @@ del new
 
 # %% Calculate spectra
 freq = np.arange(10, 200., 2.)
-spectra = spectrogram(good, freq, 'PD', -1, 1.5, 'onset', -0.5, 0,
+spectra = spectrogram(good, freq, 'Response', -0.2, 0.5, 'Fixation', -0.7, 0,
                       n_jobs=6, verbose=10, time_bandwidth=10, n_cycles=freq/2)
 
 # %% Plot data

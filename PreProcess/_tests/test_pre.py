@@ -1,12 +1,16 @@
-import mne.datasets
+import mne
+import pytest
 import numpy as np
 from bids import BIDSLayout
 from mne.io import BaseRaw
 from mne_bids import BIDSPath
 from PreProcess.navigate import raw_from_layout
+from PreProcess.math.stats import mean_diff
+import scipy
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
-# sample_path = mne.datasets.sample.data_path()
+seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
+                       'seeg' / 'sample_seeg_ieeg.fif')
 layout = BIDSLayout(bids_root)
 log_filename = "output.log"
 # op.join(LAB_root, "Aaron_test", "Information.log")
@@ -75,3 +79,37 @@ def test_spect_2():
                           pad="0.5s")
     out = spectra._data
     assert np.allclose(out, spec_check)
+
+
+def test_outlier():
+    from PreProcess.navigate import channel_outlier_marker
+    outs = channel_outlier_marker(seeg, 3)
+    assert outs == ['LAMY 7', 'LBRI 3']
+
+
+@pytest.mark.parametrize("func, expected", [
+    (mean_diff, np.arange(38, 56)),
+    (scipy.stats.f_oneway, np.concatenate([
+        np.arange(36, 42), np.arange(45, 50), np.arange(59, 62)])),
+    (scipy.stats.ttest_ind, np.arange(38, 56))
+])
+def test_stats(func, expected):
+    from PreProcess.navigate import trial_ieeg
+    from PreProcess.math import stats
+
+    out = []
+    for epoch, t in zip(('Fixation', 'Response'), ((-0.3, 0), (-0.1, 0.2))):
+        times = [None, None]
+        times[0] = t[0] - 0.5
+        times[1] = t[1] + 0.5
+        trials = trial_ieeg(seeg, epoch, times, preload=True)
+        out.append(trials)
+    resp = out[1].copy()
+    resp.decimate(10)
+    base = out[0].copy()
+    base.decimate(10)
+
+    mask = stats.time_perm_cluster(resp.copy()._data[:, 78:79],
+                                   base.copy()._data[:, 78:79], 0.01,
+                                   stat_func=func, n_perm=4000)
+    assert np.all(mask[:, expected])

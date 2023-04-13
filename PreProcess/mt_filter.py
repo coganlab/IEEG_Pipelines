@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from mne.io import pick
 from mne.utils import logger, _pl, verbose, fill_doc
-from scipy import stats
+import scipy
 from tqdm import tqdm
 
 import sys
@@ -22,8 +22,8 @@ try:
 except ValueError:  # Already removed
     pass
 
-from PreProcess.timefreq import multitaper, fastmath, \
-    utils as mt_utils  # noqa: E402
+from PreProcess.timefreq import multitaper, utils as mt_utils  # noqa: E402
+from PreProcess.math import stats  # noqa: E402
 from PreProcess.utils.utils import is_number  # noqa: E402
 
 ListNum = Union[int, float, np.ndarray, list, tuple]
@@ -163,8 +163,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                                              verbose=verbose)
 
         # F-stat of 1-p point
-        threshold = stats.f.ppf(1 - p_value / n_times, 2,
-                                2 * len(window_fun) - 2)
+        threshold = scipy.stats.f.ppf(1 - p_value / n_times, 2,
+                                      2 * len(window_fun) - 2)
         return window_fun, threshold
 
     filt._data[data_idx] = mt_spectrum_proc(
@@ -252,7 +252,7 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         window_fun, threshold = get_thresh(x.shape[-1])
     # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
     x_p, freqs = multitaper.spectra(x[np.newaxis, :], window_fun, sfreq)
-    f_stat, A = fastmath.sine_f_test(window_fun, x_p)
+    f_stat, A = stats.sine_f_test(window_fun, x_p)
 
     # find frequencies to remove
     indices = np.where(f_stat > threshold)[1]
