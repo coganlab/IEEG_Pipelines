@@ -9,6 +9,9 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
               axis: int | tuple[int] = None) -> np.ndarray | float:
     """ Calculate the mean difference between two groups.
 
+    This function is the default statistic function for time_perm_cluster. It
+    calculates the mean difference between two groups along the specified axis.
+
     Parameters
     ----------
     group1 : array, shape (..., time)

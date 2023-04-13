@@ -20,6 +20,9 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
             copy: bool = False) -> np.ndarray:
     """Rescale (baseline correct) data.
 
+    Implement a variety of baseline correction methods. The data is
+    modified in place by default.
+
     Parameters
     ----------
     data : array
