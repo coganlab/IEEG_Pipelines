@@ -30,6 +30,7 @@ raw.load_data()
 
 # CAR
 raw.set_eeg_reference(ref_channels="average", ch_type='seeg')
+
 # %% Run gamma filtering
 out = []
 for epoch, t in zip(('Fixation', 'Go Cue', 'ISI Onset', 'Response'),
