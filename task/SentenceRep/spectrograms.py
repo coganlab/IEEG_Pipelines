@@ -57,11 +57,13 @@ base_s = tfr_multitaper(base, freqs, n_jobs=6, verbose=10, average=False,
                         decim=20)
 
 # %%
-mask = stats.time_perm_cluster(resp_s.data, base_s.data, 0.05, n_perm=4)
+mask = stats.time_perm_cluster(resp_s.data, base_s.data, 0.05, n_perm=100)
+signif = resp_s.copy().average()
+signif._data = mask
 
 # %%
 # with open("spectra.npy", "rb") as f:
 #     spectra = np.load(f, allow_pickle=True)[0]
-# from PreProcess.utils import plotting
+from PreProcess.utils import plotting
 # import matplotlib
-# plotting.chan_grid(spectra, vmin=0.7, vmax=1.4)
+plotting.chan_grid(signif, vmin=0, vmax=1)

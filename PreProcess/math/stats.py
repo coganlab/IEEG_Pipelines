@@ -147,20 +147,28 @@ def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
     data_fix : array
         The reshaped data.
     """
-    if shape[-1] > data_fix.shape[-1]:
-        if len(shape) > 2:
-            trials = int(data_fix[:, 0].size / shape[-1])
-            temp = np.full((trials, *shape[1:]), np.nan)
-            for i in range(shape[1]):
-                temp[:, i].flat = data_fix[:, i].flat
-            data_fix = temp.copy()
-        else:  # repeat the signal if it is only 2D
-            data_fix = np.pad(data_fix, ((0, 0), (
-                0, shape[-1] - data_fix.shape[-1])), 'reflect')
-    elif shape[-1] < data_fix.shape[-1]:
-        data_fix = data_fix[:, :shape[-1]]
+    x = 1
+    for s in shape[1:]:
+        x *= s
+    trials = int(data_fix.size / x)
+    temp = np.full((trials, *shape[1:]), np.nan)
 
-    return data_fix
+    for i in np.ndindex(shape[1:-1]):
+        temp[:, i, :].flat = data_fix[:, i, :].flat
+    # if shape[-1] > data_fix.shape[-1]:
+    #     if len(shape) == 2:
+    #         return  np.pad(data_fix, ((0, 0), (
+    #             0, shape[-1] - data_fix.shape[-1])), 'reflect')
+    #     elif len(shape) == 3:
+    #
+    #         for i in range(shape[1]):
+    #             temp[:, i].flat = data_fix[:, i].flat
+    #         data_fix = temp.copy()
+    #
+    # elif shape[-1] < data_fix.shape[-1]:
+    #     data_fix = data_fix[:, :shape[-1]]
+
+    return temp
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
