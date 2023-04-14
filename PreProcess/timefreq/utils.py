@@ -285,7 +285,7 @@ class COLA:
         # Process the data
         if not self.n_jobs == 1:
             out_chunks = parallelize(self._process, data_chunks, self.n_jobs,
-                                     **kwargs)
+                                     prefer='threads', **kwargs)
         else:
             out_chunks = [self._process(data_chunk, **kwargs)
                           for data_chunk in data_chunks]

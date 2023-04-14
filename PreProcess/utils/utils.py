@@ -153,7 +153,9 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
         n_jobs = cpu_count()
     elif n_jobs == -1:
         n_jobs = cpu_count()
-    settings = dict(verbose=0, prefer='threads')
+    settings = dict(verbose=0)
+    if 'prefer' in kwargs.keys():
+        settings['prefer'] = kwargs.pop('prefer')
     env = dict(**environ)
     if config.get_config('MNE_CACHE_DIR') is not None:
         settings['temp_folder'] = config.get_config('MNE_CACHE_DIR')
