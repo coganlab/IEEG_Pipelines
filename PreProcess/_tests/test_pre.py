@@ -53,7 +53,8 @@ def test_line_filter():
     assert np.mean(np.abs(rpsd.get_data() - fpsd.get_data())) > 1e-10
 
 
-@pytest.mark.parametrize("input1, shape, expected", [
+@pytest.mark.parametrize("input_mat, shape, expected", [
+    (np.zeros((10, 52)), (5, 104), np.zeros((5, 104))),
     (np.zeros((10, 50, 52)), (5, 50, 104), np.zeros((5, 50, 104))),
     (np.zeros((10, 50, 50)), (5, 50, 104), np.zeros((4, 50, 104))),
     (np.zeros((10, 100, 50, 52)), (5, 100, 50, 104),
@@ -63,9 +64,9 @@ def test_line_filter():
     (np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]), (1, 2, 4),
      np.array([[[1, 2, 5, 6], [3, 4, 7, 8]]]))
 ])
-def test_same(input1, shape, expected):
+def test_same(input_mat, shape, expected):
     from PreProcess.math.stats import make_data_shape
-    new_shape = make_data_shape(input1, shape)
+    new_shape = make_data_shape(input_mat, shape)
     assert np.all(new_shape == expected)
 
 
