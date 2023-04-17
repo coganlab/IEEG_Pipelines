@@ -37,7 +37,8 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
-                      stat_func: callable = mean_diff) -> np.ndarray:
+                      stat_func: callable = mean_diff,
+                      ignore_adjacency: tuple[int] | int = None) -> np.ndarray:
     """ Calculate significant clusters using permutation testing and cluster
     correction.
 
@@ -73,6 +74,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         Default function is `mean_diff`, but may be substituted with other test
         functions found here:
         https://scipy.github.io/devdocs/reference/stats.html#independent-sample-tests
+    ignore_adjacency : int or tuple of ints, optional
+        The axis or axes to ignore when finding clusters. For example, if
+        sig1.shape = (trials, channels, time), and you want to find clusters
+        across time, but not channels, you would set ignore_adjacency = 1.
 
     Returns
     -------
@@ -90,6 +95,11 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         raise ValueError('tails must be 1, 2, or -1')
     if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
+    if isinstance(ignore_adjacency, int):
+        ignore_adjacency = (ignore_adjacency,)
+    if axis in ignore_adjacency:
+        raise ValueError('observations axis is eliminated before clustering'
+                         'and so cannot be in ignore_adjacency')
 
     # Make sure the data is the same shape
     sig2 = make_data_shape(sig2, sig1.shape)
@@ -101,7 +111,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of the permutation distribution
     logger.info('Calculating permutation distribution')
-    p_perm = np.zeros(diff.shape)
+    p_perm = np.zeros(diff.shape, dtype=np.float16)
     for i in tqdm(range(diff.shape[0]), 'Permutations'):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance
@@ -118,8 +128,12 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     logger.info('Finding clusters')
     clusters = np.zeros(b_act.shape, dtype=int)
-    for i in tqdm(range(b_act.shape[0]), 'Channels'):
-        clusters[i] = time_cluster(b_act[i], b_perm[:, i], 1 - p_cluster)
+    if ignore_adjacency is None:
+        return time_cluster(b_act, b_perm, 1 - p_cluster)
+    for i in tqdm(np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency))):
+        index = tuple(j for j in i) + (slice(None),)
+        clusters[index] = time_cluster(
+            b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster)
 
     return clusters
 
@@ -255,15 +269,13 @@ def tail_compare(diff: np.ndarray | float | int,
     # Account for one or two tailed test
     match tails:
         case 1:
-            larger = diff > obs_diff
+            return diff > obs_diff
         case 2:
-            larger = np.abs(diff) > np.abs(obs_diff)
+            return np.abs(diff) > np.abs(obs_diff)
         case -1:
-            larger = diff < obs_diff
+            return diff < obs_diff
         case _:
             raise ValueError('tails must be 1, 2, or -1')
-
-    return larger
 
 
 def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
