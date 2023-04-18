@@ -1,19 +1,19 @@
-from PreProcess.navigate import get_data, crop_data, \
-    channel_outlier_marker, raw_from_layout, trial_ieeg
-from PreProcess.math import stats
-from PreProcess.timefreq import multitaper, utils
-from mne.time_frequency import tfr_multitaper
-import os.path as op
-import numpy as np
 import matplotlib as mpl
 try:
     mpl.use("TkAgg")
 except ImportError:
     pass
+from PreProcess.navigate import get_data, crop_data, \
+    channel_outlier_marker, raw_from_layout, trial_ieeg
+from PreProcess.math import stats
+from mne.time_frequency import tfr_multitaper
+import os.path as op
+import numpy as np
+
 
 # %% Load the data
 TASK = "SentenceRep"
-sub_num = 29
+sub_num = 15
 subj = "D" + str(sub_num).zfill(4)
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
@@ -47,7 +47,7 @@ resp = trial_ieeg(good, "Word/Response", (-1, 1))
 base = trial_ieeg(good, "Start", (-0.5, 0))
 
 # %% create spectrograms
-freqs = np.arange(1, 200., 4.)
+freqs = np.arange(1, 200., 3.)
 #
 resp_s = tfr_multitaper(resp, freqs, n_jobs=6, verbose=10, average=False,
                         time_bandwidth=10, n_cycles=freqs/2, return_itc=False,
@@ -57,7 +57,10 @@ base_s = tfr_multitaper(base, freqs, n_jobs=6, verbose=10, average=False,
                         decim=20)
 
 # %%
-mask = stats.time_perm_cluster(resp_s.data, base_s.data, 0.05, n_perm=100)
+sig1 = resp_s.data
+sig2 = stats.make_data_shape(base_s.data, sig1.shape)
+mask = stats.time_perm_cluster(sig1, sig2, 0.05,
+                               n_perm=300, ignore_adjacency=1)
 signif = resp_s.copy().average()
 signif._data = mask
 
@@ -65,5 +68,5 @@ signif._data = mask
 # with open("spectra.npy", "rb") as f:
 #     spectra = np.load(f, allow_pickle=True)[0]
 from PreProcess.utils import plotting
-# import matplotlib
+import matplotlib
 plotting.chan_grid(signif, vmin=0, vmax=1)

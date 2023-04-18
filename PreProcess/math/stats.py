@@ -97,12 +97,15 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
     if isinstance(ignore_adjacency, int):
         ignore_adjacency = (ignore_adjacency,)
-    if axis in ignore_adjacency:
-        raise ValueError('observations axis is eliminated before clustering'
-                         'and so cannot be in ignore_adjacency')
+    elif ignore_adjacency is not None:
+        if axis in ignore_adjacency:
+            raise ValueError('observations axis is eliminated before '
+                             'clustering and so cannot be in ignore_adjacency')
 
     # Make sure the data is the same shape
-    sig2 = make_data_shape(sig2, sig1.shape)
+    if not all(np.equal(sig1.shape, sig2.shape)[
+                   np.arange(len(sig1.shape)) != axis]):
+        sig2 = make_data_shape(sig2, sig1.shape)
 
     # Calculate the p value of difference between the two groups
     logger.info('Permuting events in shuffle test')
@@ -127,9 +130,11 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
     logger.info('Finding clusters')
-    clusters = np.zeros(b_act.shape, dtype=int)
     if ignore_adjacency is None:
         return time_cluster(b_act, b_perm, 1 - p_cluster)
+
+    # If there are axes to ignore, we need to loop over them
+    clusters = np.zeros(b_act.shape, dtype=int)
     for i in tqdm(np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency))):
         index = tuple(j for j in i) + (slice(None),)
         clusters[index] = time_cluster(

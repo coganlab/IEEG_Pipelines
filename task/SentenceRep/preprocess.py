@@ -1,18 +1,29 @@
-from PreProcess.navigate import get_data, crop_data, \
-    channel_outlier_marker, raw_from_layout, trial_ieeg
-from PreProcess.timefreq import gamma, utils
-from PreProcess.math import scaling, stats
-import os.path as op
 import matplotlib as mpl
 try:
     mpl.use("TkAgg")
 except ImportError:
     pass
+from PreProcess.navigate import get_data, crop_data, \
+    channel_outlier_marker, raw_from_layout, trial_ieeg
+from bids.layout import parse_file_entities
+from mne_bids import BIDSPath, write_raw_bids
+from PreProcess.timefreq import gamma, utils
+from PreProcess.math import scaling, stats
+import os.path as op
+import os
+
+# %% check if currently running a slurm job
+HOME = os.path.expanduser("~")
+if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
+    LAB_root = os.path.join(HOME, "workspace", "CoganLab")
+    subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
+else:  # if not then set box directory
+    LAB_root = os.path.join(HOME, "Box", "CoganLab")
+    subject = 29
 
 # %% Load the data
 TASK = "SentenceRep"
-sub_num = 29
-subj = "D" + str(sub_num).zfill(4)
+subj = "D" + str(subject).zfill(4)
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
 layout = get_data("SentenceRep", root=LAB_root)
@@ -50,21 +61,23 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
     trials = trial_ieeg(good, epoch, times, preload=True)
     gamma.extract(trials, copy=False, n_jobs=1)
     utils.crop_pad(trials, "0.5s")
+    trials.decimate(20)
+    trials.filenames = good.filenames
     out.append(trials)
-    if len(out) == 2:
-        break
-# resp = fastmath.rescale(out[1], out[0], copy=True)
-# aud = fastmath.rescale(out[2], out[0], copy=True)
-# go = fastmath.rescale(out[3], out[0], copy=True)
-resp = out[1].copy()
-resp.decimate(20)
-base = out[0].copy()
-base.decimate(20)
-z_vals = scaling.rescale(resp, base, 'zscore', True)
-z = z_vals.average()
-power = scaling.rescale(resp, base, 'mean', True).average()
+resp = scaling.rescale(out[1], out[0], 'mean', True)
+aud = scaling.rescale(out[2], out[0], 'mean', True)
+go = scaling.rescale(out[3], out[0], 'mean', True)
+base = out[0]
 # %% run time cluster stats
-mask = stats.time_perm_cluster(resp.copy()._data, base.copy()._data, 0.05,
-                               # stat_func=scipy.stats.ttest_ind,
-                               n_perm=1000)
-mpl.pyplot.imshow(mask)
+save_dir = op.join(layout.root, "derivatives", "stats")
+if not op.isdir(save_dir):
+    os.mkdir(save_dir)
+entities = parse_file_entities(epoch.filenames[0])
+entities.pop('desc')
+entities['description'] = 'stats'
+bids_path = BIDSPath(**entities, root=save_dir)
+for epoch in (resp, aud, go):
+    epoch.mask = stats.time_perm_cluster(epoch.copy()._data, base.copy()._data,
+                                         0.05, n_perm=1000, ignore_adjacency=1)
+    write_raw_bids(epoch, bids_path, allow_preload=True, format='EDF',
+                   acpc_aligned=True, overwrite=True, verbose=True)
