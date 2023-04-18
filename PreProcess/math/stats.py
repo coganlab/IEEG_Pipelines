@@ -114,7 +114,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of the permutation distribution
     logger.info('Calculating permutation distribution')
-    p_perm = np.zeros(diff.shape, dtype=np.float16)
+    p_perm = np.zeros(diff.shape, dtype=np.float32)
     for i in tqdm(range(diff.shape[0]), 'Permutations'):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance

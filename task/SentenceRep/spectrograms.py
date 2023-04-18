@@ -13,7 +13,7 @@ import numpy as np
 
 # %% Load the data
 TASK = "SentenceRep"
-sub_num = 15
+sub_num = 29
 subj = "D" + str(sub_num).zfill(4)
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")

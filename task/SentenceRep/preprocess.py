@@ -5,8 +5,6 @@ except ImportError:
     pass
 from PreProcess.navigate import get_data, crop_data, \
     channel_outlier_marker, raw_from_layout, trial_ieeg
-from bids.layout import parse_file_entities
-from mne_bids import BIDSPath, write_raw_bids
 from PreProcess.timefreq import gamma, utils
 from PreProcess.math import scaling, stats
 import os.path as op
@@ -69,15 +67,12 @@ aud = scaling.rescale(out[2], out[0], 'mean', True)
 go = scaling.rescale(out[3], out[0], 'mean', True)
 base = out[0]
 # %% run time cluster stats
+import mne
 save_dir = op.join(layout.root, "derivatives", "stats")
 if not op.isdir(save_dir):
     os.mkdir(save_dir)
-entities = parse_file_entities(epoch.filenames[0])
-entities.pop('desc')
-entities['description'] = 'stats'
-bids_path = BIDSPath(**entities, root=save_dir)
-for epoch in (resp, aud, go):
+for epoch, name in zip((resp, aud, go), ("resp", "aud", "go")):
     epoch.mask = stats.time_perm_cluster(epoch.copy()._data, base.copy()._data,
                                          0.05, n_perm=1000, ignore_adjacency=1)
-    write_raw_bids(epoch, bids_path, allow_preload=True, format='EDF',
-                   acpc_aligned=True, overwrite=True, verbose=True)
+    resp_mask = mne.EvokedArray(resp.mask, resp.average().info)
+    epoch.save(save_dir + f"/{subj}_{name}_mask-epo.fif", overwrite=True, fmt='double')
