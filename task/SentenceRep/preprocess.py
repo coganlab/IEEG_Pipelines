@@ -74,5 +74,6 @@ if not op.isdir(save_dir):
 for epoch, name in zip((resp, aud, go), ("resp", "aud", "go")):
     epoch.mask = stats.time_perm_cluster(epoch.copy()._data, base.copy()._data,
                                          0.05, n_perm=1000, ignore_adjacency=1)
-    resp_mask = mne.EvokedArray(resp.mask, resp.average().info)
-    epoch.save(save_dir + f"/{subj}_{name}_mask-epo.fif", overwrite=True, fmt='double')
+    epoch_mask = mne.EvokedArray(epoch.mask, epoch.average().info)
+    epoch.save(save_dir + f"/{subj}_{name}_power-epo.fif", overwrite=True, fmt='double')
+    epoch_mask.save(save_dir + f"/{subj}_{name}_mask-ave.fif", overwrite=True)
