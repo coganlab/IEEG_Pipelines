@@ -59,8 +59,7 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
     trials = trial_ieeg(good, epoch, times, preload=True, outliers=10)
     gamma.extract(trials, copy=False, n_jobs=1)
     utils.crop_pad(trials, "0.5s")
-    trials._data = mne.filter.resample(trials._data,
-                                       down=good.info['sfreq'] / 100)
+    trials.resample(down=good.info['sfreq'] / 100)
     trials.filenames = good.filenames
     out.append(trials)
     # if len(out) == 2:

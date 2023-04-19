@@ -19,8 +19,7 @@ conds = {"resp": (-1, 1),
 chn_names = []
 epochs = dict()
 signif = dict()
-for subj in layout.get_subjects():
-    subject = "D" + str(subj).zfill(4)
+for subject in layout.get_subjects():
     epochs[subject] = dict()
     signif[subject] = dict()
     for cond in conds.keys():
@@ -29,10 +28,10 @@ for subj in layout.get_subjects():
             epochs[subject][cond] = mne.read_epochs(os.path.join(
                 folder, f"{subject}_{cond}_power-epo.fif"))
             signif[subject][cond] = mne.read_evokeds(os.path.join(
-                folder, f"{subject}_{cond}_mask-avg.fif"))
+                folder, f"{subject}_{cond}_mask-ave.fif"))
         except FileNotFoundError:
             continue
-        power = epochs.average()
+        power = epochs[subject][cond].average()
         names = [subject + '-' + ch for ch in power.ch_names]
-        chn_names = chn_names + names[names not in chn_names]
+        chn_names = chn_names + [names[names not in chn_names]]
         # all_power = all_power + power.data
