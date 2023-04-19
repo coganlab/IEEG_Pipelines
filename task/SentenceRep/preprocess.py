@@ -17,7 +17,7 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 29
+    subject = 27
 
 # %% Load the data
 TASK = "SentenceRep"
@@ -59,7 +59,7 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
     trials = trial_ieeg(good, epoch, times, preload=True, outliers=10)
     gamma.extract(trials, copy=False, n_jobs=1)
     utils.crop_pad(trials, "0.5s")
-    trials.resample(down=good.info['sfreq'] / 100)
+    trials.resample(100)
     trials.filenames = good.filenames
     out.append(trials)
     # if len(out) == 2:
