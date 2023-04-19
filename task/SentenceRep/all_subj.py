@@ -18,19 +18,23 @@ conds = {"resp": (-1, 1),
 
 # %% Load the data
 chn_names = []
-all_power = all_sig = np.empty((0, 201))
 epochs = dict()
 signif = dict()
+all_power = dict()
+all_sig = dict()
+for cond in conds.keys():
+    all_power[cond] = np.empty((0, 200))
+    all_sig[cond] = np.empty((0, 200))
+folder = os.path.join(layout.root, 'derivatives', 'stats')
 for subject in layout.get_subjects():
     epochs[subject] = dict()
     signif[subject] = dict()
     for cond in conds.keys():
-        folder = os.path.join(layout.root, 'derivatives', 'stats')
         try:
             epochs[subject][cond] = mne.read_epochs(os.path.join(
                 folder, f"{subject}_{cond}_power-epo.fif"))
             signif[subject][cond] = mne.read_evokeds(os.path.join(
-                folder, f"{subject}_{cond}_mask-ave.fif"))
+                folder, f"{subject}_{cond}_mask-ave.fif"))[0]
         except FileNotFoundError:
             continue
         power = epochs[subject][cond].average()
@@ -40,5 +44,6 @@ for subject in layout.get_subjects():
         chn_names = chn_names + [ch for ch in names if ch not in chn_names]
 
         # add new channels to power and significance matrix
-        all_power = np.vstack((all_power, power.get_data()))
-        all_sig = np.vstack((all_sig, signif[subject][cond][0].get_data()))
+        all_power[cond] = np.vstack((all_power[cond], power.get_data()))
+        all_sig[cond] = np.vstack((all_sig[cond],
+                                   signif[subject][cond].get_data()))

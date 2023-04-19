@@ -17,7 +17,7 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 27
+    subject = 15
 
 # %% Load the data
 TASK = "SentenceRep"
@@ -39,7 +39,7 @@ good = new.copy().drop_channels(new.info['bads'])
 good.load_data()
 
 # CAR
-good.set_eeg_reference(ref_channels="average", ch_type='seeg')
+good.set_eeg_reference(ref_channels="average", ch_type='ecog')
 
 # Remove intermediates from mem
 del new
@@ -51,8 +51,8 @@ fix_annotations(good)
 # %% High Gamma Filter and epoching
 out = []
 import mne
-for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
-                    ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5))):
+for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak", "Word/Mime"),
+                    ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5), (-0.5, 1.5))):
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
@@ -72,7 +72,7 @@ save_dir = op.join(layout.root, "derivatives", "stats")
 if not op.isdir(save_dir):
     os.mkdir(save_dir)
 mask = dict()
-for epoch, name in zip(out, ("resp", "aud", "go")):
+for epoch, name in zip(out, ("resp", "aud", "go_ls", "go_lm")):
     sig1 = epoch.get_data()
     sig2 = base.get_data()
     sig2 = np.pad(sig2, ((0, 0), (0, 0), (0, sig1.shape[-1] - sig2.shape[-1])),
@@ -86,4 +86,4 @@ for epoch, name in zip(out, ("resp", "aud", "go")):
 
 # %% Plot
 import matplotlib.pyplot as plt
-plt.imshow(mask['resp'])
+plt.imshow(mask['go_ls'])
