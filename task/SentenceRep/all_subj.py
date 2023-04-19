@@ -1,5 +1,6 @@
 import mne
 import os
+import numpy as np
 from PreProcess.navigate import get_data
 
 # %% check if currently running a slurm job
@@ -17,6 +18,7 @@ conds = {"resp": (-1, 1),
 
 # %% Load the data
 chn_names = []
+all_power = all_sig = np.empty((0, 201))
 epochs = dict()
 signif = dict()
 for subject in layout.get_subjects():
@@ -33,5 +35,10 @@ for subject in layout.get_subjects():
             continue
         power = epochs[subject][cond].average()
         names = [subject + '-' + ch for ch in power.ch_names]
-        chn_names = chn_names + [names[names not in chn_names]]
-        # all_power = all_power + power.data
+
+        # add new channels to list if not already there
+        chn_names = chn_names + [ch for ch in names if ch not in chn_names]
+
+        # add new channels to power and significance matrix
+        all_power = np.vstack((all_power, power.get_data()))
+        all_sig = np.vstack((all_sig, signif[subject][cond][0].get_data()))
