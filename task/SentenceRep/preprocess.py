@@ -17,7 +17,7 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 3
+    subject = 29
 
 # %% Load the data
 TASK = "SentenceRep"
@@ -32,14 +32,14 @@ filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
 new = crop_data(filt)
 
 # Mark channel outliers as bad
-new.info['bads'] = channel_outlier_marker(new, 4)
+new.info['bads'] = channel_outlier_marker(new, 3, 2)
 
 # Exclude bad channels
 good = new.copy().drop_channels(new.info['bads'])
 good.load_data()
 
 # CAR
-good.set_eeg_reference(ref_channels="average", ch_type='ecog')
+good.set_eeg_reference(ref_channels="average", ch_type='seeg')
 
 # Remove intermediates from mem
 del new
@@ -56,10 +56,10 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
-    trials = trial_ieeg(good, epoch, times, preload=True, outliers=8)
+    trials = trial_ieeg(good, epoch, times, preload=True, outliers=10)
     gamma.extract(trials, copy=False, n_jobs=1)
     utils.crop_pad(trials, "0.5s")
-    trials.decimate(20)
+    trials.decimate(good.info['sfreq'] / 100)
     trials.filenames = good.filenames
     out.append(trials)
     # if len(out) == 2:
