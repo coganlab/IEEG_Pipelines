@@ -8,6 +8,7 @@ import numpy as np
 from bids import BIDSLayout
 from bids.layout import BIDSFile, parse_file_entities
 from mne_bids import read_raw_bids, BIDSPath, write_raw_bids
+from scipy.signal import detrend
 
 import sys
 from pathlib import Path  # if you haven't already done so
@@ -258,7 +259,7 @@ def crop_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
 
 @fill_doc
 @verbose
-def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
+def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
                            max_rounds: int = np.inf, verbose: bool = True
                            ) -> list[str]:
     """Identify bad channels by variance.
@@ -322,7 +323,8 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: int = 3,
 @verbose
 def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
                baseline: str = None, basetimes: Doubles = None,
-               mode: str = "mean", verbose=None, **kwargs) -> mne.Epochs:
+               mode: str = "mean", outliers: int = None, verbose=None,
+               **kwargs) -> mne.Epochs:
     """Epochs data from a mne Raw iEEG instance.
 
     Takes a mne Raw instance and epochs the data around a specified event. If
@@ -371,14 +373,22 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
         epochs = mne.Epochs(raw, events, event_id=event_ids, tmin=times[0],
                             tmax=times[1], baseline=None, verbose=verbose,
                             **kwargs)
-        return epochs
     elif basetimes is None:
         raise ValueError("Baseline event input {} must be paired with times"
                          "".format(baseline))
-    kwargs['preload'] = True
-    epochs = trial_ieeg(raw, event, times, **kwargs)
-    base = trial_ieeg(raw, baseline, basetimes, **kwargs)
-    rescale(epochs, base, mode=mode, copy=False)
+    else:
+        kwargs['preload'] = True
+        epochs = trial_ieeg(raw, event, times, **kwargs)
+        base = trial_ieeg(raw, baseline, basetimes, **kwargs)
+        rescale(epochs, base, mode=mode, copy=False)
+
+    if outliers is not None:
+        data = detrend(epochs.get_data(), axis=-1, type="linear")
+        max = np.max(np.abs(data), axis=-1)
+        std = np.std(data, axis=-1)
+        reject = np.any(max > (outliers * std), axis=-1)
+        epochs.drop(reject, reason="outlier")
+
     return epochs
 
 

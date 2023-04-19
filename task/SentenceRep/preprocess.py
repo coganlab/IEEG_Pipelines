@@ -17,7 +17,7 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 29
+    subject = 20
 
 # %% Load the data
 TASK = "SentenceRep"
@@ -56,24 +56,35 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio", "Word/Speak"),
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
-    trials = trial_ieeg(good, epoch, times, preload=True)
+    trials = trial_ieeg(good, epoch, times, preload=True, outliers=8)
     gamma.extract(trials, copy=False, n_jobs=1)
     utils.crop_pad(trials, "0.5s")
     trials.decimate(20)
     trials.filenames = good.filenames
     out.append(trials)
-resp = scaling.rescale(out[1], out[0], 'mean', True)
-aud = scaling.rescale(out[2], out[0], 'mean', True)
-go = scaling.rescale(out[3], out[0], 'mean', True)
-base = out[0]
+    # if len(out) == 2:
+    #     break
+
+base = out.pop(0)
 # %% run time cluster stats
 import mne
+import numpy as np
 save_dir = op.join(layout.root, "derivatives", "stats")
 if not op.isdir(save_dir):
     os.mkdir(save_dir)
-for epoch, name in zip((resp, aud, go), ("resp", "aud", "go")):
-    epoch.mask = stats.time_perm_cluster(epoch.copy()._data, base.copy()._data,
-                                         0.05, n_perm=1000, ignore_adjacency=1)
-    epoch_mask = mne.EvokedArray(epoch.mask, epoch.average().info)
-    epoch.save(save_dir + f"/{subj}_{name}_power-epo.fif", overwrite=True, fmt='double')
+mask = dict()
+for epoch, name in zip(out, ("resp", "aud", "go")):
+    sig1 = epoch.get_data()
+    sig2 = base.get_data()
+    sig2 = np.pad(sig2, ((0, 0), (0, 0), (0, sig1.shape[-1] - sig2.shape[-1])),
+                  mode='reflect')
+    mask[name] = stats.time_perm_cluster(sig1, sig2, 0.05,
+                                         n_perm=1000, ignore_adjacency=1)
+    epoch_mask = mne.EvokedArray(mask[name], epoch.average().info)
+    epoch.save(save_dir + f"/{subj}_{name}_power-epo.fif", overwrite=True,
+               fmt='double')
     epoch_mask.save(save_dir + f"/{subj}_{name}_mask-ave.fif", overwrite=True)
+
+# %% Plot
+import matplotlib.pyplot as plt
+plt.imshow(mask['resp'])
