@@ -19,3 +19,4 @@ psutil
 pyvistaqt
 pytz
 tqdm
+h5io

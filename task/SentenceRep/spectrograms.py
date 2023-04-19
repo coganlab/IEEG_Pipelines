@@ -13,7 +13,7 @@ import numpy as np
 
 # %% Load the data
 TASK = "SentenceRep"
-sub_num = 29
+sub_num = 24
 subj = "D" + str(sub_num).zfill(4)
 HOME = op.expanduser("~")
 LAB_root = op.join(HOME, "Box", "CoganLab")
@@ -25,14 +25,14 @@ filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
 new = crop_data(filt)
 
 # Mark channel outliers as bad
-new.info['bads'] = channel_outlier_marker(new, 5)
+new.info['bads'] = channel_outlier_marker(new, 4)
 
 # Exclude bad channels
 good = new.copy().drop_channels(new.info['bads'])
 good.load_data()
 
 # CAR
-good.set_eeg_reference(ref_channels="average", ch_type='seeg')
+good.set_eeg_reference(ref_channels="average", ch_type='ecog')
 
 # Remove intermediates from mem
 del new
@@ -64,11 +64,12 @@ sig1 = resp_s.data
 sig2 = base_s.data
 sig2 = np.pad(sig2, ((0, 0), (0, 0), (0, 0), (
     0, sig1.shape[-1] - sig2.shape[-1])), mode='reflect')
-mask = stats.time_perm_cluster(sig1, sig2, 0.05,
-                               n_perm=1000, ignore_adjacency=1)
+mask = stats.time_perm_cluster(sig1, sig2, 0.05, n_perm=500,
+                               ignore_adjacency=1)
 signif = resp_s.copy().average()
 signif._data = mask
-signif.save(op.join(layout.derivatives['stats'],'4d', f"{subj}_resp_power-tfr.h5"))
+signif.save(op.join(layout.root, 'derivatives', 'stats', '4d',
+                    f"{subj}_resp_power-tfr.h5"))
 
 # %%
 # with open("spectra.npy", "rb") as f:
