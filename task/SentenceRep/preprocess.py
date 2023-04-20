@@ -6,7 +6,7 @@ except ImportError:
 from PreProcess.navigate import get_data, crop_data, \
     channel_outlier_marker, raw_from_layout, trial_ieeg
 from PreProcess.timefreq import gamma, utils
-from PreProcess.math import stats
+from PreProcess.math import stats, scaling
 import os.path as op
 import os
 
@@ -17,7 +17,7 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 60
+    subject = 26
 
 # %% Load the data
 TASK = "SentenceRep"
@@ -88,8 +88,12 @@ for epoch, name in zip(out, ("resp", "aud_ls", "aud_lm", "aud_jl", "go_ls",
     mask[name] = stats.time_perm_cluster(sig1, sig2, 0.05,
                                          n_perm=1000, ignore_adjacency=1)
     epoch_mask = mne.EvokedArray(mask[name], epoch.average().info)
-    epoch.save(save_dir + f"/{subj}_{name}_power-epo.fif", overwrite=True,
+    power = scaling.rescale(epoch, base, copy=True)
+    power.save(save_dir + f"/{subj}_{name}_power-epo.fif", overwrite=True,
                fmt='double')
+    z_score = scaling.rescale(epoch, base, 'zscore', copy=True)
+    z_score.save(save_dir + f"/{subj}_{name}_zscore-epo.fif", overwrite=True,
+                 fmt='double')
     epoch_mask.save(save_dir + f"/{subj}_{name}_mask-ave.fif", overwrite=True)
 
 # %% Plot

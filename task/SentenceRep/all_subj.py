@@ -1,7 +1,14 @@
 import mne
 import os
 import numpy as np
+import matplotlib as mpl
+try:
+    mpl.use("TkAgg")
+except ImportError:
+    pass
 from PreProcess.navigate import get_data
+from PreProcess.mri import get_sub_dir, head_to_mni
+
 
 # %% check if currently running a slurm job
 HOME = os.path.expanduser("~")
@@ -11,7 +18,9 @@ else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
 layout = get_data("SentenceRep", root=LAB_root)
 conds = {"resp": (-1, 1),
-         "aud": (-0.5, 1.5),
+         "aud_ls": (-0.5, 1.5),
+         "aud_lm": (-0.5, 1.5),
+         "aud_jl": (-0.5, 1.5),
          "go_ls": (-0.5, 1.5),
          "go_lm": (-0.5, 1.5)}
 
@@ -37,6 +46,7 @@ for subject in layout.get_subjects():
         except FileNotFoundError:
             continue
         power = epochs[subject][cond].average()
+        montage = power.get_montage()
         names = [subject + '-' + ch for ch in power.ch_names]
 
         # add new channels to list if not already there
@@ -58,16 +68,20 @@ for i, name in enumerate(chn_names):
             sig_chans.append(i)
             break
 
-    aud_is = np.any(all_sig['aud'][i][50:175] == 1)
+    audls_is = np.any(all_sig['aud_ls'][i][50:175] == 1)
+    audlm_is = np.any(all_sig['aud_lm'][i][50:175] == 1)
+    audjl_is = np.any(all_sig['aud_jl'][i][50:175] == 1)
     mime_is = np.any(all_sig['go_lm'][i] == 1)
     speak_is = np.any(all_sig['go_ls'][i] == 1)
 
-    if aud_is and mime_is:
+    if audls_is and audlm_is and mime_is and speak_is:
         SM.append(i)
-    elif aud_is:
+    elif audls_is and audlm_is and audjl_is:
         AUD.append(i)
     elif mime_is and speak_is:
         PROD.append(i)
+
+# %% get white matter channels
 
 # %% plot groups
 import matplotlib.pyplot as plt
@@ -84,8 +98,8 @@ def plot_dist(mat: iter, label: str | int | float = None,
     plt.show()
     return plt.gca()
 
-cond = 'aud'
-plot_dist(all_sig[cond][AUD], 'AUD')
-plot_dist(all_sig[cond][SM], 'SM')
-plot_dist(all_sig[cond][PROD], 'PROD')
+cond = 'go_lm'
+plot_dist(all_power[cond][AUD], 'AUD')
+plot_dist(all_power[cond][SM], 'SM')
+plot_dist(all_power[cond][PROD], 'PROD')
 plt.legend()
