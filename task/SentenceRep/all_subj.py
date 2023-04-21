@@ -7,7 +7,6 @@ try:
 except ImportError:
     pass
 from PreProcess.navigate import get_data
-from PreProcess.mri import get_sub_dir, head_to_mni
 
 
 # %% check if currently running a slurm job
@@ -22,7 +21,8 @@ conds = {"resp": (-1, 1),
          "aud_lm": (-0.5, 1.5),
          "aud_jl": (-0.5, 1.5),
          "go_ls": (-0.5, 1.5),
-         "go_lm": (-0.5, 1.5)}
+         "go_lm": (-0.5, 1.5),
+         "go_jl": (-0.5, 1.5)}
 
 # %% Load the data
 chn_names = []
@@ -40,7 +40,7 @@ for subject in layout.get_subjects():
     for cond in conds.keys():
         try:
             epochs[subject][cond] = mne.read_epochs(os.path.join(
-                folder, f"{subject}_{cond}_zscore-epo.fif"))
+                folder, f"{subject}_{cond}_power-epo.fif"))
             signif[subject][cond] = mne.read_evokeds(os.path.join(
                 folder, f"{subject}_{cond}_mask-ave.fif"))[0]
         except FileNotFoundError:
@@ -116,7 +116,7 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0):
     return avg, stdev
 # %%
 
-cond = 'resp'
+cond = 'go_jl'
 plot_dist(all_power[cond][AUD], times=conds[cond],
           label='AUD', color='g')
 plot_dist(all_power[cond][SM], times=conds[cond],
@@ -126,4 +126,5 @@ plot_dist(all_power[cond][PROD], times=conds[cond],
 plt.legend()
 plt.xlabel("Time(s)")
 plt.ylabel("z-score")
-plt.title("Response")
+plt.title("Go")
+plt.ylim(-2, 15)
