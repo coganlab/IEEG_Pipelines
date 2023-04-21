@@ -1,12 +1,9 @@
 import mne
 import os
 import numpy as np
-import matplotlib as mpl
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
-from PreProcess.navigate import get_data
+from ieeg.io import get_data
+from ieeg.viz import plot_dist
+import matplotlib.pyplot as plt
 
 
 # %% check if currently running a slurm job
@@ -81,48 +78,12 @@ for i, name in enumerate(chn_names):
     elif mime_is and speak_is:
         PROD.append(i)
 
-# %% get white matter channels
-
 # %% plot groups
-import matplotlib.pyplot as plt
-def plot_dist(mat: iter, mask: np.ndarray = None, times = None, label: str | int | float = None,
-              color: str | list[int] = None) -> plt.Axes:
-    """Plot the distribution for a single signal"""
-    mean, std = dist(mat, mask)
-    if times is None:
-        tscale = range(len(mean))
-    else:
-        tscale = np.linspace(times[0], times[1], len(mean))
-    p = plt.plot(tscale, mean, label=label, color=color)
-    if color is None:
-        color = p[-1].get_color()
-    plt.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
-    plt.show()
-    return plt.gca()
-
-def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0):
-    if mask is None:
-        mask = np.ones(np.shape(mat))
-    else:
-        try:
-            assert np.shape(mat) == np.shape(mask)
-        except AssertionError as e:
-            print(str(np.shape(mat)),'=/=',str(np.shape(mask)))
-            raise e
-    avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
-    avg = np.reshape(avg, [np.shape(avg)[axis]])
-    stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis+1])
-    stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
-    return avg, stdev
-# %%
 
 cond = 'go_jl'
-plot_dist(all_power[cond][AUD], times=conds[cond],
-          label='AUD', color='g')
-plot_dist(all_power[cond][SM], times=conds[cond],
-          label='SM', color='r')
-plot_dist(all_power[cond][PROD], times=conds[cond],
-          label='PROD', color='b')
+plot_dist(all_power[cond][AUD], times=conds[cond], label='AUD', color='g')
+plot_dist(all_power[cond][SM], times=conds[cond], label='SM', color='r')
+plot_dist(all_power[cond][PROD], times=conds[cond], label='PROD', color='b')
 plt.legend()
 plt.xlabel("Time(s)")
 plt.ylabel("z-score")

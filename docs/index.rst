@@ -10,7 +10,7 @@ IEEG_Pipelines documentation
    :maxdepth: 4
    :caption: Contents:
 
-   PreProcess
+   ieeg
    auto_examples/index
 
 

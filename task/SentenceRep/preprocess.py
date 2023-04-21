@@ -1,12 +1,8 @@
-import matplotlib as mpl
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
-from PreProcess.navigate import get_data, crop_data, \
-    channel_outlier_marker, raw_from_layout, trial_ieeg
-from PreProcess.timefreq import gamma, utils
-from PreProcess.math import stats, scaling
+import ieeg.viz
+from ieeg.io import get_data, raw_from_layout
+from ieeg.navigate import crop_empty_data, channel_outlier_marker, trial_ieeg
+from ieeg.timefreq import gamma, utils
+from ieeg.calc import stats, scaling
 import os.path as op
 import os
 
@@ -22,14 +18,12 @@ else:  # if not then set box directory
 # %% Load the data
 TASK = "SentenceRep"
 subj = "D" + str(subject).zfill(4)
-HOME = op.expanduser("~")
-LAB_root = op.join(HOME, "Box", "CoganLab")
 layout = get_data("SentenceRep", root=LAB_root)
 filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
                        extension='.edf', desc='clean', preload=False)
 
 # %% Crop raw data to minimize processing time
-new = crop_data(filt)
+new = crop_empty_data(filt)
 
 # Mark channel outliers as bad
 new.info['bads'] = channel_outlier_marker(new, 3, 2)
@@ -49,7 +43,7 @@ good.set_eeg_reference(ref_channels="average", ch_type=ch_type)
 del new
 
 # %% fix SentenceRep events
-from task.SentenceRep.events import fix_annotations  # noqa E402
+from events import fix_annotations  # noqa E402
 fix_annotations(good)
 
 # %% High Gamma Filter and epoching

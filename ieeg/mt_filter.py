@@ -8,25 +8,10 @@ from mne.utils import logger, _pl, verbose, fill_doc
 import scipy
 from tqdm import tqdm
 
-import sys
-import os
-from pathlib import Path  # if you haven't already done so
-
-file = Path(__file__).resolve()
-parent, root = file.parent, file.parents[1]
-sys.path.append(str(root))
-
-# Additionally remove the current file's directory from sys.path
-try:
-    sys.path.remove(str(parent))
-except ValueError:  # Already removed
-    pass
-
-from PreProcess.timefreq import multitaper, utils as mt_utils  # noqa: E402
-from PreProcess.math import stats  # noqa: E402
-from PreProcess.utils.utils import is_number  # noqa: E402
-
-ListNum = Union[int, float, np.ndarray, list, tuple]
+from ieeg.timefreq import multitaper, utils as mt_utils
+from ieeg.calc import stats
+from ieeg.utils.process import is_number, COLA
+from ieeg import ListNum
 
 
 @fill_doc
@@ -232,8 +217,8 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         x_out[..., idx[0]:stop] += x_
         idx[0] = stop
 
-    mt_utils.COLA(process, store, n_times, n_samples, n_overlap, sfreq,
-                  n_jobs=n_jobs, verbose=verbose).feed(x)
+    COLA(process, store, n_times, n_samples, n_overlap, sfreq,
+         n_jobs=n_jobs, verbose=verbose).feed(x)
     assert idx[0] == n_times
     return x_out, rm_freqs
 
@@ -322,8 +307,11 @@ def _get_parser() -> argparse.ArgumentParser:
 def main(subject: str = None):
     import mne
     from bids import BIDSLayout
-    from PreProcess.navigate import raw_from_layout, LAB_root, save_derivative
+    from ieeg.io import raw_from_layout, save_derivative
+    import os
 
+    HOME = os.path.expanduser("~")
+    LAB_root = os.path.join(HOME, "Box", "CoganLab")
     # %% Set up logging
     mne.set_log_file("output.log",
                      "%(levelname)s: %(message)s - %(asctime)s",

@@ -4,6 +4,55 @@ from skimage import measure
 from tqdm import tqdm
 from mne.utils import logger
 
+from ieeg import Doubles
+
+
+def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
+    if mask is None:
+        mask = np.ones(mat.shape)
+    else:
+        try:
+            assert mat.shape == mask.shape
+        except AssertionError as e:
+            print(str(mat.shape), '=/=', str(mask.shape))
+            raise e
+    avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
+    avg = np.reshape(avg, [np.shape(avg)[axis]])
+    stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis+1])
+    stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
+    return avg, stdev
+
+
+def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
+                   axis: int = 0) -> tuple[tuple[int, int]]:
+    inds = list(range(data.shape[axis]))
+
+    # Square the data and set zeros to small positive number
+    R2 = np.square(data)
+    R2[np.where(R2 == 0)] = 1e-9
+    ch_dim = range(len(data.shape))[-2]  # dimension corresponding to channels
+
+    # find all axes that are not channels (example: time, trials)
+    axes = tuple(i for i in range(len(data.shape)) if not i == ch_dim)
+
+    # Initialize stats loop
+    sig = np.std(R2, axes)  # take standard deviation of each channel
+    cutoff = (sd * np.std(sig)) + np.mean(sig)  # outlier cutoff
+    i = 1
+
+    # remove bad channels and re-calculate variance until no outliers are left
+    while np.any(np.where(sig > cutoff)) and i <= rounds:
+
+        # Pop out names to bads output using comprehension list
+        for j, out in enumerate(np.where(sig > cutoff)[0]):
+            yield inds.pop(out - j), i
+
+        # re-calculate per channel variance
+        R2 = R2[..., np.where(sig < cutoff)[0], :]
+        sig = np.std(R2, axes)
+        cutoff = (sd * np.std(sig)) + np.mean(sig)
+        i += 1
+
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
               axis: int | tuple[int] = None) -> np.ndarray | float:

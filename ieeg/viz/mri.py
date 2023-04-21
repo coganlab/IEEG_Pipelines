@@ -7,21 +7,7 @@ import mne
 import nibabel as nib
 import numpy as np
 
-import sys
-from pathlib import Path  # if you haven't already done so
-
-file = Path(__file__).resolve()
-parent, root = file.parent, file.parents[1]
-sys.path.append(str(root))
-
-# Additionally remove the current file's directory from sys.path
-try:
-    sys.path.remove(str(parent))
-except ValueError:  # Already removed
-    pass
-
-from PreProcess.timefreq.utils import Signal  # noqa: E402
-from PreProcess.utils.utils import PathLike, LAB_root  # noqa: E402
+from ieeg import Signal, PathLike
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
@@ -172,6 +158,9 @@ def get_sub_dir(subj_dir: PathLike = None):
         The subjects directory
     """
     if subj_dir is None:
+        from os import path
+        HOME = path.expanduser("~")
+        LAB_root = path.join(HOME, "Box", "CoganLab")
         subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     return subj_dir
 
@@ -254,7 +243,10 @@ def plot_on_average(info: mne.Info, trans: str = 'fsaverage',
 
 
 if __name__ == "__main__":
-    from PreProcess.navigate import get_data
+    from ieeg.navigate import get_data
+    from os import path
+    HOME = path.expanduser("~")
+    LAB_root = path.join(HOME, "Box", "CoganLab")
     # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")
@@ -264,7 +256,7 @@ if __name__ == "__main__":
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
     sub_num = 29
-    layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
+    layout, raw, D_dat_raw, D_dat_filt = get_data(TASK, LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D00{}".format(sub_num)
     sub = "D{}".format(sub_num)

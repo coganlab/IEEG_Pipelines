@@ -1,11 +1,7 @@
-import matplotlib as mpl
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
-from PreProcess.navigate import get_data, crop_data, \
-    channel_outlier_marker, raw_from_layout, trial_ieeg
-from PreProcess.math import stats
+from ieeg.viz import chan_grid
+from ieeg.io import get_data, raw_from_layout
+from ieeg.navigate import channel_outlier_marker, trial_ieeg, crop_empty_data
+from ieeg.calc import stats
 from mne.time_frequency import tfr_multitaper
 import os.path as op
 import numpy as np
@@ -22,7 +18,7 @@ filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
                        extension='.edf', desc='clean', preload=False)
 
 # %% Crop raw data to minimize processing time
-new = crop_data(filt)
+new = crop_empty_data(filt)
 
 # Mark channel outliers as bad
 new.info['bads'] = channel_outlier_marker(new, 4)
@@ -38,7 +34,7 @@ good.set_eeg_reference(ref_channels="average", ch_type='ecog')
 del new
 
 # %% fix SentenceRep events
-from task.SentenceRep.events import fix_annotations  # noqa E402
+from events import fix_annotations  # noqa E402
 fix_annotations(good)
 
 # %% separate events
@@ -74,6 +70,4 @@ signif.save(op.join(layout.root, 'derivatives', 'stats', '4d',
 # %%
 # with open("spectra.npy", "rb") as f:
 #     spectra = np.load(f, allow_pickle=True)[0]
-from PreProcess.utils import plotting
-import matplotlib
-plotting.chan_grid(signif, vmin=0, vmax=1)
+chan_grid(signif, vmin=0, vmax=1)

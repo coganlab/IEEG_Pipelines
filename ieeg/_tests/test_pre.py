@@ -4,8 +4,8 @@ import numpy as np
 from bids import BIDSLayout
 from mne.io import BaseRaw
 from mne_bids import BIDSPath
-from PreProcess.navigate import raw_from_layout
-from PreProcess.math.stats import mean_diff
+from ieeg.io import raw_from_layout
+from ieeg.calc.stats import mean_diff
 import scipy
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
@@ -25,7 +25,7 @@ def test_bids():
 
 
 def test_bidspath_from_layout():
-    from PreProcess.navigate import bidspath_from_layout
+    from ieeg.io import bidspath_from_layout
     expected = "sub-pt1_ses-presurgery_task-ictal_ieeg.eeg"
     bidspath = bidspath_from_layout(layout, subject="pt1",
                                     extension=".eeg")
@@ -39,7 +39,7 @@ def test_raw_from_layout():
 
 
 def test_line_filter():
-    from PreProcess.mt_filter import line_filter
+    from ieeg.mt_filter import line_filter
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
     filt = line_filter(raw, raw.info['sfreq'], [60])
@@ -65,16 +65,16 @@ def test_line_filter():
      np.array([[[1, 2, 5, 6], [3, 4, 7, 8]]]))
 ])
 def test_same(input_mat, shape, expected):
-    from PreProcess.math.stats import make_data_shape
+    from ieeg.calc.stats import make_data_shape
     new_shape = make_data_shape(input_mat, shape)
     assert np.all(new_shape == expected)
 
 
-spec_check = np.load("PreProcess/_tests/spec.npy")
+spec_check = np.load("ieeg/_tests/spec.npy")
 
 
 def test_spect_1():
-    from PreProcess.timefreq.multitaper import spectrogram
+    from ieeg.timefreq.multitaper import spectrogram
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
     freqs = np.arange(10, 20, 2)
@@ -85,8 +85,8 @@ def test_spect_1():
 
 
 def test_spect_2():
-    from PreProcess.timefreq.multitaper import spectrogram
-    from PreProcess.navigate import trial_ieeg
+    from ieeg.timefreq.multitaper import spectrogram
+    from ieeg.navigate import trial_ieeg
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
     freqs = np.arange(10, 20, 2)
@@ -99,7 +99,7 @@ def test_spect_2():
 
 
 def test_outlier():
-    from PreProcess.navigate import channel_outlier_marker
+    from ieeg.navigate import channel_outlier_marker
     outs = channel_outlier_marker(seeg, 3)
     assert outs == ['LAMY 7', 'LBRI 3']
 
@@ -111,8 +111,8 @@ def test_outlier():
     (scipy.stats.ttest_ind, np.arange(38, 56))
 ])
 def test_stats(func, expected):
-    from PreProcess.navigate import trial_ieeg
-    from PreProcess.math import stats
+    from ieeg.navigate import trial_ieeg
+    from ieeg.calc import stats
 
     out = []
     for epoch, t in zip(('Fixation', 'Response'), ((-0.3, 0), (-0.1, 0.2))):

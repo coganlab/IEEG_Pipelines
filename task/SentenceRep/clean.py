@@ -1,8 +1,7 @@
 # %%
-import mne
 import os
-from PreProcess.navigate import get_data, raw_from_layout, save_derivative
-from PreProcess.mt_filter import line_filter
+from ieeg.io import get_data, raw_from_layout, save_derivative
+from ieeg.mt_filter import line_filter
 
 # %%
 if __name__ == "__main__":

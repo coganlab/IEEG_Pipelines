@@ -1,6 +1,3 @@
 [submodule "MATLAB/MATLAB-env"]
 	path = MATLAB/MATLAB-env
 	url = git@github.com:coganlab/MATLAB-env.git
-[submodule "task/SentenceRep/analysis"]
-	path = task/SentenceRep/analysis
-	url = git@github.com:coganlab/SentenceRep_analysis.git

@@ -5,16 +5,12 @@ Example of Time Permutation Cluster Statistics
 Below is a code sample for performing a permutation test with cluster
 correction
 """
-from PreProcess.navigate import channel_outlier_marker, trial_ieeg
-from PreProcess.timefreq.utils import crop_pad
-from PreProcess.timefreq import gamma
-from PreProcess.math import stats
+from ieeg.navigate import channel_outlier_marker, trial_ieeg
+from ieeg.timefreq.utils import crop_pad
+from ieeg.timefreq import gamma
+from ieeg.calc import stats
 import matplotlib as mpl
 import mne
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
 
 # %% Load Data
 
