@@ -74,9 +74,9 @@ Version 3.10 supported
     
     ```(python)
     from bids import BIDSLayout
-    import preProcess as pre
+    import ieeg
     layout = BIDSLayout(BIDS_root)
-    data = pre.raw_from_layout(layout)
+    data = ieeg.io.raw_from_layout(layout)
     ```
 2. [Perform line noise filtering](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_clean.html)
 
