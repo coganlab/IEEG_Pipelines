@@ -54,8 +54,7 @@ base_s = tfr_multitaper(base, freqs, n_jobs=6, verbose=10, average=False,
                         decim=20)
 base_s.crop(tmin=-0.5, tmax=0)
 
-# %%
-from scipy.signal import detrend
+# %% run stats
 sig1 = resp_s.data
 sig2 = base_s.data
 sig2 = np.pad(sig2, ((0, 0), (0, 0), (0, 0), (

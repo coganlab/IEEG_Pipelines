@@ -42,7 +42,7 @@ filt = line_filter(raw, mt_bandwidth=10., n_jobs=6,
 # %% plot the data
 data = [raw, filt]
 viz.figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
-                        verbose=10, proj=True, fmax=250)
+                   verbose=10, proj=True, fmax=250)
 
 # %% Our Data Unfiltered
 # .. image:: ../../examples/unfilt.png

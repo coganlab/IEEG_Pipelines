@@ -9,8 +9,8 @@ from ieeg.calc import scaling, stats
 from ieeg import Doubles, Signal
 
 
-def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s", end_pad: str = "10s"
-                    ) -> mne.io.Raw:
+def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
+                    end_pad: str = "10s") -> mne.io.Raw:
     """Crops out long stretches of data with no events.
 
     Takes raw instance with annotated events and crops the instance so that the

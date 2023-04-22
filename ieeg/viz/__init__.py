@@ -135,7 +135,29 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
 def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
               label: Union[str, int, float] = None,
               color: Union[str, list[int]] = None) -> plt.Axes:
-    """Plot the distribution for a single signal"""
+    """Plot the distribution for a single signal
+
+    A distribution is the mean of the signal over the last dimension, with
+    optional masking
+
+    Parameters
+    ----------
+    mat : iter
+        The signal to plot
+    mask : np.ndarray, optional
+        The mask to use for the distribution, by default None
+    times : Doubles, optional
+        The times to use for the x-axis, by default None
+    label : Union[str, int, float], optional
+        The label for the signal, by default None
+    color : Union[str, list[int]], optional
+        The color to use for the signal, by default None
+
+    Returns
+    -------
+    plt.Axes
+        The axes containing the plot
+        """
     mean, std = stats.dist(mat, mask)
     if times is None:
         tscale = range(len(mean))

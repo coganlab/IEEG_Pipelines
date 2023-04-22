@@ -3,8 +3,10 @@ from ieeg.io import get_data, raw_from_layout
 from ieeg.navigate import crop_empty_data, channel_outlier_marker, trial_ieeg
 from ieeg.timefreq import gamma, utils
 from ieeg.calc import stats, scaling
+import numpy as np
 import os.path as op
 import os
+import mne
 
 # %% check if currently running a slurm job
 HOME = os.path.expanduser("~")
@@ -48,7 +50,6 @@ fix_annotations(good)
 
 # %% High Gamma Filter and epoching
 out = []
-import mne
 for epoch, t in zip(("Start", "Word/Response", "Word/Audio/LS",
                      "Word/Audio/LM", "Word/Audio/JL", "Word/Speak",
                      "Word/Mime"),
@@ -69,7 +70,7 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio/LS",
 base = out.pop(0)
 
 # %% run time cluster stats
-import numpy as np
+
 save_dir = op.join(layout.root, "derivatives", "stats")
 if not op.isdir(save_dir):
     os.mkdir(save_dir)
@@ -92,5 +93,5 @@ for epoch, name in zip(out, ("resp", "aud_ls", "aud_lm", "aud_jl", "go_ls",
     epoch_mask.save(save_dir + f"/{subj}_{name}_mask-ave.fif", overwrite=True)
 
 # %% Plot
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa E402
 plt.imshow(mask['go_ls'])

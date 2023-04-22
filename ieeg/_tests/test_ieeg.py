@@ -98,10 +98,14 @@ def test_spect_2():
     assert np.allclose(out, spec_check)
 
 
-def test_outlier():
+@pytest.mark.parametrize("input1, input2, expected", [
+    (3, np.inf, ['LAMY 7', 'LBRI 3']),
+    (2.5, 2, ['LAMY 7', 'LBRI 3', 'LAMY 6', 'LBRI 2'])
+])
+def test_outlier(input1, input2, expected):
     from ieeg.navigate import channel_outlier_marker
-    outs = channel_outlier_marker(seeg, 3)
-    assert outs == ['LAMY 7', 'LBRI 3']
+    outs = channel_outlier_marker(seeg, input1, input2)
+    assert outs == expected
 
 
 @pytest.mark.parametrize("func, expected", [
