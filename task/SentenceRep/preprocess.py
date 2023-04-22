@@ -13,7 +13,7 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 26
+    subject = 29
 
 # %% Load the data
 TASK = "SentenceRep"
@@ -26,7 +26,7 @@ filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
 new = crop_empty_data(filt)
 
 # Mark channel outliers as bad
-new.info['bads'] = channel_outlier_marker(new, 3, 2)
+new.info['bads'] = channel_outlier_marker(new, 5)
 
 # Exclude bad channels
 good = new.copy().drop_channels(new.info['bads'])
@@ -67,6 +67,7 @@ for epoch, t in zip(("Start", "Word/Response", "Word/Audio/LS",
     #     break
 
 base = out.pop(0)
+
 # %% run time cluster stats
 import numpy as np
 save_dir = op.join(layout.root, "derivatives", "stats")

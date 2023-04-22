@@ -100,7 +100,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
 
     # Pop out names to bads output using comprehension list
     for ind, i in stats.outlier_repeat(data, outlier_sd, max_rounds, 0):
-        bads.append(names.pop(ind))
+        bads.append(names[ind])
         # log channels excluded per round
         if verbose:
             mne.utils.logger.info(f'outlier round {i} channels: {bads}')

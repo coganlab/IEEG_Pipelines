@@ -8,6 +8,27 @@ from ieeg import Doubles
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
+    """ Calculate the mean and standard deviation of a matrix.
+
+    This function calculates the mean and standard deviation of a matrix along
+    a given axis. If a mask is provided, the mean and standard deviation are
+    calculated only for the elements of the matrix that are not masked.
+
+    Parameters
+    ----------
+    mat : np.ndarray
+        Matrix to calculate mean and standard deviation of.
+    mask : np.ndarray
+        Mask to apply to matrix before calculating mean and standard deviation.
+    axis : int
+        Axis of matrix to calculate mean and standard deviation along.
+
+    Returns
+    -------
+    Doubles
+        Tuple containing the mean and standard deviation of the matrix.
+    """
+
     if mask is None:
         mask = np.ones(mat.shape)
     else:
@@ -25,6 +46,31 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
                    axis: int = 0) -> tuple[tuple[int, int]]:
+    """ Remove outliers from data and repeat until no outliers are left.
+
+    This function removes outliers from data and repeats until no outliers are
+    left. Outliers are defined as any data point that is more than sd standard
+    deviations from the mean. The function returns a tuple of tuples containing
+    the index of the outlier and the round in which it was removed.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to remove outliers from.
+    sd : float
+        Number of standard deviations from the mean to consider an outlier.
+    rounds : int
+        Number of times to repeat outlier removal. If None, the function will
+        repeat until no outliers are left.
+    axis : int
+        Axis of data to remove outliers from.
+
+    Returns
+    -------
+    tuple[tuple[int, int]]
+        Tuple of tuples containing the index of the outlier and the round in
+        which it was removed.
+    """
     inds = list(range(data.shape[axis]))
 
     # Square the data and set zeros to small positive number
