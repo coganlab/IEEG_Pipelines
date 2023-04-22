@@ -8,9 +8,9 @@ environment checks for SLURM jobs for convenience
 
 import mne
 import os
-from PreProcess.navigate import raw_from_layout, save_derivative
-from PreProcess.mt_filter import line_filter
-from PreProcess.utils import plotting
+from ieeg.io import raw_from_layout
+from ieeg.mt_filter import line_filter
+from ieeg import viz
 from bids import BIDSLayout
 
 # %% Set up paths
@@ -41,8 +41,8 @@ filt = line_filter(raw, mt_bandwidth=10., n_jobs=6,
 
 # %% plot the data
 data = [raw, filt]
-plotting.figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
-                        verbose=10, proj=True, fmax=250)
+viz.figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
+                   verbose=10, proj=True, fmax=250)
 
 # %% Our Data Unfiltered
 # .. image:: ../../examples/unfilt.png

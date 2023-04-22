@@ -5,10 +5,10 @@ Example of High Gamma Filter
 Below is a code sample for extracting high gamma power from a raw data file
 """
 
-from PreProcess.navigate import channel_outlier_marker, \
-    raw_from_layout, trial_ieeg
-from PreProcess.timefreq.utils import crop_pad
-from PreProcess.timefreq import gamma
+from ieeg.navigate import channel_outlier_marker, trial_ieeg
+from ieeg.io import raw_from_layout
+from ieeg.timefreq.utils import crop_pad
+from ieeg.timefreq import gamma
 from bids import BIDSLayout
 import mne
 

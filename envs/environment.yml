@@ -1,4 +1,4 @@
-name: preprocess
+name: ieeg
 channels:
   - defaults
 dependencies:

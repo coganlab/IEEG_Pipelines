@@ -1,6 +1,6 @@
 from naplib.preprocessing import filterbank_hilbert
-from PreProcess.timefreq.utils import BaseEpochs, Evoked, Signal, COLA
-from PreProcess.utils.utils import get_mem, cpu_count
+from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
+from ieeg.utils.process import get_mem, cpu_count, COLA
 from mne.io import base, Raw
 from mne import Epochs
 from functools import singledispatch

@@ -4,6 +4,101 @@ from skimage import measure
 from tqdm import tqdm
 from mne.utils import logger
 
+from ieeg import Doubles
+
+
+def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
+    """ Calculate the mean and standard deviation of a matrix.
+
+    This function calculates the mean and standard deviation of a matrix along
+    a given axis. If a mask is provided, the mean and standard deviation are
+    calculated only for the elements of the matrix that are not masked.
+
+    Parameters
+    ----------
+    mat : np.ndarray
+        Matrix to calculate mean and standard deviation of.
+    mask : np.ndarray
+        Mask to apply to matrix before calculating mean and standard deviation.
+    axis : int
+        Axis of matrix to calculate mean and standard deviation along.
+
+    Returns
+    -------
+    Doubles
+        Tuple containing the mean and standard deviation of the matrix.
+    """
+
+    if mask is None:
+        mask = np.ones(mat.shape)
+    else:
+        try:
+            assert mat.shape == mask.shape
+        except AssertionError as e:
+            print(str(mat.shape), '=/=', str(mask.shape))
+            raise e
+    avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
+    avg = np.reshape(avg, [np.shape(avg)[axis]])
+    stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis+1])
+    stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
+    return avg, stdev
+
+
+def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
+                   axis: int = 0) -> tuple[tuple[int, int]]:
+    """ Remove outliers from data and repeat until no outliers are left.
+
+    This function removes outliers from data and repeats until no outliers are
+    left. Outliers are defined as any data point that is more than sd standard
+    deviations from the mean. The function returns a tuple of tuples containing
+    the index of the outlier and the round in which it was removed.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to remove outliers from.
+    sd : float
+        Number of standard deviations from the mean to consider an outlier.
+    rounds : int
+        Number of times to repeat outlier removal. If None, the function will
+        repeat until no outliers are left.
+    axis : int
+        Axis of data to remove outliers from.
+
+    Returns
+    -------
+    tuple[tuple[int, int]]
+        Tuple of tuples containing the index of the outlier and the round in
+        which it was removed.
+    """
+    inds = list(range(data.shape[axis]))
+
+    # Square the data and set zeros to small positive number
+    R2 = np.square(data)
+    R2[np.where(R2 == 0)] = 1e-9
+    ch_dim = range(len(data.shape))[-2]  # dimension corresponding to channels
+
+    # find all axes that are not channels (example: time, trials)
+    axes = tuple(i for i in range(len(data.shape)) if not i == ch_dim)
+
+    # Initialize stats loop
+    sig = np.std(R2, axes)  # take standard deviation of each channel
+    cutoff = (sd * np.std(sig)) + np.mean(sig)  # outlier cutoff
+    i = 1
+
+    # remove bad channels and re-calculate variance until no outliers are left
+    while np.any(np.where(sig > cutoff)) and i <= rounds:
+
+        # Pop out names to bads output using comprehension list
+        for j, out in enumerate(np.where(sig > cutoff)[0]):
+            yield inds.pop(out - j), i
+
+        # re-calculate per channel variance
+        R2 = R2[..., np.where(sig < cutoff)[0], :]
+        sig = np.std(R2, axes)
+        cutoff = (sd * np.std(sig)) + np.mean(sig)
+        i += 1
+
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
               axis: int | tuple[int] = None) -> np.ndarray | float:
@@ -37,7 +132,8 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
-                      stat_func: callable = mean_diff) -> np.ndarray:
+                      stat_func: callable = mean_diff,
+                      ignore_adjacency: tuple[int] | int = None) -> np.ndarray:
     """ Calculate significant clusters using permutation testing and cluster
     correction.
 
@@ -73,6 +169,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         Default function is `mean_diff`, but may be substituted with other test
         functions found here:
         https://scipy.github.io/devdocs/reference/stats.html#independent-sample-tests
+    ignore_adjacency : int or tuple of ints, optional
+        The axis or axes to ignore when finding clusters. For example, if
+        sig1.shape = (trials, channels, time), and you want to find clusters
+        across time, but not channels, you would set ignore_adjacency = 1.
 
     Returns
     -------
@@ -90,9 +190,17 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         raise ValueError('tails must be 1, 2, or -1')
     if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
+    if isinstance(ignore_adjacency, int):
+        ignore_adjacency = (ignore_adjacency,)
+    elif ignore_adjacency is not None:
+        if axis in ignore_adjacency:
+            raise ValueError('observations axis is eliminated before '
+                             'clustering and so cannot be in ignore_adjacency')
 
     # Make sure the data is the same shape
-    sig2 = make_data_shape(sig2, sig1.shape)
+    if not all(np.equal(sig1.shape, sig2.shape)[
+                   np.arange(len(sig1.shape)) != axis]):
+        sig2 = make_data_shape(sig2, sig1.shape)
 
     # Calculate the p value of difference between the two groups
     logger.info('Permuting events in shuffle test')
@@ -101,7 +209,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of the permutation distribution
     logger.info('Calculating permutation distribution')
-    p_perm = np.zeros(diff.shape)
+    p_perm = np.zeros(diff.shape, dtype=np.float16)
     for i in tqdm(range(diff.shape[0]), 'Permutations'):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance
@@ -117,9 +225,15 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
     logger.info('Finding clusters')
+    if ignore_adjacency is None:
+        return time_cluster(b_act, b_perm, 1 - p_cluster)
+
+    # If there are axes to ignore, we need to loop over them
     clusters = np.zeros(b_act.shape, dtype=int)
-    for i in tqdm(range(b_act.shape[0]), 'Channels'):
-        clusters[i] = time_cluster(b_act[i], b_perm[:, i], 1 - p_cluster)
+    for i in tqdm(np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency))):
+        index = tuple(j for j in i) + (slice(None),)
+        clusters[index] = time_cluster(
+            b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster)
 
     return clusters
 
@@ -147,20 +261,21 @@ def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
     data_fix : array
         The reshaped data.
     """
-    if shape[-1] > data_fix.shape[-1]:
-        if len(shape) > 2:
-            trials = int(data_fix[:, 0].size / shape[-1])
-            temp = np.full((trials, *shape[1:]), np.nan)
-            for i in range(shape[1]):
-                temp[:, i].flat = data_fix[:, i].flat
-            data_fix = temp.copy()
-        else:  # repeat the signal if it is only 2D
-            data_fix = np.pad(data_fix, ((0, 0), (
-                0, shape[-1] - data_fix.shape[-1])), 'reflect')
-    elif shape[-1] < data_fix.shape[-1]:
-        data_fix = data_fix[:, :shape[-1]]
 
-    return data_fix
+    # Find the new shape
+    x = 1
+    for s in shape[1:]:
+        x *= s
+    trials = int(data_fix.size / x)
+    temp = np.full((trials, *shape[1:]), np.nan)
+
+    # Assign the data to the new shape, concatenating the first dimension along
+    # the last dimension
+    for i in np.ndindex(shape[1:-1]):
+        index = (slice(None),) + tuple(j for j in i)
+        temp[index].flat = data_fix[index].flat
+
+    return temp
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
@@ -254,15 +369,13 @@ def tail_compare(diff: np.ndarray | float | int,
     # Account for one or two tailed test
     match tails:
         case 1:
-            larger = diff > obs_diff
+            return diff > obs_diff
         case 2:
-            larger = np.abs(diff) > np.abs(obs_diff)
+            return np.abs(diff) > np.abs(obs_diff)
         case -1:
-            larger = diff < obs_diff
+            return diff < obs_diff
         case _:
             raise ValueError('tails must be 1, 2, or -1')
-
-    return larger
 
 
 def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,

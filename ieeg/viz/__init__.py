@@ -2,12 +2,14 @@ import gc
 from typing import Union
 
 import matplotlib as mpl
-import numpy as np
 from joblib import cpu_count
 from mne.io import Raw
+import numpy as np
 
-from PreProcess.timefreq.utils import Signal
+from ieeg import Signal, Doubles
+from ieeg.calc import stats
 
+# Vizualization on Pycharm doesn't work unless using TkAgg
 try:
     mpl.use("TkAgg")
 except ImportError:
@@ -130,13 +132,49 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     return figs
 
 
+def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
+              label: Union[str, int, float] = None,
+              color: Union[str, list[int]] = None) -> plt.Axes:
+    """Plot the distribution for a single signal
+
+    A distribution is the mean of the signal over the last dimension, with
+    optional masking
+
+    Parameters
+    ----------
+    mat : iter
+        The signal to plot
+    mask : np.ndarray, optional
+        The mask to use for the distribution, by default None
+    times : Doubles, optional
+        The times to use for the x-axis, by default None
+    label : Union[str, int, float], optional
+        The label for the signal, by default None
+    color : Union[str, list[int]], optional
+        The color to use for the signal, by default None
+
+    Returns
+    -------
+    plt.Axes
+        The axes containing the plot
+        """
+    mean, std = stats.dist(mat, mask)
+    if times is None:
+        tscale = range(len(mean))
+    else:
+        tscale = np.linspace(times[0], times[1], len(mean))
+    p = plt.plot(tscale, mean, label=label, color=color)
+    if color is None:
+        color = p[-1].get_color()
+    plt.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
+    return plt.gca()
+
+
 if __name__ == "__main__":
-    import mne
     import numpy as np
 
     with open("../spectra.npy", "rb") as f:
         spectra = np.load(f, allow_pickle=True)[0]
     # spectra2 = np.load("spectra.npy", allow_pickle=True,)['spectra']
-    from PreProcess.utils import plotting
 
-    plotting.chan_grid(spectra, vmin=0.7, vmax=1.4)
+    chan_grid(spectra, vmin=0.7, vmax=1.4)

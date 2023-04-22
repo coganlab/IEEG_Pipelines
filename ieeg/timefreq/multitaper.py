@@ -9,10 +9,8 @@ from mne.time_frequency import AverageTFR, tfr_multitaper
 from mne import events_from_annotations, Epochs, event
 from scipy import signal, fft
 
-from PreProcess.timefreq.utils import crop_pad, to_samples
-from PreProcess.math.scaling import rescale
-
-ListNum = Union[int, float, np.ndarray, list, tuple]
+from ieeg.timefreq.utils import crop_pad, to_samples
+from ieeg.calc.scaling import rescale
 
 
 def dpss_windows(N: int, half_nbw: float, Kmax: int, *, sym: bool = True,
@@ -185,28 +183,6 @@ def params(n_times: int, sfreq: float, bandwidth: float,
         adaptive = False
 
     return window_fun, eigvals, adaptive
-
-
-# def tfr(line, freqs, n_cycles, **kwargs):
-#
-#     if 'picks' in kwargs.keys():
-#         line = line.copy().picks(kwargs.pop('picks'))
-#
-#     num_chans = len(line.info['ch_names'])
-#
-#     out = np.empty((num_chans, len(freqs), line._data.shape[2]))
-#
-#     # calculate time frequency response
-#     for i, times in enumerate(n_cycles / freqs):
-#         samps = to_samples(str(times) + "s", line.info['sfreq'])
-#         window_fun, _, _ = params(samps, line.info['sfreq'], 10.0)
-#         for j in range(num_chans):
-#             x_p, freqs_new = spectra(line._data[:,j],
-#             window_fun,line.info['sfreq'], pad_fact=1)
-#             out[i, j, :] = x_p
-#
-#     power = AverageTFR(line.info, out, n_cycles / freqs, freqs,
-#                         1, None, 'multitaper-power')
 
 
 @fill_doc

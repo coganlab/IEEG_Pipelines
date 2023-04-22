@@ -1,5 +1,5 @@
-from PreProcess.navigate import get_data, save_derivative
-from PreProcess.mt_filter import line_filter
+from ieeg.navigate import get_data, save_derivative
+from ieeg.mt_filter import line_filter
 import os.path as op
 import mne
 import os
