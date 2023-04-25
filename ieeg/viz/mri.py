@@ -205,41 +205,37 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
-def plot_on_average(info: mne.Info, trans: str = 'fsaverage',
-                    sub: str = 'fsaverage', subj_dir: PathLike = None,
-                    surfaces: List[str] = None, coord_frame: str = 'head',
-                    **kwargs) -> matplotlib.figure.Figure:
-    """Plots the average brain
+def plot_on_average(sigs: dict[str, Signal], subj_dir: PathLike = None,
+                    surface: List[str] = None) -> matplotlib.figure.Figure:
 
-    Parameters
-    ----------
-    info : mne.Info
-        The info to plot
-    trans : str, optional
-        The transformation to use, by default 'fsaverage'
-    sub : str, optional
-        The subject id, by default 'fsaverage'
-    subj_dir : PathLike, optional
-        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
-    surfaces : List[str], optional
-        The surfaces to plot, by default ['pial']
-    coord_frame : str, optional
-        The coordinate frame to use, by default 'head'
-    **kwargs
-        Additional arguments to pass to plot_alignment
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The figure
-    """
     subj_dir = get_sub_dir(subj_dir)
-    if surfaces is None:
-        surfaces = ['pial']
-    fig = mne.viz.plot_alignment(info, trans=trans, subject=sub,
-                                 subjects_dir=subj_dir, surfaces=surfaces,
-                                 coord_frame=coord_frame, **kwargs)
-    return fig
+    if surface is None:
+        surface = 'pial'
+    brain = mne.viz.Brain('fsaverage', subjects_dir=subj_dir,
+                          background='grey', surf=surface)
+    for subj, inst in sigs.items():
+        new = inst.copy()
+        montage = new.get_montage()
+        # estimate head->mri transform
+        subj_trans = mne.coreg.estimate_head_mri_t(path.join(
+            get_sub_dir(), subj))
+        subject_brain = nib.load(
+            path.join(get_sub_dir(), subj, 'mri', 'brain.mgz'))
+        template_brain = nib.load(
+            path.join(get_sub_dir(), 'fsaverage', 'mri', 'brain.mgz'))
+        zooms = dict(translation=10, rigid=10, affine=10, sdr=5)
+        reg_affine, sdr_morph = mne.transforms.compute_volume_registration(
+            subject_brain, template_brain, zooms=zooms, verbose=True)
+        subject_brain_sdr = mne.transforms.apply_volume_registration(
+            subject_brain, template_brain, reg_affine, sdr_morph)
+        montage.apply_trans(subj_trans)
+        new.set_montage(montage)
+        montage_warped, elec_image, warped_elec_image = mne.warp_montage_volume(
+            montage, CT_aligned, reg_affine, sdr_morph, thresh=0.25,
+            subject_from='sample_seeg', subjects_dir_from=misc_path / 'seeg',
+            subject_to='fsaverage', subjects_dir_to=subjects_dir)
+        brain.add_sensors(new.info, trans)
+    return brain
 
 
 def plot_subj(inst: Signal, sub: str, subj_dir: PathLike = None,
@@ -248,7 +244,7 @@ def plot_subj(inst: Signal, sub: str, subj_dir: PathLike = None,
     subj_dir = get_sub_dir(subj_dir)
     new = inst.copy().pick(picks)
     montage = new.get_montage()
-    montage.apply_trans(mne.transforms.Transform(fro='ras', to='head'))
+    montage.apply_trans(mne.transforms.Transform(fro='unknown', to='head'))
     new.set_montage(montage)
     trans = mne.transforms.Transform(fro='head', to='mri')
     mne.viz.plot_alignment(new.info, subject=sub, trans=trans,
