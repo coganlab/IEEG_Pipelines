@@ -1,4 +1,4 @@
-from ieeg.viz import chan_grid
+from ieeg.viz.utils import chan_grid
 from ieeg.io import get_data, raw_from_layout
 from ieeg.navigate import channel_outlier_marker, trial_ieeg, crop_empty_data
 from ieeg.calc import stats

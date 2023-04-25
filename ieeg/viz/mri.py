@@ -242,8 +242,40 @@ def plot_on_average(info: mne.Info, trans: str = 'fsaverage',
     return fig
 
 
+def plot_subj(inst: Signal, sub: str, subj_dir: PathLike = None,
+              picks: list[str | int] = None):
+
+    subj_dir = get_sub_dir(subj_dir)
+    new = inst.copy().pick(picks)
+    montage = new.get_montage()
+    montage.apply_trans(mne.transforms.Transform(fro='ras', to='head'))
+    new.set_montage(montage)
+    trans = mne.transforms.Transform(fro='head', to='mri')
+    mne.viz.plot_alignment(new.info, subject=sub, trans=trans,
+                           subjects_dir=subj_dir, surfaces='brain',
+                           coord_frame='head')
+
+
+def gen_labels(inst: Signal, sub: str, subj_dir: PathLike = None,
+               picks: list[str | int] = None) -> dict[str, list]:
+
+    subj_dir = get_sub_dir(subj_dir)
+    montage = inst.get_montage()
+    montage.apply_trans(mne.transforms.Transform(fro='ras', to='mri'))
+    aseg = 'aparc+aseg'  # parcellation/anatomical segmentation atlas
+    labels, colors = mne.get_montage_volume_labels(
+        montage, sub, subjects_dir=subj_dir, aseg=aseg)
+
+    if picks is not None:
+        for i, key in enumerate(labels.keys()):
+            if not any((i, key) in picks):
+                labels.pop(key)
+
+    return labels
+
+
 if __name__ == "__main__":
-    from ieeg.navigate import get_data
+    from ieeg.io import get_data, raw_from_layout
     from os import path
     HOME = path.expanduser("~")
     LAB_root = path.join(HOME, "Box", "CoganLab")
@@ -256,14 +288,17 @@ if __name__ == "__main__":
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
     sub_num = 29
-    layout, raw, D_dat_raw, D_dat_filt = get_data(TASK, LAB_root)
+    layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D00{}".format(sub_num)
     sub = "D{}".format(sub_num)
+    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+                           extension='.edf', desc='clean', preload=True)
 
     mne.viz.use_3d_backend('notebook')
     # %%
-    plot_on_average(raw.info)
+    plot_subj(filt, sub)
+    # plot_on_average(filt, sub='D29')
     # plot_gamma(raw)
     # head_to_mni(raw, sub)
     # trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)
