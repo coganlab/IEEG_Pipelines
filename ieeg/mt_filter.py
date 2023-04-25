@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from ieeg.timefreq import multitaper, utils as mt_utils
 from ieeg.calc import stats
-from ieeg.utils.process import is_number, COLA
+from ieeg.process import is_number, COLA
 from ieeg import ListNum
 
 

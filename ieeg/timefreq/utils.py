@@ -6,7 +6,7 @@ from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
 
-from ieeg.utils.process import validate_type, ensure_int
+from ieeg.process import validate_type, ensure_int
 from ieeg import Signal
 
 
