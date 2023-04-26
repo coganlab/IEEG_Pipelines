@@ -206,41 +206,41 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
 
 
 def plot_on_average(sigs: dict[str, Signal], subj_dir: PathLike = None,
-                    surface: List[str] = None) -> matplotlib.figure.Figure:
+                    picks: list[int | str] = None, surface: str = 'pial') -> matplotlib.figure.Figure:
 
     subj_dir = get_sub_dir(subj_dir)
-    if surface is None:
-        surface = 'pial'
     brain = mne.viz.Brain('fsaverage', subjects_dir=subj_dir,
+                          cortex='low_contrast', alpha=0.6,
                           background='grey', surf=surface)
     for subj, inst in sigs.items():
         new = inst.copy()
         montage = new.get_montage()
 
-        # estimate head->mri transform
-        subj_trans = mne.coreg.estimate_head_mri_t(op.join(
-            get_sub_dir(), subj))
-        montage.apply_trans(subj_trans)
-        subject_brain = nib.load(
-            op.join(get_sub_dir(), subj, 'mri', 'brain.mgz'))
-        template_brain = nib.load(
-            op.join(get_sub_dir(), 'fsaverage', 'mri', 'brain.mgz'))
-        zooms = dict(translation=10, rigid=10, affine=10, sdr=5)
-        reg_affine, sdr_morph = mne.transforms.compute_volume_registration(
-            subject_brain, template_brain, zooms=zooms, verbose=True)
-
-        # warp the montage
-        montage_warped = mne.preprocessing.ieeg.warp_montage(
-            montage, subject_brain, template_brain, reg_affine, sdr_morph)
+        force2frame(montage, 'mri')
 
         # first we need to add fiducials so that we can define the "head" coordinate
         # frame in terms of them (with the origin at the center between LPA and RPA)
-        montage_warped.add_estimated_fiducials('fsaverage', subj_dir)
+        montage.add_estimated_fiducials(subj, subj_dir)
+
+        # transform data to fsaverage
+        to_fsaverage = mne.read_talxfm(subj, subj_dir)
+        montage.apply_trans(to_fsaverage)
+        montage.apply_trans(mne.transforms.Transform(fro='mni_tal', to='mri'))
 
         # compute the head<->mri ``trans`` now using the fiducials
-        trans = mne.channels.compute_native_head_t(montage_warped)
+        trans = mne.channels.compute_native_head_t(montage)
         new.set_montage(montage)
-        brain.add_sensors(new.info, trans)
+
+        these_picks = range(len(new.ch_names))
+        if picks is not None:
+            these_picks = [pick for pick in these_picks if pick in picks]
+            picks = [p - len(new.ch_names) for p in picks[len(these_picks):]]
+
+        if len(these_picks) == 0:
+            continue
+
+        info = mne.pick_info(new.info, these_picks)
+        brain.add_sensors(info, trans)
 
     return brain
 
@@ -251,7 +251,7 @@ def plot_subj(inst: Signal, sub: str, subj_dir: PathLike = None,
     subj_dir = get_sub_dir(subj_dir)
     new = inst.copy().pick(picks)
     montage = new.get_montage()
-    montage.apply_trans(mne.transforms.Transform(fro='unknown', to='head'))
+    force2frame(montage, 'head')
     new.set_montage(montage)
     trans = mne.transforms.Transform(fro='head', to='mri')
     mne.viz.plot_alignment(new.info, subject=sub, trans=trans,
@@ -259,12 +259,22 @@ def plot_subj(inst: Signal, sub: str, subj_dir: PathLike = None,
                            coord_frame='head')
 
 
+def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
+
+    settings = dict(fro=montage.get_positions()['coord_frame'],
+                    to=frame, trans=np.eye(4))
+    # current subjects are in 'mri' space, even though it says head
+    if not settings['fro'] == frame:
+        trans = mne.transforms.Transform(**settings)
+        montage.apply_trans(trans)
+
+
 def gen_labels(inst: Signal, sub: str, subj_dir: PathLike = None,
                picks: list[str | int] = None) -> dict[str, list]:
 
     subj_dir = get_sub_dir(subj_dir)
     montage = inst.get_montage()
-    montage.apply_trans(mne.transforms.Transform(fro='ras', to='mri'))
+    force2frame(montage, 'mri')
     aseg = 'aparc+aseg'  # parcellation/anatomical segmentation atlas
     labels, colors = mne.get_montage_volume_labels(
         montage, sub, subjects_dir=subj_dir, aseg=aseg)
