@@ -1,7 +1,7 @@
 import os.path as op
-from typing import Union, List
 
 import matplotlib
+matplotlib.use('TkAgg', force=True)
 import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
@@ -205,15 +205,23 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
-def plot_on_average(sigs: dict[str, Signal], subj_dir: PathLike = None,
-                    picks: list[int | str] = None, surface: str = 'pial') -> matplotlib.figure.Figure:
+def plot_on_average(sigs: dict[str, Signal] | list[Signal],
+                    subj_dir: PathLike = None, rm_wm: bool = True,
+                    picks: list[int | str] = None, surface: str = 'pial'
+                    ) -> matplotlib.figure.Figure:
 
     subj_dir = get_sub_dir(subj_dir)
     brain = mne.viz.Brain('fsaverage', subjects_dir=subj_dir,
                           cortex='low_contrast', alpha=0.6,
                           background='grey', surf=surface)
+
+    if isinstance(sigs, list):
+        sigs = {get_sub(v): v for v in sigs}
+
     for subj, inst in sigs.items():
+
         new = inst.copy()
+
         montage = new.get_montage()
 
         force2frame(montage, 'mri')
@@ -221,6 +229,16 @@ def plot_on_average(sigs: dict[str, Signal], subj_dir: PathLike = None,
         # first we need to add fiducials so that we can define the "head" coordinate
         # frame in terms of them (with the origin at the center between LPA and RPA)
         montage.add_estimated_fiducials(subj, subj_dir)
+        trans = mne.channels.compute_native_head_t(montage)
+
+        # if 'ecog' in new.get_channel_types(only_data_chs=True):
+        #     # try:
+        #     # mne.bem.make_watershed_bem(subj, subj_dir, overwrite=False)
+        #     # except RuntimeError:
+        #     #     pass
+        #
+        #     new.info = mne.preprocessing.ieeg.project_sensors_onto_brain(
+        #         new.info, trans, subj, subjects_dir=subj_dir)
 
         # transform data to fsaverage
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
@@ -228,7 +246,6 @@ def plot_on_average(sigs: dict[str, Signal], subj_dir: PathLike = None,
         montage.apply_trans(mne.transforms.Transform(fro='mni_tal', to='mri'))
 
         # compute the head<->mri ``trans`` now using the fiducials
-        trans = mne.channels.compute_native_head_t(montage)
         new.set_montage(montage)
 
         these_picks = range(len(new.ch_names))
@@ -245,9 +262,15 @@ def plot_on_average(sigs: dict[str, Signal], subj_dir: PathLike = None,
     return brain
 
 
-def plot_subj(inst: Signal, sub: str, subj_dir: PathLike = None,
+def get_sub(inst: Signal) -> str:
+    return "D" + str(int(inst.info['subject_info']['his_id'][5:]))
+
+
+def plot_subj(inst: Signal, sub: str = None, subj_dir: PathLike = None,
               picks: list[str | int] = None):
 
+    if sub is None:
+        sub = get_sub(inst)
     subj_dir = get_sub_dir(subj_dir)
     new = inst.copy().pick(picks)
     montage = new.get_montage()
@@ -255,7 +278,7 @@ def plot_subj(inst: Signal, sub: str, subj_dir: PathLike = None,
     new.set_montage(montage)
     trans = mne.transforms.Transform(fro='head', to='mri')
     mne.viz.plot_alignment(new.info, subject=sub, trans=trans,
-                           subjects_dir=subj_dir, surfaces='brain',
+                           subjects_dir=subj_dir, surfaces=dict(brain=0.4),
                            coord_frame='head')
 
 
@@ -300,15 +323,14 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 29
+    sub_num = 7
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
-    sub_pad = "D00{}".format(sub_num)
+    sub_pad = "D" + str(sub_num).zfill(4)
     sub = "D{}".format(sub_num)
     filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
                            extension='.edf', desc='clean', preload=True)
 
-    mne.viz.use_3d_backend('notebook')
     # %%
     plot_subj(filt, sub)
     # plot_on_average(filt, sub='D29')

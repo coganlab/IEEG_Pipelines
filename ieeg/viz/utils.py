@@ -14,9 +14,6 @@ try:
 except ImportError:
     pass
 
-from ieeg.viz import mri
-
-
 
 import matplotlib.pyplot as plt  # noqa: E402
 

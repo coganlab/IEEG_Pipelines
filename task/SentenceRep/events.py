@@ -39,7 +39,10 @@ def fix_annotations(inst):
                     mne.utils.logger.warn("Speak cue not found for condition #"
                                           "{} {}".format(i, event['description'
                                                                   ]))
-                if 'Response' not in inst.annotations[i + 3]['description']:
+                if len(inst.annotations) < i+4:
+                    is_bad = True
+                    no_response.append(i)
+                elif 'Response' not in inst.annotations[i + 3]['description']:
                     is_bad = True
                     no_response.append(i)
 
