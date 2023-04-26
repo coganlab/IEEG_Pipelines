@@ -216,25 +216,32 @@ def plot_on_average(sigs: dict[str, Signal], subj_dir: PathLike = None,
     for subj, inst in sigs.items():
         new = inst.copy()
         montage = new.get_montage()
+
         # estimate head->mri transform
-        subj_trans = mne.coreg.estimate_head_mri_t(path.join(
+        subj_trans = mne.coreg.estimate_head_mri_t(op.join(
             get_sub_dir(), subj))
+        montage.apply_trans(subj_trans)
         subject_brain = nib.load(
-            path.join(get_sub_dir(), subj, 'mri', 'brain.mgz'))
+            op.join(get_sub_dir(), subj, 'mri', 'brain.mgz'))
         template_brain = nib.load(
-            path.join(get_sub_dir(), 'fsaverage', 'mri', 'brain.mgz'))
+            op.join(get_sub_dir(), 'fsaverage', 'mri', 'brain.mgz'))
         zooms = dict(translation=10, rigid=10, affine=10, sdr=5)
         reg_affine, sdr_morph = mne.transforms.compute_volume_registration(
             subject_brain, template_brain, zooms=zooms, verbose=True)
-        subject_brain_sdr = mne.transforms.apply_volume_registration(
-            subject_brain, template_brain, reg_affine, sdr_morph)
-        montage.apply_trans(subj_trans)
+
+        # warp the montage
+        montage_warped = mne.preprocessing.ieeg.warp_montage(
+            montage, subject_brain, template_brain, reg_affine, sdr_morph)
+
+        # first we need to add fiducials so that we can define the "head" coordinate
+        # frame in terms of them (with the origin at the center between LPA and RPA)
+        montage_warped.add_estimated_fiducials('fsaverage', subj_dir)
+
+        # compute the head<->mri ``trans`` now using the fiducials
+        trans = mne.channels.compute_native_head_t(montage_warped)
         new.set_montage(montage)
-        montage_warped, elec_image, warped_elec_image = mne.warp_montage_volume(
-            montage, CT_aligned, reg_affine, sdr_morph, thresh=0.25,
-            subject_from='sample_seeg', subjects_dir_from=misc_path / 'seeg',
-            subject_to='fsaverage', subjects_dir_to=subjects_dir)
         brain.add_sensors(new.info, trans)
+
     return brain
 
 

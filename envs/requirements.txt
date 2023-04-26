@@ -7,7 +7,7 @@ bids>=0.0
 nipype
 naplib
 EDFlib-Python
-mne
+git+https://github.com/mne-tools/mne-python.git
 mne-bids
 numpy
 matplotlib
@@ -20,3 +20,4 @@ pyvistaqt
 pytz
 tqdm
 h5io
+dipy
