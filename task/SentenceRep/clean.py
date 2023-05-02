@@ -12,7 +12,7 @@ if __name__ == "__main__":
         subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
     else:  # if not then set box directory
         LAB_root = os.path.join(HOME, "Box", "CoganLab")
-        subject = 0
+        subject = 21
 
     # %% Load Data
     layout = get_data("SentenceRep", LAB_root)

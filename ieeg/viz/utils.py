@@ -193,36 +193,6 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray, mask: np.ndarray = Non
     return fig, ax
 
 
-def plot_clustering(data: np.ndarray, label: np.ndarray, mask: np.ndarray = None,
-                    sig_titles: list[str] = None,
-                    colors: list[str | list[int | float]] = None):
-    """Stylized multiplot for clustering"""
-    fig, ax = plot_weight_dist(data, label, mask, sig_titles, colors)
-    # the x coords of this transformation are data, and the
-    # y coord are axes
-    trans = ax.get_xaxis_transform()
-    ax.text(50, 0.8, 'Stim onset', rotation=270, transform=trans)
-    ax.axvline(175)
-    ax.axvline(50, linestyle='--')
-    ax.axvline(200, linestyle='--')
-    # ax.axhline(0, linestyle='--', color='black')
-    ax.text(200, 0.87, 'Go cue', rotation=270, transform=trans)
-    ax.text(160, 0.6, 'Delay', transform=trans)
-    # ax.legend(loc="best")
-    ax.axvspan(150, 200, color=(0.5, 0.5, 0.5, 0.15))
-    ax.set_xticks([0, 50, 100, 150, 200, 225, 250, 300, 350],
-                  ['-0.5', '0', '0.5', '1', '-0.25', '0', '0.25', '0.75', '1.25'])
-    ax.set_xlabel('Time from stimuli or go cue (seconds)')
-    # ax.set_ylabel('Z score')
-    ax.set_ylabel('Z-score')
-    ax.set_xlim(0, 350)
-    ylims = ax.get_ybound()
-    ax.set_ybound(min(0, ylims[0]), ylims[1])
-    # plt.title(title)
-    plt.show()
-    return fig, ax
-
-
 if __name__ == "__main__":
     import numpy as np
 

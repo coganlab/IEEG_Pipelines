@@ -15,7 +15,7 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 30
+    subject = 18
 
 # %% Load the data
 TASK = "SentenceRep"
@@ -35,10 +35,7 @@ good = new.copy().drop_channels(new.info['bads'])
 good.load_data()
 
 # CAR
-if subject in [3, 5, 6, 7, 24, 26]:
-    ch_type = 'ecog'
-else:
-    ch_type = 'seeg'
+ch_type = filt.get_channel_types(only_data_chs=True)[0]
 good.set_eeg_reference(ref_channels="average", ch_type=ch_type)
 
 # Remove intermediates from mem
