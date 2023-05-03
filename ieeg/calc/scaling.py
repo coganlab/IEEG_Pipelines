@@ -17,7 +17,7 @@ def _log_rescale(baseline, mode='mean'):
 
 @singledispatch
 def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
-            copy: bool = False) -> np.ndarray:
+            copy: bool = False, axis: tuple[int] | int = -1) -> np.ndarray:
     """Rescale (baseline correct) data.
 
     Implement a variety of baseline correction methods. The data is
@@ -81,8 +81,8 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
                 d /= s
         case _:
             raise NotImplementedError()
-    mean = np.mean(basedata, axis=-1, keepdims=True)
-    std = np.std(basedata, axis=-1, keepdims=True)
+    mean = np.mean(basedata, axis=axis, keepdims=True)
+    std = np.std(basedata, axis=axis, keepdims=True)
     fun(data, mean, std)
     return data
 
@@ -99,7 +99,9 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
         logger.info(msg)
 
     # Average the baseline across epochs
-    basedata = np.mean(baseline.pick(picks)._data, axis=0, keepdims=True)
+    basedata = baseline.pick(picks)._data
+    axes = list(range(basedata.ndim))
+    axes.pop(1)
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
-                                     False)
+                                     False, tuple(axes))
     return line

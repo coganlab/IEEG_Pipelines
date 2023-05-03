@@ -14,19 +14,33 @@ def fix_annotations(inst):
     annot = None
     no_response = []
     for i, event in enumerate(inst.annotations):
+
+        # check if sentence or word trial
         if event['description'].strip() in ['Audio']:
             if event['duration'] > 1:
                 is_sent = True
             else:
                 is_sent = False
+
+        # check if trials co-occur and mark bad
+        if i != 0:
+            prev = inst.annotations[i-1]
+            if prev['onset'] + prev['duration'] > event['onset']:
+                annot[i - 1]['description'] = 'bad' + annot[i - 1][
+                    'description']
+                event['description'] = 'bad' + event['description']
+                mne.utils.logger.warn(f"Condition {i-1} and {i} co-occur")
+
+        # check for trial type or bad
         if event['description'].strip() not in ['Listen', ':=:']:
-            if is_bad:
-                trial_type = "BAD "
+            if is_bad or 'bad' in event['description'].lower():
+                trial_type = "bad "
             elif is_sent:
                 trial_type = "Sentence/"
             else:
                 trial_type = "Word/"
         else:
+            # determine trial type
             trial_type = "Start/"
             is_bad = False
             if event['description'].strip() in [':=:']:
@@ -36,9 +50,13 @@ def fix_annotations(inst):
             elif event['description'].strip() in ['Listen']:
                 cond = "/LS"
                 if 'Speak' not in inst.annotations[i + 2]['description']:
-                    mne.utils.logger.warn("Speak cue not found for condition #"
-                                          "{} {}".format(i, event['description'
-                                                                  ]))
+                    if 'Response' in inst.annotations[i + 2]['description']:
+                        mne.utils.logger.warn(f"Early response condition {i}")
+                    else:
+                        mne.utils.logger.error(
+                            f"Speak cue not found for condition #{i} "
+                            f"{event['description']}")
+                    is_bad = True
                 if len(inst.annotations) < i+4:
                     is_bad = True
                     no_response.append(i)
