@@ -76,10 +76,9 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
     # Square the data and set zeros to small positive number
     R2 = np.square(data)
     R2[np.where(R2 == 0)] = 1e-9
-    ch_dim = range(len(data.shape))[-2]  # dimension corresponding to channels
 
     # find all axes that are not channels (example: time, trials)
-    axes = tuple(i for i in range(len(data.shape)) if not i == ch_dim)
+    axes = tuple(i for i in range(data.ndim) if not i == axis)
 
     # Initialize stats loop
     sig = np.std(R2, axes)  # take standard deviation of each channel

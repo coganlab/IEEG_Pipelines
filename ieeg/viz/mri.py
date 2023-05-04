@@ -1,6 +1,8 @@
 import os.path as op
 
 import matplotlib
+from mne.viz import Brain
+
 matplotlib.use('TkAgg', force=True)
 import matplotlib.pyplot as plt
 import mne
@@ -211,9 +213,8 @@ def plot_on_average(sigs: dict[str, Signal] | list[Signal],
                     ) -> matplotlib.figure.Figure:
 
     subj_dir = get_sub_dir(subj_dir)
-    brain = mne.viz.Brain('fsaverage', subjects_dir=subj_dir,
-                          cortex='low_contrast', alpha=0.6,
-                          background='grey', surf=surface)
+    brain = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
+                  alpha=0.6, background='grey', surf=surface)
 
     if isinstance(sigs, list):
         sigs = {get_sub(v): v for v in sigs}
@@ -230,15 +231,6 @@ def plot_on_average(sigs: dict[str, Signal] | list[Signal],
         # frame in terms of them (with the origin at the center between LPA and RPA)
         montage.add_estimated_fiducials(subj, subj_dir)
         trans = mne.channels.compute_native_head_t(montage)
-
-        # if 'ecog' in new.get_channel_types(only_data_chs=True):
-        #     # try:
-        #     # mne.bem.make_watershed_bem(subj, subj_dir, overwrite=False)
-        #     # except RuntimeError:
-        #     #     pass
-        #
-        #     new.info = mne.preprocessing.ieeg.project_sensors_onto_brain(
-        #         new.info, trans, subj, subjects_dir=subj_dir)
 
         # transform data to fsaverage
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
@@ -267,7 +259,7 @@ def get_sub(inst: Signal) -> str:
 
 
 def plot_subj(inst: Signal, sub: str = None, subj_dir: PathLike = None,
-              picks: list[str | int] = None):
+              picks: list[str | int] = None, labels_every: int = 8) -> Brain:
 
     if sub is None:
         sub = get_sub(inst)
@@ -277,9 +269,14 @@ def plot_subj(inst: Signal, sub: str = None, subj_dir: PathLike = None,
     force2frame(montage, 'head')
     new.set_montage(montage)
     trans = mne.transforms.Transform(fro='head', to='mri')
-    mne.viz.plot_alignment(new.info, subject=sub, trans=trans,
-                           subjects_dir=subj_dir, surfaces=dict(brain=0.4),
-                           coord_frame='head')
+    f = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
+              background='grey', surf='pial')
+    f.add_sensors(new.info, trans)
+    pos = montage.get_positions()['ch_pos']
+    names = new.ch_names[slice(0, new.info['nchan'], labels_every)]
+    positions = np.array([pos[name] for name in names]) * 1000
+    f.plotter.add_point_labels(positions, names, shape=None)
+    return f
 
 
 def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
@@ -323,7 +320,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 7
+    sub_num = 28
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
@@ -332,7 +329,7 @@ if __name__ == "__main__":
                            extension='.edf', desc='clean', preload=True)
 
     # %%
-    plot_subj(filt, sub)
+    brain = plot_subj(filt, sub)
     # plot_on_average(filt, sub='D29')
     # plot_gamma(raw)
     # head_to_mni(raw, sub)
