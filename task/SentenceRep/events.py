@@ -15,6 +15,8 @@ def fix_annotations(inst):
     no_response = []
     for i, event in enumerate(inst.annotations):
 
+        if event['description'].startswith("EDGE"):
+            continue
         # check if sentence or word trial
         if event['description'].strip() in ['Audio']:
             if event['duration'] > 1:

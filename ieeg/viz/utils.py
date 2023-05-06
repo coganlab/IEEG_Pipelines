@@ -158,6 +158,7 @@ def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
     plt.Axes
         The axes containing the plot
         """
+    # mean, std = np.mean(mat, axis=0), np.std(mat, axis=0)
     mean, std = stats.dist(mat, mask)
     if times is None:
         tscale = range(len(mean))

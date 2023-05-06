@@ -4,6 +4,7 @@ import numpy as np
 from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
 from mne import Epochs
+from mne.time_frequency import EpochsTFR, AverageTFR
 
 
 def _log_rescale(baseline, mode='mean'):
@@ -101,7 +102,10 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
     # Average the baseline across epochs
     basedata = baseline.pick(picks)._data
     axes = list(range(basedata.ndim))
-    axes.pop(1)
+    if isinstance(line, (EpochsTFR, AverageTFR)):
+        axes.pop(0)
+    else:
+        axes.pop(1)
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
                                      False, tuple(axes))
     return line

@@ -72,8 +72,8 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
 @fill_doc
 @verbose
 def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
-                           max_rounds: int = np.inf, verbose: bool = True
-                           ) -> list[str]:
+                           max_rounds: int = np.inf, axis: int = 0,
+                           verbose: bool = True) -> list[str]:
     """Identify bad channels by variance.
 
     Parameters
@@ -99,7 +99,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     bads = []  # output for bad channel names
 
     # Pop out names to bads output using comprehension list
-    for ind, i in stats.outlier_repeat(data, outlier_sd, max_rounds, 0):
+    for ind, i in stats.outlier_repeat(data, outlier_sd, max_rounds, axis):
         bads.append(names[ind])
         # log channels excluded per round
         if verbose:
@@ -154,8 +154,12 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
     # determine the events
     events, ids = mne.events_from_annotations(raw)
     dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
-    event_ids = {key.replace(event, "").strip("/"): value for key, value in
-                 ids.items() if value in dat_ids}
+    if len(dat_ids) > 1:
+        event_ids = {key.replace(event, "").strip("/"): value for key, value in
+                     ids.items() if value in dat_ids}
+    else:
+        event_ids = {key: value for key, value in ids.items() if value in
+                     dat_ids}
     # epoch the data
 
     if baseline is None:
