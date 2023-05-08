@@ -27,9 +27,9 @@ def fix_annotations(inst):
         # check if trials co-occur and mark bad
         if i != 0:
             prev = inst.annotations[i-1]
-            if prev['onset'] + prev['duration'] > event['onset']:
-                annot[i - 1]['description'] = 'bad' + annot[i - 1][
-                    'description']
+            if prev['onset'] + prev['duration'] > event['onset'] and \
+                    prev['onset'] == annot[-1]['onset']:
+                annot[-1]['description'] = 'bad' + annot[-1]['description']
                 event['description'] = 'bad' + event['description']
                 mne.utils.logger.warn(f"Condition {i-1} and {i} co-occur")
 

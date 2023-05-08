@@ -66,11 +66,12 @@ def add_arrows(axes: plt.Axes):
 
 def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
               plot_func: callable = None, picks: list[str | int] = None,
-              **kwargs) -> list[plt.Figure]:
+              size: tuple[int, int] = (1280, 800), **kwargs) -> list[plt.Figure]:
     """Plot a grid of the channels of a Signal object
 
     Parameters
     ----------
+    size
     inst : Signal
         The Signal object to plot
     n_cols : int, optional
@@ -104,7 +105,8 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     numfigs = int(np.ceil(len(chans) / per_fig))
     figs = []
     for i in range(numfigs):
-        fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False)
+        fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
+                                figsize=size)
         for j, chan in enumerate(chans[i * per_fig:(i + 1) * per_fig]):
             if j + 1 % n_cols == 0 or i == len(chans) - 1:
                 bar = True
