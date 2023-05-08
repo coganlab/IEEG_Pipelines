@@ -102,10 +102,17 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
     # Average the baseline across epochs
     basedata = baseline.pick(picks)._data
     axes = list(range(basedata.ndim))
-    if isinstance(line, (EpochsTFR, AverageTFR)):
-        axes.pop(0)
+
+    # within channels
+    axes.pop(1)
+
+    # If time frequency then within frequency
+    if isinstance(line, EpochsTFR):
+        axes = (0, 3)
+    elif isinstance(line, AverageTFR):
+        axes = 2
     else:
-        axes.pop(1)
+        axes = tuple(axes)
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
-                                     False, tuple(axes))
+                                     False, axes)
     return line

@@ -16,6 +16,7 @@ except ImportError:
 
 
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.widgets import CheckButtons
 
 
 def figure_compare(raw: list[Raw], labels: list[str], avg: bool = True,
@@ -66,7 +67,7 @@ def add_arrows(axes: plt.Axes):
 
 def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
               plot_func: callable = None, picks: list[str | int] = None,
-              size: tuple[int, int] = (1280, 800), **kwargs) -> list[plt.Figure]:
+              size: tuple[int, int] = (8, 12), **kwargs) -> list[plt.Figure]:
     """Plot a grid of the channels of a Signal object
 
     Parameters
@@ -107,6 +108,18 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     for i in range(numfigs):
         fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
                                 figsize=size)
+
+        def _onclick_select(event):
+            for a in axs.flatten():
+                if event.inaxes == a:
+                    ch = a.get_title()
+                    if ch in inst.info['bads']:
+                        inst.info['bads'].remove(ch)
+                        print(f"Removing {ch} from bads")
+                    else:
+                        inst.info['bads'].append(ch)
+                        print(f"adding {ch} to bads")
+
         for j, chan in enumerate(chans[i * per_fig:(i + 1) * per_fig]):
             if j + 1 % n_cols == 0 or i == len(chans) - 1:
                 bar = True
@@ -129,6 +142,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
                 j += 1
                 ax = axs.flatten()[j]
                 ax.axis("off")
+        fig.canvas.mpl_connect("button_press_event", _onclick_select)
         figs.append(fig)
         figs[i].show()
     return figs

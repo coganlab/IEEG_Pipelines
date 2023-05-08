@@ -236,7 +236,7 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
     crop_pad(basepower, pad)
 
     # set output data
-    corrected_data = rescale(power._data, basepower._data, correction)
+    corrected_data = rescale(power._data, basepower._data, correction, axis=-1)
 
     return AverageTFR(power.info, corrected_data, power.times, freqs,
                       power.nave, power.comment, power.method)
