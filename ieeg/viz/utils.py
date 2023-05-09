@@ -7,6 +7,7 @@ import numpy as np
 
 from ieeg import Signal, Doubles
 from ieeg.calc import stats
+from functools import partial
 
 # Vizualization on Pycharm doesn't work unless using TkAgg
 try:
@@ -65,9 +66,22 @@ def add_arrows(axes: plt.Axes):
                      width=0.1, head_width=3, length_includes_head=True)
 
 
+def _onclick_select(event, inst, axs):
+    for a in axs:
+        if event.inaxes == a:
+            ch = a.get_title()
+            if ch in inst.info['bads']:
+                inst.info['bads'].remove(ch)
+                print(f"Removing {ch} from bads")
+            else:
+                inst.info['bads'].append(ch)
+                print(f"adding {ch} to bads")
+
+
 def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
               plot_func: callable = None, picks: list[str | int] = None,
-              size: tuple[int, int] = (8, 12), **kwargs) -> list[plt.Figure]:
+              size: tuple[int, int] = (8, 12), show: bool = True, **kwargs
+              ) -> list[plt.Figure]:
     """Plot a grid of the channels of a Signal object
 
     Parameters
@@ -109,16 +123,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
         fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
                                 figsize=size)
 
-        def _onclick_select(event):
-            for a in axs.flatten():
-                if event.inaxes == a:
-                    ch = a.get_title()
-                    if ch in inst.info['bads']:
-                        inst.info['bads'].remove(ch)
-                        print(f"Removing {ch} from bads")
-                    else:
-                        inst.info['bads'].append(ch)
-                        print(f"adding {ch} to bads")
+        select = partial(_onclick_select, inst, fig.axes)
 
         for j, chan in enumerate(chans[i * per_fig:(i + 1) * per_fig]):
             if j + 1 % n_cols == 0 or i == len(chans) - 1:
@@ -142,9 +147,10 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
                 j += 1
                 ax = axs.flatten()[j]
                 ax.axis("off")
-        fig.canvas.mpl_connect("button_press_event", _onclick_select)
+        fig.canvas.mpl_connect("button_press_event", select)
         figs.append(fig)
-        figs[i].show()
+        if show:
+            figs[i].show()
     return figs
 
 
