@@ -123,7 +123,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
         fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
                                 figsize=size)
 
-        select = partial(_onclick_select, inst, fig.axes)
+        select = partial(_onclick_select, inst=inst, axs=fig.axes)
 
         for j, chan in enumerate(chans[i * per_fig:(i + 1) * per_fig]):
             if j + 1 % n_cols == 0 or i == len(chans) - 1:
