@@ -2,7 +2,6 @@ import mne
 from mne.utils import verbose, fill_doc
 import numpy as np
 from bids import BIDSLayout
-from scipy.signal import detrend
 
 from ieeg.timefreq.utils import to_samples
 from ieeg.calc import scaling, stats
@@ -176,9 +175,12 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
         scaling.rescale(epochs, base, mode=mode, copy=False)
 
     if outliers is not None:
+        from scipy.signal import detrend
+        # epochs.get_data() gives a numpy array of (trials X channels X timepoints)
         data = detrend(epochs.get_data(), axis=-1, type="linear")
         max = np.max(np.abs(data), axis=-1)
-        std = np.std(data, axis=-1)
+        std = np.std(data, axis=(-1, 0))
+        # max and std have dims (trials X channels)
         reject = np.any(max > (outliers * std), axis=-1)
         epochs.drop(reject, reason="outlier")
 
