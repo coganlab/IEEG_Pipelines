@@ -39,7 +39,7 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
             raise e
     avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
     avg = np.reshape(avg, [np.shape(avg)[axis]])
-    stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis+1])
+    stdev = np.std(mat, axis) #  / np.sqrt(np.shape(mat)[axis+1])
     stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
     return avg, stdev
 
@@ -97,6 +97,33 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
         sig = np.std(R2, axes)
         cutoff = (sd * np.std(sig)) + np.mean(sig)
         i += 1
+
+
+def avg_no_outlier(data: np.ndarray, outliers: float) -> np.ndarray:
+    """ Calculate the average of data without trial outliers.
+
+    This function calculates the average of data without trial outliers. Outliers
+    are defined as any trial with a maximum value greater than the mean plus
+    outliers times the standard deviation. The function returns the average of
+    data without outliers.
+    """
+    if data.ndim not in (3, 4):
+        raise ValueError("Data must be 3D or 4D")
+    # data is a numpy array of (trials X channels X (frequency) X timepoints)
+    dat = np.abs(data)
+    max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
+    std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
+    mean = np.mean(dat, axis=(-1, 0))  # (channels X (frequency))
+    keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
+    if dat.ndim == 3:
+        disp = [f"Removed Trial {i} in Channel {j}" for i, j in np.ndindex(
+            dat.shape[0:2]) if not keep[i, j]]
+    else:  # dat.ndim == 4:
+        disp = [f"Removed Trial {i} in Channel {j} in Frequency {k}" for i, j,
+                k in np.ndindex(dat.shape[0:3]) if not keep[i, j, k]]
+    for msg in disp:
+        logger.info(msg)
+    return np.mean(data, axis=0, where=keep[..., np.newaxis])
 
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
