@@ -3,9 +3,11 @@ from mne.utils import verbose, fill_doc
 import numpy as np
 from bids import BIDSLayout
 
+from ieeg.io import update
 from ieeg.timefreq.utils import to_samples
 from ieeg.calc import scaling, stats
 from ieeg import Doubles, Signal
+from scipy.signal import detrend
 
 
 def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
@@ -72,7 +74,8 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
 @verbose
 def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
                            max_rounds: int = np.inf, axis: int = 0,
-                           verbose: bool = True) -> list[str]:
+                           save: bool = False, verbose: bool = True
+                           ) -> list[str]:
     """Identify bad channels by variance.
 
     Parameters
@@ -93,16 +96,23 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
         List of bad channel names.
     """
 
-    data = input_raw.get_data('data')  # (trials X) channels X time
-    names = input_raw.copy().pick('data').ch_names
+    tmp = input_raw.copy()
+    data = detrend(tmp.get_data('data'))  # channels X time
+    names = tmp.pick('data').ch_names
     bads = []  # output for bad channel names
+    desc = []  # output for bad channel descriptions
 
     # Pop out names to bads output using comprehension list
     for ind, i in stats.outlier_repeat(data, outlier_sd, max_rounds, axis):
         bads.append(names[ind])
+        desc.append(f'outlier round {i} more than {outlier_sd} SDs above mean')
         # log channels excluded per round
         if verbose:
             mne.utils.logger.info(f'outlier round {i} channels: {bads}')
+
+    if save:
+        tmp.info['bads'] = bads
+        update(tmp, desc)
 
     return bads
 

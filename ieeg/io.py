@@ -3,7 +3,8 @@ import re
 from os import walk, listdir, mkdir, path as op
 
 from bids.layout import BIDSFile, parse_file_entities
-from mne_bids import read_raw_bids, BIDSPath, write_raw_bids
+from mne_bids import read_raw_bids, BIDSPath, write_raw_bids, \
+    update_sidecar_json, mark_channels, get_bids_path_from_fname
 from mne.utils import verbose, fill_doc
 from bids import BIDSLayout
 import numpy as np
@@ -208,3 +209,19 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
         write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
+
+
+@verbose
+def update(inst: Signal, description: list[str] = None, verbose=None):
+    """Updates the files of a data instance with current metadata"""
+    for i, file in enumerate(inst.filenames):
+        bids_path = get_bids_path_from_fname(file)
+        # update_sidecar_json(bids_path)
+        mark_channels(bids_path, ch_names=inst.info['bads'], status='bad',
+                      descriptions=description, verbose=verbose)
+        goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
+        mark_channels(bids_path, ch_names=goods, status='good',
+                      verbose=verbose)
+
+
+
