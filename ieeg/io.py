@@ -212,8 +212,10 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
 
 
 @verbose
-def update(inst: Signal, description: list[str] = None, verbose=None):
+def update(inst: Signal, description: list[str] | str = None, verbose=None):
     """Updates the files of a data instance with current metadata"""
+    if isinstance(description, str):
+        description = [description for _ in range(len(inst.info['bads']))]
     for i, file in enumerate(inst.filenames):
         bids_path = get_bids_path_from_fname(file)
         # update_sidecar_json(bids_path)
