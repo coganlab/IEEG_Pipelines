@@ -99,7 +99,17 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
         i += 1
 
 
-def avg_no_outlier(data: np.ndarray, outliers: float) -> np.ndarray:
+def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
+    dat = np.abs(data)
+    max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
+    std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
+    mean = np.mean(dat, axis=(-1, 0))  # (channels X (frequency))
+    keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
+    return keep
+
+
+def avg_no_outlier(data: np.ndarray, outliers: float = None,
+                   keep: np.ndarray[bool] = None) -> np.ndarray:
     """ Calculate the average of data without trial outliers.
 
     This function calculates the average of data without trial outliers. Outliers
@@ -109,18 +119,23 @@ def avg_no_outlier(data: np.ndarray, outliers: float) -> np.ndarray:
     """
     if data.ndim not in (3, 4):
         raise ValueError("Data must be 3D or 4D")
-    # data is a numpy array of (trials X channels X (frequency) X timepoints)
-    dat = np.abs(data)
-    max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
-    std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
-    mean = np.mean(dat, axis=(-1, 0))  # (channels X (frequency))
-    keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
-    if dat.ndim == 3:
+
+    if keep is None and outliers is not None:
+        keep = find_outliers(data, outliers)
+    elif keep is not None:
+        if keep.ndim == 2 and data.ndim == 4:
+            keep = keep[..., np.newaxis]
+        elif keep.ndim == data.ndim:
+            raise ValueError(f"Keep has too many dimensions ({keep.ndim})")
+    else:
+        raise ValueError("Either keep or outliers must be given")
+
+    if np.squeeze(keep).ndim == 2:  # dat.ndim == 3
         disp = [f"Removed Trial {i} in Channel {j}" for i, j in np.ndindex(
-            dat.shape[0:2]) if not keep[i, j]]
+            data.shape[0:2]) if not keep[i, j]]
     else:  # dat.ndim == 4:
         disp = [f"Removed Trial {i} in Channel {j} in Frequency {k}" for i, j,
-                k in np.ndindex(dat.shape[0:3]) if not keep[i, j, k]]
+                k in np.ndindex(data.shape[0:3]) if not keep[i, j, k]]
     for msg in disp:
         logger.info(msg)
     return np.mean(data, axis=0, where=keep[..., np.newaxis])
