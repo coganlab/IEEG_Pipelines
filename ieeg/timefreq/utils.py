@@ -5,6 +5,9 @@ from mne.utils import fill_doc
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
+from mne.time_frequency import AverageTFR
+from mne.utils import logger
+from scipy.fft import fft, ifft
 
 from ieeg.process import validate_type, ensure_int
 from ieeg import Signal
@@ -90,6 +93,55 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
     pad = to_samples(pad, inst.info['sfreq']) / inst.info['sfreq']
     out.crop(tmin=inst.tmin + pad, tmax=inst.tmax - pad)
     return out
+
+
+def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
+                       f_high: float = 1000, k0: int = 6):
+    data = inst.get_data()  # (trials X channels X timepoints)
+    max_f = min(f_high, inst.info['sfreq'] / 2)
+    dt = 1 / inst.info['sfreq']
+    s0 = 1 / (max_f+(0.1*max_f))  # the smallest resolvable scale
+    n = data.shape[2]
+    J1 = (np.log2(n * dt / s0)) / 0.2  # (J1 determines the largest scale)
+    x = data - np.mean(data, axis=2, keepdims=True)
+
+    k = np.arange(np.fix(n / 2)) + 1
+    k = k * ((2 * np.pi) / (n * dt))
+    kr = (-k).tolist()
+    kr.reverse()
+    k = np.array([0] + k.tolist() + kr)
+    del kr
+
+    f = fft(x)
+
+    scale = s0 * np.power(2.,(np.arange(0,J1) * 0.2))
+    fourier_factor = (4 * np.pi) / (k0 + np.sqrt(2 + np.square(k0)))
+    coi = fourier_factor / np.sqrt(2)
+    period = fourier_factor * scale
+    xxx = np.min(np.where((1. / period) < f_low))
+    period = np.flip(period[:xxx])
+    scale = np.flip(scale[:xxx])
+
+    scale1 = scale
+    fscale = period.shape[0]
+    period = fourier_factor * scale1
+    wave = np.zeros((f.shape[0], fscale, n))
+
+    for ic, chn in enumerate(inst.ch_names):
+        logger.info(chn)
+
+        for a1 in range(fscale):
+
+            expnt = -np.square(scale1[a1] * k - k0) / 2. * (k > 0.)
+            norm = np.sqrt(scale1[a1] * k[2]) * (np.power(np.pi, (-0.25))) * np.sqrt(n)
+            daughter = norm * np.exp(expnt)
+            daughter = daughter * (k > 0.)
+            tmp = ifft(f[:, ic] * np.tile(daughter, (f.shape[0], 1)))
+            wave[ic, a1] = np.mean(tmp.real, 0)
+            #np.reshape(tmp, tmp.shape[0], ve1, tmp.shape[1])
+            del expnt, daughter
+
+    return AverageTFR(inst.info, wave, inst.times, 1/period, f.shape[0])
 
 
 def _check_filterable(x: Union[Signal, np.ndarray],
