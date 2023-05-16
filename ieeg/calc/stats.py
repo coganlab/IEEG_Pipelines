@@ -251,7 +251,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     # Calculate the p value of the permutation distribution
     logger.info('Calculating permutation distribution')
     p_perm = np.zeros(diff.shape, dtype=np.float16)
-    for i in tqdm(range(diff.shape[0]), 'Permutations'):
+    for i in range(diff.shape[0]):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance
         larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
@@ -271,7 +271,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # If there are axes to ignore, we need to loop over them
     clusters = np.zeros(b_act.shape, dtype=int)
-    for i in tqdm(np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency))):
+    for i in np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency)):
         index = tuple(j for j in i) + (slice(None),)
         clusters[index] = time_cluster(
             b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster)
@@ -473,7 +473,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     # Calculate the difference between the two groups averaged across
     # trials at each time point
     diff = np.zeros((n_perm, *obs_diff.shape))
-    for i in tqdm(range(n_perm), "Permuting resamples"):
+    for i in range(n_perm):
         perm_labels = np.random.permutation(labels)
         fake_sig1 = np.take(all_trial, np.where(np.invert(perm_labels))[0],
                             axis=axis)
