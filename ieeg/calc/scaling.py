@@ -4,7 +4,9 @@ import numpy as np
 from mne.utils import logger, verbose
 from mne.epochs import BaseEpochs
 from mne import Epochs
-from mne.time_frequency import EpochsTFR, AverageTFR
+from mne.time_frequency import EpochsTFR, AverageTFR, _BaseTFR
+
+from ieeg.calc.stats import find_outliers
 
 
 def _log_rescale(baseline, mode='mean'):
@@ -18,7 +20,8 @@ def _log_rescale(baseline, mode='mean'):
 
 @singledispatch
 def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
-            copy: bool = False, axis: tuple[int] | int = -1) -> np.ndarray:
+            copy: bool = False, axis: tuple[int] | int = -1,
+            good_base_trials: np.ndarray[bool] = np._NoValue) -> np.ndarray:
     """Rescale (baseline correct) data.
 
     Implement a variety of baseline correction methods. The data is
@@ -82,16 +85,17 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
                 d /= s
         case _:
             raise NotImplementedError()
-    mean = np.mean(basedata, axis=axis, keepdims=True)
-    std = np.std(basedata, axis=axis, keepdims=True)
+    mean = np.mean(basedata, axis=axis, keepdims=True, where=good_base_trials)
+    std = np.std(basedata, axis=axis, keepdims=True, where=good_base_trials)
     fun(data, mean, std)
     return data
 
 
 @rescale.register
 @verbose
-def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
-      copy: bool = False, picks: list = 'data', verbose=None) -> Epochs:
+def _(line: BaseEpochs | _BaseTFR, baseline: BaseEpochs | _BaseTFR,
+      mode: str = 'mean', copy: bool = False, picks: list = 'data',
+      base_trials: np.ndarray[bool] = None, verbose=None) -> Epochs:
     """Rescale (baseline correct) Epochs"""
     if copy:
         line: Epochs = line.copy()
@@ -113,6 +117,13 @@ def _(line: BaseEpochs, baseline: BaseEpochs, mode: str = 'mean',
         axes = 2
     else:
         axes = tuple(axes)
+
+    # find outliers
+    if base_trials is not None:
+        for i in range(line.pick(picks)._data.ndim - base_trials.ndim):
+            base_trials = base_trials[..., None]
+    else:
+        base_trials = np._NoValue
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
-                                     False, axes)
+                                     False, axes, base_trials)
     return line

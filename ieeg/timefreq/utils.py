@@ -5,7 +5,7 @@ from mne.utils import fill_doc
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
-from mne.time_frequency import AverageTFR
+from mne.time_frequency import AverageTFR, EpochsTFR
 from mne.utils import logger
 from scipy.fft import fft, ifft
 
@@ -97,17 +97,13 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
 
 
 def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
-                       f_high: float = 1000, k0: int = 6, outliers: int = 10):
+                       f_high: float = 1000, k0: int = 6, n_jobs: int = 1):
     data = inst.get_data()  # (trials X channels X timepoints)
-    max_f = min(f_high, inst.info['sfreq'] / 2)
     dt = 1 / inst.info['sfreq']
-    s0 = 1 / (max_f+(0.1*max_f))  # the smallest resolvable scale
+    s0 = 1 / (f_high+(0.1*f_high))  # the smallest resolvable scale
     n = data.shape[2]
     J1 = (np.log2(n * dt / s0)) / 0.2  # (J1 determines the largest scale)
     x = data - np.mean(data, axis=2, keepdims=True)
-
-    # find outliers
-    gtrials = find_outliers(data, outliers)
 
     k = np.arange(np.fix(n / 2)) + 1
     k = k * ((2 * np.pi) / (n * dt))
@@ -129,20 +125,24 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     scale1 = scale
     fscale = period.shape[0]
     period = fourier_factor * scale1
-    wave = np.zeros((f.shape[1], fscale, n))
 
-    for ic, chn in enumerate(inst.ch_names):
-        logger.info(chn)
+    expnt = -np.square(scale1[:, None] * k[None, :] - k0) / 2. * (k > 0.)
+    norm = np.sqrt(scale1 * k[2]) * (np.power(np.pi, (-0.25))) * np.sqrt(n)
+    daughter = norm[:, None] * np.exp(expnt)
+    daughter = daughter * (k > 0.)
 
-        expnt = -np.square(np.dot(scale1[:, None], k[None, :]) - k0) / 2. * (
-                    k > 0.)
-        norm = np.sqrt(scale1 * k[2]) * (np.power(np.pi, (-0.25))) * np.sqrt(n)
-        daughter = norm[:, None] * np.exp(expnt)
-        daughter = daughter * (k > 0.)
-        tmp = ifft(f[:, None, ic] * np.tile(daughter, (f.shape[0], 1, 1)))
-        wave[ic] = np.mean(tmp.real, 0, where=gtrials[:, ic, None, None])
+    wave = np.abs(ifft(f[:, :, None] * np.tile(daughter,
+                                               (f.shape[0], 1, 1, 1)),
+                       workers=n_jobs))
 
-    return AverageTFR(inst.info, wave, inst.times, 1/period, f.shape[0])
+    # for ic, chn in enumerate(inst.ch_names):
+    #     logger.info(chn)
+    #
+    #     tmp = ifft(f[:, None, ic] * np.tile(daughter, (f.shape[0], 1, 1)),
+    #                workers=n_jobs)
+    #     wave[:, ic] = np.abs(tmp)
+
+    return EpochsTFR(inst.info, wave, inst.times, 1/period)
 
 
 def _check_filterable(x: Union[Signal, np.ndarray],

@@ -130,7 +130,8 @@ def open_dat_file(file_path: str, channels: list[str],
     """
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
-    channels.remove("Trigger")
+    if "Trigger" in channels:
+        channels.remove("Trigger")
     array = np.reshape(data, [len(channels), -1], order='F')
     match units:
         case "V":
@@ -224,6 +225,3 @@ def update(inst: Signal, description: list[str] | str = None, verbose=None):
         goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
         mark_channels(bids_path, ch_names=goods, status='good',
                       verbose=verbose)
-
-
-
