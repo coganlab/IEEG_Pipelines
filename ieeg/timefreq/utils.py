@@ -1,4 +1,5 @@
 from typing import Union
+import os
 
 import numpy as np
 from mne.utils import fill_doc
@@ -6,9 +7,10 @@ from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
 from mne.time_frequency import AverageTFR, EpochsTFR
-from mne.utils import logger
+from mne.utils import verbose, config
 from scipy.fft import fft, ifft
 from joblib import Parallel, delayed
+from shutil import rmtree
 
 from ieeg.process import validate_type, ensure_int
 from ieeg import Signal
@@ -96,9 +98,10 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
     return out
 
 
+@verbose
 def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
                        f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
-                       decim: int = 1) -> EpochsTFR:
+                       decim: int = 1, verbose=10) -> EpochsTFR:
     data = inst.get_data()  # (trials X channels X timepoints)
     dt = 1 / inst.info['sfreq']
     s0 = 1 / (f_high + (0.1 * f_high))  # the smallest resolvable scale
@@ -131,19 +134,25 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     daughter = norm[:, None] * np.exp(expnt)
     daughter = daughter * (k > 0.)
 
-    inv_abs = lambda x: np.abs(ifft(x * np.tile(daughter, (
-        f.shape[0], 1, 1)))[..., ::decim])
-    wave_gen = Parallel(n_jobs=n_jobs, verbose=10)(delayed(inv_abs)(
-        f[:, None, i]) for i in range(len(inst.ch_names)))
+    env = dict(**os.environ)
+    if config.get_config('MNE_CACHE_DIR') is not None:
+        dir = config.get_config('MNE_CACHE_DIR')
+    elif 'TEMP' in env.keys():
+        dir = env['TEMP']
 
-    wave = np.hstack([w[:, None] for w in wave_gen])
+    temp = os.path.join(dir, "wave.mmap")
+    wave = np.memmap(temp, shape=(*f.shape[:2], xxx, k[::decim].shape[0]),
+                     dtype=np.float64, mode="w+")
 
-    # for ic, chn in enumerate(inst.ch_names):
-    #     logger.info(chn)
-    #
-    #     tmp = ifft(f[:, None, ic] * np.tile(daughter, (f.shape[0], 1, 1)),
-    #                workers=n_jobs)
-    #     wave[:, ic] = np.abs(tmp)
+    inv_abs = lambda x, out: np.abs(ifft(x * np.tile(daughter, (
+        f.shape[0], 1, 1)))[..., ::decim], out=out)
+    Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(inv_abs)(
+        f[:, None, i], wave[:, i]) for i in range(len(inst.ch_names)))
+
+    try:
+        rmtree(temp)
+    except Exception as e:
+        print(e)
 
     return EpochsTFR(inst.info, wave, inst.times[::decim], 1 / period)
 
