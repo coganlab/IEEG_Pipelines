@@ -8,9 +8,9 @@ from mne.io import base
 from mne.time_frequency import AverageTFR, EpochsTFR
 from mne.utils import logger
 from scipy.fft import fft, ifft
+from joblib import Parallel, delayed
 
 from ieeg.process import validate_type, ensure_int
-from ieeg.calc.stats import find_outliers
 from ieeg import Signal
 
 
@@ -97,13 +97,13 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
 
 
 def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
-                       f_high: float = 1000, k0: int = 6, n_jobs: int = 1):
+                       f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
+                       decim: int = 1) -> EpochsTFR:
     data = inst.get_data()  # (trials X channels X timepoints)
     dt = 1 / inst.info['sfreq']
-    s0 = 1 / (f_high+(0.1*f_high))  # the smallest resolvable scale
+    s0 = 1 / (f_high + (0.1 * f_high))  # the smallest resolvable scale
     n = data.shape[2]
     J1 = (np.log2(n * dt / s0)) / 0.2  # (J1 determines the largest scale)
-    x = data - np.mean(data, axis=2, keepdims=True)
 
     k = np.arange(np.fix(n / 2)) + 1
     k = k * ((2 * np.pi) / (n * dt))
@@ -112,9 +112,9 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     k = np.array([0] + k.tolist() + kr)
     del kr
 
-    f = fft(x)
+    f = fft(data - np.mean(data, axis=-1, keepdims=True), workers=n_jobs)
 
-    scale = s0 * np.power(2.,(np.arange(0,J1) * 0.2))
+    scale = s0 * np.power(2., (np.arange(0, J1) * 0.2))
     fourier_factor = (4 * np.pi) / (k0 + np.sqrt(2 + np.square(k0)))
     coi = fourier_factor / np.sqrt(2)
     period = fourier_factor * scale
@@ -131,9 +131,12 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     daughter = norm[:, None] * np.exp(expnt)
     daughter = daughter * (k > 0.)
 
-    wave = np.abs(ifft(f[:, :, None] * np.tile(daughter,
-                                               (f.shape[0], 1, 1, 1)),
-                       workers=n_jobs))
+    inv_abs = lambda x: np.abs(ifft(x * np.tile(daughter, (
+        f.shape[0], 1, 1)))[..., ::decim])
+    wave_gen = Parallel(n_jobs=n_jobs, verbose=10)(delayed(inv_abs)(
+        f[:, None, i]) for i in range(len(inst.ch_names)))
+
+    wave = np.hstack([w[:, None] for w in wave_gen])
 
     # for ic, chn in enumerate(inst.ch_names):
     #     logger.info(chn)
@@ -142,7 +145,7 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     #                workers=n_jobs)
     #     wave[:, ic] = np.abs(tmp)
 
-    return EpochsTFR(inst.info, wave, inst.times, 1/period)
+    return EpochsTFR(inst.info, wave, inst.times[::decim], 1 / period)
 
 
 def _check_filterable(x: Union[Signal, np.ndarray],
