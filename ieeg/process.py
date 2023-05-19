@@ -1,6 +1,8 @@
 import operator
 from os import environ
 from typing import TypeVar, Iterable, Union
+from itertools import chain
+import inspect
 
 import numpy as np
 import pandas as pd
@@ -102,8 +104,8 @@ def is_number(s) -> bool:
         return False
 
 
-def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
-                **kwargs) -> list:
+def parallelize(func: callable, ins: Iterable,
+                verbose: int = 10, n_jobs: int = None, **kwargs) -> list | None:
     """Parallelize a function to run on multiple processors.
 
     This function is a wrapper for joblib.Parallel. It will automatically
@@ -126,7 +128,7 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
     ----------
     func : callable
         The function to parallelize
-    par_var : Iterable
+    ins : Iterable
         The iterable to parallelize over
     n_jobs : int
         The number of jobs to run in parallel. If None, will use all
@@ -141,29 +143,45 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
     list
         The output of the function for each element in par_var
     """
-    if 'n_jobs' in kwargs.keys():
-        n_jobs = kwargs.pop('n_jobs')
-    elif n_jobs is None:
-        n_jobs = cpu_count()
-    elif n_jobs == -1:
-        n_jobs = cpu_count()
-    settings = dict(verbose=0)
-    if 'prefer' in kwargs.keys():
-        settings['prefer'] = kwargs.pop('prefer')
+
+    assert ins
+    if n_jobs is None:
+        if 'n_jobs' in inspect.getfullargspec(func).args:
+            kwargs['n_jobs'] = -2
+        else:
+            n_jobs = -2
+    settings = dict(verbose=verbose)
+    settings['prefer'] = kwargs.pop('prefer', None)
+    settings['mmap_mode'] = kwargs.pop('mmap_mode', 'r')
+    settings['require'] = kwargs.pop('require', None)
+
     env = dict(**environ)
     if config.get_config('MNE_CACHE_DIR') is not None:
         settings['temp_folder'] = config.get_config('MNE_CACHE_DIR')
     elif 'TEMP' in env.keys():
         settings['temp_folder'] = env['TEMP']
+    else:
+        settings['temp_folder'] = None
 
     if config.get_config('MNE_MEMMAP_MIN_SIZE') is not None:
         settings['max_nbytes'] = config.get_config('MNE_MEMMAP_MIN_SIZE')
     else:
         settings['max_nbytes'] = get_mem()
 
-    data_new = Parallel(n_jobs, **settings)(delayed(func)(
-        x_, *args, **kwargs)for x_ in par_var)
-    return data_new
+    for var in ins:
+        if isinstance(var, tuple):
+            x_is_tup = True
+        else:
+            x_is_tup = False
+        ins = chain((var,), ins)
+        break
+
+    if x_is_tup:
+        return Parallel(n_jobs, **settings)(delayed(func)(
+            *x_, **kwargs) for x_ in ins)
+    else:
+        return Parallel(n_jobs, **settings)(delayed(func)(
+            x_, **kwargs) for x_ in ins)
 
 
 def get_mem() -> Union[float, int]:
@@ -335,7 +353,8 @@ class COLA:
 
         # Process the data
         if not self.n_jobs == 1:
-            out_chunks = parallelize(self._process, data_chunks, self.n_jobs,
+            out_chunks = parallelize(self._process, data_chunks,
+                                     n_jobs=self.n_jobs,
                                      prefer='threads', **kwargs)
         else:
             out_chunks = [self._process(data_chunk, **kwargs)

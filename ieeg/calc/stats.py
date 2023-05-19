@@ -239,17 +239,21 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                              'clustering and so cannot be in ignore_adjacency')
 
     # Make sure the data is the same shape
-    if not all(np.equal(sig1.shape, sig2.shape)[
-                   np.arange(len(sig1.shape)) != axis]):
-        sig2 = make_data_shape(sig2, sig1.shape)
+    eq = list(np.equal(sig1.shape, sig2.shape)[np.arange(sig1.ndim) != axis])
+    if not all(eq):
+        eq.insert(axis, True)
+        pad_shape = [(0, 0) if eq[i] else
+                     (0, sig2.shape[i] - sig1.shape[i])
+                     for i in range(sig1.ndim)]
+        sig2 = np.pad(sig2, pad_shape, mode='reflect')
 
     # Calculate the p value of difference between the two groups
-    logger.info('Permuting events in shuffle test')
+    # logger.info('Permuting events in shuffle test')
     p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True,
                                     stat_func)
 
     # Calculate the p value of the permutation distribution
-    logger.info('Calculating permutation distribution')
+    # logger.info('Calculating permutation distribution')
     p_perm = np.zeros(diff.shape, dtype=np.float16)
     for i in range(diff.shape[0]):
         # p_perm is the probability of observing a difference as large as the
@@ -265,7 +269,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
-    logger.info('Finding clusters')
+    # logger.info('Finding clusters')
     if ignore_adjacency is None:
         return time_cluster(b_act, b_perm, 1 - p_cluster)
 

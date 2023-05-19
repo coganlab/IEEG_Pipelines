@@ -1,5 +1,4 @@
 from typing import Union
-import os
 
 import numpy as np
 from mne.utils import fill_doc
@@ -8,11 +7,8 @@ from mne.evoked import Evoked
 from mne.io import base
 from mne.time_frequency import AverageTFR, EpochsTFR
 from mne.utils import verbose, config
-from scipy.fft import fft, ifft
-from joblib import Parallel, delayed
-from shutil import rmtree
 
-from ieeg.process import validate_type, ensure_int
+from ieeg.process import validate_type, ensure_int, parallelize
 from ieeg import Signal
 
 
@@ -98,6 +94,14 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
     return out
 
 
+# def ifft_abs(x, d, decim):
+#     # for i in prange(x.shape[1]):
+#     conv = x * np.broadcast_to(d, (x.shape[0], *d.shape))
+#     wav = np.fft.ifft(conv)[..., decim]
+#     return np.abs(wav)
+
+
+
 @verbose
 def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
                        f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
@@ -115,7 +119,7 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     k = np.array([0] + k.tolist() + kr)
     del kr
 
-    f = fft(data - np.mean(data, axis=-1, keepdims=True), workers=n_jobs)
+    f = np.fft.fft(data - np.mean(data, axis=-1, keepdims=True))
 
     scale = s0 * np.power(2., (np.arange(0, J1) * 0.2))
     fourier_factor = (4 * np.pi) / (k0 + np.sqrt(2 + np.square(k0)))
@@ -134,25 +138,13 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     daughter = norm[:, None] * np.exp(expnt)
     daughter = daughter * (k > 0.)
 
-    env = dict(**os.environ)
-    if config.get_config('MNE_CACHE_DIR') is not None:
-        dir = config.get_config('MNE_CACHE_DIR')
-    elif 'TEMP' in env.keys():
-        dir = env['TEMP']
-
-    temp = os.path.join(dir, "wave.mmap")
-    wave = np.memmap(temp, shape=(*f.shape[:2], xxx, k[::decim].shape[0]),
-                     dtype=np.float64, mode="w+")
-
-    inv_abs = lambda x, out: np.abs(ifft(x * np.tile(daughter, (
-        f.shape[0], 1, 1)))[..., ::decim], out=out)
-    Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(inv_abs)(
-        f[:, None, i], wave[:, i]) for i in range(len(inst.ch_names)))
-
-    try:
-        rmtree(temp)
-    except Exception as e:
-        print(e)
+    wave = np.empty((f.shape[0], f.shape[1], xxx, k[::decim].shape[-1]),
+                    dtype=np.float64)  # ch X trials X freq X time
+    ins = ((f[:, None, i], i) for i in range(f.shape[1]))
+    ifft_abs = lambda x, i: np.abs(np.fft.ifft(x * np.tile(daughter, (
+        f.shape[0], 1, 1)))[..., ::decim], out=wave[:, i])
+    parallelize(ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
+                verbose=verbose)
 
     return EpochsTFR(inst.info, wave, inst.times[::decim], 1 / period)
 
