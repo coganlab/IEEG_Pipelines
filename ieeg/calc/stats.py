@@ -243,7 +243,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     if not all(eq):
         eq.insert(axis, True)
         pad_shape = [(0, 0) if eq[i] else
-                     (0, sig2.shape[i] - sig1.shape[i])
+                     (0, sig1.shape[i] - sig2.shape[i])
                      for i in range(sig1.ndim)]
         sig2 = np.pad(sig2, pad_shape, mode='reflect')
 
