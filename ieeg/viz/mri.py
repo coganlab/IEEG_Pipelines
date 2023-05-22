@@ -1,4 +1,6 @@
 import os.path as op
+from functools import singledispatch
+import csv
 
 import matplotlib
 from mne.viz import Brain
@@ -163,7 +165,7 @@ def get_sub_dir(subj_dir: PathLike = None):
         from os import path
         HOME = path.expanduser("~")
         LAB_root = path.join(HOME, "Box", "CoganLab")
-        subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
+        subj_dir = op.join(HOME, "Box", "ECoG_Recon")
     return subj_dir
 
 
@@ -258,11 +260,11 @@ def get_sub(inst: Signal) -> str:
     return "D" + str(int(inst.info['subject_info']['his_id'][5:]))
 
 
-def plot_subj(inst: Signal, sub: str = None, subj_dir: PathLike = None,
+@singledispatch
+def plot_subj(inst: Signal, subj_dir: PathLike = None,
               picks: list[str | int] = None, labels_every: int = 8) -> Brain:
 
-    if sub is None:
-        sub = get_sub(inst)
+    sub = get_sub(inst)
     subj_dir = get_sub_dir(subj_dir)
     new = inst.copy().pick(picks)
     montage = new.get_montage()
@@ -277,6 +279,61 @@ def plot_subj(inst: Signal, sub: str = None, subj_dir: PathLike = None,
     positions = np.array([pos[name] for name in names]) * 1000
     f.plotter.add_point_labels(positions, names, shape=None)
     return f
+
+
+@plot_subj.register
+def _(sub: str, subj_dir: PathLike = None, picks: list[str | int] = None,
+      labels_every: int = 8) -> Brain:
+    if subj_dir is None:
+        info = subject_to_info(sub, subj_dir)
+    subj_dir = get_sub_dir(subj_dir)
+
+    # T1_fname = op.join(subj_dir, sub, 'mri', 'T1.mgz')
+    # if not op.isfile(T1_fname):
+    #     raise RuntimeError(f'Freesurfer subject ({sub}) and/or '
+    #                        f'subjects_dir ({subj_dir}, incorrectly '
+    #                        'formatted, T1.mgz not found')
+    # T1 = nib.load(T1_fname)
+    #
+    # # transform from "ras" (scanner RAS) to "mri" (Freesurfer surface RAS)
+    # ras_vox_t = T1.header.get_ras2vox()
+    # ras_vox_t[:3, :3] *= 1000  # scale from mm to m
+    # ras_vox_trans = mne.transforms.Transform(
+    #     fro='ras', to='mri_voxel', trans=ras_vox_t)
+    #
+    # vox_mri_t = T1.header.get_vox2ras_tkr()
+    # vox_mri_t[:3] /= 1000  # scale from mm to m
+    # vox_mri_trans = mne.transforms.Transform(
+    #     fro='mri_voxel', to='mri', trans=vox_mri_t)
+    # to_mri = mne.transforms.combine_transforms(ras_vox_trans, vox_mri_trans,
+    #                                            fro='ras', to='mri')
+
+    to_mri = mne.transforms.Transform(fro='head', to='mri')
+    f = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
+              background='grey', surf='pial')
+    f.add_sensors(info, to_mri)
+    # pos = montage.get_positions()['ch_pos']
+    # names = new.ch_names[slice(0, info['nchan'], labels_every)]
+    # positions = np.array([pos[name] for name in names]) * 1000
+    # f.plotter.add_point_labels(positions, names, shape=None)
+    return f
+
+
+def subject_to_info(subject: str, subjects_dir: PathLike = None,
+                    ch_types: str = "seeg") -> mne.Info:
+    subjects_dir = get_sub_dir(subjects_dir)
+    elec_file = op.join(subjects_dir, subject, 'elec_recon',
+                        subject + '_elec_locations_RAS_brainshifted.txt')
+    elecs = dict()
+    with open(elec_file, 'r') as fd:
+        reader = csv.reader(fd)
+        for row in reader:
+            line = row[0].split(" ")
+            elecs["".join(line[0:2])] = tuple(float(n) for n in line[2:5])
+    info = mne.create_info(list(elecs.keys()), 2000, ch_types)
+    return info
+
+
 
 
 def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
@@ -325,11 +382,11 @@ if __name__ == "__main__":
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
     sub = "D{}".format(sub_num)
-    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-                           extension='.edf', desc='clean', preload=True)
+    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+    #                        extension='.edf', desc='clean', preload=True)
 
     # %%
-    brain = plot_subj(filt, sub)
+    brain = plot_subj(sub)
     # plot_on_average(filt, sub='D29')
     # plot_gamma(raw)
     # head_to_mni(raw, sub)
