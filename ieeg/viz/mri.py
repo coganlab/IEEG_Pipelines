@@ -285,37 +285,18 @@ def plot_subj(inst: Signal, subj_dir: PathLike = None,
 def _(sub: str, subj_dir: PathLike = None, picks: list[str | int] = None,
       labels_every: int = 8) -> Brain:
 
-    info = subject_to_info(sub, get_sub_dir(None))
     subj_dir = get_sub_dir(subj_dir)
-
-    # T1_fname = op.join(subj_dir, sub, 'mri', 'T1.mgz')
-    # if not op.isfile(T1_fname):
-    #     raise RuntimeError(f'Freesurfer subject ({sub}) and/or '
-    #                        f'subjects_dir ({subj_dir}, incorrectly '
-    #                        'formatted, T1.mgz not found')
-    # T1 = nib.load(T1_fname)
-    #
-    # # transform from "ras" (scanner RAS) to "mri" (Freesurfer surface RAS)
-    # ras_vox_t = T1.header.get_ras2vox()
-    # ras_vox_t[:3, :3] *= 1000  # scale from mm to m
-    # ras_vox_trans = mne.transforms.Transform(
-    #     fro='ras', to='mri_voxel', trans=ras_vox_t)
-    #
-    # vox_mri_t = T1.header.get_vox2ras_tkr()
-    # vox_mri_t[:3] /= 1000  # scale from mm to m
-    # vox_mri_trans = mne.transforms.Transform(
-    #     fro='mri_voxel', to='mri', trans=vox_mri_t)
-    # to_mri = mne.transforms.combine_transforms(ras_vox_trans, vox_mri_trans,
-    #                                            fro='ras', to='mri')
+    info = mne.pick_info(subject_to_info(sub, subj_dir), picks)
 
     to_mri = mne.transforms.Transform(fro='head', to='mri')
     f = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
               background='grey', surf='pial')
     f.add_sensors(info, to_mri)
-    # pos = montage.get_positions()['ch_pos']
-    # names = new.ch_names[slice(0, info['nchan'], labels_every)]
-    # positions = np.array([pos[name] for name in names]) * 1000
-    # f.plotter.add_point_labels(positions, names, shape=None)
+    montage = info.get_montage()
+    pos = montage.get_positions()['ch_pos']
+    names = info.ch_names[slice(0, info['nchan'], labels_every)]
+    positions = np.array([pos[name] for name in names]) * 1000
+    f.plotter.add_point_labels(positions, names, shape=None)
     return f
 
 
@@ -377,16 +358,27 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 28
+    sub_num = 5
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
     sub = "D{}".format(sub_num)
-    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-    #                        extension='.edf', desc='clean', preload=True)
 
-    # %%
-    brain = plot_subj(sub, subj_dir)
+    ##
+    # rr, tris = mne.read_surface(op.join(get_sub_dir(), sub, 'surf', 'lh.pial'))
+    # renderer = mne.viz.backends.renderer.create_3d_figure(
+    #     size=(600, 600), bgcolor="w", scene=False
+    # )
+    # gray = (0.5, 0.5, 0.5)
+    # renderer.mesh(rr[:,0], rr[:,1], rr[:,2], triangles=tris, color=gray)
+    # view_kwargs = dict(elevation=90, azimuth=0)  # camera at +X with +Z up
+    # mne.viz.set_3d_view(
+    #     figure=renderer.figure, distance=350, focalpoint=(0.0, 0.0, 40.0),
+    #     **view_kwargs
+    # )
+    # renderer.show()
+    ##
+    brain = plot_subj(sub)
     # plot_on_average(filt, sub='D29')
     # plot_gamma(raw)
     # head_to_mni(raw, sub)
