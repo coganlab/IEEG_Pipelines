@@ -284,8 +284,8 @@ def plot_subj(inst: Signal, subj_dir: PathLike = None,
 @plot_subj.register
 def _(sub: str, subj_dir: PathLike = None, picks: list[str | int] = None,
       labels_every: int = 8) -> Brain:
-    if subj_dir is None:
-        info = subject_to_info(sub, subj_dir)
+
+    info = subject_to_info(sub, get_sub_dir(None))
     subj_dir = get_sub_dir(subj_dir)
 
     # T1_fname = op.join(subj_dir, sub, 'mri', 'T1.mgz')
@@ -329,11 +329,11 @@ def subject_to_info(subject: str, subjects_dir: PathLike = None,
         reader = csv.reader(fd)
         for row in reader:
             line = row[0].split(" ")
-            elecs["".join(line[0:2])] = tuple(float(n) for n in line[2:5])
+            elecs["".join(line[0:2])] = tuple(float(n) / 1000 for n in line[2:5])
     info = mne.create_info(list(elecs.keys()), 2000, ch_types)
+    montage = mne.channels.make_dig_montage(elecs, nasion=(0, 0, 0), coord_frame='ras')
+    info.set_montage(montage)
     return info
-
-
 
 
 def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
@@ -386,7 +386,7 @@ if __name__ == "__main__":
     #                        extension='.edf', desc='clean', preload=True)
 
     # %%
-    brain = plot_subj(sub)
+    brain = plot_subj(sub, subj_dir)
     # plot_on_average(filt, sub='D29')
     # plot_gamma(raw)
     # head_to_mni(raw, sub)
