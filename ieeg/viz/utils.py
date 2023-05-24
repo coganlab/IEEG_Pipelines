@@ -7,13 +7,14 @@ import numpy as np
 
 from ieeg import Signal, Doubles
 from ieeg.calc import stats
+from ieeg.io import update
 from functools import partial
 
 # Vizualization on Pycharm doesn't work unless using TkAgg
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
+# try:
+#     mpl.use("TkAgg")
+# except ImportError:
+#     pass
 
 
 import matplotlib.pyplot as plt  # noqa: E402
@@ -121,9 +122,12 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     figs = []
     for i in range(numfigs):
         fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
-                                figsize=size)
+                                figsize=size,
+                                gridspec_kw=dict(wspace=0.3, hspace=0.3)
+                                )
 
         select = partial(_onclick_select, inst=inst, axs=fig.axes)
+        text_spec = dict(fontsize=12, weight="extra bold")
 
         for j, chan in enumerate(chans[i * per_fig:(i + 1) * per_fig]):
             if j + 1 % n_cols == 0 or i == len(chans) - 1:
@@ -134,14 +138,14 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
                 kwargs["colorbar"] = bar
             ax = axs.flatten()[j]
             plot_func(picks=[chan], axes=ax, show=False, **kwargs)
-            ax.set_title(chan, fontsize=8, pad=0)
-            ax.tick_params(axis='both', which='major', labelsize=6,
+            ax.set_title(chan, pad=0, **text_spec)
+            ax.tick_params(axis='both', which='major', labelsize=7,
                            direction="in")
             ax.set_xlabel("")
             ax.set_ylabel("")
             gc.collect()
-        fig.supxlabel("Time (s)")
-        fig.supylabel("Frequency (Hz)")
+        fig.supxlabel("Time (s)", **text_spec, y=0.05)
+        fig.supylabel("Frequency (Hz)", **text_spec, x=0.1)
         if i == numfigs - 1:
             while j + 1 < n_cols * n_rows:
                 j += 1
