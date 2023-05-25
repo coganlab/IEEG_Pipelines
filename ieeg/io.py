@@ -1,6 +1,7 @@
 from ieeg import PathLike, Signal
 import re
 from os import walk, listdir, mkdir, path as op
+from functools import singledispatch
 
 from bids.layout import BIDSFile, parse_file_entities
 from mne_bids import read_raw_bids, BIDSPath, write_raw_bids, \
@@ -212,16 +213,39 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
 
 
+
+@singledispatch
 @verbose
-def update(inst: Signal, description: list[str] | str = None, verbose=None):
-    """Updates the files of a data instance with current metadata"""
+def update(filename: PathLike, channels: list[str],
+           description: list[str] | str = None, status: str = 'good',
+           verbose=None):
+    """Updates the files of a data instance with current metadata
+
+    Parameters
+    ----------
+    filename : PathLike
+        The path to the file to update.
+    channels : list[str]
+        The channels to update.
+    description : list[str] | str, optional
+        The description of the channels, by default None
+    status : str, optional
+        The status of the channels, by default 'good'
+    """
     if isinstance(description, str):
-        description = [description for _ in range(len(inst.info['bads']))]
+        description = [description for _ in range(len(channels))]
+
+    bids_path = get_bids_path_from_fname(filename)
+    mark_channels(bids_path, ch_names=channels, status=status,
+                  descriptions=description, verbose=verbose)
+
+
+@update.register
+def _(inst: Signal, description: list[str] | str = None, verbose=None):
     for i, file in enumerate(inst.filenames):
-        bids_path = get_bids_path_from_fname(file)
-        # update_sidecar_json(bids_path)
-        mark_channels(bids_path, ch_names=inst.info['bads'], status='bad',
-                      descriptions=description, verbose=verbose)
+        update(file, inst.info['bads'], description=description, status='bad',
+               verbose=verbose)
         goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
-        mark_channels(bids_path, ch_names=goods, status='good',
-                      verbose=verbose)
+        update(file, channels=goods, status='good', verbose=None)
+
+
