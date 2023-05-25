@@ -5,7 +5,7 @@ import csv
 import matplotlib
 from mne.viz import Brain
 
-matplotlib.use('TkAgg', force=True)
+# matplotlib.use('TkAgg', force=True)
 import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
@@ -257,12 +257,41 @@ def plot_on_average(sigs: dict[str, Signal] | list[Signal],
 
 
 def get_sub(inst: Signal) -> str:
+    """Gets the subject from the instance
+
+    Parameters
+    ----------
+    inst : Signal
+        The instance to get the subject from
+
+    Returns
+    -------
+    str
+        The subject"""
     return "D" + str(int(inst.info['subject_info']['his_id'][5:]))
 
 
 @singledispatch
 def plot_subj(inst: Signal, subj_dir: PathLike = None,
               picks: list[str | int] = None, labels_every: int = 8) -> Brain:
+    """Plots the electrodes on the subject's brain
+
+    Parameters
+    ----------
+    inst : Signal | PathLike
+        The subject to plot
+    subj_dir : PathLike, optional
+        The subjects directory, by default HOME / 'Box' / 'ECoG_Recon'
+    picks : list[str | int], optional
+        The channels to plot, by default all
+    labels_every : int, optional
+        How often to label the channels, by default 8
+
+    Returns
+    -------
+    Brain
+        The brain plot
+    """
 
     sub = get_sub(inst)
     subj_dir = get_sub_dir(subj_dir)
@@ -302,6 +331,22 @@ def _(sub: str, subj_dir: PathLike = None, picks: list[str | int] = None,
 
 def subject_to_info(subject: str, subjects_dir: PathLike = None,
                     ch_types: str = "seeg") -> mne.Info:
+    """Gets the info for a subject from the subjects directory
+
+    Parameters
+    ----------
+    subject : str
+        The subject to get the info for
+    subjects_dir : PathLike, optional
+        The subjects directory, by default HOME / 'Box' / 'ECoG_Recon'
+    ch_types : str, optional
+        The channel type, by default "seeg"
+
+    Returns
+    -------
+    mne.Info
+        The info for the subject
+    """
     subjects_dir = get_sub_dir(subjects_dir)
     elec_file = op.join(subjects_dir, subject, 'elec_recon',
                         subject + '_elec_locations_RAS_brainshifted.txt')
@@ -318,6 +363,15 @@ def subject_to_info(subject: str, subjects_dir: PathLike = None,
 
 
 def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
+    """Forces the montage to be in the specified frame
+
+    Parameters
+    ----------
+    montage : mne.channels.DigMontage
+        The montage to force
+    frame : str, optional
+        The frame to force to, by default 'mri'
+    """
 
     settings = dict(fro=montage.get_positions()['coord_frame'],
                     to=frame, trans=np.eye(4))
@@ -358,7 +412,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 5
+    sub_num = 23
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
