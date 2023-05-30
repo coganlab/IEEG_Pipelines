@@ -117,6 +117,24 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     return bads
 
 
+def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
+                    copy: bool = False, picks: list = 'data'
+                    ) -> mne.epochs.BaseEpochs:
+    if copy:
+        trials = trials.copy()
+    picks = mne.io._picks_to_idx(trials.info, picks)
+    data = trials.get_data(picks=picks)
+
+    # bool array of where to keep data trials X channels
+    keep = stats.find_outliers(data, outliers)
+
+    # set outliers to nan if not keep
+    data = np.where(keep[..., None], data, np.nan)
+    trials._data[:, picks] = data
+
+    return trials
+
+
 @fill_doc
 @verbose
 def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
