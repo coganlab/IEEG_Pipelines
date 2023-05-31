@@ -29,19 +29,21 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
         Tuple containing the mean and standard deviation of the matrix.
     """
 
-    if mask is None:
-        mask = np.ones(mat.shape)
-    else:
-        try:
-            assert mat.shape == mask.shape
-        except AssertionError as e:
-            print(str(mat.shape), '=/=', str(mask.shape))
-            raise e
-    avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
-    avg = np.reshape(avg, [np.shape(avg)[axis]])
-    stdev = np.std(mat, axis) #  / np.sqrt(np.shape(mat)[axis+1])
-    stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
-    return avg, stdev
+    if mask is not None:
+        mat[np.logical_not(mask)] = np.nan
+    avg = np.nanmean(mat, axis, keepdims=True)
+    stdev = np.nanstd(mat, axis=axis)
+    # else:
+    #     try:
+    #         assert mat.shape == mask.shape
+    #     except AssertionError as e:
+    #         print(str(mat.shape), '=/=', str(mask.shape))
+    #         raise e
+    # avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
+    # avg = np.reshape(avg, [np.shape(avg)[axis]])
+    # stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis+1])
+    # stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
+    return np.squeeze(avg), np.squeeze(stdev)
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
@@ -100,7 +102,7 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
 
 
 def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
-    dat = np.abs(data)
+    dat = np.abs(data)  # (trials X channels X (frequency) X time)
     max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
     std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
     mean = np.mean(dat, axis=(-1, 0))  # (channels X (frequency))
@@ -164,8 +166,8 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
         The mean difference between the two groups.
     """
 
-    avg1 = np.mean(group1, axis=axis)
-    avg2 = np.mean(group2, axis=axis)
+    avg1 = np.nanmean(group1, axis=axis)
+    avg2 = np.nanmean(group2, axis=axis)
 
     return avg1 - avg2
 

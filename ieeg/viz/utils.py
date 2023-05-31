@@ -123,7 +123,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     for i in range(numfigs):
         fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
                                 figsize=size,
-                                gridspec_kw=dict(wspace=0.3, hspace=0.3)
+                                #gridspec_kw=dict(wspace=0.3, hspace=0.3)
                                 )
 
         select = partial(_onclick_select, inst=inst, axs=fig.axes)
@@ -144,14 +144,15 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
             ax.set_xlabel("")
             ax.set_ylabel("")
             gc.collect()
-        fig.supxlabel("Time (s)", **text_spec, y=0.05)
-        fig.supylabel("Frequency (Hz)", **text_spec, x=0.1)
+        fig.supxlabel("Time (s)", **text_spec)
+        fig.supylabel("Frequency (Hz)", **text_spec)
         if i == numfigs - 1:
             while j + 1 < n_cols * n_rows:
                 j += 1
                 ax = axs.flatten()[j]
                 ax.axis("off")
         fig.canvas.mpl_connect("button_press_event", select)
+        fig.tight_layout()
         figs.append(fig)
         if show:
             figs[i].show()

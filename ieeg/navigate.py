@@ -122,7 +122,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
                     ) -> mne.epochs.BaseEpochs:
     if copy:
         trials = trials.copy()
-    picks = mne.io._picks_to_idx(trials.info, picks)
+    picks = mne.io.pick._picks_to_idx(trials.info, picks)
     data = trials.get_data(picks=picks)
 
     # bool array of where to keep data trials X channels

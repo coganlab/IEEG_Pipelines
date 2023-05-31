@@ -123,14 +123,12 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
 
     scale = s0 * np.power(2., (np.arange(0, J1) * 0.2))
     fourier_factor = (4 * np.pi) / (k0 + np.sqrt(2 + np.square(k0)))
-    coi = fourier_factor / np.sqrt(2)
     period = fourier_factor * scale
     xxx = np.min(np.where((1. / period) < f_low))
     period = np.flip(period[:xxx])
     scale = np.flip(scale[:xxx])
 
     scale1 = scale
-    fscale = period.shape[0]
     period = fourier_factor * scale1
 
     expnt = -np.square(scale1[:, None] * k[None, :] - k0) / 2. * (k > 0.)
