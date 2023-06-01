@@ -7,6 +7,7 @@ from mne_bids import BIDSPath
 from ieeg.io import raw_from_layout
 from ieeg.calc.stats import mean_diff
 import scipy
+import os
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
@@ -47,7 +48,7 @@ def test_line_filter():
     filt_dat = filt._data
     assert filt_dat.shape == raw_dat.shape
     params = dict(method='multitaper', tmax=20, fmin=55, fmax=65,
-                  bandwidth=0.5, n_jobs=8)
+                  bandwidth=0.5, n_jobs=1)
     rpsd = raw.compute_psd(**params)
     fpsd = filt.compute_psd(**params)
     assert np.mean(np.abs(rpsd.get_data() - fpsd.get_data())) > 1e-10
@@ -70,7 +71,10 @@ def test_same(input_mat, shape, expected):
     assert np.all(new_shape == expected)
 
 
-spec_check = np.load("ieeg/_tests/spec.npy")
+if os.path.isfile("spec.npy"):
+    spec_check = np.load("spec.npy")
+else:
+    spec_check = np.load("ieeg/_tests/spec.npy")
 
 
 def test_spect_1():
@@ -99,8 +103,8 @@ def test_spect_2():
 
 
 @pytest.mark.parametrize("input1, input2, expected", [
-    (3, np.inf, ['LAMY 7', 'LBRI 3']),
-    (2.5, 2, ['LAMY 7', 'LBRI 3', 'LAMY 6', 'LBRI 2'])
+    (4, np.inf, ['LAMY 7', 'RAHP 3']),
+    (3, 2, ['LAMY 7', 'LPHG 6', 'LBRI 3', 'RAHP 3', 'LENT 3', 'LPIT 5'])
 ])
 def test_outlier(input1, input2, expected):
     from ieeg.navigate import channel_outlier_marker
