@@ -5,7 +5,7 @@ import csv
 import matplotlib
 from mne.viz import Brain
 
-# matplotlib.use('TkAgg', force=True)
+matplotlib.use('TkAgg', force=True)
 import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
