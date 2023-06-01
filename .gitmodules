@@ -1,3 +1,4 @@
-[submodule "MATLAB/MATLAB-env"]
-	path = MATLAB/MATLAB-env
-	url = git@github.com:coganlab/MATLAB-env.git
+[submodule "mne-python"]
+	path = mne-python
+	url = git@github.com:Aaronearlerichardson/mne-python.git
+	branch = 1.4

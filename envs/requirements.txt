@@ -7,7 +7,7 @@ bids>=0.0
 nipype
 naplib
 EDFlib-Python
-mne
+mne-python/
 mne-bids
 numpy
 matplotlib
