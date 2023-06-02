@@ -3,12 +3,14 @@ from os import environ
 from typing import TypeVar, Iterable, Union
 from itertools import chain
 import inspect
+from multiprocessing import Pool
 
 import numpy as np
 import pandas as pd
 from scipy.signal import get_window
 from joblib import Parallel, delayed, cpu_count
 from mne.utils import config, logger, verbose
+from tqdm import tqdm
 
 
 def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
@@ -104,6 +106,62 @@ def is_number(s) -> bool:
         return False
 
 
+def proc_array(func: callable, arr_in: np.ndarray,
+               axes: int | tuple[int] = 0, n_jobs: int = None,
+               desc: str = "Slices", inplace: bool = True):
+    """Execute a function in parallel over slices of an array
+
+    Parameters
+    ----------
+    func : callable
+        The function to execute
+    arr_in : np.ndarray
+        The array to slice
+    axes : int | tuple[int]
+        The axes to slice over
+    n_jobs : int
+        The number of jobs to run in parallel
+    desc : str
+        The description to use for the progress bar
+    inplace : bool
+        Whether to modify the input array in place
+
+    Returns
+    -------
+    np.ndarray
+        The output of the function, same shape as the input array
+    """
+
+    if isinstance(axes, int):
+        axes = (axes,)
+    if inplace:
+        arr_out = arr_in
+    else:
+        arr_out = arr_in.copy()
+
+    # Get the cross-section indices and array input generator
+    cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
+    array_gen = (arr_in[indices] for indices in cross_sect_ind)
+
+    # Create a progress bar using tqdm
+    if n_jobs is None:
+        n_jobs = cpu_count()
+    if n_jobs < 0:
+        n_jobs = cpu_count() + 1 + n_jobs
+    elif n_jobs == 0:
+        n_jobs = 1
+
+    # Create process pool and apply the function in parallel
+    with Pool(n_jobs) as pool:
+        gen = pool.imap_unordered(func, array_gen)
+        with tqdm(desc=desc, total=len(cross_sect_ind)) as pbar:
+            for out, ind in zip(gen, cross_sect_ind):
+                arr_out[ind] = out
+                pbar.update()
+
+    return arr_out
+
+
 def parallelize(func: callable, ins: Iterable,
                 verbose: int = 10, n_jobs: int = None, **kwargs) -> list | None:
     """Parallelize a function to run on multiple processors.
@@ -191,6 +249,7 @@ def get_mem() -> Union[float, int]:
     return ram_per
 
 
+
 ###############################################################################
 # Constant overlap-add processing class
 
@@ -255,7 +314,6 @@ class COLA:
     window are asymmetric.
     """
 
-    @verbose
     def __init__(self, process, store, n_total, n_samples, n_overlap, sfreq,
                  window='hann', tol=1e-10, n_jobs=None, *, verbose=None):
         n_samples = ensure_int(n_samples, 'n_samples')
@@ -296,12 +354,13 @@ class COLA:
         self.n_jobs = n_jobs
         sfreq = float(sfreq)
         pl = 's' if len(self.starts) != 1 else ''
-        logger.info('    Processing %4d data chunk%s of (at least) %0.1f sec '
-                    'with %0.1f sec overlap and %s windowing'
-                    % (len(self.starts), pl, self._n_samples / sfreq,
-                       self._n_overlap / sfreq, window_name))
+        if verbose:
+            logger.info('    Processing %4d data chunk%s of (at least) %0.1f sec '
+                        'with %0.1f sec overlap and %s windowing'
+                        % (len(self.starts), pl, self._n_samples / sfreq,
+                           self._n_overlap / sfreq, window_name))
         del window, window_name
-        if delta > 0:
+        if delta > 0 and verbose:
             logger.info('    The final %0.3f sec will be lumped into the '
                         'final window' % (delta / sfreq,))
 
@@ -310,7 +369,6 @@ class COLA:
         """Compute from current processing window start and buffer len."""
         return self.starts[self._idx] + self._in_buffers[0].shape[-1]
 
-    @verbose
     def feed(self, *datas, verbose=None, **kwargs):
         """Pass in a chunk of data."""
         # Append to our input buffer

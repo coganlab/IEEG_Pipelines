@@ -48,7 +48,7 @@ def test_line_filter():
     filt_dat = filt._data
     assert filt_dat.shape == raw_dat.shape
     params = dict(method='multitaper', tmax=20, fmin=55, fmax=65,
-                  bandwidth=0.5, n_jobs=1)
+                  bandwidth=0.5, n_jobs=8)
     rpsd = raw.compute_psd(**params)
     fpsd = filt.compute_psd(**params)
     assert np.mean(np.abs(rpsd.get_data() - fpsd.get_data())) > 1e-10

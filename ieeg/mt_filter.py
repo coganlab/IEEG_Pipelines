@@ -1,6 +1,7 @@
-from collections import Counter
-from typing import Union, List
+from functools import partial
+from typing import Union, List, Generator
 import argparse
+import multiprocessing
 
 import numpy as np
 from mne.io import pick
@@ -10,7 +11,7 @@ from tqdm import tqdm
 
 from ieeg.timefreq import multitaper, utils as mt_utils
 from ieeg.calc import stats
-from ieeg.process import is_number, COLA
+from ieeg.process import is_number, proc_array, COLA
 from ieeg import ListNum
 
 
@@ -140,17 +141,8 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                              x.shape[-1])
 
     # Define adaptive windowing function
-    def get_window_thresh(n_times: int = filter_length
-                          ) -> tuple[np.ndarray, float]:
-        # figure out what tapers to use
-        window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
-                                             low_bias, adaptive,
-                                             verbose=verbose)
-
-        # F-stat of 1-p point
-        threshold = scipy.stats.f.ppf(1 - p_value / n_times, 2,
-                                      2 * len(window_fun) - 2)
-        return window_fun, threshold
+    get_window_thresh = partial(_get_window_thresh, filter_length, fs,
+                                mt_bandwidth, low_bias, adaptive, p_value)
 
     filt._data[data_idx] = mt_spectrum_proc(
         x, fs, freqs, notch_widths, picks, n_jobs, get_window_thresh)
@@ -165,35 +157,52 @@ def mt_spectrum_proc(x: np.ndarray, sfreq: float, line_freqs: ListNum,
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
 
-    # Execute channel wise sine wave detection and filtering
-    freq_list = list()
-    for ii, x_ in tqdm(enumerate(x), position=0, total=x.shape[0],
-                       leave=True, desc='channels'):
-        logger.debug(f'Processing channel {ii}')
-        if ii in picks:
-            x[ii], f = _mt_remove_win(x_, sfreq, line_freqs, notch_widths,
-                                      get_wt, n_jobs)
-            freq_list.append(f)
+    # Execute parallel channel wise sine wave detection and filtering
+    func = partial(_mt_remove_win, sfreq=sfreq, line_freqs=line_freqs,
+                   notch_width=notch_widths, get_thresh=get_wt)
 
-    # report found frequencies, but do some sanitizing first by binning into
-    # 1 Hz bins
-    counts = Counter(sum((np.unique(np.round(ff)).tolist()
-                          for f in freq_list for ff in f), list()))
-    kind = 'Detected' if line_freqs is None else 'Removed'
-    found_freqs = '\n'.join(f'    {freq:6.2f} : '
-                            f'{counts[freq]:4d} window{_pl(counts[freq])}'
-                            for freq in sorted(counts)) or '    None'
-    logger.info(f'{kind} notch frequencies (Hz):\n{found_freqs}')
+    proc_array(func, x, n_jobs=n_jobs, desc="Channels")
+
+    # Execute channel wise sine wave detection and filtering
+    # freq_list = list()
+    # for ii, x_ in enumerate(x):
+    #     logger.debug(f'Processing channel {ii}')
+    #     if ii in picks:
+    #         x[ii], f = _mt_remove_win(x_, sfreq, line_freqs, notch_widths,
+    #                                   get_wt)
+    #         freq_list.append(f)
+
+    # # report found frequencies, but do some sanitizing first by binning into
+    # # 1 Hz bins
+    # counts = Counter(sum((np.unique(np.round(ff)).tolist()
+    #                       for f in freq_list for ff in f), list()))
+    # kind = 'Detected' if line_freqs is None else 'Removed'
+    # found_freqs = '\n'.join(f'    {freq:6.2f} : '
+    #                         f'{counts[freq]:4d} window{_pl(counts[freq])}'
+    #                         for freq in sorted(counts)) or '    None'
+    # logger.info(f'{kind} notch frequencies (Hz):\n{found_freqs}')
 
     x.shape = orig_shape
     return x
 
 
+def _get_window_thresh(n_times: int, fs: float, mt_bandwidth: float,
+                       low_bias: bool, adaptive: bool, p_value: float
+                       ) -> tuple[np.ndarray, float]:
+
+    # figure out what tapers to use
+    window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
+                                         low_bias, adaptive,
+                                         verbose=0)
+
+    # F-stat of 1-p point
+    threshold = scipy.stats.f.ppf(1 - p_value / n_times, 2,
+                                  2 * len(window_fun) - 2)
+    return window_fun, threshold
 @verbose
 def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
                    notch_width: ListNum, get_thresh: callable,
-                   n_jobs: int = None, verbose: bool = None
-                   ) -> tuple[np.ndarray, List[float]]:
+                   verbose: bool = None) -> np.ndarray: #, List[float]]:
     """Remove line frequencies from data using multitaper method."""
     # Set default window function and threshold
     window_fun, thresh = get_thresh()
@@ -217,10 +226,10 @@ def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
         x_out[..., idx[0]:stop] += x_
         idx[0] = stop
 
-    COLA(process, store, n_times, n_samples, n_overlap, sfreq,
-         n_jobs=n_jobs, verbose=verbose).feed(x)
+    COLA(process, store, n_times, n_samples, n_overlap, sfreq, n_jobs=1,
+         verbose=False).feed(x)
     assert idx[0] == n_times
-    return x_out, rm_freqs
+    return x_out #, rm_freqs
 
 
 def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
@@ -234,7 +243,8 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
     assert x.ndim == 1
     if x.shape[-1] != window_fun.shape[-1]:
-        window_fun, threshold = get_thresh(x.shape[-1])
+        window_fun, threshold = get_thresh.func(x.shape[-1],
+                                                *get_thresh.args[1:])
     # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
     x_p, freqs = multitaper.spectra(x[np.newaxis, :], window_fun, sfreq)
     f_stat, A = stats.sine_f_test(window_fun, x_p)
@@ -304,7 +314,7 @@ def _get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(subject: str = None):
+def main(subject: str = None, save: bool = False):
     import mne
     from bids import BIDSLayout
     from ieeg.io import raw_from_layout, save_derivative
@@ -318,7 +328,7 @@ def main(subject: str = None):
                      overwrite=True)
     mne.set_log_level("INFO")
 
-    bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
+    bids_root = LAB_root + "/BIDS-1.3_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root)
     if subject is not None:
         do_subj = [subject]
@@ -342,7 +352,8 @@ def main(subject: str = None):
                                 filter_length='20s', verbose=10,
                                 freqs=[60, 120, 180, 240], notch_widths=20)
             # %% Save the data
-            save_derivative(filt2, layout, "clean")
+            if save:
+                save_derivative(filt2, layout, "clean")
         except Exception as e:
             logger.error(e)
 
