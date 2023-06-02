@@ -1,10 +1,11 @@
 import numpy as np
+from functools import partial
 
 from skimage import measure
-from tqdm import tqdm
 from mne.utils import logger
 
 from ieeg import Doubles
+from ieeg.process import proc_array
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
@@ -102,6 +103,25 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
 
 
 def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
+    """ Find outliers in data matrix.
+
+    This function finds outliers in a data matrix. Outliers are defined as any
+    trial with a maximum value greater than the mean plus outliers times the
+    standard deviation. The function returns a boolean array with True for
+    trials that are not outliers and False for trials that are outliers.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to find outliers in.
+    outliers : float
+        Number of standard deviations from the mean to consider an outlier.
+
+    Returns
+    -------
+    np.ndarray[bool]
+        Boolean array with True for trials that are not outliers and False
+        for trials that are outliers."""
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
     max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
     std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
@@ -260,6 +280,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     for i in range(diff.shape[0]):
         # p_perm is the probability of observing a difference as large as the
         # other permutations, or larger, by chance
+        
         larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
         p_perm[i] = np.mean(larger, axis=0)
 
@@ -283,6 +304,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster)
 
     return clusters
+
+
+def _perm_iter(array: np.ndarray, perm: int, axis: int = 0, tails: int = 0
+               ) -> np.ndarray:
+    larger = tail_compare(array[perm],
+                          array[np.arange(len(array)) != perm], tails)
+    return np.mean(larger, axis=axis)
 
 
 def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
