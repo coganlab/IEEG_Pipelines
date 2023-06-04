@@ -5,7 +5,7 @@ from functools import singledispatch
 
 from bids.layout import BIDSFile, parse_file_entities
 from mne_bids import read_raw_bids, BIDSPath, write_raw_bids, \
-    update_sidecar_json, mark_channels, get_bids_path_from_fname
+    mark_channels, get_bids_path_from_fname
 from mne.utils import verbose, fill_doc
 from bids import BIDSLayout
 import numpy as np
@@ -241,11 +241,14 @@ def update(filename: PathLike, channels: list[str],
 
 
 @update.register
-def _(inst: Signal, description: list[str] | str = None, verbose=None):
+def _(inst: Signal, layout: BIDSLayout, description: list[str] | str = None, verbose=None):
+    if not hasattr(inst, 'filenames'):
+        inst.filenames = inst.info['subject_info'].pop('files', None)
     for i, file in enumerate(inst.filenames):
-        update(file, inst.info['bads'], description=description, status='bad',
+        fname = op.join(layout.root, file)
+        update(fname, inst.info['bads'], description=description, status='bad',
                verbose=verbose)
         goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
-        update(file, channels=goods, status='good', verbose=None)
+        update(fname, channels=goods, status='good', verbose=None)
 
 
