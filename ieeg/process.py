@@ -108,7 +108,7 @@ def is_number(s) -> bool:
 
 def proc_array(func: callable, arr_in: np.ndarray,
                axes: int | tuple[int] = 0, n_jobs: int = None,
-               desc: str = "Slices", inplace: bool = True):
+               desc: str = "Slices", inplace: bool = True) -> np.ndarray:
     """Execute a function in parallel over slices of an array
 
     Parameters
@@ -139,17 +139,17 @@ def proc_array(func: callable, arr_in: np.ndarray,
     else:
         arr_out = arr_in.copy()
 
-    # Get the cross-section indices and array input generator
-    cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
-    array_gen = (arr_in[indices] for indices in cross_sect_ind)
-
-    # Create a progress bar using tqdm
+    # Fix n_jobs
     if n_jobs is None:
         n_jobs = cpu_count()
     if n_jobs < 0:
         n_jobs = cpu_count() + 1 + n_jobs
     elif n_jobs == 0:
         n_jobs = 1
+
+    # Get the cross-section indices and array input generator
+    cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
+    array_gen = (arr_in[indices] for indices in cross_sect_ind)
 
     # Create process pool and apply the function in parallel
     with Pool(n_jobs) as pool:

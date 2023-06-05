@@ -33,7 +33,7 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     if mask is not None:
         mat[np.logical_not(mask)] = np.nan
     avg = np.nanmean(mat, axis, keepdims=True)
-    stdev = np.nanstd(mat, axis=axis) / 2
+    stdev = np.nanstd(mat, axis=axis) / 3
     # else:
     #     try:
     #         assert mat.shape == mask.shape

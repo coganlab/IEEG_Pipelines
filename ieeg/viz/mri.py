@@ -262,8 +262,15 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         if len(these_picks) == 0:
             continue
 
+        if rm_wm:
+            these_picks = pick_no_wm(these_picks, gen_labels(
+                new.info, subj, subj_dir, new.ch_names))
+
+        if len(these_picks) == 0:
+            continue
+
         # plot the data
-        plot_subj(new, subj_dir, these_picks, True, 8, brain, to_fsaverage)
+        plot_subj(new, subj_dir, these_picks, False, 8, brain, to_fsaverage)
 
     return brain
 
@@ -293,7 +300,7 @@ def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
     # remove corresponding picks with either 'White-Matter' in the left most entry or empty lists
     if isinstance(picks[0], int):
         picks = [list(labels.keys())[p] for p in picks]
-    picks = [p for p in picks if labels[p] != []]
+    picks = [p for p in picks if labels[p]]
     picks = [p for p in picks if 'White-Matter' not in labels[p][0]]
     return picks
 
