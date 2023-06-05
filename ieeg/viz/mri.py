@@ -1,5 +1,4 @@
 import os.path as op
-from functools import singledispatch
 from collections import OrderedDict
 import csv
 
@@ -318,8 +317,7 @@ def get_sub(inst: Signal | mne.Info) -> str:
     return "D" + str(int(inst['subject_info']['his_id'][5:]))
 
 
-@singledispatch
-def plot_subj(info: mne.Info, subj_dir: PathLike = None,
+def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int = 8, fig: Brain = None,
               trans=None) -> Brain:
@@ -347,8 +345,18 @@ def plot_subj(info: mne.Info, subj_dir: PathLike = None,
     Brain
         The brain plot
     """
+    if isinstance(inst, Signal):
+        info = inst.info
+        sub = get_sub(info)
+    elif isinstance(inst, mne.Info):
+        info = inst
+        sub = get_sub(info)
+    elif isinstance(inst, str):
+        info = subject_to_info(inst, subj_dir)
+        sub = inst
+    else:
+        raise TypeError(f"inst must be Signal, mne.Info, or str, not {type(inst)}")
 
-    sub = get_sub(info)
     if subj_dir is None:
         subj_dir = get_sub_dir(subj_dir)
     if trans is None:
@@ -363,34 +371,17 @@ def plot_subj(info: mne.Info, subj_dir: PathLike = None,
 
     pick_ind = mne.pick_channels(info.ch_names, picks)
     info: mne.Info = mne.pick_info(info, pick_ind)
-    montage = info.get_montage()
+
     fig.add_sensors(info, trans)
+    montage = info.get_montage()
+    force2frame(montage, trans.from_str)
+    montage.apply_trans(trans)
     pos = montage.get_positions()['ch_pos']
 
     names = picks[slice(0, info['nchan'], labels_every)]
     positions = np.array([pos[name] for name in names]) * 1000
     fig.plotter.add_point_labels(positions, names, shape=None)
     return fig
-
-
-@plot_subj.register
-def _(inst: Signal, subj_dir: PathLike = None,
-      picks: list[str | int] = None, no_wm: bool = False,
-      labels_every: int = 8, fig: Brain = None,
-      trans=None) -> Brain:
-
-    return plot_subj(inst.info, subj_dir, picks, no_wm, labels_every, fig, trans)
-
-
-@plot_subj.register
-def _(sub: str, subj_dir: PathLike = None,
-      picks: list[str | int] = None, no_wm: bool = False,
-      labels_every: int = 8, fig: Brain = None,
-      trans=None) -> Brain:
-
-    subj_dir = get_sub_dir(subj_dir)
-    info = subject_to_info(sub, subj_dir)
-    return plot_subj(info, subj_dir, picks, no_wm, labels_every, fig, trans)
 
 
 def subject_to_info(subject: str, subjects_dir: PathLike = None,
