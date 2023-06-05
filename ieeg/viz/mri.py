@@ -211,8 +211,9 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
 
 def plot_on_average(sigs: Signal | str | list[Signal | str],
                     subj_dir: PathLike = None, rm_wm: bool = True,
-                    picks: list[int | str] = None, surface: str = 'pial'
-                    ) -> matplotlib.figure.Figure:
+                    picks: list[int | str] = None, surface: str = 'pial',
+                    color: matplotlib.colors = (1, 1, 1),
+                    size: float = 0.35, fig: Brain = None) -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -239,8 +240,9 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
     """
 
     subj_dir = get_sub_dir(subj_dir)
-    brain = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                  alpha=0.6, background='grey', surf=surface)
+    if fig is None:
+        fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
+                    alpha=0.6, background='grey', surf=surface)
 
     if isinstance(sigs, Signal):
         sigs = [sigs]
@@ -270,9 +272,10 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
             continue
 
         # plot the data
-        plot_subj(new, subj_dir, these_picks, False, 1, brain, to_fsaverage)
+        plot_subj(new, subj_dir, these_picks, False, fig=fig,
+                  trans=to_fsaverage, color=color, size=size)
 
-    return brain
+    return fig
 
 
 def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
@@ -324,8 +327,9 @@ def get_sub(inst: Signal | mne.Info) -> str:
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
-              labels_every: int = 8, fig: Brain = None,
-              trans=None) -> Brain:
+              labels_every: int = None, fig: Brain = None,
+              trans=None, color: matplotlib.colors=(1,1,1),
+              size: float = 0.25) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -377,16 +381,26 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     pick_ind = mne.pick_channels(info.ch_names, picks)
     info: mne.Info = mne.pick_info(info, pick_ind)
 
-    fig.add_sensors(info, trans)
+    # fig.add_sensors(info, trans)
     montage = info.get_montage()
     force2frame(montage, trans.from_str)
     montage.apply_trans(trans)
     pos = montage.get_positions()['ch_pos']
 
-    names = picks[slice(0, info['nchan'], labels_every)]
-    plt_names = [f'{sub}-{n}' for n in names]
-    positions = np.array([pos[name] for name in names]) * 1000
-    fig.plotter.add_point_labels(positions, plt_names, shape=None)
+    l = [p * 1000 for k, p in pos.items() if k.startswith('L')]
+    if len(l) != 0:
+        fig.add_foci(np.vstack(l), hemi='lh', color=color, scale_factor=size)
+
+    r = [p * 1000 for k, p in pos.items() if k.startswith('R')]
+    if len(r) != 0:
+        fig.add_foci(np.vstack(r), hemi='rh', color=color, scale_factor=size)
+
+    if labels_every is not None:
+        names = picks[slice(0, info['nchan'], labels_every)]
+        plt_names = [f'{sub}-{n}' for n in names]
+        positions = np.array([pos[name] for name in names]) * 1000
+        fig.plotter.add_point_labels(positions, plt_names, shape=None,
+                                     always_visible=True)
     return fig
 
 
@@ -493,16 +507,16 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 5
+    sub_num = 15
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
     sub = "D{}".format(sub_num)
 
-    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-                       extension='.edf', desc='clean', preload=False)
+    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+    #                    extension='.edf', desc='clean', preload=False)
 
     ##
-    brain = plot_subj(filt)
+    brain = plot_subj("D15")
     # plot_on_average(filt)
     # plot_gamma(raw)
