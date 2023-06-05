@@ -1,5 +1,6 @@
 import os.path as op
 from functools import singledispatch
+from collections import OrderedDict
 import csv
 
 import matplotlib
@@ -209,15 +210,41 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
-def plot_on_average(sigs: dict[str, Signal] | list[Signal],
+def plot_on_average(sigs: Signal | str | list[Signal | str],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str] = None, surface: str = 'pial'
                     ) -> matplotlib.figure.Figure:
+    """Plots the signal on the average brain
+
+    Takes a signal instance or list of signal instances and plots them on the
+    fsaverage brain.
+
+
+    Parameters
+    ----------
+    sigs : Union[Signal, list[Signal]]
+        The signal(s) to plot
+    subj_dir : PathLike, optional
+        The subjects directory, by default LAB_root / 'ECoG_Recon'
+    rm_wm : bool, optional
+        Whether to remove white matter electrodes, by default True
+    picks : list[int | str], optional
+        The channels to plot, by default None
+    surface : str, optional
+        The surface to plot on, by default 'pial'
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure
+    """
 
     subj_dir = get_sub_dir(subj_dir)
     brain = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
                   alpha=0.6, background='grey', surf=surface)
 
+    if isinstance(sigs, Signal):
+        sigs = [sigs]
     if isinstance(sigs, list):
         sigs = {get_sub(v): v for v in sigs}
 
@@ -225,38 +252,56 @@ def plot_on_average(sigs: dict[str, Signal] | list[Signal],
 
         new = inst.copy()
 
-        montage = new.get_montage()
-
-        force2frame(montage, 'mri')
-
-        # first we need to add fiducials so that we can define the "head" coordinate
-        # frame in terms of them (with the origin at the center between LPA and RPA)
-        montage.add_estimated_fiducials(subj, subj_dir)
-        trans = mne.channels.compute_native_head_t(montage)
-
-        # transform data to fsaverage
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
-        montage.apply_trans(to_fsaverage)
-        montage.apply_trans(mne.transforms.Transform(fro='mni_tal', to='mri'))
+        to_fsaverage = mne.transforms.Transform(fro='head', to='mri', trans=to_fsaverage['trans'])
 
-        # compute the head<->mri ``trans`` now using the fiducials
-        new.set_montage(montage)
+        if picks is None:
+            picks = new.ch_names
 
-        these_picks = range(len(new.ch_names))
-        if picks is not None:
-            these_picks = [pick for pick in these_picks if pick in picks]
-            picks = [p - len(new.ch_names) for p in picks[len(these_picks):]]
+        if rm_wm:
+            picks = pick_no_wm(picks, gen_labels(new, sub, subj_dir, picks))
+
+        # Convert picks to indices
+        these_picks = list(mne.pick_channels(new.ch_names, picks))
 
         if len(these_picks) == 0:
             continue
 
-        info = mne.pick_info(new.info, these_picks)
-        brain.add_sensors(info, trans)
+        # plot the data
+        plot_subj(new, subj_dir, picks, True, 8, brain, to_fsaverage)
 
     return brain
 
 
-def get_sub(inst: Signal) -> str:
+def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
+    """Picks the channels that are not in the white matter
+
+    Parameters
+    ----------
+    picks : list[str | int]
+        The channels to pick from
+    labels : dict[str | int, list[str]]
+        The labels for each channel
+
+    Returns
+    -------
+    list[str | int]
+        The channels that are not in the white matter
+    """
+
+    # remove 'Unknown' values from label lists
+    for k, v in labels.items():
+        while 'Unknown' in v:
+            labels[k].remove('Unknown')
+            v = labels[k]
+
+    # remove corresponding picks with either 'White-Matter' in the left most entry or empty lists
+    picks = [p for p in picks if labels[p] != []]
+    picks = [p for p in picks if 'White-Matter' not in labels[p][0]]
+    return picks
+
+
+def get_sub(inst: Signal | mne.Info) -> str:
     """Gets the subject from the instance
 
     Parameters
@@ -268,24 +313,34 @@ def get_sub(inst: Signal) -> str:
     -------
     str
         The subject"""
-    return "D" + str(int(inst.info['subject_info']['his_id'][5:]))
+    if isinstance(inst, Signal):
+        inst = inst.info
+    return "D" + str(int(inst['subject_info']['his_id'][5:]))
 
 
 @singledispatch
-def plot_subj(inst: Signal, subj_dir: PathLike = None,
-              picks: list[str | int] = None, labels_every: int = 8) -> Brain:
+def plot_subj(info: mne.Info, subj_dir: PathLike = None,
+              picks: list[str | int] = None, no_wm: bool = False,
+              labels_every: int = 8, fig: Brain = None,
+              trans=None) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
     ----------
-    inst : Signal | PathLike
+    inst : Signal | mne.Info | str
         The subject to plot
     subj_dir : PathLike, optional
         The subjects directory, by default HOME / 'Box' / 'ECoG_Recon'
     picks : list[str | int], optional
         The channels to plot, by default all
+    no_wm : bool, optional
+        Whether to remove the white matter channels, by default False
     labels_every : int, optional
         How often to label the channels, by default 8
+    fig : Brain, optional
+        The figure to plot on, by default None
+    trans: mne.transforms.Transform, optional
+        The transformation to apply, by default None
 
     Returns
     -------
@@ -293,40 +348,49 @@ def plot_subj(inst: Signal, subj_dir: PathLike = None,
         The brain plot
     """
 
-    sub = get_sub(inst)
-    subj_dir = get_sub_dir(subj_dir)
-    new = inst.copy().pick(picks)
-    montage = new.get_montage()
-    force2frame(montage, 'head')
-    new.set_montage(montage)
-    trans = mne.transforms.Transform(fro='head', to='mri')
-    f = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
-              background='grey', surf='pial')
-    f.add_sensors(new.info, trans)
+    sub = get_sub(info)
+    if subj_dir is None:
+        subj_dir = get_sub_dir(subj_dir)
+    if trans is None:
+        trans = mne.transforms.Transform(fro='head', to='mri')
+    if fig is None:
+        fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
+                    background='grey', surf='pial')
+    if picks is None:
+        picks = info.ch_names
+    if no_wm:
+        picks = pick_no_wm(picks, gen_labels(info, sub, subj_dir, picks))
+
+    pick_ind = mne.pick_channels(info.ch_names, picks)
+    info: mne.Info = mne.pick_info(info, pick_ind)
+    montage = info.get_montage()
+    fig.add_sensors(info, trans)
     pos = montage.get_positions()['ch_pos']
-    names = new.ch_names[slice(0, new.info['nchan'], labels_every)]
+
+    names = picks[slice(0, info['nchan'], labels_every)]
     positions = np.array([pos[name] for name in names]) * 1000
-    f.plotter.add_point_labels(positions, names, shape=None)
-    return f
+    fig.plotter.add_point_labels(positions, names, shape=None)
+    return fig
 
 
 @plot_subj.register
-def _(sub: str, subj_dir: PathLike = None, picks: list[str | int] = None,
-      labels_every: int = 8) -> Brain:
+def _(inst: Signal, subj_dir: PathLike = None,
+      picks: list[str | int] = None, no_wm: bool = False,
+      labels_every: int = 8, fig: Brain = None,
+      trans=None) -> Brain:
+
+    return plot_subj(inst.info, subj_dir, picks, no_wm, labels_every, fig, trans)
+
+
+@plot_subj.register
+def _(sub: str, subj_dir: PathLike = None,
+      picks: list[str | int] = None, no_wm: bool = False,
+      labels_every: int = 8, fig: Brain = None,
+      trans=None) -> Brain:
 
     subj_dir = get_sub_dir(subj_dir)
-    info = mne.pick_info(subject_to_info(sub, subj_dir), picks)
-
-    to_mri = mne.transforms.Transform(fro='head', to='mri')
-    f = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
-              background='grey', surf='pial')
-    f.add_sensors(info, to_mri)
-    montage = info.get_montage()
-    pos = montage.get_positions()['ch_pos']
-    names = info.ch_names[slice(0, info['nchan'], labels_every)]
-    positions = np.array([pos[name] for name in names]) * 1000
-    f.plotter.add_point_labels(positions, names, shape=None)
-    return f
+    info = subject_to_info(sub, subj_dir)
+    return plot_subj(info, subj_dir, picks, no_wm, labels_every, fig, trans)
 
 
 def subject_to_info(subject: str, subjects_dir: PathLike = None,
@@ -381,22 +445,42 @@ def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
         montage.apply_trans(trans)
 
 
-def gen_labels(inst: Signal, sub: str, subj_dir: PathLike = None,
-               picks: list[str | int] = None) -> dict[str, list]:
+def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
+               picks: list[str | int] = None) -> OrderedDict[str, list[str]]:
+    """Generates the labels for the electrodes
 
+    Parameters
+    ----------
+    inst : Signal | PathLike
+        The subject to get the labels for
+    sub : str, optional
+        The subject name, by default None
+    subj_dir : PathLike, optional
+        The subjects directory, by default None
+    picks : list[str | int], optional
+        The channels to plot, by default None
+
+    Returns
+    -------
+    dict[str, list]
+        The labels for the electrodes
+    """
+
+    sub = get_sub(info) if sub is None else sub
     subj_dir = get_sub_dir(subj_dir)
-    montage = inst.get_montage()
+    montage = info.get_montage()
     force2frame(montage, 'mri')
-    aseg = 'aparc+aseg'  # parcellation/anatomical segmentation atlas
+    aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
     labels, colors = mne.get_montage_volume_labels(
         montage, sub, subjects_dir=subj_dir, aseg=aseg)
 
+    new_labels = OrderedDict()
     if picks is not None:
         for i, key in enumerate(labels.keys()):
-            if not any((i, key) in picks):
-                labels.pop(key)
+            if any((i in picks, key in picks)):
+                new_labels[key] = labels[key]
 
-    return labels
+    return new_labels
 
 
 if __name__ == "__main__":
@@ -412,12 +496,14 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 23
+    sub_num = 29
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
     sub = "D{}".format(sub_num)
 
+    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+                       extension='.edf', desc='clean', preload=False)
     ##
     # rr, tris = mne.read_surface(op.join(get_sub_dir(), sub, 'surf', 'lh.pial'))
     # renderer = mne.viz.backends.renderer.create_3d_figure(
@@ -432,8 +518,8 @@ if __name__ == "__main__":
     # )
     # renderer.show()
     ##
-    brain = plot_subj(sub)
-    # plot_on_average(filt, sub='D29')
+    brain = plot_subj(filt)
+    plot_on_average(filt)
     # plot_gamma(raw)
     # head_to_mni(raw, sub)
     # trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)

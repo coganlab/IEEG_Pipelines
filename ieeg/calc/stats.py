@@ -33,7 +33,7 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     if mask is not None:
         mat[np.logical_not(mask)] = np.nan
     avg = np.nanmean(mat, axis, keepdims=True)
-    stdev = np.nanstd(mat, axis=axis)
+    stdev = np.nanstd(mat, axis=axis) / 2
     # else:
     #     try:
     #         assert mat.shape == mask.shape
@@ -276,17 +276,17 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of the permutation distribution
     # logger.info('Calculating permutation distribution')
-    p_perm = np.zeros(diff.shape, dtype=np.float16)
-    for i in range(diff.shape[0]):
-        # p_perm is the probability of observing a difference as large as the
-        # other permutations, or larger, by chance
-        
-        larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
-        p_perm[i] = np.mean(larger, axis=0)
+    # p_perm = np.zeros(diff.shape, dtype=np.float16)
+    # for i in range(diff.shape[0]):
+    #     # p_perm is the probability of observing a difference as large as the
+    #     # other permutations, or larger, by chance
+    #
+    #     larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
+    #     p_perm[i] = np.mean(larger, axis=0)
 
     # The line below accomplishes the same as above twice as fast, but could
     # run into memory errors if n_perm is greater than 1000
-    # p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=1)
+    p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=1)
 
     # Create binary clusters using the p value threshold
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
