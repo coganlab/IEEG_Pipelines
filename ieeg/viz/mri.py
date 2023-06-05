@@ -384,8 +384,9 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     pos = montage.get_positions()['ch_pos']
 
     names = picks[slice(0, info['nchan'], labels_every)]
+    plt_names = [f'{sub}-{n}' for n in names]
     positions = np.array([pos[name] for name in names]) * 1000
-    fig.plotter.add_point_labels(positions, names, shape=None)
+    fig.plotter.add_point_labels(positions, plt_names, shape=None)
     return fig
 
 
@@ -492,7 +493,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 29
+    sub_num = 73
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
@@ -500,36 +501,8 @@ if __name__ == "__main__":
 
     filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
                        extension='.edf', desc='clean', preload=False)
-    ##
-    # rr, tris = mne.read_surface(op.join(get_sub_dir(), sub, 'surf', 'lh.pial'))
-    # renderer = mne.viz.backends.renderer.create_3d_figure(
-    #     size=(600, 600), bgcolor="w", scene=False
-    # )
-    # gray = (0.5, 0.5, 0.5)
-    # renderer.mesh(rr[:,0], rr[:,1], rr[:,2], triangles=tris, color=gray)
-    # view_kwargs = dict(elevation=90, azimuth=0)  # camera at +X with +Z up
-    # mne.viz.set_3d_view(
-    #     figure=renderer.figure, distance=350, focalpoint=(0.0, 0.0, 40.0),
-    #     **view_kwargs
-    # )
-    # renderer.show()
+
     ##
     brain = plot_subj(filt)
-    plot_on_average(filt)
+    # plot_on_average(filt)
     # plot_gamma(raw)
-    # head_to_mni(raw, sub)
-    # trans = mne.coreg.estimate_head_mri_t(sub, subj_dir)
-    # mne.bem.make_watershed_bem(sub, subj_dir,
-    # brainmask="../mri/brainmask.mgz")
-    # fig = mne.viz.plot_alignment(raw.info, trans=trans, subject=sub,
-    #                              subjects_dir=subj_dir, dig=True,
-    #                              show_axes=True)
-    # # %%
-    # T1_path = layout.get(return_type="path", subject=sub_pad,
-    #                      extension="nii.gz")[0]
-    # CT_path = T1_path.path.replace("T1w.nii.gz", "CT.nii.gz")
-    # # filt = mne.io.read_raw_fif("D24_filt_ieeg.fif")
-    # CT_aligned = allign_CT(T1_path, CT_path, sub)
-    # subj_trans = mne.coreg.estimate_head_mri_t(sub, subjects_dir=subj_dir)
-    # gui = mne.gui.locate_ieeg(raw.info, subj_trans, CT_aligned, subject=sub,
-    #                           subjects_dir=subj_dir, verbose=10)
