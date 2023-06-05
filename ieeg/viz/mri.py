@@ -270,7 +270,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
             continue
 
         # plot the data
-        plot_subj(new, subj_dir, these_picks, False, 8, brain, to_fsaverage)
+        plot_subj(new, subj_dir, these_picks, False, 1, brain, to_fsaverage)
 
     return brain
 
@@ -391,7 +391,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
 
 def subject_to_info(subject: str, subjects_dir: PathLike = None,
-                    ch_types: str = "seeg") -> mne.Info:
+                    ch_types: str = "seeg", sfreq: int = 2000) -> mne.Info:
     """Gets the info for a subject from the subjects directory
 
     Parameters
@@ -417,7 +417,7 @@ def subject_to_info(subject: str, subjects_dir: PathLike = None,
         for row in reader:
             line = row[0].split(" ")
             elecs["".join(line[0:2])] = tuple(float(n) / 1000 for n in line[2:5])
-    info = mne.create_info(list(elecs.keys()), 2000, ch_types)
+    info = mne.create_info(list(elecs.keys()), sfreq, ch_types)
     montage = mne.channels.make_dig_montage(elecs, nasion=(0, 0, 0), coord_frame='ras')
     info.set_montage(montage)
     return info
@@ -493,7 +493,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 73
+    sub_num = 5
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)

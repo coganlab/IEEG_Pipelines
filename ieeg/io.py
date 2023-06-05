@@ -7,6 +7,7 @@ from bids.layout import BIDSFile, parse_file_entities
 from mne_bids import read_raw_bids, BIDSPath, write_raw_bids, \
     mark_channels, get_bids_path_from_fname
 from mne.utils import verbose, fill_doc
+from mne_bids.write import _from_tsv
 from bids import BIDSLayout
 import numpy as np
 import mne
@@ -213,6 +214,12 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
 
 
+def get_bad_chans(fname: str):
+    data = _from_tsv(fname.replace("_ieeg.edf", "_channels.tsv"))
+    bads = [n for n, s in zip(data['name'], data['status']) if s == 'bad']
+    return bads
+
+
 
 @singledispatch
 @verbose
@@ -243,7 +250,7 @@ def update(filename: PathLike, channels: list[str],
 @update.register
 def _(inst: Signal, layout: BIDSLayout, description: list[str] | str = None, verbose=None):
     if not hasattr(inst, 'filenames'):
-        inst.filenames = inst.info['subject_info'].pop('files', None)
+        inst.filenames = inst.info['subject_info'].get('files', None)
     for i, file in enumerate(inst.filenames):
         fname = op.join(layout.root, file)
         update(fname, inst.info['bads'], description=description, status='bad',
