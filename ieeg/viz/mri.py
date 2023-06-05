@@ -254,20 +254,16 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
         to_fsaverage = mne.transforms.Transform(fro='head', to='mri', trans=to_fsaverage['trans'])
 
-        if picks is None:
-            picks = new.ch_names
-
-        if rm_wm:
-            picks = pick_no_wm(picks, gen_labels(new, sub, subj_dir, picks))
-
-        # Convert picks to indices
-        these_picks = list(mne.pick_channels(new.ch_names, picks))
+        these_picks = range(len(new.ch_names))
+        if picks is not None:
+            these_picks = [pick for pick in these_picks if pick in picks]
+            picks = [p - len(new.ch_names) for p in picks[len(these_picks):]]
 
         if len(these_picks) == 0:
             continue
 
         # plot the data
-        plot_subj(new, subj_dir, picks, True, 8, brain, to_fsaverage)
+        plot_subj(new, subj_dir, these_picks, True, 8, brain, to_fsaverage)
 
     return brain
 
@@ -295,6 +291,8 @@ def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
             v = labels[k]
 
     # remove corresponding picks with either 'White-Matter' in the left most entry or empty lists
+    if isinstance(picks[0], int):
+        picks = [list(labels.keys())[p] for p in picks]
     picks = [p for p in picks if labels[p] != []]
     picks = [p for p in picks if 'White-Matter' not in labels[p][0]]
     return picks
@@ -367,7 +365,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if picks is None:
         picks = info.ch_names
     if no_wm:
-        picks = pick_no_wm(picks, gen_labels(info, sub, subj_dir, picks))
+        picks = pick_no_wm(picks, gen_labels(info, sub, subj_dir, info.ch_names))
 
     pick_ind = mne.pick_channels(info.ch_names, picks)
     info: mne.Info = mne.pick_info(info, pick_ind)
