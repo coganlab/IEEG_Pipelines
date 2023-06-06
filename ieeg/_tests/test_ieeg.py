@@ -39,7 +39,8 @@ def test_raw_from_layout():
     assert isinstance(raw, BaseRaw)
 
 
-def test_line_filter():
+@pytest.mark.parametrize("n_jobs", [1, 8])
+def test_line_filter(n_jobs):
     from ieeg.mt_filter import line_filter
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
@@ -48,7 +49,7 @@ def test_line_filter():
     filt_dat = filt._data
     assert filt_dat.shape == raw_dat.shape
     params = dict(method='multitaper', tmax=20, fmin=55, fmax=65,
-                  bandwidth=0.5, n_jobs=8)
+                  bandwidth=0.5, n_jobs=n_jobs)
     rpsd = raw.compute_psd(**params)
     fpsd = filt.compute_psd(**params)
     assert np.mean(np.abs(rpsd.get_data() - fpsd.get_data())) > 1e-10

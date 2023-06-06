@@ -141,7 +141,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                              x.shape[-1])
 
     process = WindowingRemover(fs, freqs, notch_widths, filter_length,
-                                adaptive, low_bias, p_value, mt_bandwidth)
+                                adaptive, low_bias, mt_bandwidth, p_value)
 
     filt._data[data_idx] = mt_spectrum_proc(x, process, picks, n_jobs)
 
@@ -154,7 +154,11 @@ def mt_spectrum_proc(x: np.ndarray, process: callable, picks: list,
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
 
-    proc_array(process, x, n_jobs=n_jobs, desc="Channels")
+    if n_jobs == 1:
+        for i in range(x.shape[0]):
+            x[i] = process(x[i])
+    else:
+        proc_array(process, x, n_jobs=n_jobs, desc="Channels")
 
     x.shape = orig_shape
     return x
@@ -178,8 +182,7 @@ class WindowingRemover(object):
         self.bandwidth = bandwidth
 
     @cache
-    def get_thresh(self, n_times: int = None
-                   ) -> tuple[np.ndarray, float]:
+    def get_thresh(self, n_times: int = None) -> tuple[np.ndarray, float]:
 
         if n_times is None:
             n_times = self.filter_length
@@ -246,8 +249,7 @@ def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
 
     assert x.ndim == 1
     if x.shape[-1] != window_fun.shape[-1]:
-        window_fun, threshold = get_thresh.func(x.shape[-1],
-                                                *get_thresh.args[1:])
+        window_fun, threshold = get_thresh(x.shape[-1])
     # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
     x_p, freqs = multitaper.spectra(x[np.newaxis, :], window_fun, sfreq)
     f_stat, A = stats.sine_f_test(window_fun, x_p)
