@@ -1,9 +1,11 @@
 import os.path as op
 from collections import OrderedDict
 import csv
+from functools import singledispatch
 
 import matplotlib
 from mne.viz import Brain
+import matplotlib.patheffects as path_effects
 
 matplotlib.use('TkAgg', force=True)
 import matplotlib.pyplot as plt
@@ -113,39 +115,45 @@ def show_brain(my_raw: Signal, trans: mne.transforms.Transform,
     brain.show_view(**view_kwargs)
 
 
-def head_to_mni(inst: Signal, sub: str, subj_dir: PathLike = None):
-    """Transforms the head coordinates to MNI Talairach coordinates
-
-    Parameters
-    ----------
-    inst : Union[mne.io.Raw, mne.Epochs, mne.Evoked]
-        The data to transform
-    sub : str
-        The subject id
-    subj_dir : PathLike, optional
-        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
-    """
-    subj_dir = get_sub_dir(subj_dir)
-    montage = inst.get_montage()
-
-    # first we need a head to mri transform since the data is stored in "head"
-    # coordinates, let's load the mri to head transform and invert it
-    head_mri_t = mne.coreg.estimate_head_mri_t(sub, subj_dir)
-    # apply the transform to our montage
-    montage.apply_trans(head_mri_t)
-
-    montage.add_estimated_fiducials(sub, subj_dir)
-    # now let's load our Talairach transform and apply it
-    mri_mni_t = mne.read_talxfm(sub, subj_dir)
-    montage.apply_trans(mri_mni_t)  # mri to mni_tal (MNI Taliarach)
-
-    # for fsaverage, "mri" and "mni_tal" are equivalent and, since
-    # we want to plot in fsaverage "mri" space, we need use an identity
-    # transform to equate these coordinate frames
-    montage.apply_trans(
-        mne.transforms.Transform(fro='mni_tal', to='mri', trans=np.eye(4)))
-    # montage.add_mni_fiducials(sub, subj_dir)
-    inst.set_montage(montage)
+def imshow_mri(data, img: nib.spatialimages.SpatialImage,
+               vox: tuple[int, int, int], xyz: dict, suptitle: str = ""):
+    """Show an MRI slice with a voxel annotated."""
+    i, j, k = vox
+    fig, ax = plt.subplots(1, figsize=(6, 6))
+    codes = nib.orientations.aff2axcodes(img.affine)
+    # Figure out the title based on the code of this axis
+    ori_slice = dict(
+        P="Coronal", A="Coronal", I="Axial", S="Axial", L="Sagittal", R="Sagittal"
+    )
+    ori_names = dict(
+        P="posterior", A="anterior", I="inferior", S="superior", L="left", R="right"
+    )
+    title = ori_slice[codes[0]]
+    ax.imshow(data[i], vmin=10, vmax=120, cmap="gray", origin="lower")
+    ax.axvline(k, color="y")
+    ax.axhline(j, color="y")
+    for kind, coords in xyz.items():
+        annotation = "{}: {}, {}, {} mm".format(kind, *np.round(coords).astype(int))
+        text = ax.text(k, j, annotation, va="baseline", ha="right", color=(1, 1, 0.7))
+        text.set_path_effects(
+            [
+                path_effects.Stroke(linewidth=2, foreground="black"),
+                path_effects.Normal(),
+            ]
+        )
+    # reorient view so that RAS is always rightward and upward
+    x_order = -1 if codes[2] in "LIP" else 1
+    y_order = -1 if codes[1] in "LIP" else 1
+    ax.set(
+        xlim=[0, data.shape[2] - 1][::x_order],
+        ylim=[0, data.shape[1] - 1][::y_order],
+        xlabel=f"k ({ori_names[codes[2]]}+)",
+        ylabel=f"j ({ori_names[codes[1]]}+)",
+        title=f"{title} view: i={i} ({ori_names[codes[0]]}+)",
+    )
+    fig.suptitle(suptitle)
+    fig.subplots_adjust(0.1, 0.1, 0.95, 0.85)
+    return fig
 
 
 def get_sub_dir(subj_dir: PathLike = None):
@@ -244,7 +252,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.6, background='grey', surf=surface)
 
-    if isinstance(sigs, Signal):
+    if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
     if isinstance(sigs, list):
         sigs = {get_sub(v): v for v in sigs}
@@ -329,7 +337,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int = None, fig: Brain = None,
               trans=None, color: matplotlib.colors=(1,1,1),
-              size: float = 0.25) -> Brain:
+              size: float = 0.35) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -387,6 +395,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     montage.apply_trans(trans)
     pos = montage.get_positions()['ch_pos']
 
+    # Default montage positions are in m, whereas plotting functions assume mm
     l = [p * 1000 for k, p in pos.items() if k.startswith('L')]
     if len(l) != 0:
         fig.add_foci(np.vstack(l), hemi='lh', color=color, scale_factor=size)
@@ -437,7 +446,8 @@ def subject_to_info(subject: str, subjects_dir: PathLike = None,
     return info
 
 
-def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
+@singledispatch
+def force2frame(montage: mne.channels.DigMontage, frame: str):
     """Forces the montage to be in the specified frame
 
     Parameters
@@ -454,6 +464,13 @@ def force2frame(montage: mne.channels.DigMontage, frame: str = 'mri'):
     if not settings['fro'] == frame:
         trans = mne.transforms.Transform(**settings)
         montage.apply_trans(trans)
+
+
+@force2frame.register
+def _(info: mne.Info, frame: str):
+    montage = info.get_montage()
+    force2frame(montage, frame)
+    info.set_montage(montage)
 
 
 def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
@@ -513,10 +530,10 @@ if __name__ == "__main__":
     sub_pad = "D" + str(sub_num).zfill(4)
     sub = "D{}".format(sub_num)
 
-    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-    #                    extension='.edf', desc='clean', preload=False)
+    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+                       extension='.edf', desc='clean', preload=False)
 
     ##
-    brain = plot_subj("D15")
+    brain = plot_subj("D22")
     # plot_on_average(filt)
     # plot_gamma(raw)

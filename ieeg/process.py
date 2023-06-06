@@ -149,7 +149,7 @@ def proc_array(func: callable, arr_in: np.ndarray,
 
     # Get the cross-section indices and array input generator
     cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
-    array_gen = (arr_in[indices] for indices in cross_sect_ind)
+    array_gen = list(arr_in[indices] for indices in cross_sect_ind)
 
     # Create process pool and apply the function in parallel
     with Pool(n_jobs) as pool:
@@ -315,7 +315,7 @@ class COLA:
     """
 
     def __init__(self, process, store, n_total, n_samples, n_overlap, sfreq,
-                 window='hann', tol=1e-10, n_jobs=None, *, verbose=None):
+                 window='hann', tol=1e-10, *, verbose=None):
         n_samples = ensure_int(n_samples, 'n_samples')
         n_overlap = ensure_int(n_overlap, 'n_overlap')
         n_total = ensure_int(n_total, 'n_total')
@@ -351,7 +351,6 @@ class COLA:
         self.stops = self.starts + self._n_samples
         delta = n_total - self.stops[-1]
         self.stops[-1] = n_total
-        self.n_jobs = n_jobs
         sfreq = float(sfreq)
         pl = 's' if len(self.starts) != 1 else ''
         if verbose:
@@ -406,17 +405,8 @@ class COLA:
                                  % (data.shape, self._in_offset,
                                     self.stops[-1]))
         # preallocate data to chunks
-        data_chunks = list(map(lambda x: data[x[0]:x[1]], zip(self.starts,
-                                                              self.stops)))
-
-        # Process the data
-        if not self.n_jobs == 1:
-            out_chunks = parallelize(self._process, data_chunks,
-                                     n_jobs=self.n_jobs,
-                                     prefer='threads', **kwargs)
-        else:
-            out_chunks = [self._process(data_chunk, **kwargs)
-                          for data_chunk in data_chunks]
+        data_chunks = map(lambda x, y: data[x:y], self.starts, self.stops)
+        out_chunks = map(lambda d: self._process(d, **kwargs), data_chunks)
 
         # overlap add to buffer
         while self._idx < len(self.starts) and \
@@ -440,7 +430,7 @@ class COLA:
             if not all(proc.shape[-1] == this_len == this_window.size
                        for proc in this_proc):
                 raise RuntimeError('internal indexing error')
-            outs = out_chunks[self._idx]
+            outs = next(out_chunks)
             if self._out_buffers is None:
                 max_len = np.max(self.stops - self.starts)
                 self._out_buffers = [np.zeros(o.shape[:-1] + (max_len,),

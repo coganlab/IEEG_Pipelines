@@ -1,13 +1,12 @@
-from functools import partial
+from functools import cache
 from typing import Union, List, Generator
 import argparse
-import multiprocessing
+from collections import Counter
 
 import numpy as np
 from mne.io import pick
 from mne.utils import logger, _pl, verbose, fill_doc
 import scipy
-from tqdm import tqdm
 
 from ieeg.timefreq import multitaper, utils as mt_utils
 from ieeg.calc import stats
@@ -113,8 +112,9 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
         filt = raw.copy()
     else:
         filt = raw
-    x = mt_utils._check_filterable(filt.get_data("data"), 'notch filtered',
-                                   'notch_filter')
+
+    x = filt.get_data("data")
+    x = mt_utils._check_filterable(x, 'notch filtered', 'notch_filter')
     if freqs is not None:
         freqs = np.atleast_1d(freqs)
         # Only have to deal with notch_widths for non-autodetect
@@ -140,96 +140,99 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     filter_length: int = min(mt_utils.to_samples(filter_length, fs),
                              x.shape[-1])
 
-    # Define adaptive windowing function
-    get_window_thresh = partial(_get_window_thresh, filter_length, fs,
-                                mt_bandwidth, low_bias, adaptive, p_value)
+    process = WindowingRemover(fs, freqs, notch_widths, filter_length,
+                                adaptive, low_bias, p_value, mt_bandwidth)
 
-    filt._data[data_idx] = mt_spectrum_proc(
-        x, fs, freqs, notch_widths, picks, n_jobs, get_window_thresh)
+    filt._data[data_idx] = mt_spectrum_proc(x, process, picks, n_jobs)
 
     return filt
 
 
-def mt_spectrum_proc(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-                     notch_widths: ListNum, picks: list, n_jobs: int,
-                     get_wt: callable) -> np.ndarray:
+def mt_spectrum_proc(x: np.ndarray, process: callable, picks: list,
+                     n_jobs: int) -> np.ndarray:
     """Call _mt_spectrum_remove."""
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
 
-    # Execute parallel channel wise sine wave detection and filtering
-    func = partial(_mt_remove_win, sfreq=sfreq, line_freqs=line_freqs,
-                   notch_width=notch_widths, get_thresh=get_wt)
-
-    proc_array(func, x, n_jobs=n_jobs, desc="Channels")
-
-    # Execute channel wise sine wave detection and filtering
-    # freq_list = list()
-    # for ii, x_ in enumerate(x):
-    #     logger.debug(f'Processing channel {ii}')
-    #     if ii in picks:
-    #         x[ii], f = _mt_remove_win(x_, sfreq, line_freqs, notch_widths,
-    #                                   get_wt)
-    #         freq_list.append(f)
-
-    # # report found frequencies, but do some sanitizing first by binning into
-    # # 1 Hz bins
-    # counts = Counter(sum((np.unique(np.round(ff)).tolist()
-    #                       for f in freq_list for ff in f), list()))
-    # kind = 'Detected' if line_freqs is None else 'Removed'
-    # found_freqs = '\n'.join(f'    {freq:6.2f} : '
-    #                         f'{counts[freq]:4d} window{_pl(counts[freq])}'
-    #                         for freq in sorted(counts)) or '    None'
-    # logger.info(f'{kind} notch frequencies (Hz):\n{found_freqs}')
+    proc_array(process, x, n_jobs=n_jobs, desc="Channels")
 
     x.shape = orig_shape
     return x
 
 
-def _get_window_thresh(n_times: int, fs: float, mt_bandwidth: float,
-                       low_bias: bool, adaptive: bool, p_value: float
-                       ) -> tuple[np.ndarray, float]:
+class WindowingRemover(object):
 
-    # figure out what tapers to use
-    window_fun, _, _ = multitaper.params(n_times, fs, mt_bandwidth,
-                                         low_bias, adaptive,
-                                         verbose=0)
+    @verbose
+    def __init__(self, sfreq: float, line_freqs: ListNum,
+                 notch_width: ListNum, filter_length: int, low_bias: bool,
+                 adaptive: bool, bandwidth: float, p_value: float,
+                 verbose: bool = None):
+        self.sfreq = sfreq
+        self.line_freqs = line_freqs
+        self.notch_width = notch_width
+        self.p_value = p_value
+        self.filter_length = filter_length
+        self.verbose = verbose
+        self.low_bias = low_bias
+        self.adaptive = adaptive
+        self.bandwidth = bandwidth
 
-    # F-stat of 1-p point
-    threshold = scipy.stats.f.ppf(1 - p_value / n_times, 2,
-                                  2 * len(window_fun) - 2)
-    return window_fun, threshold
-@verbose
-def _mt_remove_win(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-                   notch_width: ListNum, get_thresh: callable,
-                   verbose: bool = None) -> np.ndarray: #, List[float]]:
-    """Remove line frequencies from data using multitaper method."""
-    # Set default window function and threshold
-    window_fun, thresh = get_thresh()
-    n_times = x.shape[-1]
-    n_samples = window_fun.shape[1]
-    n_overlap = (n_samples + 1) // 2
-    x_out = np.zeros_like(x)
-    rm_freqs = list()
-    idx = [0]
+    @cache
+    def get_thresh(self, n_times: int = None
+                   ) -> tuple[np.ndarray, float]:
 
-    # Define how to process a chunk of data
-    def process(x_):
-        out = _mt_remove(x_, sfreq, line_freqs, notch_width, window_fun,
-                         thresh, get_thresh)
-        rm_freqs.append(out[1])
-        return (out[0],)  # must return a tuple
+        if n_times is None:
+            n_times = self.filter_length
 
-    # Define how to store a chunk of fully processed data (it's trivial)
-    def store(x_):
-        stop = idx[0] + x_.shape[-1]
-        x_out[..., idx[0]:stop] += x_
-        idx[0] = stop
+        # figure out what tapers to use
+        window_fun, _, _ = multitaper.params(n_times, self.sfreq,
+                                             self.bandwidth, self.low_bias,
+                                             self.adaptive, verbose=0)
 
-    COLA(process, store, n_times, n_samples, n_overlap, sfreq, n_jobs=1,
-         verbose=False).feed(x)
-    assert idx[0] == n_times
-    return x_out #, rm_freqs
+        # F-stat of 1-p point
+        threshold = scipy.stats.f.ppf(1 - self.p_value / n_times, 2,
+                                      2 * len(window_fun) - 2)
+        return window_fun, threshold
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        """Remove line frequencies from data using multitaper method."""
+        # Set default window function and threshold
+        window_fun, thresh = self.get_thresh()
+        n_times = x.shape[-1]
+        n_samples = window_fun.shape[1]
+        n_overlap = (n_samples + 1) // 2
+        x_out = np.zeros_like(x)
+        rm_freqs = list()
+        idx = [0]
+
+        # Define how to process a chunk of data
+        def process(x_):
+            out = _mt_remove(x_, self.sfreq, self.line_freqs, self.notch_width,
+                             window_fun, thresh, self.get_thresh)
+            rm_freqs.append(out[1])
+            return (out[0],)  # must return a tuple
+
+        # Define how to store a chunk of fully processed data (it's trivial)
+        def store(x_):
+            stop = idx[0] + x_.shape[-1]
+            x_out[..., idx[0]:stop] += x_
+            idx[0] = stop
+
+        COLA(process, store, n_times, n_samples, n_overlap, self.sfreq,
+             verbose=False).feed(x)
+        assert idx[0] == n_times
+
+        # report found frequencies, but do some sanitizing first by binning into
+        # 1 Hz bins
+        counts = Counter(sum((np.unique(np.round(ff)).tolist()
+                              for f in rm_freqs for ff in f), list()))
+        kind = 'Detected' if self.line_freqs is None else 'Removed'
+        found_freqs = '\n'.join(f'    {freq:6.2f} : '
+                                f'{counts[freq]:4d} window{_pl(counts[freq])}'
+                                for freq in sorted(counts)) or '    None'
+        logger.info(f'{kind} notch frequencies (Hz):\n{found_freqs}')
+
+        return x_out
 
 
 def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
