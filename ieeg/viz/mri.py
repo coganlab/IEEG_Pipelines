@@ -281,7 +281,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
-                  trans=to_fsaverage, color=color, size=size)
+                  trans=to_fsaverage, color=color, size=size,
+                  labels_every=None)
 
     return fig
 
@@ -335,7 +336,7 @@ def get_sub(inst: Signal | mne.Info) -> str:
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
-              labels_every: int = None, fig: Brain = None,
+              labels_every: int | None = 8, fig: Brain = None,
               trans=None, color: matplotlib.colors=(1,1,1),
               size: float = 0.35) -> Brain:
     """Plots the electrodes on the subject's brain
@@ -524,7 +525,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 15
+    sub_num = 22
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
