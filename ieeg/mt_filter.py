@@ -1,16 +1,13 @@
-from functools import cache
-from typing import Union, List, Generator
+from typing import Union
 import argparse
-from collections import Counter
 
 import numpy as np
 from mne.io import pick
-from mne.utils import logger, _pl, verbose, fill_doc
-import scipy
+from mne.utils import logger, verbose, fill_doc
 
-from ieeg.timefreq import multitaper, utils as mt_utils
-from ieeg.calc import stats
-from ieeg.process import is_number, proc_array, COLA
+from ieeg.timefreq import utils as mt_utils
+from ieeg.timefreq.multitaper import WindowingRemover
+from ieeg.process import proc_array
 from ieeg import ListNum
 
 
@@ -113,7 +110,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     else:
         filt = raw
 
-    x = filt.get_data("data")
+    x = filt.get_data("data").copy()
     x = mt_utils._check_filterable(x, 'notch filtered', 'notch_filter')
     if freqs is not None:
         freqs = np.atleast_1d(freqs)
@@ -154,135 +151,10 @@ def mt_spectrum_proc(x: np.ndarray, process: callable, picks: list,
     # set up array for filtering, reshape to 2D, operate on last axis
     x, orig_shape, picks = _prep_for_filtering(x, picks)
 
-    if n_jobs == 1:
-        for i in range(x.shape[0]):
-            x[i] = process(x[i])
-    else:
-        proc_array(process, x, n_jobs=n_jobs, desc="Channels")
+    proc_array(process, x, n_jobs=n_jobs, desc="Channels")
 
     x.shape = orig_shape
     return x
-
-
-class WindowingRemover(object):
-
-    @verbose
-    def __init__(self, sfreq: float, line_freqs: ListNum,
-                 notch_width: ListNum, filter_length: int, low_bias: bool,
-                 adaptive: bool, bandwidth: float, p_value: float,
-                 verbose: bool = None):
-        self.sfreq = sfreq
-        self.line_freqs = line_freqs
-        self.notch_width = notch_width
-        self.p_value = p_value
-        self.filter_length = filter_length
-        self.verbose = verbose
-        self.low_bias = low_bias
-        self.adaptive = adaptive
-        self.bandwidth = bandwidth
-
-    @cache
-    def get_thresh(self, n_times: int = None) -> tuple[np.ndarray, float]:
-
-        if n_times is None:
-            n_times = self.filter_length
-
-        # figure out what tapers to use
-        window_fun, _, _ = multitaper.params(n_times, self.sfreq,
-                                             self.bandwidth, self.low_bias,
-                                             self.adaptive, verbose=0)
-
-        # F-stat of 1-p point
-        threshold = scipy.stats.f.ppf(1 - self.p_value / n_times, 2,
-                                      2 * len(window_fun) - 2)
-        return window_fun, threshold
-
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        """Remove line frequencies from data using multitaper method."""
-        # Set default window function and threshold
-        window_fun, thresh = self.get_thresh()
-        n_times = x.shape[-1]
-        n_samples = window_fun.shape[1]
-        n_overlap = (n_samples + 1) // 2
-        x_out = np.zeros_like(x)
-        rm_freqs = list()
-        idx = [0]
-
-        # Define how to process a chunk of data
-        def process(x_):
-            out = _mt_remove(x_, self.sfreq, self.line_freqs, self.notch_width,
-                             window_fun, thresh, self.get_thresh)
-            rm_freqs.append(out[1])
-            return (out[0],)  # must return a tuple
-
-        # Define how to store a chunk of fully processed data (it's trivial)
-        def store(x_):
-            stop = idx[0] + x_.shape[-1]
-            x_out[..., idx[0]:stop] += x_
-            idx[0] = stop
-
-        COLA(process, store, n_times, n_samples, n_overlap, self.sfreq,
-             verbose=False).feed(x)
-        assert idx[0] == n_times
-
-        # report found frequencies, but do some sanitizing first by binning into
-        # 1 Hz bins
-        counts = Counter(sum((np.unique(np.round(ff)).tolist()
-                              for f in rm_freqs for ff in f), list()))
-        kind = 'Detected' if self.line_freqs is None else 'Removed'
-        found_freqs = '\n'.join(f'    {freq:6.2f} : '
-                                f'{counts[freq]:4d} window{_pl(counts[freq])}'
-                                for freq in sorted(counts)) or '    None'
-        logger.info(f'{kind} notch frequencies (Hz):\n{found_freqs}')
-
-        return x_out
-
-
-def _mt_remove(x: np.ndarray, sfreq: float, line_freqs: ListNum,
-               notch_widths: ListNum, window_fun: np.ndarray,
-               threshold: float, get_thresh: callable,
-               ) -> tuple[np.ndarray, List[float]]:
-    """Use MT-spectrum to remove line frequencies.
-    Based on Chronux. If line_freqs is specified, all freqs within notch_width
-    of each line_freq is set to zero.
-    """
-
-    assert x.ndim == 1
-    if x.shape[-1] != window_fun.shape[-1]:
-        window_fun, threshold = get_thresh(x.shape[-1])
-    # compute mt_spectrum (returning n_ch, n_tapers, n_freq)
-    x_p, freqs = multitaper.spectra(x[np.newaxis, :], window_fun, sfreq)
-    f_stat, A = stats.sine_f_test(window_fun, x_p)
-
-    # find frequencies to remove
-    indices = np.where(f_stat > threshold)[1]
-    # pdf = 1-stats.f.cdf(f_stat, 2, window_fun.shape[0]-2)
-    # indices = np.where(pdf < 1/x.shape[-1])[1]
-    # specify frequencies within indicated ranges
-    if line_freqs is not None and notch_widths is not None:
-        if not isinstance(notch_widths, (list, tuple)) and is_number(
-                notch_widths):
-            notch_widths = [notch_widths] * len(line_freqs)
-        ranges = [(freq - notch_width / 2, freq + notch_width / 2
-                   ) for freq, notch_width in zip(line_freqs, notch_widths)]
-        indices = [ind for ind in indices if any(
-            lower <= freqs[ind] <= upper for (lower, upper) in ranges)]
-
-    fits = list()
-    # make "time" vector
-    rads = 2 * np.pi * (np.arange(x.size) / float(sfreq))
-    for ind in indices:
-        c = 2 * A[0, ind]
-        fit = np.abs(c) * np.cos(freqs[ind] * rads + np.angle(c))
-        fits.append(fit)
-
-    if len(fits) == 0:
-        datafit = 0.0
-    else:
-        # fitted sinusoids are summed, and subtracted from data
-        datafit = np.sum(fits, axis=0)
-
-    return x - datafit, freqs[indices]
 
 
 def _prep_for_filtering(x: np.ndarray, picks: list = None
@@ -363,6 +235,6 @@ def main(subject: str = None, save: bool = False):
             logger.error(e)
 
 
-if __name__ == "__main__":
-    args = _get_parser().parse_args()
-    main(**vars(args))
+# if __name__ == "__main__":
+#     args = _get_parser().parse_args()
+#     main(**vars(args))

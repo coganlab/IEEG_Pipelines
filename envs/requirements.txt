@@ -14,7 +14,7 @@ matplotlib
 scipy
 scikit-image
 pandas
-joblib
+git+https://github.com/joblib/joblib.git
 psutil
 pyvistaqt
 pytz

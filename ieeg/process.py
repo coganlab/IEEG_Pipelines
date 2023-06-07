@@ -3,12 +3,12 @@ from os import environ
 from typing import TypeVar, Iterable, Union
 from itertools import chain
 import inspect
-from multiprocessing import Pool
+from multiprocessing.pool import Pool
 
 import numpy as np
 import pandas as pd
 from scipy.signal import get_window
-from joblib import Parallel, delayed, cpu_count
+from joblib import Parallel, delayed, cpu_count, dump, load
 from mne.utils import config, logger, verbose
 from tqdm import tqdm
 
@@ -134,30 +134,27 @@ def proc_array(func: callable, arr_in: np.ndarray,
 
     if isinstance(axes, int):
         axes = (axes,)
+
+    # dump the array to disk for memmap
+    # dump(arr_in, 'temp.npy')
+    # arr_in = load('temp', mmap_mode='w+')
+
     if inplace:
         arr_out = arr_in
     else:
         arr_out = arr_in.copy()
 
-    # Fix n_jobs
-    if n_jobs is None:
-        n_jobs = cpu_count()
-    if n_jobs < 0:
-        n_jobs = cpu_count() + 1 + n_jobs
-    elif n_jobs == 0:
-        n_jobs = 1
-
     # Get the cross-section indices and array input generator
     cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
     array_gen = list(arr_in[indices] for indices in cross_sect_ind)
+    # array_gen = tqdm(array_gen, desc=desc, total=len(cross_sect_ind))
+
+    gen = Parallel(n_jobs, return_generator=True, verbose=40)(
+        delayed(func)(x_) for x_ in array_gen)
 
     # Create process pool and apply the function in parallel
-    with Pool(n_jobs) as pool:
-        gen = pool.imap_unordered(func, array_gen)
-        with tqdm(desc=desc, total=len(cross_sect_ind)) as pbar:
-            for out, ind in zip(gen, cross_sect_ind):
-                arr_out[ind] = out
-                pbar.update()
+    for out, ind in zip(gen, cross_sect_ind):
+        arr_out[ind] = out
 
     return arr_out
 
@@ -210,6 +207,7 @@ def parallelize(func: callable, ins: Iterable,
             n_jobs = -2
     settings = dict(verbose=verbose)
     settings['prefer'] = kwargs.pop('prefer', None)
+    settings['backend'] = kwargs.pop('backend', None)
     settings['mmap_mode'] = kwargs.pop('mmap_mode', 'r')
     settings['require'] = kwargs.pop('require', None)
 
