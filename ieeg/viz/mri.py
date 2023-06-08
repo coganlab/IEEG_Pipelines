@@ -220,7 +220,7 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
 def plot_on_average(sigs: Signal | str | list[Signal | str],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str] = None, surface: str = 'pial',
-                    color: matplotlib.colors = (1, 1, 1),
+                    hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None) -> Brain:
     """Plots the signal on the average brain
 
@@ -250,7 +250,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
     subj_dir = get_sub_dir(subj_dir)
     if fig is None:
         fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.6, background='grey', surf=surface)
+                    alpha=0.6, background='grey', surf=surface, hemi=hemi)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
@@ -262,7 +262,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         new = inst.copy()
 
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
-        to_fsaverage = mne.transforms.Transform(fro='head', to='mri', trans=to_fsaverage['trans'])
+        to_fsaverage = mne.transforms.Transform(fro='head', to='mri',
+                                                trans=to_fsaverage['trans'])
 
         these_picks = range(len(new.ch_names))
         if picks is not None:
@@ -336,7 +337,8 @@ def get_sub(inst: Signal | mne.Info) -> str:
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
-              labels_every: int | None = 8, fig: Brain = None,
+              labels_every: int | None = 8, surface: str = 'pial',
+              hemi: str = 'split', fig: Brain = None,
               trans=None, color: matplotlib.colors=(1,1,1),
               size: float = 0.35) -> Brain:
     """Plots the electrodes on the subject's brain
@@ -381,7 +383,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
-                    background='grey', surf='pial')
+                    background='grey', surf=surface, hemi=hemi)
     if picks is None:
         picks = info.ch_names
     if no_wm:
