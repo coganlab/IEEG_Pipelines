@@ -30,21 +30,19 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
         Tuple containing the mean and standard deviation of the matrix.
     """
 
-    if mask is not None:
-        mat[np.logical_not(mask)] = np.nan
-    avg = np.nanmean(mat, axis, keepdims=True)
-    stdev = np.nanstd(mat, axis=axis) / 3
-    # else:
-    #     try:
-    #         assert mat.shape == mask.shape
-    #     except AssertionError as e:
-    #         print(str(mat.shape), '=/=', str(mask.shape))
-    #         raise e
-    # avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
-    # avg = np.reshape(avg, [np.shape(avg)[axis]])
-    # stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis+1])
-    # stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
-    return np.squeeze(avg), np.squeeze(stdev)
+    if mask is None:
+        mask = np.ones(mat.shape)
+        mask[np.isnan(mask)] = 0
+    elif mat.shape != mask.shape:
+        raise ValueError(f"matrix shape {mat.shape} not same as mask shape "
+                         f"{mask.shape}")
+    mask[np.isnan(mask)] = 0
+
+    avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
+    avg = np.reshape(avg, [np.shape(avg)[axis]])
+    stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis + 1])
+    stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
+    return avg, stdev
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
