@@ -259,7 +259,15 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
     for subj, inst in sigs.items():
 
-        new = inst.copy()
+        if isinstance(inst, mne.Info):
+            new = inst.copy()
+        elif isinstance(inst, Signal):
+            new = inst.info.copy()
+        elif isinstance(inst, str):
+            new = subject_to_info(inst)
+        else:
+            raise TypeError(type(inst))
+
 
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
         to_fsaverage = mne.transforms.Transform(fro='head', to='mri',
@@ -275,7 +283,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
         if rm_wm:
             these_picks = pick_no_wm(these_picks, gen_labels(
-                new.info, subj, subj_dir, new.ch_names))
+                new, subj, subj_dir, new.ch_names))
 
         if len(these_picks) == 0:
             continue
