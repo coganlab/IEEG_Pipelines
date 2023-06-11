@@ -2,6 +2,7 @@ import os.path as op
 from collections import OrderedDict
 import csv
 from functools import singledispatch
+from typing import Iterable
 
 import matplotlib
 from mne.viz import Brain
@@ -268,15 +269,23 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         else:
             raise TypeError(type(inst))
 
-
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
         to_fsaverage = mne.transforms.Transform(fro='head', to='mri',
                                                 trans=to_fsaverage['trans'])
 
         these_picks = range(len(new.ch_names))
-        if picks is not None:
-            these_picks = [pick for pick in these_picks if pick in picks]
-            picks = [p - len(new.ch_names) for p in picks[len(these_picks):]]
+        if isinstance(picks, (tuple, list)):
+            if len(picks) == 0:
+                continue
+            elif isinstance(picks[0], int):
+                these_picks = [new.ch_names[pick] for pick in these_picks if pick in picks]
+                picks = [p - len(new.ch_names) for p in
+                         picks[len(these_picks):]]
+            elif isinstance(picks[0], str):
+                these_picks = [s[6:] for s in picks if s[:5] in
+                               new['subject_info']['his_id']]
+        elif picks is not None:
+            raise TypeError(picks)
 
         if len(these_picks) == 0:
             continue
@@ -396,9 +405,10 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         picks = info.ch_names
     if no_wm:
         picks = pick_no_wm(picks, gen_labels(info, sub, subj_dir, info.ch_names))
+    if isinstance(picks[0], str):
+        picks = mne.pick_channels(info.ch_names, picks)
 
-    pick_ind = mne.pick_channels(info.ch_names, picks)
-    info: mne.Info = mne.pick_info(info, pick_ind)
+    info: mne.Info = mne.pick_info(info, picks)
 
     # fig.add_sensors(info, trans)
     montage = info.get_montage()
