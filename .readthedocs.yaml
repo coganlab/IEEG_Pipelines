@@ -19,7 +19,8 @@ build:
     # golang: "1.19"
   jobs:
     pre_build:
-      - pip install --upgrade myst-nb sphinx_gallery SQLAlchemy
+      - pip install --upgrade myst-nb sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain
+      - git submodule update --init MATLAB/env
       - sphinx-apidoc -f -o docs .
 
 # Build documentation in the docs/ directory with Sphinx

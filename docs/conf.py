@@ -32,6 +32,7 @@ release = '0.1'
 # ones.
 extensions = ['myst_nb',
               'sphinx_gallery.gen_gallery',
+              'sphinxcontrib.matlab',
               'sphinx.ext.duration',
               'sphinx.ext.doctest',
               'sphinx.ext.autodoc',
@@ -72,6 +73,9 @@ napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
 autodoc_typehints = 'both'
+
+matlab_src_dir = os.path.abspath('../MATLAB')
+matlab_auto_link = True
 
 # nb_execution_mode = 'off'
 
