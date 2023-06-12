@@ -12,6 +12,7 @@ IEEG_Pipelines documentation
 
    ieeg
    auto_examples/index
+   MATLAB
 
 
 Instructions
