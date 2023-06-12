@@ -10,6 +10,9 @@ arguments
     options.pixRange double = []
     options.isSmooth logical = 0
 end
+%selectedChannels = sort(chanMap(~isnan(chanMap)))';
+%val2disp(~ismember(chanMap(:),options.selectedChannels)) = [];
+chanMap(~ismember(chanMap(:),options.selectedChannels))= nan;
 valChannel = zeros(size(chanMap,1),size(chanMap,2));
 valChannelNan = nan(size(chanMap,1),size(chanMap,2));
 for iChan = 1 : length(options.selectedChannels)
