@@ -1,5 +1,6 @@
 function formatTicks(gca)
-    set(gca,'FontSize',10);
+    axis(gca,'square')
+    set(gca,'FontSize',15);
     
     set( gca                       , ...
         'FontName'   , 'Arial' );    
