@@ -1,11 +1,9 @@
 import numpy as np
-from functools import partial
 
 from skimage import measure
 from mne.utils import logger
 
 from ieeg import Doubles
-from ieeg.process import proc_array
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:

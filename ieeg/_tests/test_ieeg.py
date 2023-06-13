@@ -55,23 +55,6 @@ def test_line_filter(n_jobs):
     assert np.mean(np.abs(rpsd.get_data() - fpsd.get_data())) > 1e-10
 
 
-@pytest.mark.parametrize("input_mat, shape, expected", [
-    (np.zeros((10, 52)), (5, 104), np.zeros((5, 104))),
-    (np.zeros((10, 50, 52)), (5, 50, 104), np.zeros((5, 50, 104))),
-    (np.zeros((10, 50, 50)), (5, 50, 104), np.zeros((4, 50, 104))),
-    (np.zeros((10, 100, 50, 52)), (5, 100, 50, 104),
-     np.zeros((5, 100, 50, 104))),
-    (np.zeros((10, 100, 50, 50)), (5, 100, 50, 104),
-     np.zeros((4, 100, 50, 104))),
-    (np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]), (1, 2, 4),
-     np.array([[[1, 2, 5, 6], [3, 4, 7, 8]]]))
-])
-def test_same(input_mat, shape, expected):
-    from ieeg.calc.stats import make_data_shape
-    new_shape = make_data_shape(input_mat, shape)
-    assert np.all(new_shape == expected)
-
-
 if os.path.isfile("spec.npy"):
     spec_check = np.load("spec.npy")
 else:
@@ -111,6 +94,17 @@ def test_outlier(input1, input2, expected):
     from ieeg.navigate import channel_outlier_marker
     outs = channel_outlier_marker(seeg, input1, input2)
     assert outs == expected
+
+
+@pytest.mark.parametrize("outliers, n_out", [
+    (4, 89955),
+    (5, 25987)
+])
+def test_trial_outlier(outliers, n_out):
+    from ieeg.navigate import trial_ieeg, outliers_to_nan
+    trials = trial_ieeg(seeg, 'Response', (-1, 1))
+    outs = outliers_to_nan(trials, outliers)
+    assert np.isnan(outs._data).sum() == n_out
 
 
 @pytest.mark.parametrize("func, expected", [
