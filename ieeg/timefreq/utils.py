@@ -6,7 +6,7 @@ from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
 from mne.time_frequency import AverageTFR, EpochsTFR
-from mne.utils import verbose, config
+from mne.utils import verbose
 
 from ieeg.process import validate_type, ensure_int, parallelize
 from ieeg import Signal
