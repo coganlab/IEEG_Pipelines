@@ -6,8 +6,6 @@ from mne.epochs import BaseEpochs
 from mne import Epochs
 from mne.time_frequency import EpochsTFR, AverageTFR, _BaseTFR
 
-from ieeg.calc.stats import find_outliers
-
 
 def _log_rescale(baseline, mode='mean'):
     """Log the rescaling method."""
@@ -92,7 +90,39 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 
 @rescale.register
 @verbose
-def _(line: BaseEpochs | _BaseTFR, baseline: BaseEpochs | _BaseTFR,
+def _(line: BaseEpochs, baseline: BaseEpochs,
+      mode: str = 'mean', copy: bool = False, picks: list = 'data',
+      verbose=None) -> Epochs:
+    """Rescale (baseline correct) Epochs"""
+    if copy:
+        line: Epochs = line.copy()
+    if verbose is not False:
+        msg = _log_rescale(baseline, mode)
+        logger.info(msg)
+
+    # Average the baseline across epochs
+    basedata = baseline.pick(picks)._data
+    axes = list(range(basedata.ndim))
+
+    # within channels
+    axes.pop(1)
+
+    # If time frequency then within frequency
+    if isinstance(line, EpochsTFR):
+        axes = (0, 3)
+    elif isinstance(line, AverageTFR):
+        axes = 2
+    else:
+        axes = tuple(axes)
+
+    line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
+                                     False, axes)
+    return line
+
+
+@rescale.register
+@verbose
+def _(line: _BaseTFR, baseline: _BaseTFR,
       mode: str = 'mean', copy: bool = False, picks: list = 'data',
       verbose=None) -> Epochs:
     """Rescale (baseline correct) Epochs"""
