@@ -2,13 +2,12 @@ import os.path as op
 from collections import OrderedDict
 import csv
 from functools import singledispatch
-from typing import Iterable
 
 import matplotlib
 from mne.viz import Brain
 import matplotlib.patheffects as path_effects
 
-matplotlib.use('TkAgg', force=True)
+matplotlib.use('TkAgg', force=True)  # noqa E402
 import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
@@ -143,18 +142,22 @@ def imshow_mri(data, img: nib.spatialimages.SpatialImage,
     codes = nib.orientations.aff2axcodes(img.affine)
     # Figure out the title based on the code of this axis
     ori_slice = dict(
-        P="Coronal", A="Coronal", I="Axial", S="Axial", L="Sagittal", R="Sagittal"
+        P="Coronal", A="Coronal", I="Axial", S="Axial", L="Sagittal",
+        R="Sagittal"
     )
     ori_names = dict(
-        P="posterior", A="anterior", I="inferior", S="superior", L="left", R="right"
+        P="posterior", A="anterior", I="inferior", S="superior", L="left",
+        R="right"
     )
     title = ori_slice[codes[0]]
     ax.imshow(data[i], vmin=10, vmax=120, cmap="gray", origin="lower")
     ax.axvline(k, color="y")
     ax.axhline(j, color="y")
     for kind, coords in xyz.items():
-        annotation = "{}: {}, {}, {} mm".format(kind, *np.round(coords).astype(int))
-        text = ax.text(k, j, annotation, va="baseline", ha="right", color=(1, 1, 0.7))
+        annotation = "{}: {}, {}, {} mm".format(kind,
+                                                *np.round(coords).astype(int))
+        text = ax.text(k, j, annotation, va="baseline", ha="right",
+                       color=(1, 1, 0.7))
         text.set_path_effects(
             [
                 path_effects.Stroke(linewidth=2, foreground="black"),
@@ -304,7 +307,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
             if len(picks) == 0:
                 continue
             elif isinstance(picks[0], int):
-                these_picks = [new.ch_names[pick] for pick in these_picks if pick in picks]
+                these_picks = [new.ch_names[pick] for pick in these_picks if
+                               pick in picks]
                 picks = [p - len(new.ch_names) for p in
                          picks[len(these_picks):]]
             elif isinstance(picks[0], str):
@@ -353,7 +357,8 @@ def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
             labels[k].remove('Unknown')
             v = labels[k]
 
-    # remove corresponding picks with either 'White-Matter' in the left most entry or empty lists
+    # remove corresponding picks with either 'White-Matter' in the left most
+    # entry or empty lists
     if isinstance(picks[0], int):
         picks = [list(labels.keys())[p] for p in picks]
     picks = [p for p in picks if labels[p]]
@@ -382,7 +387,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'split', fig: Brain = None,
-              trans=None, color: matplotlib.colors=(1,1,1),
+              trans=None, color: matplotlib.colors = (1, 1, 1),
               size: float = 0.35) -> Brain:
     """Plots the electrodes on the subject's brain
 
@@ -426,19 +431,22 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         info = subject_to_info(inst, subj_dir)
         sub = inst
     else:
-        raise TypeError(f"inst must be Signal, mne.Info, or str, not {type(inst)}")
+        raise TypeError(
+            f"inst must be Signal, mne.Info, or str, not {type(inst)}")
 
     if subj_dir is None:
         subj_dir = get_sub_dir(subj_dir)
     if trans is None:
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
-        fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast', alpha=0.5,
+        fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
+                    alpha=0.5,
                     background='grey', surf=surface, hemi=hemi)
     if picks is None:
         picks = info.ch_names
     if no_wm:
-        picks = pick_no_wm(picks, gen_labels(info, sub, subj_dir, info.ch_names))
+        picks = pick_no_wm(picks,
+                           gen_labels(info, sub, subj_dir, info.ch_names))
     if isinstance(picks[0], str):
         picks = mne.pick_channels(info.ch_names, picks)
 
@@ -451,13 +459,15 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     pos = montage.get_positions()['ch_pos']
 
     # Default montage positions are in m, whereas plotting functions assume mm
-    l = [p * 1000 for k, p in pos.items() if k.startswith('L')]
-    if len(l) != 0:
-        fig.add_foci(np.vstack(l), hemi='lh', color=color, scale_factor=size)
+    left = [p * 1000 for k, p in pos.items() if k.startswith('L')]
+    if len(left) != 0:
+        fig.add_foci(np.vstack(left), hemi='lh', color=color,
+                     scale_factor=size)
 
-    r = [p * 1000 for k, p in pos.items() if k.startswith('R')]
-    if len(r) != 0:
-        fig.add_foci(np.vstack(r), hemi='rh', color=color, scale_factor=size)
+    right = [p * 1000 for k, p in pos.items() if k.startswith('R')]
+    if len(right) != 0:
+        fig.add_foci(np.vstack(right), hemi='rh', color=color,
+                     scale_factor=size)
 
     if labels_every is not None:
         if isinstance(picks[0], (int, np.integer)):
@@ -498,9 +508,11 @@ def subject_to_info(subject: str, subjects_dir: PathLike = None,
         reader = csv.reader(fd)
         for row in reader:
             line = row[0].split(" ")
-            elecs["".join(line[0:2])] = tuple(float(n) / 1000 for n in line[2:5])
+            elecs["".join(line[0:2])] = tuple(
+                float(n) / 1000 for n in line[2:5])
     info = mne.create_info(list(elecs.keys()), sfreq, ch_types)
-    montage = mne.channels.make_dig_montage(elecs, nasion=(0, 0, 0), coord_frame='ras')
+    montage = mne.channels.make_dig_montage(elecs, nasion=(0, 0, 0),
+                                            coord_frame='ras')
     info.set_montage(montage)
     return info
 
@@ -571,6 +583,7 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
 if __name__ == "__main__":
     from ieeg.io import get_data, raw_from_layout
     from os import path
+
     HOME = path.expanduser("~")
     LAB_root = path.join(HOME, "Box", "CoganLab")
     # %% Set up logging
@@ -588,7 +601,7 @@ if __name__ == "__main__":
     sub = "D{}".format(sub_num)
 
     filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-                       extension='.edf', desc='clean', preload=False)
+                           extension='.edf', desc='clean', preload=False)
 
     ##
     brain = plot_subj("D57")

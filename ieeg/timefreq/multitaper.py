@@ -20,7 +20,7 @@ from ieeg import ListNum
 
 class WindowingRemover(object):
     """Removes windowing artifacts from data.
-    
+
     Parameters
     ----------
     sfreq : float
@@ -83,18 +83,17 @@ class WindowingRemover(object):
         Kmax : int
             Number of DPSS windows to return is Kmax (orders 0 through Kmax-1).
         sym : bool
-            Whether to generate a symmetric window (`True`, for filter design) or
-            a periodic window (`False`, for spectral analysis). Default is
+            Whether to generate a symmetric window (`True`, for filter design)
+            or a periodic window (`False`, for spectral analysis). Default is
             `True`.
         norm : 2 | 'approximate' | 'subsample' | None
-            Window normalization method. If ``'approximate'`` or ``'subsample'``,
-            windows are normalized by the maximum, and a correction scale-factor
-            for even-length windows is applied either using
-            ``N**2/(N**2+half_nbw)`` ("approximate") or a FFT-based subsample shift
-            ("subsample"). ``2`` uses the L2 norm. ``None`` (the default) uses
-            ``"approximate"`` when ``Kmax=None`` and ``2`` otherwise.
-        low_bias : bool
-            Keep only tapers with eigenvalues > 0.9. Default is ``True``.
+            Window normalization method. If ``'approximate'`` or
+            ``'subsample'``, windows are normalized by the maximum, and a
+            correction scale-factor for even-length windows is applied either
+            using ``N**2/(N**2+half_nbw)`` ("approximate") or a FFT-based
+            subsample shift ("subsample"). ``2`` uses the L2 norm. ``None``
+            (the default) uses ``"approximate"`` when ``Kmax=None`` and ``2``
+            otherwise.
 
         Returns
         -------
@@ -108,8 +107,8 @@ class WindowingRemover(object):
 
         References
         ----------
-        David S. Slepian. Prolate spheroidal wave functions, fourier analysis, and
-        uncertainty-V: the discrete case. Bell System Technical Journal,
+        David S. Slepian. Prolate spheroidal wave functions, fourier analysis,
+        and uncertainty-V: the discrete case. Bell System Technical Journal,
         57(5):1371–1430, 1978. doi:10.1002/j.1538-7305.1978.tb02104.x.
         """
 
@@ -118,8 +117,8 @@ class WindowingRemover(object):
         if self.low_bias:
             idx = (eigvals > 0.9)
             if not idx.any():
-                self.logger.warn(
-                    'Could not properly use low_bias, keeping lowest-bias taper')
+                self.logger.warn('Could not properly use low_bias, keeping'
+                                 'lowest-bias taper')
                 idx = [np.argmax(eigvals)]
             dpss, eigvals = dpss[idx], eigvals[idx]
         assert len(dpss) > 0  # should never happen
@@ -134,16 +133,6 @@ class WindowingRemover(object):
         ----------
         n_times : int
             The number of time points.
-        sfreq : float
-            The sampling frequency.
-        bandwidth : float | None
-            The bandwidth of the windows in Hz. If None, the half bandwidth will be
-            4 Hz.
-        low_bias : bool
-            Keep only tapers with eigenvalues > 0.9.
-        adaptive : bool
-            Use adaptive weights to combine the tapered spectra into PSD.
-        %(verbose)s
 
         Returns
         -------
@@ -152,7 +141,8 @@ class WindowingRemover(object):
         eigenvals : array, shape=(n_tapers,)
             The eigenvalues for each taper.
         adaptive : bool
-            Whether to use adaptive weights to combine the tapered spectra into PSD
+            Whether to use adaptive weights to combine the tapered spectra into
+            PSD
             """
         # Compute standardized half-bandwidth
         if isinstance(self.bandwidth, str):
@@ -182,7 +172,7 @@ class WindowingRemover(object):
         if self.adaptive and len(eigvals) < 3:
             self.logger.warn('Not adaptively combining the spectral estimators'
                              ' due to a low number of tapers (%s < 3).' % (
-                        len(eigvals),))
+                                len(eigvals),))
             self.adaptive = False
 
         return window_fun, eigvals, self.adaptive
@@ -212,7 +202,7 @@ class WindowingRemover(object):
 
         # F-stat of 1-p point
         threshold = stats.f.ppf(1 - self.p_value / n_times, 2,
-                                   2 * len(window_fun) - 2)
+                                2 * len(window_fun) - 2)
         return window_fun, threshold
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
@@ -243,8 +233,8 @@ class WindowingRemover(object):
              verbose=False).feed(x)
         assert idx[0] == n_times
 
-        # report found frequencies, but do some sanitizing first by binning into
-        # 1 Hz bins
+        # report found frequencies, but do some sanitizing first by binning
+        # into 1 Hz bins
         counts = Counter(sum((np.unique(np.round(ff)).tolist()
                               for f in self.rm_freqs for ff in f), list()))
         kind = 'Detected' if self.line_freqs is None else 'Removed'

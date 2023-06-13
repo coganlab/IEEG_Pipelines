@@ -108,9 +108,8 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     return whole_raw
 
 
-def open_dat_file(file_path: str, channels: list[str],
-                  sfreq: int = 2048, types: str = "seeg",
-                  units: str = "uV") -> mne.io.RawArray:
+def open_dat_file(file_path: str, channels: list[str], sfreq: int = 2048,
+                  types: str = "seeg", units: str = "uV") -> mne.io.RawArray:
     """Opens a .dat file and returns a mne.io.RawArray object.
 
     Parameters
@@ -216,7 +215,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
 
 def get_bad_chans(fname: str):
     """Gets the bad channels corresponding to a file.
-    
+
     Parameters
     ----------
     fname : str
@@ -230,7 +229,6 @@ def get_bad_chans(fname: str):
     data = _from_tsv(fname.replace("_ieeg.edf", "_channels.tsv"))
     bads = [n for n, s in zip(data['name'], data['status']) if s == 'bad']
     return bads
-
 
 
 @singledispatch
@@ -260,7 +258,8 @@ def update(filename: PathLike, channels: list[str],
 
 
 @update.register
-def _(inst: Signal, layout: BIDSLayout, description: list[str] | str = None, verbose=None):
+def _(inst: Signal, layout: BIDSLayout, description: list[str] | str = None,
+      verbose=None):
     if not hasattr(inst, 'filenames'):
         inst.filenames = inst.info['subject_info'].get('files', None)
     for i, file in enumerate(inst.filenames):
@@ -269,5 +268,3 @@ def _(inst: Signal, layout: BIDSLayout, description: list[str] | str = None, ver
                verbose=verbose)
         goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
         update(fname, channels=goods, status='good', verbose=None)
-
-

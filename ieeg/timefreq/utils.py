@@ -101,7 +101,6 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
 #     return np.abs(wav)
 
 
-
 @verbose
 def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
                        f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
@@ -139,9 +138,12 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     wave = np.empty((f.shape[0], f.shape[1], xxx, k[::decim].shape[-1]),
                     dtype=np.float64)  # ch X trials X freq X time
     ins = ((f[:, None, i], i) for i in range(f.shape[1]))
-    ifft_abs = lambda x, i: np.abs(np.fft.ifft(x * np.tile(daughter, (
-        f.shape[0], 1, 1)))[..., ::decim], out=wave[:, i])
-    parallelize(ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
+
+    def _ifft_abs(x, i):
+        np.abs(np.fft.ifft(x * np.tile(daughter, (
+            f.shape[0], 1, 1)))[..., ::decim], out=wave[:, i])
+
+    parallelize(_ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
                 verbose=verbose)
 
     return EpochsTFR(inst.info, wave, inst.times[::decim], 1 / period)

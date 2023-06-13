@@ -138,7 +138,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
                              x.shape[-1])
 
     process = WindowingRemover(fs, freqs, notch_widths, filter_length,
-                                adaptive, low_bias, mt_bandwidth, p_value)
+                               adaptive, low_bias, mt_bandwidth, p_value)
 
     filt._data[data_idx] = mt_spectrum_proc(x, process, picks, n_jobs)
 
@@ -235,6 +235,6 @@ def main(subject: str = None, save: bool = False):
             logger.error(e)
 
 
-# if __name__ == "__main__":
-#     args = _get_parser().parse_args()
-#     main(**vars(args))
+if __name__ == "__main__":
+    args = _get_parser().parse_args()
+    main(**vars(args))

@@ -3,14 +3,12 @@ from os import environ
 from typing import TypeVar, Iterable, Union
 from itertools import chain
 import inspect
-from multiprocessing.pool import Pool
 
 import numpy as np
 import pandas as pd
 from scipy.signal import get_window
-from joblib import Parallel, delayed, cpu_count, dump, load
-from mne.utils import config, logger, verbose
-from tqdm import tqdm
+from joblib import Parallel, delayed, cpu_count
+from mne.utils import config, logger
 
 
 def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
@@ -159,8 +157,8 @@ def proc_array(func: callable, arr_in: np.ndarray,
     return arr_out
 
 
-def parallelize(func: callable, ins: Iterable,
-                verbose: int = 10, n_jobs: int = None, **kwargs) -> list | None:
+def parallelize(func: callable, ins: Iterable, verbose: int = 10,
+                n_jobs: int = None, **kwargs) -> list | None:
     """Parallelize a function to run on multiple processors.
 
     This function is a wrapper for joblib.Parallel. It will automatically
@@ -188,8 +186,6 @@ def parallelize(func: callable, ins: Iterable,
     n_jobs : int
         The number of jobs to run in parallel. If None, will use all
         available cores. If -1, will use all available cores.
-    *args
-        Additional arguments to pass to the function
     **kwargs
         Additional keyword arguments to pass to the function
 
@@ -245,7 +241,6 @@ def get_mem() -> Union[float, int]:
     from psutil import virtual_memory
     ram_per = virtual_memory()[3]/cpu_count()
     return ram_per
-
 
 
 ###############################################################################
@@ -352,8 +347,8 @@ class COLA:
         sfreq = float(sfreq)
         pl = 's' if len(self.starts) != 1 else ''
         if verbose:
-            logger.info('    Processing %4d data chunk%s of (at least) %0.1f sec '
-                        'with %0.1f sec overlap and %s windowing'
+            logger.info('    Processing %4d data chunk%s of (at least) %0.1f '
+                        'sec with %0.1f sec overlap and %s windowing'
                         % (len(self.starts), pl, self._n_samples / sfreq,
                            self._n_overlap / sfreq, window_name))
         del window, window_name

@@ -30,17 +30,24 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
 
     if mask is None:
         mask = np.ones(mat.shape)
-        mask[np.isnan(mask)] = 0
     elif mat.shape != mask.shape:
         raise ValueError(f"matrix shape {mat.shape} not same as mask shape "
                          f"{mask.shape}")
-    mask[np.isnan(mask)] = 0
+    mask[np.isnan(mat)] = 0
+    mat[np.isnan(mat)] = 0
 
-    avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
-    avg = np.reshape(avg, [np.shape(avg)[axis]])
-    stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis + 1])
-    stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
-    return avg, stdev
+    if axis == mat.ndim - 1:
+        newaxis = 0
+    else:
+        newaxis = axis + 1
+
+    weighted = np.multiply(mat, mask)
+    weights = np.sum(mask, axis, keepdims=True)
+    avg = np.divide(np.sum(weighted, axis, keepdims=True), weights)
+    # avg = np.reshape(avg, [np.shape(avg)[axis]])
+    stdev = np.sqrt(np.sum(np.abs(weighted - avg)**2. / weights**2., axis))
+    # stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
+    return np.squeeze(avg), stdev
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
@@ -130,10 +137,25 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
                    keep: np.ndarray[bool] = None) -> np.ndarray:
     """ Calculate the average of data without trial outliers.
 
-    This function calculates the average of data without trial outliers. Outliers
-    are defined as any trial with a maximum value greater than the mean plus
-    outliers times the standard deviation. The function returns the average of
-    data without outliers.
+    This function calculates the average of data without trial outliers.
+    Outliers are defined as any trial with a maximum value greater than the
+    mean plus outliers times the standard deviation.
+    The function returns the average of data without outliers.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to calculate average of.
+    outliers : float
+        Number of standard deviations from the mean to consider an outlier.
+    keep : np.ndarray[bool]
+        Boolean array with True for trials that are not outliers and False
+        for trials that are outliers.
+
+    Returns
+    -------
+    np.ndarray
+        Average of data without outliers.
     """
     if data.ndim not in (3, 4):
         raise ValueError("Data must be 3D or 4D")
@@ -277,7 +299,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     #     # p_perm is the probability of observing a difference as large as the
     #     # other permutations, or larger, by chance
     #
-    #     larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
+    #     larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i],tails)
     #     p_perm[i] = np.mean(larger, axis=0)
 
     # The line below accomplishes the same as above twice as fast, but could

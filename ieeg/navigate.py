@@ -227,7 +227,8 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
         scaling.rescale(epochs, base, mode=mode, copy=False)
 
     if outliers is not None:
-        # epochs.get_data() gives a numpy array of (trials X channels X timepoints)
+        # epochs.get_data()
+        # gives a numpy array of (trials X channels X timepoints)
         data = np.abs(epochs.get_data())
         max = np.max(data, axis=-1)
         std = np.std(data, axis=(-1, 0))

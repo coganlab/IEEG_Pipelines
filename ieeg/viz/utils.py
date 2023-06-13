@@ -98,11 +98,15 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
         The function to use to plot the channels, by default inst.plot()
     picks : list[Union[str, int]], optional
         The channels to plot, by default all
+    size : tuple[int, int], optional
+        The size of the figure, by default (8, 12)
+    show : bool, optional
+        Whether to show the figure, by default True
 
     Returns
     -------
-    plt.Figure
-        The figure containing the grid
+    list[plt.Figure]
+        The figures containing the grid
     """
     if n_rows is None:
         n_rows = int(np.ceil(len(inst.ch_names) / n_cols))
@@ -122,9 +126,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     figs = []
     for i in range(numfigs):
         fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
-                                figsize=size,
-                                #gridspec_kw=dict(wspace=0.3, hspace=0.3)
-                                )
+                                figsize=size)
 
         select = partial(_onclick_select, inst=inst, axs=fig.axes)
         text_spec = dict(fontsize=12, weight="extra bold")
@@ -198,9 +200,32 @@ def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
     return plt.gca()
 
 
-def plot_weight_dist(data: np.ndarray, label: np.ndarray, mask: np.ndarray = None,
-                     sig_titles: list[str] = None, colors: list[str | list[int]] = None):
-    """Basic distribution plot for weighted signals"""
+def plot_weight_dist(data: np.ndarray, label: np.ndarray,
+                     mask: np.ndarray = None, sig_titles: list[str] = None,
+                     colors: list[str | list[int]] = None
+                     ) -> (plt.Figure, plt.Axes):
+    """Basic distribution plot for weighted signals
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The data to plot
+    label : np.ndarray
+        The labels for the data
+    mask : np.ndarray, optional
+        The mask to use for the distribution, by default None
+    sig_titles : list[str], optional
+        The titles for the signals, by default None
+    colors : list[str | list[int]], optional
+        The colors for the signals, by default None
+
+    Returns
+    -------
+    plt.Figure
+        The figure containing the plot
+    plt.Axes
+        The axes containing the plot
+    """
     fig, ax = plt.subplots()
     if len(label.shape) > 1:
         group = range(min(np.shape(label)))

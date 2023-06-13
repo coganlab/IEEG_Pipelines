@@ -7,7 +7,7 @@ bids>=0.0
 nipype
 naplib
 EDFlib-Python
-mne-python/
+git+https://github.com/Aaronearlerichardson/mne-python.git@1.4
 mne-bids
 numpy
 matplotlib
