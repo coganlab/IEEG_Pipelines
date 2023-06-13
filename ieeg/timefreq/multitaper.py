@@ -19,6 +19,29 @@ from ieeg import ListNum
 
 
 class WindowingRemover(object):
+    """Removes windowing artifacts from data.
+    
+    Parameters
+    ----------
+    sfreq : float
+        The sampling frequency of the data.
+    line_freqs : list of float
+        The frequencies of the line noise.
+    notch_width : list of float
+        The notch widths for each line frequency.
+    filter_length : int
+        The length of the filter to use.
+    low_bias : bool
+        Whether to use a low bias filter.
+    adaptive : bool
+        Whether to use an adaptive filter.
+    bandwidth : float
+        The bandwidth of the multitaper windowing function.
+    p_value : float
+        The p-value to use in the F-test.
+    verbose : bool
+        Whether to print information.
+    """
 
     @verbose
     def __init__(self, sfreq: float, line_freqs: ListNum,
@@ -166,6 +189,20 @@ class WindowingRemover(object):
 
     @cache
     def get_thresh(self, n_times: int = None) -> tuple[np.ndarray, float]:
+        """Get the window function and threshold for given time points.
+
+        Parameters
+        ----------
+        n_times : int | None
+            The number of time points. If None, the filter length will be used.
+
+        Returns
+        -------
+        window_fun : array, shape=(n_tapers, n_times)
+            The window functions for each taper
+        threshold : float
+            The threshold for the F-statistic.
+        """
 
         if n_times is None:
             n_times = self.filter_length

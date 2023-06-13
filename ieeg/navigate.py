@@ -88,6 +88,10 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     max_rounds : int, optional
         Maximum number of variance estimations, by default runs until no
         more bad channels are found.
+    axis : int, optional
+        Axis to calculate variance over, by default 0
+    save : bool, optional
+        Whether to save bad channels to raw.info['bads'], by default False
     %(verbose)s
 
     Returns
@@ -120,6 +124,25 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
                     copy: bool = False, picks: list = 'data'
                     ) -> mne.epochs.BaseEpochs:
+    """Set outliers to nan.
+
+    Parameters
+    ----------
+    trials : mne.epochs.BaseEpochs
+        The trials to remove outliers from.
+    outliers : float
+        The number of standard deviations above the mean to be considered an
+        outlier.
+    copy : bool, optional
+        Whether to copy the data, by default False
+    picks : list, optional
+        The channels to remove outliers from, by default 'data'
+
+    Returns
+    -------
+    mne.epochs.BaseEpochs
+        The trials with outliers set to nan.
+    """
     if copy:
         trials = trials.copy()
     picks = mne.io.pick._picks_to_idx(trials.info, picks)

@@ -215,6 +215,18 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
 
 
 def get_bad_chans(fname: str):
+    """Gets the bad channels corresponding to a file.
+    
+    Parameters
+    ----------
+    fname : str
+        The path to the file.
+
+    Returns
+    -------
+    bads : list[str]
+        The bad channels.
+    """
     data = _from_tsv(fname.replace("_ieeg.edf", "_channels.tsv"))
     bads = [n for n, s in zip(data['name'], data['status']) if s == 'bad']
     return bads

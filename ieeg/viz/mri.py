@@ -118,7 +118,26 @@ def show_brain(my_raw: Signal, trans: mne.transforms.Transform,
 
 def imshow_mri(data, img: nib.spatialimages.SpatialImage,
                vox: tuple[int, int, int], xyz: dict, suptitle: str = ""):
-    """Show an MRI slice with a voxel annotated."""
+    """Show an MRI slice with a voxel annotated.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The data to plot
+    img : nib.spatialimages.SpatialImage
+        The image to plot
+    vox : tuple[int, int, int]
+        The voxel to annotate
+    xyz : dict
+        The xyz coordinates of the voxel
+    suptitle : str, optional
+        The title of the plot, by default ""
+
+    Returns
+    -------
+    fig, ax : matplotlib.pyplot.Figure, matplotlib.pyplot.Axes
+        The figure and axes of the plot
+    """
     i, j, k = vox
     fig, ax = plt.subplots(1, figsize=(6, 6))
     codes = nib.orientations.aff2axcodes(img.affine)
@@ -173,7 +192,6 @@ def get_sub_dir(subj_dir: PathLike = None):
     if subj_dir is None:
         from os import path
         HOME = path.expanduser("~")
-        LAB_root = path.join(HOME, "Box", "CoganLab")
         subj_dir = op.join(HOME, "Box", "ECoG_Recon")
     return subj_dir
 
@@ -241,11 +259,19 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         The channels to plot, by default None
     surface : str, optional
         The surface to plot on, by default 'pial'
+    hemi : str, optional
+        The hemisphere to plot, by default 'split'
+    color : matplotlib.colors, optional
+        The color to plot, by default (1, 1, 1)
+    size : float, optional
+        The size of the markers, by default 0.35
+    fig : Brain, optional
+        The figure to plot on, by default None
 
     Returns
     -------
-    matplotlib.figure.Figure
-        The figure
+    Brain
+        The figure brain object
     """
 
     subj_dir = get_sub_dir(subj_dir)
@@ -374,8 +400,16 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         How often to label the channels, by default 8
     fig : Brain, optional
         The figure to plot on, by default None
+    surface : str, optional
+        The surface to plot, by default 'pial'
+    hemi : str, optional
+        The hemisphere to plot, by default 'split'
     trans: mne.transforms.Transform, optional
         The transformation to apply, by default None
+    color : matplotlib.colors, optional
+        The color of the electrodes, by default (1,1,1)
+    size : float, optional
+        The size of the electrodes, by default 0.35
 
     Returns
     -------
@@ -426,7 +460,9 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         fig.add_foci(np.vstack(r), hemi='rh', color=color, scale_factor=size)
 
     if labels_every is not None:
-        names = picks[slice(0, info['nchan'], labels_every)]
+        if isinstance(picks[0], (int, np.integer)):
+            picks = [info.ch_names[p] for p in picks]
+        names = picks[slice(labels_every - 1, info['nchan'], labels_every)]
         plt_names = [f'{sub}-{n}' for n in names]
         positions = np.array([pos[name] for name in names]) * 1000
         fig.plotter.add_point_labels(positions, plt_names, shape=None,
@@ -446,6 +482,8 @@ def subject_to_info(subject: str, subjects_dir: PathLike = None,
         The subjects directory, by default HOME / 'Box' / 'ECoG_Recon'
     ch_types : str, optional
         The channel type, by default "seeg"
+    sfreq : int, optional
+        The sampling frequency, by default 2000
 
     Returns
     -------
@@ -500,10 +538,8 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
 
     Parameters
     ----------
-    inst : Signal | PathLike
+    info : mne.Info
         The subject to get the labels for
-    sub : str, optional
-        The subject name, by default None
     subj_dir : PathLike, optional
         The subjects directory, by default None
     picks : list[str | int], optional
@@ -545,7 +581,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 22
+    sub_num = 57
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
@@ -555,6 +591,6 @@ if __name__ == "__main__":
                        extension='.edf', desc='clean', preload=False)
 
     ##
-    brain = plot_subj("D22")
+    brain = plot_subj("D57")
     # plot_on_average(filt)
     # plot_gamma(raw)
