@@ -2,11 +2,12 @@ import mne
 from mne.utils import verbose, fill_doc
 import numpy as np
 from bids import BIDSLayout
-from scipy.signal import detrend
 
+from ieeg.io import update
 from ieeg.timefreq.utils import to_samples
 from ieeg.calc import scaling, stats
 from ieeg import Doubles, Signal
+from scipy.signal import detrend
 
 
 def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
@@ -72,7 +73,8 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
 @fill_doc
 @verbose
 def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
-                           max_rounds: int = np.inf, verbose: bool = True
+                           max_rounds: int = np.inf, axis: int = 0,
+                           save: bool = False, verbose: bool = True
                            ) -> list[str]:
     """Identify bad channels by variance.
 
@@ -86,6 +88,10 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     max_rounds : int, optional
         Maximum number of variance estimations, by default runs until no
         more bad channels are found.
+    axis : int, optional
+        Axis to calculate variance over, by default 0
+    save : bool, optional
+        Whether to save bad channels to raw.info['bads'], by default False
     %(verbose)s
 
     Returns
@@ -94,18 +100,63 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
         List of bad channel names.
     """
 
-    data = input_raw.get_data('data')  # (trials X) channels X time
-    names = input_raw.copy().pick('data').ch_names
+    tmp = input_raw.copy()
+    data = detrend(tmp.get_data('data'))  # channels X time
+    names = tmp.pick('data').ch_names
     bads = []  # output for bad channel names
+    desc = []  # output for bad channel descriptions
 
     # Pop out names to bads output using comprehension list
-    for ind, i in stats.outlier_repeat(data, outlier_sd, max_rounds, 0):
+    for ind, i in stats.outlier_repeat(data, outlier_sd, max_rounds, axis):
         bads.append(names[ind])
+        desc.append(f'outlier round {i} more than {outlier_sd} SDs above mean')
         # log channels excluded per round
         if verbose:
             mne.utils.logger.info(f'outlier round {i} channels: {bads}')
 
+    if save:
+        tmp.info['bads'] = bads
+        update(tmp, desc)
+
     return bads
+
+
+def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
+                    copy: bool = False, picks: list = 'data'
+                    ) -> mne.epochs.BaseEpochs:
+    """Set outliers to nan.
+
+    Parameters
+    ----------
+    trials : mne.epochs.BaseEpochs
+        The trials to remove outliers from.
+    outliers : float
+        The number of standard deviations above the mean to be considered an
+        outlier.
+    copy : bool, optional
+        Whether to copy the data, by default False
+    picks : list, optional
+        The channels to remove outliers from, by default 'data'
+
+    Returns
+    -------
+    mne.epochs.BaseEpochs
+        The trials with outliers set to nan.
+    """
+    if copy:
+        trials = trials.copy()
+    picks = mne.io.pick._picks_to_idx(trials.info, picks)
+    trials.load_data()
+    data = trials.get_data(picks=picks)
+
+    # bool array of where to keep data trials X channels
+    keep = stats.find_outliers(data, outliers)
+
+    # set outliers to nan if not keep
+    data = np.where(keep[..., None], data, np.nan)
+    trials._data[:, picks] = data
+
+    return trials
 
 
 @fill_doc
@@ -154,8 +205,12 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
     # determine the events
     events, ids = mne.events_from_annotations(raw)
     dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
-    event_ids = {key.replace(event, "").strip("/"): value for key, value in
-                 ids.items() if value in dat_ids}
+    if len(dat_ids) > 1:
+        event_ids = {key.replace(event, "").strip("/"): value for key, value in
+                     ids.items() if value in dat_ids}
+    else:
+        event_ids = {key: value for key, value in ids.items() if value in
+                     dat_ids}
     # epoch the data
 
     if baseline is None:
@@ -172,10 +227,14 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
         scaling.rescale(epochs, base, mode=mode, copy=False)
 
     if outliers is not None:
-        data = detrend(epochs.get_data(), axis=-1, type="linear")
-        max = np.max(np.abs(data), axis=-1)
-        std = np.std(data, axis=-1)
-        reject = np.any(max > (outliers * std), axis=-1)
+        # epochs.get_data()
+        # gives a numpy array of (trials X channels X timepoints)
+        data = np.abs(epochs.get_data())
+        max = np.max(data, axis=-1)
+        std = np.std(data, axis=(-1, 0))
+        mean = np.mean(data, axis=(-1, 0))
+        # max and std have dims (trials X channels)
+        reject = np.any(max > ((outliers * std) + mean), axis=-1)
         epochs.drop(reject, reason="outlier")
 
     return epochs

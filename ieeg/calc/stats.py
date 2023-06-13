@@ -1,7 +1,6 @@
 import numpy as np
 
 from skimage import measure
-from tqdm import tqdm
 from mne.utils import logger
 
 from ieeg import Doubles
@@ -31,17 +30,24 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
 
     if mask is None:
         mask = np.ones(mat.shape)
+    elif mat.shape != mask.shape:
+        raise ValueError(f"matrix shape {mat.shape} not same as mask shape "
+                         f"{mask.shape}")
+    mask[np.isnan(mat)] = 0
+    mat[np.isnan(mat)] = 0
+
+    if axis == mat.ndim - 1:
+        newaxis = 0
     else:
-        try:
-            assert mat.shape == mask.shape
-        except AssertionError as e:
-            print(str(mat.shape), '=/=', str(mask.shape))
-            raise e
-    avg = np.divide(np.sum(np.multiply(mat, mask), axis), np.sum(mask, axis))
-    avg = np.reshape(avg, [np.shape(avg)[axis]])
-    stdev = np.std(mat, axis) / np.sqrt(np.shape(mat)[axis+1])
-    stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
-    return avg, stdev
+        newaxis = axis + 1
+
+    weighted = np.multiply(mat, mask)
+    weights = np.sum(mask, axis, keepdims=True)
+    avg = np.divide(np.sum(weighted, axis, keepdims=True), weights)
+    # avg = np.reshape(avg, [np.shape(avg)[axis]])
+    stdev = np.sqrt(np.sum(np.abs(weighted - avg)**2. / weights**2., axis))
+    # stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
+    return np.squeeze(avg), stdev
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
@@ -76,10 +82,9 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
     # Square the data and set zeros to small positive number
     R2 = np.square(data)
     R2[np.where(R2 == 0)] = 1e-9
-    ch_dim = range(len(data.shape))[-2]  # dimension corresponding to channels
 
     # find all axes that are not channels (example: time, trials)
-    axes = tuple(i for i in range(len(data.shape)) if not i == ch_dim)
+    axes = tuple(i for i in range(data.ndim) if not i == axis)
 
     # Initialize stats loop
     sig = np.std(R2, axes)  # take standard deviation of each channel
@@ -98,6 +103,82 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
         sig = np.std(R2, axes)
         cutoff = (sd * np.std(sig)) + np.mean(sig)
         i += 1
+
+
+def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
+    """ Find outliers in data matrix.
+
+    This function finds outliers in a data matrix. Outliers are defined as any
+    trial with a maximum value greater than the mean plus outliers times the
+    standard deviation. The function returns a boolean array with True for
+    trials that are not outliers and False for trials that are outliers.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to find outliers in.
+    outliers : float
+        Number of standard deviations from the mean to consider an outlier.
+
+    Returns
+    -------
+    np.ndarray[bool]
+        Boolean array with True for trials that are not outliers and False
+        for trials that are outliers."""
+    dat = np.abs(data)  # (trials X channels X (frequency) X time)
+    max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
+    std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
+    mean = np.mean(dat, axis=(-1, 0))  # (channels X (frequency))
+    keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
+    return keep
+
+
+def avg_no_outlier(data: np.ndarray, outliers: float = None,
+                   keep: np.ndarray[bool] = None) -> np.ndarray:
+    """ Calculate the average of data without trial outliers.
+
+    This function calculates the average of data without trial outliers.
+    Outliers are defined as any trial with a maximum value greater than the
+    mean plus outliers times the standard deviation.
+    The function returns the average of data without outliers.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to calculate average of.
+    outliers : float
+        Number of standard deviations from the mean to consider an outlier.
+    keep : np.ndarray[bool]
+        Boolean array with True for trials that are not outliers and False
+        for trials that are outliers.
+
+    Returns
+    -------
+    np.ndarray
+        Average of data without outliers.
+    """
+    if data.ndim not in (3, 4):
+        raise ValueError("Data must be 3D or 4D")
+
+    if keep is None and outliers is not None:
+        keep = find_outliers(data, outliers)
+    elif keep is not None:
+        if keep.ndim == 2 and data.ndim == 4:
+            keep = keep[..., np.newaxis]
+        elif keep.ndim == data.ndim:
+            raise ValueError(f"Keep has too many dimensions ({keep.ndim})")
+    else:
+        raise ValueError("Either keep or outliers must be given")
+
+    if np.squeeze(keep).ndim == 2:  # dat.ndim == 3
+        disp = [f"Removed Trial {i} in Channel {j}" for i, j in np.ndindex(
+            data.shape[0:2]) if not keep[i, j]]
+    else:  # dat.ndim == 4:
+        disp = [f"Removed Trial {i} in Channel {j} in Frequency {k}" for i, j,
+                k in np.ndindex(data.shape[0:3]) if not keep[i, j, k]]
+    for msg in disp:
+        logger.info(msg)
+    return np.mean(data, axis=0, where=keep[..., np.newaxis])
 
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
@@ -123,8 +204,8 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
         The mean difference between the two groups.
     """
 
-    avg1 = np.mean(group1, axis=axis)
-    avg2 = np.mean(group2, axis=axis)
+    avg1 = np.nanmean(group1, axis=axis)
+    avg2 = np.nanmean(group2, axis=axis)
 
     return avg1 - avg2
 
@@ -198,44 +279,56 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                              'clustering and so cannot be in ignore_adjacency')
 
     # Make sure the data is the same shape
-    if not all(np.equal(sig1.shape, sig2.shape)[
-                   np.arange(len(sig1.shape)) != axis]):
-        sig2 = make_data_shape(sig2, sig1.shape)
+    eq = list(np.equal(sig1.shape, sig2.shape)[np.arange(sig1.ndim) != axis])
+    if not all(eq):
+        eq.insert(axis, True)
+        pad_shape = [(0, 0) if eq[i] else
+                     (0, sig1.shape[i] - sig2.shape[i])
+                     for i in range(sig1.ndim)]
+        sig2 = np.pad(sig2, pad_shape, mode='reflect')
 
     # Calculate the p value of difference between the two groups
-    logger.info('Permuting events in shuffle test')
+    # logger.info('Permuting events in shuffle test')
     p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True,
                                     stat_func)
 
     # Calculate the p value of the permutation distribution
-    logger.info('Calculating permutation distribution')
-    p_perm = np.zeros(diff.shape, dtype=np.float16)
-    for i in tqdm(range(diff.shape[0]), 'Permutations'):
-        # p_perm is the probability of observing a difference as large as the
-        # other permutations, or larger, by chance
-        larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i], tails)
-        p_perm[i] = np.mean(larger, axis=0)
+    # logger.info('Calculating permutation distribution')
+    # p_perm = np.zeros(diff.shape, dtype=np.float16)
+    # for i in range(diff.shape[0]):
+    #     # p_perm is the probability of observing a difference as large as the
+    #     # other permutations, or larger, by chance
+    #
+    #     larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i],tails)
+    #     p_perm[i] = np.mean(larger, axis=0)
 
     # The line below accomplishes the same as above twice as fast, but could
     # run into memory errors if n_perm is greater than 1000
-    # p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=1)
+    p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=1)
 
     # Create binary clusters using the p value threshold
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
-    logger.info('Finding clusters')
+    # logger.info('Finding clusters')
     if ignore_adjacency is None:
         return time_cluster(b_act, b_perm, 1 - p_cluster)
 
     # If there are axes to ignore, we need to loop over them
     clusters = np.zeros(b_act.shape, dtype=int)
-    for i in tqdm(np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency))):
+    for i in np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency)):
         index = tuple(j for j in i) + (slice(None),)
         clusters[index] = time_cluster(
             b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster)
 
     return clusters
+
+
+def _perm_iter(array: np.ndarray, perm: int, axis: int = 0, tails: int = 0
+               ) -> np.ndarray:
+    larger = tail_compare(array[perm],
+                          array[np.arange(len(array)) != perm], tails)
+    return np.mean(larger, axis=axis)
 
 
 def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
@@ -432,7 +525,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     # Calculate the difference between the two groups averaged across
     # trials at each time point
     diff = np.zeros((n_perm, *obs_diff.shape))
-    for i in tqdm(range(n_perm), "Permuting resamples"):
+    for i in range(n_perm):
         perm_labels = np.random.permutation(labels)
         fake_sig1 = np.take(all_trial, np.where(np.invert(perm_labels))[0],
                             axis=axis)

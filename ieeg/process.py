@@ -1,12 +1,14 @@
 import operator
 from os import environ
 from typing import TypeVar, Iterable, Union
+from itertools import chain
+import inspect
 
 import numpy as np
 import pandas as pd
 from scipy.signal import get_window
 from joblib import Parallel, delayed, cpu_count
-from mne.utils import config, logger, verbose
+from mne.utils import config, logger
 
 
 def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
@@ -102,8 +104,61 @@ def is_number(s) -> bool:
         return False
 
 
-def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
-                **kwargs) -> list:
+def proc_array(func: callable, arr_in: np.ndarray,
+               axes: int | tuple[int] = 0, n_jobs: int = None,
+               desc: str = "Slices", inplace: bool = True) -> np.ndarray:
+    """Execute a function in parallel over slices of an array
+
+    Parameters
+    ----------
+    func : callable
+        The function to execute
+    arr_in : np.ndarray
+        The array to slice
+    axes : int | tuple[int]
+        The axes to slice over
+    n_jobs : int
+        The number of jobs to run in parallel
+    desc : str
+        The description to use for the progress bar
+    inplace : bool
+        Whether to modify the input array in place
+
+    Returns
+    -------
+    np.ndarray
+        The output of the function, same shape as the input array
+    """
+
+    if isinstance(axes, int):
+        axes = (axes,)
+
+    # dump the array to disk for memmap
+    # dump(arr_in, 'temp.npy')
+    # arr_in = load('temp', mmap_mode='w+')
+
+    if inplace:
+        arr_out = arr_in
+    else:
+        arr_out = arr_in.copy()
+
+    # Get the cross-section indices and array input generator
+    cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
+    array_gen = list(arr_in[indices] for indices in cross_sect_ind)
+    # array_gen = tqdm(array_gen, desc=desc, total=len(cross_sect_ind))
+
+    gen = Parallel(n_jobs, return_generator=True, verbose=40)(
+        delayed(func)(x_) for x_ in array_gen)
+
+    # Create process pool and apply the function in parallel
+    for out, ind in zip(gen, cross_sect_ind):
+        arr_out[ind] = out
+
+    return arr_out
+
+
+def parallelize(func: callable, ins: Iterable, verbose: int = 10,
+                n_jobs: int = None, **kwargs) -> list | None:
     """Parallelize a function to run on multiple processors.
 
     This function is a wrapper for joblib.Parallel. It will automatically
@@ -126,13 +181,11 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
     ----------
     func : callable
         The function to parallelize
-    par_var : Iterable
+    ins : Iterable
         The iterable to parallelize over
     n_jobs : int
         The number of jobs to run in parallel. If None, will use all
         available cores. If -1, will use all available cores.
-    *args
-        Additional arguments to pass to the function
     **kwargs
         Additional keyword arguments to pass to the function
 
@@ -141,29 +194,46 @@ def parallelize(func: callable, par_var: Iterable, n_jobs: int = None, *args,
     list
         The output of the function for each element in par_var
     """
-    if 'n_jobs' in kwargs.keys():
-        n_jobs = kwargs.pop('n_jobs')
-    elif n_jobs is None:
-        n_jobs = cpu_count()
-    elif n_jobs == -1:
-        n_jobs = cpu_count()
-    settings = dict(verbose=0)
-    if 'prefer' in kwargs.keys():
-        settings['prefer'] = kwargs.pop('prefer')
+
+    assert ins
+    if n_jobs is None:
+        if 'n_jobs' in inspect.getfullargspec(func).args:
+            kwargs['n_jobs'] = -2
+        else:
+            n_jobs = -2
+    settings = dict(verbose=verbose)
+    settings['prefer'] = kwargs.pop('prefer', None)
+    settings['backend'] = kwargs.pop('backend', None)
+    settings['mmap_mode'] = kwargs.pop('mmap_mode', 'r')
+    settings['require'] = kwargs.pop('require', None)
+
     env = dict(**environ)
     if config.get_config('MNE_CACHE_DIR') is not None:
         settings['temp_folder'] = config.get_config('MNE_CACHE_DIR')
     elif 'TEMP' in env.keys():
         settings['temp_folder'] = env['TEMP']
+    else:
+        settings['temp_folder'] = None
 
     if config.get_config('MNE_MEMMAP_MIN_SIZE') is not None:
         settings['max_nbytes'] = config.get_config('MNE_MEMMAP_MIN_SIZE')
     else:
         settings['max_nbytes'] = get_mem()
 
-    data_new = Parallel(n_jobs, **settings)(delayed(func)(
-        x_, *args, **kwargs)for x_ in par_var)
-    return data_new
+    for var in ins:
+        if isinstance(var, tuple):
+            x_is_tup = True
+        else:
+            x_is_tup = False
+        ins = chain((var,), ins)
+        break
+
+    if x_is_tup:
+        return Parallel(n_jobs, **settings)(delayed(func)(
+            *x_, **kwargs) for x_ in ins)
+    else:
+        return Parallel(n_jobs, **settings)(delayed(func)(
+            x_, **kwargs) for x_ in ins)
 
 
 def get_mem() -> Union[float, int]:
@@ -237,9 +307,8 @@ class COLA:
     window are asymmetric.
     """
 
-    @verbose
     def __init__(self, process, store, n_total, n_samples, n_overlap, sfreq,
-                 window='hann', tol=1e-10, n_jobs=None, *, verbose=None):
+                 window='hann', tol=1e-10, *, verbose=None):
         n_samples = ensure_int(n_samples, 'n_samples')
         n_overlap = ensure_int(n_overlap, 'n_overlap')
         n_total = ensure_int(n_total, 'n_total')
@@ -275,15 +344,15 @@ class COLA:
         self.stops = self.starts + self._n_samples
         delta = n_total - self.stops[-1]
         self.stops[-1] = n_total
-        self.n_jobs = n_jobs
         sfreq = float(sfreq)
         pl = 's' if len(self.starts) != 1 else ''
-        logger.info('    Processing %4d data chunk%s of (at least) %0.1f sec '
-                    'with %0.1f sec overlap and %s windowing'
-                    % (len(self.starts), pl, self._n_samples / sfreq,
-                       self._n_overlap / sfreq, window_name))
+        if verbose:
+            logger.info('    Processing %4d data chunk%s of (at least) %0.1f '
+                        'sec with %0.1f sec overlap and %s windowing'
+                        % (len(self.starts), pl, self._n_samples / sfreq,
+                           self._n_overlap / sfreq, window_name))
         del window, window_name
-        if delta > 0:
+        if delta > 0 and verbose:
             logger.info('    The final %0.3f sec will be lumped into the '
                         'final window' % (delta / sfreq,))
 
@@ -292,7 +361,6 @@ class COLA:
         """Compute from current processing window start and buffer len."""
         return self.starts[self._idx] + self._in_buffers[0].shape[-1]
 
-    @verbose
     def feed(self, *datas, verbose=None, **kwargs):
         """Pass in a chunk of data."""
         # Append to our input buffer
@@ -330,16 +398,8 @@ class COLA:
                                  % (data.shape, self._in_offset,
                                     self.stops[-1]))
         # preallocate data to chunks
-        data_chunks = list(map(lambda x: data[x[0]:x[1]], zip(self.starts,
-                                                              self.stops)))
-
-        # Process the data
-        if not self.n_jobs == 1:
-            out_chunks = parallelize(self._process, data_chunks, self.n_jobs,
-                                     prefer='threads', **kwargs)
-        else:
-            out_chunks = [self._process(data_chunk, **kwargs)
-                          for data_chunk in data_chunks]
+        data_chunks = map(lambda x, y: data[x:y], self.starts, self.stops)
+        out_chunks = map(lambda d: self._process(d, **kwargs), data_chunks)
 
         # overlap add to buffer
         while self._idx < len(self.starts) and \
@@ -363,7 +423,7 @@ class COLA:
             if not all(proc.shape[-1] == this_len == this_window.size
                        for proc in this_proc):
                 raise RuntimeError('internal indexing error')
-            outs = out_chunks[self._idx]
+            outs = next(out_chunks)
             if self._out_buffers is None:
                 max_len = np.max(self.stops - self.starts)
                 self._out_buffers = [np.zeros(o.shape[:-1] + (max_len,),

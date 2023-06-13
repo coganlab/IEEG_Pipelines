@@ -1,10 +1,13 @@
 from ieeg import PathLike, Signal
 import re
 from os import walk, listdir, mkdir, path as op
+from functools import singledispatch
 
 from bids.layout import BIDSFile, parse_file_entities
-from mne_bids import read_raw_bids, BIDSPath, write_raw_bids
+from mne_bids import read_raw_bids, BIDSPath, write_raw_bids, \
+    mark_channels, get_bids_path_from_fname
 from mne.utils import verbose, fill_doc
+from mne_bids.write import _from_tsv
 from bids import BIDSLayout
 import numpy as np
 import mne
@@ -105,9 +108,8 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     return whole_raw
 
 
-def open_dat_file(file_path: str, channels: list[str],
-                  sfreq: int = 2048, types: str = "seeg",
-                  units: str = "uV") -> mne.io.RawArray:
+def open_dat_file(file_path: str, channels: list[str], sfreq: int = 2048,
+                  types: str = "seeg", units: str = "uV") -> mne.io.RawArray:
     """Opens a .dat file and returns a mne.io.RawArray object.
 
     Parameters
@@ -129,7 +131,8 @@ def open_dat_file(file_path: str, channels: list[str],
     """
     with open(file_path, mode='rb') as f:
         data = np.fromfile(f, dtype="float32")
-    channels.remove("Trigger")
+    if "Trigger" in channels:
+        channels.remove("Trigger")
     array = np.reshape(data, [len(channels), -1], order='F')
     match units:
         case "V":
@@ -177,7 +180,7 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
 
 @fill_doc
 @verbose
-def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
+def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
                     overwrite: bool = False, verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
@@ -200,8 +203,68 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str,
     bounds = [0] + list(bounds.onset) + [inst.times[-1]]
     for i, file in enumerate(inst.filenames):
         entities = parse_file_entities(file)
-        entities['description'] = pipeline
+        if 'desc' in entities.keys():
+            entities['description'] = entities.pop('desc')
+        if pipeline:
+            entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
         write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
+
+
+def get_bad_chans(fname: str):
+    """Gets the bad channels corresponding to a file.
+
+    Parameters
+    ----------
+    fname : str
+        The path to the file.
+
+    Returns
+    -------
+    bads : list[str]
+        The bad channels.
+    """
+    data = _from_tsv(fname.replace("_ieeg.edf", "_channels.tsv"))
+    bads = [n for n, s in zip(data['name'], data['status']) if s == 'bad']
+    return bads
+
+
+@singledispatch
+@verbose
+def update(filename: PathLike, channels: list[str],
+           description: list[str] | str = None, status: str = 'good',
+           verbose=None):
+    """Updates the files of a data instance with current metadata
+
+    Parameters
+    ----------
+    filename : PathLike
+        The path to the file to update.
+    channels : list[str]
+        The channels to update.
+    description : list[str] | str, optional
+        The description of the channels, by default None
+    status : str, optional
+        The status of the channels, by default 'good'
+    """
+    if isinstance(description, str):
+        description = [description for _ in range(len(channels))]
+
+    bids_path = get_bids_path_from_fname(filename)
+    mark_channels(bids_path, ch_names=channels, status=status,
+                  descriptions=description, verbose=verbose)
+
+
+@update.register
+def _(inst: mne.io.base.BaseRaw, layout: BIDSLayout,
+      description: list[str] | str = None, verbose=None):
+    if not hasattr(inst, 'filenames'):
+        inst.filenames = inst.info['subject_info'].get('files', None)
+    for i, file in enumerate(inst.filenames):
+        fname = op.join(layout.root, file)
+        update(fname, inst.info['bads'], description=description, status='bad',
+               verbose=verbose)
+        goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
+        update(fname, channels=goods, status='good', verbose=None)

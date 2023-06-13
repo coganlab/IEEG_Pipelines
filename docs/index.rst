@@ -7,12 +7,12 @@ IEEG_Pipelines documentation
 =====================================
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 5
    :caption: Contents:
 
    ieeg
    auto_examples/index
-
+   matlab
 
 Instructions
 ============
@@ -26,3 +26,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+* `MATLAB Module Index <mat-modindex.html>`_

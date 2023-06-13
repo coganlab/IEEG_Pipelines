@@ -1,6 +1,6 @@
 from naplib.preprocessing import filterbank_hilbert
 from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
-from ieeg.utils.process import get_mem, cpu_count, COLA
+from ieeg.process import get_mem, cpu_count, COLA, parallelize
 from mne.io import base, Raw
 from mne import Epochs
 from functools import singledispatch
@@ -57,12 +57,19 @@ def extract(data: np.ndarray, fs: int = None,
 
     if len(in_data.shape) == 3:  # Assume shape is (trials, channels, time)
         trials = range(in_data.shape[0])
-        if verbose:
-            trials = tqdm(trials)
-        for trial in trials:
-            _, out, _ = filterbank_hilbert(in_data[trial, :, :].T, fs,
-                                           passband, n_jobs)
-            env[trial, :, :] = np.sum(out, axis=-1).T
+        if n_jobs != 1:
+            ins = (in_data[trial].T for trial in trials)
+            par_out = parallelize(filterbank_hilbert, ins, fs=fs, Wn=passband,
+                                  n_jobs=n_jobs)
+            env[:, :, :] = np.array([np.sum(out, axis=-1).T for
+                                     _, out, _ in par_out])
+        else:
+            if verbose:
+                trials = tqdm(trials)
+            for trial in trials:
+                _, out, _ = filterbank_hilbert(in_data[trial, :, :].T, fs,
+                                               passband, 1)
+                env[trial, :, :] = np.sum(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
         _, out, _ = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
         env = np.sum(out, axis=-1).T

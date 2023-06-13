@@ -1,4 +1,4 @@
-*.pyc
+*__pycache__*
 *.vs/*
 *.vscode/*
 *.asv
@@ -9,3 +9,4 @@ docs/auto_examples/*
 *.ipynb_checkpoints*
 *.rst
 !docs/index.rst
+!docs/matlab.rst

@@ -1,4 +1,4 @@
-import ieeg.viz
+import ieeg.viz.utils
 from ieeg.io import get_data, raw_from_layout
 from ieeg.navigate import crop_empty_data, channel_outlier_marker, trial_ieeg
 from ieeg.timefreq import gamma, utils
@@ -15,9 +15,9 @@ if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
     subject = int(os.environ['SLURM_ARRAY_TASK_ID'])
 else:  # if not then set box directory
     LAB_root = os.path.join(HOME, "Box", "CoganLab")
-    subject = 29
+    subject = 65
 
-# %% Load the data
+# Load the data
 TASK = "SentenceRep"
 subj = "D" + str(subject).zfill(4)
 layout = get_data("SentenceRep", root=LAB_root)
@@ -25,20 +25,17 @@ filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
                        extension='.edf', desc='clean', preload=False)
 
 # %% Crop raw data to minimize processing time
-new = crop_empty_data(filt)
+new = crop_empty_data(filt, )
 
 # Mark channel outliers as bad
-new.info['bads'] = channel_outlier_marker(new, 5)
+new.info['bads'] = channel_outlier_marker(new, 4)
 
 # Exclude bad channels
 good = new.copy().drop_channels(new.info['bads'])
 good.load_data()
 
 # CAR
-if subject in [3, 5, 6, 24, 26]:
-    ch_type = 'ecog'
-else:
-    ch_type = 'seeg'
+ch_type = filt.get_channel_types(only_data_chs=True)[0]
 good.set_eeg_reference(ref_channels="average", ch_type=ch_type)
 
 # Remove intermediates from mem
@@ -50,11 +47,11 @@ fix_annotations(good)
 
 # %% High Gamma Filter and epoching
 out = []
-for epoch, t in zip(("Start", "Word/Response", "Word/Audio/LS",
-                     "Word/Audio/LM", "Word/Audio/JL", "Word/Speak",
-                     "Word/Mime"),
+for epoch, t in zip(("Start", "Word/Response/LS", "Word/Audio/LS",
+                     "Word/Audio/LM", "Word/Audio/JL", "Word/Speak/LS",
+                     "Word/Mime/LM", "Word/Audio/JL"),
                     ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5), (-0.5, 1.5),
-                     (-0.5, 1.5), (-0.5, 1.5))):
+                     (-0.5, 1.5), (-0.5, 1.5), (1, 3))):
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
@@ -76,7 +73,7 @@ if not op.isdir(save_dir):
     os.mkdir(save_dir)
 mask = dict()
 for epoch, name in zip(out, ("resp", "aud_ls", "aud_lm", "aud_jl", "go_ls",
-                             "go_lm")):
+                             "go_lm", "go_jl")):
     sig1 = epoch.get_data()
     sig2 = base.get_data()
     sig2 = np.pad(sig2, ((0, 0), (0, 0), (0, sig1.shape[-1] - sig2.shape[-1])),

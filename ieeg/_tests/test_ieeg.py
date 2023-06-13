@@ -7,6 +7,7 @@ from mne_bids import BIDSPath
 from ieeg.io import raw_from_layout
 from ieeg.calc.stats import mean_diff
 import scipy
+import os
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
@@ -38,7 +39,8 @@ def test_raw_from_layout():
     assert isinstance(raw, BaseRaw)
 
 
-def test_line_filter():
+@pytest.mark.parametrize("n_jobs", [1, 8])
+def test_line_filter(n_jobs):
     from ieeg.mt_filter import line_filter
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
@@ -47,30 +49,16 @@ def test_line_filter():
     filt_dat = filt._data
     assert filt_dat.shape == raw_dat.shape
     params = dict(method='multitaper', tmax=20, fmin=55, fmax=65,
-                  bandwidth=0.5, n_jobs=8)
+                  bandwidth=0.5, n_jobs=n_jobs)
     rpsd = raw.compute_psd(**params)
     fpsd = filt.compute_psd(**params)
     assert np.mean(np.abs(rpsd.get_data() - fpsd.get_data())) > 1e-10
 
 
-@pytest.mark.parametrize("input_mat, shape, expected", [
-    (np.zeros((10, 52)), (5, 104), np.zeros((5, 104))),
-    (np.zeros((10, 50, 52)), (5, 50, 104), np.zeros((5, 50, 104))),
-    (np.zeros((10, 50, 50)), (5, 50, 104), np.zeros((4, 50, 104))),
-    (np.zeros((10, 100, 50, 52)), (5, 100, 50, 104),
-     np.zeros((5, 100, 50, 104))),
-    (np.zeros((10, 100, 50, 50)), (5, 100, 50, 104),
-     np.zeros((4, 100, 50, 104))),
-    (np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]), (1, 2, 4),
-     np.array([[[1, 2, 5, 6], [3, 4, 7, 8]]]))
-])
-def test_same(input_mat, shape, expected):
-    from ieeg.calc.stats import make_data_shape
-    new_shape = make_data_shape(input_mat, shape)
-    assert np.all(new_shape == expected)
-
-
-spec_check = np.load("ieeg/_tests/spec.npy")
+if os.path.isfile("spec.npy"):
+    spec_check = np.load("spec.npy")
+else:
+    spec_check = np.load("ieeg/_tests/spec.npy")
 
 
 def test_spect_1():
@@ -99,8 +87,8 @@ def test_spect_2():
 
 
 @pytest.mark.parametrize("input1, input2, expected", [
-    (3, np.inf, ['LAMY 7', 'LBRI 3']),
-    (2.5, 2, ['LAMY 7', 'LBRI 3', 'LAMY 6', 'LBRI 2'])
+    (4, np.inf, ['LAMY 7', 'RAHP 3']),
+    (3, 2, ['LAMY 7', 'LPHG 6', 'LBRI 3', 'RAHP 3', 'LENT 3', 'LPIT 5'])
 ])
 def test_outlier(input1, input2, expected):
     from ieeg.navigate import channel_outlier_marker
@@ -108,10 +96,20 @@ def test_outlier(input1, input2, expected):
     assert outs == expected
 
 
+@pytest.mark.parametrize("outliers, n_out", [
+    (4, 89955),
+    (5, 25987)
+])
+def test_trial_outlier(outliers, n_out):
+    from ieeg.navigate import trial_ieeg, outliers_to_nan
+    trials = trial_ieeg(seeg, 'Response', (-1, 1))
+    outs = outliers_to_nan(trials, outliers)
+    assert np.isnan(outs._data).sum() == n_out
+
+
 @pytest.mark.parametrize("func, expected", [
     (mean_diff, np.arange(38, 56)),
-    (scipy.stats.f_oneway, np.concatenate([
-        np.arange(36, 42), np.arange(45, 50), np.arange(59, 62)])),
+    (scipy.stats.f_oneway, np.arange(46, 50)),
     (scipy.stats.ttest_ind, np.arange(38, 56))
 ])
 def test_stats(func, expected):
