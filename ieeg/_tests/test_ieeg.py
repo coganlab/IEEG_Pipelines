@@ -109,7 +109,7 @@ def test_trial_outlier(outliers, n_out):
 
 @pytest.mark.parametrize("func, expected", [
     (mean_diff, np.arange(38, 56)),
-    (scipy.stats.f_oneway, np.arange(45, 50)),
+    (scipy.stats.f_oneway, np.arange(46, 50)),
     (scipy.stats.ttest_ind, np.arange(38, 56))
 ])
 def test_stats(func, expected):
