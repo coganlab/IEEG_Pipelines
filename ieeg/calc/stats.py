@@ -270,10 +270,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
     if isinstance(ignore_adjacency, int):
         ignore_adjacency = (ignore_adjacency,)
-    elif ignore_adjacency is not None:
+    if ignore_adjacency is not None:
         if axis in ignore_adjacency:
             raise ValueError('observations axis is eliminated before '
                              'clustering and so cannot be in ignore_adjacency')
+
+        # axes where adjacency is ignored can be computed independently in
+        # parallel
         out_shape = list(sig1.shape)
         out_shape.pop(axis)
         out = np.zeros(out_shape, dtype=int)
@@ -313,7 +316,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # The line below accomplishes the same as above twice as fast, but could
     # run into memory errors if n_perm is greater than 1000
-    p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=1)
+    p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=axis+1)
 
     # Create binary clusters using the p value threshold
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
