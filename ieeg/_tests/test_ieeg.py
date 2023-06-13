@@ -123,12 +123,35 @@ def test_stats(func, expected):
         times[1] = t[1] + 0.5
         trials = trial_ieeg(seeg, epoch, times, preload=True)
         out.append(trials)
-    resp = out[1].copy()
+    resp = out[1]
     resp.decimate(10)
-    base = out[0].copy()
+    base = out[0]
     base.decimate(10)
 
     mask = stats.time_perm_cluster(resp.copy()._data[:, 78:79],
                                    base.copy()._data[:, 78:79], 0.01,
                                    stat_func=func, n_perm=4000)
     assert np.all(mask[:, expected])
+
+
+def test_stats_wavelet():
+    from ieeg.navigate import trial_ieeg, outliers_to_nan
+    from ieeg.timefreq.utils import wavelet_scaleogram, crop_pad
+    from ieeg.calc import stats
+
+    out = []
+    for epoch, t in zip(('Fixation', 'Response'), ((-0.3, 0), (-0.1, 0.2))):
+        times = [None, None]
+        times[0] = t[0] - 0.5
+        times[1] = t[1] + 0.5
+        trials = trial_ieeg(seeg, epoch, times, preload=True, picks=[78])
+        outliers_to_nan(trials, 7)
+        spec = wavelet_scaleogram(trials, n_jobs=-2, decim=20)
+        crop_pad(spec, "0.5s")
+        out.append(spec)
+    resp = out[1]
+    base = out[0]
+
+    mask = stats.time_perm_cluster(resp._data, base._data, 0.05, n_perm=3000)
+
+    assert np.all(mask[2:7, 11:12])
