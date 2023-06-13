@@ -258,8 +258,8 @@ def update(filename: PathLike, channels: list[str],
 
 
 @update.register
-def _(inst: Signal, layout: BIDSLayout, description: list[str] | str = None,
-      verbose=None):
+def _(inst: mne.io.base.BaseRaw, layout: BIDSLayout,
+      description: list[str] | str = None, verbose=None):
     if not hasattr(inst, 'filenames'):
         inst.filenames = inst.info['subject_info'].get('files', None)
     for i, file in enumerate(inst.filenames):
