@@ -7,18 +7,16 @@ import numpy as np
 
 from ieeg import Signal, Doubles
 from ieeg.calc import stats
-from ieeg.io import update
 from functools import partial
 
 # Vizualization on Pycharm doesn't work unless using TkAgg
-# try:
-#     mpl.use("TkAgg")
-# except ImportError:
-#     pass
+try:
+    mpl.use("TkAgg")
+except ImportError:
+    pass
 
 
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.widgets import CheckButtons
 
 
 def figure_compare(raw: list[Raw], labels: list[str], avg: bool = True,

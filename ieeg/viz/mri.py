@@ -7,13 +7,18 @@ import matplotlib
 from mne.viz import Brain
 import matplotlib.patheffects as path_effects
 
-matplotlib.use('TkAgg', force=True)  # noqa E402
-import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
 import numpy as np
 
 from ieeg import Signal, PathLike
+
+try:
+    matplotlib.use("TkAgg")
+except ImportError:
+    pass
+
+import matplotlib.pyplot as plt  # noqa: E402
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
