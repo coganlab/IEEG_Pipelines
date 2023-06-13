@@ -47,7 +47,6 @@ del raw
 # %% run time cluster stats
 
 # import scipy
-mask = stats.time_perm_cluster(resp._data, base._data, 0.05,
-                               # stat_func=scipy.stats.ttest_ind,
-                               n_perm=1000)
+mask = stats.time_perm_cluster(resp._data, base._data, 0.05, axis=0,
+                               n_perm=1000, n_jobs=6, ignore_adjacency=1)
 mpl.pyplot.imshow(mask)

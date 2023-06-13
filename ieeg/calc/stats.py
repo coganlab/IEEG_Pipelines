@@ -4,6 +4,7 @@ from skimage import measure
 from mne.utils import logger
 
 from ieeg import Doubles
+from joblib import Parallel, delayed
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
@@ -35,11 +36,6 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
                          f"{mask.shape}")
     mask[np.isnan(mat)] = 0
     mat[np.isnan(mat)] = 0
-
-    if axis == mat.ndim - 1:
-        newaxis = 0
-    else:
-        newaxis = axis + 1
 
     weighted = np.multiply(mat, mask)
     weights = np.sum(mask, axis, keepdims=True)
@@ -214,7 +210,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = mean_diff,
-                      ignore_adjacency: tuple[int] | int = None) -> np.ndarray:
+                      ignore_adjacency: tuple[int] | int = None,
+                      n_jobs: int = -1) -> np.ndarray:
     """ Calculate significant clusters using permutation testing and cluster
     correction.
 
@@ -277,6 +274,18 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         if axis in ignore_adjacency:
             raise ValueError('observations axis is eliminated before '
                              'clustering and so cannot be in ignore_adjacency')
+        out_shape = list(sig1.shape)
+        out_shape.pop(axis)
+        out = np.zeros(out_shape, dtype=int)
+        ins = ((np.squeeze(sig1[i]), np.squeeze(sig2[i])) for i in
+               range(sig1.shape[ignore_adjacency]))
+        proc = Parallel(n_jobs, return_generator=True, verbose=40)(
+            delayed(time_perm_cluster)(
+                *i, p_thresh=p_thresh, p_cluster=p_cluster, n_perm=n_perm,
+                tails=tails, axis=axis, stat_func=stat_func) for i in ins)
+        for i, iout in enumerate(proc):
+            out[i] = iout
+        return out
 
     # Make sure the data is the same shape
     eq = list(np.equal(sig1.shape, sig2.shape)[np.arange(sig1.ndim) != axis])

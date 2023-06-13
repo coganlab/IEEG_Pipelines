@@ -4,7 +4,7 @@ Example spectrogram plot
 
 Below is a code sample for plotting spectrograms
 """
-from ieeg import viz
+from ieeg.viz import utils
 from bids import BIDSLayout
 from ieeg.timefreq.multitaper import spectrogram
 from ieeg.navigate import channel_outlier_marker
@@ -40,7 +40,7 @@ spectra = spectrogram(good, freq, 'PD', -1, 1.5, 'onset', -0.5, 0,
                       n_jobs=6, verbose=10, time_bandwidth=10, n_cycles=freq/2)
 
 # %% Plot data
-viz.utils.chan_grid(spectra, vmin=0.7, vmax=1.4)
+utils.chan_grid(spectra, vmin=0.7, vmax=1.4)
 
 # %% example output for our data
 # .. image:: ../../examples/D29_spec.png
