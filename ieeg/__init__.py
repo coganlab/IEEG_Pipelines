@@ -1,4 +1,5 @@
-""" ieeg: a package for working with intracranial EEG data
+"""ieeg: a package for working with intracranial EEG data
+
 .. include:: ../ieeg/README.md
     :parser: myst_parser.sphinx_
 """

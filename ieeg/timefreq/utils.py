@@ -105,6 +105,36 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
 def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
                        f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
                        decim: int = 1, verbose=10) -> EpochsTFR:
+    """Compute the wavelet scaleogram.
+
+
+
+    Parameters
+    ----------
+    inst : instance of Raw, Epochs, or Evoked
+        The instance to compute the wavelet scaleogram for.
+    f_low : float
+        The lowest frequency to compute the scaleogram for.
+    f_high : float
+        The highest frequency to compute the scaleogram for.
+    k0 : int
+        The wavelet parameter.
+    n_jobs : int
+        The number of jobs to run in parallel.
+    decim : int
+        The decimation factor.
+    verbose : int
+        The verbosity level.
+
+    Returns
+    -------
+    scaleogram : instance of EpochsTFR
+        The wavelet scaleogram.
+
+    Notes
+    -----
+    Similar to https://www.mathworks.com/help/wavelet/ref/cwt.html
+    """
     data = inst.get_data()  # (trials X channels X timepoints)
     dt = 1 / inst.info['sfreq']
     s0 = 1 / (f_high + (0.1 * f_high))  # the smallest resolvable scale
