@@ -37,6 +37,13 @@ import pytest
     ([np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])],
         -1,
         np.array([[[1, 3], [np.nan, 4]], [[2, 5], [np.nan, 6]]])),
+
+    # Test case 8: Concatenate an array containing only nan values
+    ([np.array([[np.nan, np.nan], [np.nan, np.nan]]),
+      np.array([[5, 6, 7], [8, 9, 10]])],
+     0,
+     np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan],
+               [5, 6, 7], [8, 9, 10]])),
 ])
 def test_concatenate_arrays(arrays, axis, expected_output):
     from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes

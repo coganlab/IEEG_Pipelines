@@ -143,11 +143,13 @@ def get_homogeneous_shapes(arrays):
         # Handle the case of an empty array
         if len(arr) == 0:
             shape = (0,)
+            dims = 1
         else:
             shape = arr.shape
+            dims = arr.ndim
 
         # Pad the shape tuple with additional dimensions if necessary
-        num_dims_to_pad = max_dims - arr.ndim
+        num_dims_to_pad = max_dims - dims
         shape += (1,) * num_dims_to_pad
 
         # Add the shape to the list
