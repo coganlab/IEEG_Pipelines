@@ -75,3 +75,90 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
     sl[axis] = slice(overlap, mat2.shape[axis])
     last = mat2[tuple(sl)]
     return [start, middle, last]
+
+
+def concatenate_arrays(arrays: list[np.ndarray], axis: int) -> np.ndarray:
+    """Concatenate arrays along a specified axis, filling in empty arrays with
+    nan values.
+
+    Parameters
+    ----------
+    arrays
+        A list of arrays to concatenate
+    axis
+        The axis along which to concatenate the arrays
+
+    Returns
+    -------
+    result
+        The concatenated arrays
+    """
+    while axis < 0:
+        axis += arrays[0].ndim
+
+    # Determine the maximum shape along the specified axis
+    max_shape = np.max(get_homogeneous_shapes(arrays), axis=0)
+
+    # Create a list to store the modified arrays
+    modified_arrays = []
+
+    # Iterate over the arrays
+    for arr in arrays:
+        if len(arr) == 0:
+            continue
+        # Determine the shape of the array
+        arr_shape = list(max_shape)
+        arr_shape[axis] = arr.shape[axis]
+
+        # Create an array filled with nan values
+        nan_array = np.full(arr_shape, np.nan)
+
+        # Fill in the array with the original values
+        indexing = [slice(None)] * arr.ndim
+        for ax in range(arr.ndim):
+            if ax == axis:
+                continue
+            indexing[ax] = slice(0, arr.shape[ax])
+        nan_array[tuple(indexing)] = arr
+
+        # Append the modified array to the list
+        modified_arrays.append(nan_array)
+
+    # Concatenate the modified arrays along the specified axis
+    result = np.concatenate(modified_arrays, axis=axis)
+
+    return result
+
+
+def get_homogeneous_shapes(arrays):
+    # Determine the maximum number of dimensions among the input arrays
+    max_dims = max([arr.ndim for arr in arrays])
+
+    # Create a list to store the shapes with a homogeneous number of dimensions
+    homogeneous_shapes = []
+
+    # Iterate over the arrays
+    for arr in arrays:
+        # Get the shape of the array
+        # Handle the case of an empty array
+        if len(arr) == 0:
+            shape = (0,)
+        else:
+            shape = arr.shape
+
+        # Pad the shape tuple with additional dimensions if necessary
+        num_dims_to_pad = max_dims - arr.ndim
+        shape += (1,) * num_dims_to_pad
+
+        # Add the shape to the list
+        homogeneous_shapes.append(shape)
+
+    return homogeneous_shapes
+
+
+if __name__ == "__main__":
+    ins, axis, exp = ([np.array([]), np.array([[1, 2], [3, 4]]),
+                       np.array([[5, 6, 7], [8, 9, 10]])], 0,
+                       np.array([[1, 2, np.nan], [3, 4, np.nan],
+                                 [5, 6, 7], [8, 9, 10]]))
+    outs = concatenate_arrays(ins, axis)
