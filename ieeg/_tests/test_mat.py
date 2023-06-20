@@ -44,6 +44,11 @@ import pytest
      0,
      np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan],
                [5, 6, 7], [8, 9, 10]])),
+
+    # Test case 9: Concatenate along new axis
+    ([np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10]])],
+        None,
+        np.array([[[1, 2, np.nan], [3, 4, np.nan]], [[5, 6, 7], [8, 9, 10]]]))
 ])
 def test_concatenate_arrays(arrays, axis, expected_output):
     from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes
@@ -51,6 +56,9 @@ def test_concatenate_arrays(arrays, axis, expected_output):
     try:
         new = concatenate_arrays(arrays, axis)
         print(f"New shape {new.shape}")
+        if axis is None:
+            axis = 0
+            arrays = [np.expand_dims(arr, axis) for arr in arrays]
         while axis < 0:
             axis += new.ndim
         congruency = new.shape == np.max(get_homogeneous_shapes(arrays),

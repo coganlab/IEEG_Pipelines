@@ -77,7 +77,8 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
     return [start, middle, last]
 
 
-def concatenate_arrays(arrays: list[np.ndarray], axis: int) -> np.ndarray:
+def concatenate_arrays(arrays: list[np.ndarray], axis: int = None
+                       ) -> np.ndarray:
     """Concatenate arrays along a specified axis, filling in empty arrays with
     nan values.
 
@@ -93,8 +94,13 @@ def concatenate_arrays(arrays: list[np.ndarray], axis: int) -> np.ndarray:
     result
         The concatenated arrays
     """
+
+    if axis is None:
+        axis = 0
+        arrays = [np.expand_dims(ar, axis) for ar in arrays]
+
     while axis < 0:
-        axis += arrays[0].ndim
+        axis += max(ar.ndim for ar in arrays)
 
     # Determine the maximum shape along the specified axis
     max_shape = np.max(get_homogeneous_shapes(arrays), axis=0)
