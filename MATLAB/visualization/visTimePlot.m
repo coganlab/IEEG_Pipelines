@@ -36,6 +36,7 @@ timeGamma1 = linspace(tw(1),tw(2),(tw(2)-tw(1))*fs );
     xlim([timeGamma1(1) timeGamma1(end)])    
     xlabel(options.labels{1})
     formatTicks(gca)
+    
      
 end
 

@@ -9,6 +9,7 @@ arguments
     options.fs = 200; % sampling frequency
     options.labels = {'Auditory','Go','ResponseOnset'}
     options.tileLayout = []
+    options.smoothTime = 1;
 end
 fs = options.fs;
 
@@ -29,7 +30,7 @@ sig1M=(signal2plot); % extract mean
     ax1 =  axes(t);
     ax1.Layout.Tile = 1;
 
-    sig1M2plot = sig1M(:,1:round(length(timeGamma1)));
+    sig1M2plot = smoothdata(sig1M(:,1:round(length(timeGamma1))),2,'gaussian', options.smoothTime);
     %sig1S2plot = sig1S(1:round(length(timeGamma1)));
     h = plot(ax1,timeGamma1,sig1M2plot,'LineWidth',2);
     hold on;
@@ -50,7 +51,7 @@ sig1M=(signal2plot); % extract mean
     ax2 =  axes(t);
     ax2.Layout.Tile = 2;
     startTimePoint = round(length(timeGamma1))+1;
-    sig1M2plot = sig1M(:,startTimePoint:startTimePoint+length(timeGamma2)-1);
+    sig1M2plot = smoothdata(sig1M(:,startTimePoint:startTimePoint+length(timeGamma2)-1),2,"gaussian", options.smoothTime);
     %sig1S2plot = sig1S(startTimePoint:startTimePoint+length(timeGamma2)-1);
     h = plot(ax2,timeGamma2,sig1M2plot,'LineWidth',2);
 %     h = patch(ax2,[timeGamma2,timeGamma2(end:-1:1)],[sig1M2plot + sig1S2plot, ...
@@ -71,7 +72,7 @@ sig1M=(signal2plot); % extract mean
     ax3 =  axes(t);
     ax3.Layout.Tile = 3;
     startTimePoint = startTimePoint+round(length(timeGamma2));
-    sig1M2plot = sig1M(:,startTimePoint:end);
+    sig1M2plot = smoothdata(sig1M(:,startTimePoint:end),2,'gaussian', options.smoothTime);
     %sig1S2plot = sig1S(startTimePoint:end);
     h = plot(ax3,timeGamma3,sig1M2plot,'LineWidth',2);
 %      h = patch(ax3,[timeGamma3,timeGamma3(end:-1:1)],[sig1M2plot + sig1S2plot, ...
