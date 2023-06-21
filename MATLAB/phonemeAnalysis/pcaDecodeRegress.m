@@ -1,3 +1,4 @@
+
 % Function: pcaDecodeRegress
 % Description: Performs decoding using PCA (Principal Component Analysis) followed by linear regression on input signals.
 % Inputs:
@@ -32,3 +33,4 @@ function [yhat, lossVect] = pcaDecodeRegress(sigTrain, sigTest, YTrain, YTest, v
         yhat = predict(linearModel, scoreTestGrid); % Predict labels for the test data using the trained linear regression model
         lossVect = loss(linearModel, scoreTestGrid, YTest); % Compute the loss vector for the test data
 end
+

@@ -72,10 +72,7 @@ function [accAll, ytestAll, ypredAll, optimVarAll, aucAll, modelWeightsAll] = pc
 
             % Select the optimal principal components based on the mean loss
             [~, optimVarId] = min(mean(lossVect, 1));
-            optimVar = varVector(optimVarId);
-        else
-            optimVar = varVector;
-        end
+
 
         % Perform PCA-LDA decoding
         [lossMod, Cmat, yhat, aucVect, nModes, modelweights] = pcaDecodeVariance(xTrain, xTest, yTrain, yTest, optimVar, isauc);

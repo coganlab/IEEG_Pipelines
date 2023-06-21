@@ -1,3 +1,4 @@
+
 % Function: matrixSubSample
 % Description: Performs matrix subsampling based on a window size and overlap.
 % Inputs:
@@ -32,3 +33,4 @@ function matrixPoints = matrixSubSample(chanMap, window, isOverlap)
         end
     end
 end
+

@@ -34,8 +34,11 @@ function [attributePower, aLabel, attributeAll] = attributeSelectDiscrete(phonem
                 % Append the phoneme power values to attributePower
                 attributePower = cat(3, attributePower, phonemePower(:, :, pID));
                 % Append the attribute ID to aLabel
+
                 aLabel = [aLabel aID];
             end
         end
     end
+
 end
+

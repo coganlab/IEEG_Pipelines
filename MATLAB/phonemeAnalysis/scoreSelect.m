@@ -15,12 +15,14 @@ end
         test = cvp.test(nCv);
         featureTrain = sig2analyzeAllFeature(train,:);
         featureTest = sig2analyzeAllFeature(test,:);
+
 %         meanTrain = mean(featureTrain,1);
 %         stdTrain = std(featureTrain,0,1);
 %         featureTrainNorm = (featureTrain - meanTrain)./stdTrain;
         [coeffTrain,scoreTrain,~,~,explained] = pca(featureTrain,'Centered',false);
        % size(featureTrainNorm)
 %         featureTestNorm = (featureTest - meanTrain)./stdTrain;
+
         scoreTest = featureTest*coeffTrain;
         
         for iVar = 1:length(varVector)
@@ -29,7 +31,9 @@ end
             scoreTestGrid = scoreTest(:,1:nModes);
 %              size(scoreTrainGrid)
 %              size(labels(train))
+
            linearModel = fitcdiscr((scoreTrainGrid),labels(train),'CrossVal','off','DiscrimType','pseudolinear'); 
+
            %linearModel = fitcknn((scoreTrainGrid),labels(train),'CrossVal','off');
             %linearModel = fitcnb((scoreTrainGrid),labels(train),'CrossVal','off','Prior','uniform');  
 %              tempLogistic = templateKernel('Learner','logistic','KernelScale','auto');

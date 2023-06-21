@@ -1,0 +1,16 @@
+name: ieeg
+channels:
+  - defaults
+dependencies:
+  - python<3.12
+  - pip
+  - numpy
+  - matplotlib
+  - scipy
+  - scikit-image
+  - pandas
+  - joblib
+  - tqdm
+  - notebook
+  - pip:
+    - -r requirements.txt

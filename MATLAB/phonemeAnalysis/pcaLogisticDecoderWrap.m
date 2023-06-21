@@ -23,6 +23,7 @@ timeSplit = linspace(tw(1), tw(2), size(ieegSplit, 3));
 timeSelect = timeSplit >= etw(1) & timeSplit <= etw(2);
 ieegModel = ieegSplit(:, :, timeSelect);
 
+
 accAll = 0;
 ytestAll = [];
 ypredAll = [];

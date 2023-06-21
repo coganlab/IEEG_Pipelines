@@ -1,4 +1,5 @@
 function [accAll,ytestAll,ypredAll,optimVarAll,aucAll,modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegSplit,labels,tw,etwTrain,etwTest,varVector,numFolds,isauc)
+
 % The function performs supervised PCA-LDA decoding on ephys time-series dataset;
 % Step 1: Hyperparameter optimization through nested cross-validation to
 % identify the optimal number of PC dimensions
@@ -38,6 +39,7 @@ else
     cvp = cvpartition(labels,'LeaveOut');
 end
 
+
 for nCv = 1:cvp.NumTestSets
     % Split the data into training and testing sets
     train = cvp.training(nCv);
@@ -69,10 +71,12 @@ for nCv = 1:cvp.NumTestSets
     [lossMod,~,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(gTrain,gTest,pTrain,pTest,optimVar,isauc);
     
     optimVarAll = [optimVarAll optimVar];
+
     ytestAll = [ytestAll pTest];
     ypredAll = [ypredAll yhat'];
     accAll = accAll + 1 - lossMod;
     modelWeightsAll{nCv} = modelweights;
+
     
     if(isauc)
         aucAll = [aucAll; aucVect];

@@ -1,3 +1,4 @@
+
 % Function: pcaDecodeVariance
 % Description: Performs decoding using PCA (Principal Component Analysis) followed by linear discriminant analysis on input signals.
 % Inputs:
@@ -44,3 +45,4 @@ function [lossMod, Cmat, yhat, aucVect, nModes, modelweights] = pcaDecodeVarianc
         lossMod = loss(linearModel, scoreTestGrid, YTest); % Compute the loss of the trained model on the test data
         Cmat = confusionmat(YTest, yhat); % Compute the confusion matrix of the predicted labels on the test data
 end
+

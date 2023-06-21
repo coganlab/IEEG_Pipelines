@@ -39,3 +39,4 @@ function [lossMod, Cmat, yhat, aucVect] = pcaDecode(sigTrain, sigTest, YTrain, Y
     lossMod = loss(linearModel, scoreTestGrid, YTest); % Compute the loss (misclassification rate) for the test data
     Cmat = confusionmat(YTest, yhat); % Compute the confusion matrix for the test data
 end
+

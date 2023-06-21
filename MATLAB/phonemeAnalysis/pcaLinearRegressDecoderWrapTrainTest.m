@@ -19,11 +19,13 @@ timeSplit = linspace(tw(1), tw(2), size(ieegSplit, 3));
 timeSelectTrain = timeSplit >= etwTrain(1) & timeSplit <= etwTrain(2);
 timeSelectTest = timeSplit >= etwTest(1) & timeSplit <= etwTest(2);
 
+
 lossAll = 0;
 ytestAll = [];
 ypredAll = [];
 optimDimAll = [];
 accVectAll = [];
+
 
 if (numFolds > 0)
     cvp = cvpartition(length(predictors), 'KFold', numFolds);
@@ -60,10 +62,13 @@ for nCv = 1:cvp.NumTestSets
 
     [yhat, loss] = pcaDecodeRegress(gTrain, gTest, pTrain, pTest, optimVar);
 
+
     optimDimAll = [optimDimAll optimVar];
     ytestAll = [ytestAll pTest];
     ypredAll = [ypredAll yhat'];
     lossAll = [lossAll loss];
+
 end
 
 end
+

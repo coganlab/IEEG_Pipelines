@@ -1,3 +1,4 @@
+
 % Function: linearDecoder
 % Description: Performs linear decoding using iEEG data and labels.
 % Inputs:
@@ -88,3 +89,4 @@ function [accAll, ytestAll, ypredAll, aucAll] = linearDecoder(ieegSplit, labels,
         end
     end
 end
+

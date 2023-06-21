@@ -23,12 +23,14 @@ timeSplit = linspace(tw(1), tw(2), size(ieegSplitTrain, 3));
 timeSelectTrain = timeSplit >= etwTrain(1) & timeSplit <= etwTrain(2);
 timeSelectTest = timeSplit >= etwTest(1) & timeSplit <= etwTest(2);
 
+
 accAll = 0;
 ytestAll = [];
 ypredAll = [];
 optimVarAll = [];
 aucAll = [];
 accVectAll = [];
+
 
 if (numFolds > 0)
     cvp = cvpartition(labels, 'KFold', numFolds, 'Stratify', true);
@@ -72,3 +74,4 @@ for nCv = 1:cvp.NumTestSets
     end
 end
 end
+

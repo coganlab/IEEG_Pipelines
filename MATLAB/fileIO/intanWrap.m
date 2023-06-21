@@ -1,11 +1,14 @@
 function [ieegall,microphone,trigger] = intanWrap(path,channel,fileNum,isDecimate,isTask,isCar)
+
 arguments
     path {mustBeTextScalar}
     channel double
     fileNum double
     isDecimate logical = 0
     isTask logical = 0
+
     isCar logical = 0
+
 end
     d = dir([path '*.rhd']);
     d.name
@@ -20,10 +23,11 @@ end
         else
             ieegsamp = amplifier_data;
         end
-        
+
         if(isCar)
             ieegsamp = carFilter(ieegsamp);
         end
+
 
 %         for iChan = 1:size(channel,2)   
 %             
