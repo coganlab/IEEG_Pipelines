@@ -1,4 +1,4 @@
-function [accAll,ytestAll,ypredAll,optimVarAll,aucAll, modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegSplit,labels,tw,etwTrain,etwTest,varVector,numFolds,isauc)
+function [accAll,ytestAll,ypredAll,optimVarAll,aucAll,modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegSplit,labels,tw,etwTrain,etwTest,varVector,numFolds,isauc)
 % The function performs supervised PCA-LDA decoding on ephys time-series dataset;
 % Step 1: Hyperparameter optimization through nested cross-validation to
 % identify the optimal number of PC dimensions
@@ -31,53 +31,52 @@ optimVarAll = [];
 aucAll = [];
 accVectAll = [];
 modelWeightsAll = [];
+
 if(numFolds>0)
     cvp = cvpartition(labels,'KFold',numFolds,'Stratify',true);
 else
     cvp = cvpartition(labels,'LeaveOut');
 end
-    for nCv = 1:cvp.NumTestSets
-        
-        train = cvp.training(nCv);
-        test = cvp.test(nCv);
-        ieegTrain = ieegSplit(:,train,timeSelectTrain);
-        ieegTest = ieegSplit(:,test,timeSelectTest);
-        matTrain = size(ieegTrain);
-        gTrain = reshape(permute(ieegTrain,[2 1 3]),[matTrain(2) matTrain(1)*matTrain(3)]);
-        matTest = size(ieegTest);
-        gTest = reshape(permute(ieegTest,[2 1 3]),[matTest(2) matTest(1)*matTest(3)]);
 
-        pTrain = labels(train);
-        pTest = labels(test);
-        if(length(varVector)>1)
-            if(numFolds>0)
-                [lossVect] = scoreSelect(gTrain,pTrain,varVector,1,numFolds); % Hyper parameter tuning
-            else
-                [lossVect] = scoreSelect(gTrain,pTrain,varVector,0,numFolds);
-            end
+for nCv = 1:cvp.NumTestSets
+    % Split the data into training and testing sets
+    train = cvp.training(nCv);
+    test = cvp.test(nCv);
+    ieegTrain = ieegSplit(:,train,timeSelectTrain);
+    ieegTest = ieegSplit(:,test,timeSelectTest);
+    matTrain = size(ieegTrain);
+    gTrain = reshape(permute(ieegTrain,[2 1 3]),[matTrain(2) matTrain(1)*matTrain(3)]);
+    matTest = size(ieegTest);
+    gTest = reshape(permute(ieegTest,[2 1 3]),[matTest(2) matTest(1)*matTest(3)]);
 
-             accVectAll(nCv,:) = mean(lossVect,1);
-            [~,optimVarId] = min(mean(lossVect,1)); % Selecting the optimal principal components
-            optimVar = varVector(optimVarId);
+    pTrain = labels(train);
+    pTest = labels(test);
+    
+    if(length(varVector)>1)
+        if(numFolds>0)
+            [lossVect] = scoreSelect(gTrain,pTrain,varVector,1,numFolds); % Hyperparameter tuning
         else
-            optimVar = varVector;
+            [lossVect] = scoreSelect(gTrain,pTrain,varVector,0,numFolds);
         end
-%        mean(squeeze(aucVect(:,nDim,:)),1)
-        [lossMod,~,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(gTrain,gTest,pTrain,...
-                       pTest,optimVar,isauc);
+
+        accVectAll(nCv,:) = mean(lossVect,1);
+        [~,optimVarId] = min(mean(lossVect,1)); % Selecting the optimal principal components
+        optimVar = varVector(optimVarId);
+    else
+        optimVar = varVector;
+    end
+    
+    [lossMod,~,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(gTrain,gTest,pTrain,pTest,optimVar,isauc);
+    
     optimVarAll = [optimVarAll optimVar];
-%     size(pTest)
-     %size(aucVect)
     ytestAll = [ytestAll pTest];
     ypredAll = [ypredAll yhat'];
     accAll = accAll + 1 - lossMod;
     modelWeightsAll{nCv} = modelweights;
-    if(isauc)
-    aucAll = [aucAll; aucVect];
-    end
-    %CmatAll = CmatAll + Cmat;
-    end
-%     figure; 
-%     plot(varVector,accVectAll);
     
+    if(isauc)
+        aucAll = [aucAll; aucVect];
+    end
+end
+
 end

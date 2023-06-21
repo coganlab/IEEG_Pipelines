@@ -53,19 +53,19 @@ function [accAll, ytestAll, ypredAll, optimVarAll, aucAll, modelWeightsAll] = pc
         ieegTrain = ieegModel(:, train, :);
         ieegTest = ieegModel(:, test, :);
         matTrain = size(ieegTrain);
-        gTrain = reshape(permute(ieegTrain, [2 1 3]), [matTrain(2) matTrain(1) * matTrain(3)]);
+        xTrain = reshape(permute(ieegTrain, [2 1 3]), [matTrain(2) matTrain(1) * matTrain(3)]);
         matTest = size(ieegTest);
-        gTest = reshape(permute(ieegTest, [2 1 3]), [matTest(2) matTest(1) * matTest(3)]);
+        xTest = reshape(permute(ieegTest, [2 1 3]), [matTest(2) matTest(1) * matTest(3)]);
 
-        pTrain = labels(train);
-        pTest = labels(test);
+        yTrain = labels(train);
+        yTest = labels(test);
 
         if (length(varVector) > 1)
             if (numFolds > 0)
                 % Perform hyperparameter tuning
-                [lossVect] = scoreSelect(gTrain, pTrain, varVector, 1, numFolds);
+                [lossVect] = scoreSelect(xTrain, yTrain, varVector, 1, numFolds);
             else
-                [lossVect] = scoreSelect(gTrain, pTrain, varVector, 0, numFolds);
+                [lossVect] = scoreSelect(xTrain, yTrain, varVector, 0, numFolds);
             end
 
             lossVectAll(nCv, :) = mean(lossVect, 1);
@@ -78,11 +78,11 @@ function [accAll, ytestAll, ypredAll, optimVarAll, aucAll, modelWeightsAll] = pc
         end
 
         % Perform PCA-LDA decoding
-        [lossMod, Cmat, yhat, aucVect, nModes, modelweights] = pcaDecodeVariance(gTrain, gTest, pTrain, pTest, optimVar, isauc);
+        [lossMod, Cmat, yhat, aucVect, nModes, modelweights] = pcaDecodeVariance(xTrain, xTest, yTrain, yTest, optimVar, isauc);
         
         % Store the results for this fold
         optimVarAll = [optimVarAll optimVar];
-        ytestAll = [ytestAll pTest];
+        ytestAll = [ytestAll yTest];
         ypredAll = [ypredAll yhat'];
         accAll = accAll + 1 - lossMod;
         modelweights.optimVar = optimVarAll;
