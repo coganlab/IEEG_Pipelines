@@ -22,9 +22,7 @@ function [phonMet, ieegAll, pLabel] = timitPhonemeTimeExtractor(audioPathUsed, m
 %   etw = [0.5 1.5]; % Example time window for EEG data
 %   pSpan = [0.1 0.3]; % Example time span around each phoneme for feature extraction
 %   [phonMet, ieegAll, pLabel] = timitPhonemeTimeExtractor(audioPathUsed, micAudio, ieeg, etw, pSpan); % Extract phoneme-related features
-%
-% Author: OpenAI
-% Date: 2023-06-21
+
 
 timitPath = 'E:\timit\TIMIT\'; % Path to the TIMIT dataset
 
