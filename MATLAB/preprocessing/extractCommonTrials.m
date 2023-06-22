@@ -1,7 +1,29 @@
+% extractCommonTrials - Extracts the common trials from multiple sets of good trials.
+%
+% Syntax: goodTrialsCommon = extractCommonTrials(goodTrials)
+%
+% Inputs:
+%   goodTrials      - Cell array containing multiple sets of good trials
+%
+% Output:
+%   goodTrialsCommon- Array of common trials present in all sets
+%
+% Example:
+%   goodTrials1 = [1, 2, 3, 4, 5];
+%   goodTrials2 = [3, 4, 5, 6, 7];
+%   goodTrials3 = [4, 5, 6, 7, 8];
+%   goodTrials = {goodTrials1, goodTrials2, goodTrials3};
+%   goodTrialsCommon = extractCommonTrials(goodTrials);
+%
+
+
 function goodTrialsCommon = extractCommonTrials(goodTrials)
-%aL =  1:length(goodTrials);
-goodTrialsCommon = goodTrials{1};
-for na = 2:length(goodTrials)
-  goodTrialsCommon = intersect(goodTrialsCommon,goodTrials{na});
-end
+    % Initialize the common trials with the first set of good trials
+    goodTrialsCommon = goodTrials{1};
+    
+    % Iterate through the remaining sets of good trials
+    for na = 2:length(goodTrials)
+        % Find the intersection of the current set with the common trials
+        goodTrialsCommon = intersect(goodTrialsCommon, goodTrials{na});
+    end
 end

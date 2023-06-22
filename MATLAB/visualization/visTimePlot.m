@@ -19,7 +19,7 @@ hold on;
 
 sig1M=mean(signal2plot); % extract mean
 sig1S=std(signal2plot)./sqrt(size(signal2plot,1)); % extract standard error
- tw = [0 sum(diff(timeEpoch'))]+timeEpoch(1,1);
+ tw = timeEpoch;
 timeGamma1 = linspace(tw(1),tw(2),(tw(2)-tw(1))*fs );
   
     
@@ -34,7 +34,7 @@ timeGamma1 = linspace(tw(1),tw(2),(tw(2)-tw(1))*fs );
     hold on;
     
     xlim([timeGamma1(1) timeGamma1(end)])    
-    xlabel(options.labels{1})
+    xlabel(options.labels)
     formatTicks(gca)
      
 end
