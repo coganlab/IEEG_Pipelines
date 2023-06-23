@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from ieeg.calc.mat import ArrayDict, concatenate_arrays, get_homogeneous_shapes
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [
@@ -51,7 +52,6 @@ import pytest
         np.array([[[1, 2, np.nan], [3, 4, np.nan]], [[5, 6, 7], [8, 9, 10]]]))
 ])
 def test_concatenate_arrays(arrays, axis, expected_output):
-    from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes
     print(f"Shapes {[arr.shape for arr in arrays]}")
     try:
         new = concatenate_arrays(arrays, axis)
@@ -71,3 +71,42 @@ def test_concatenate_arrays(arrays, axis, expected_output):
             assert expected_output is None
         except AssertionError:
             raise e
+
+# Test creation of ArrayDict
+def test_array_dict_creation():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    assert isinstance(ad, ArrayDict)
+
+# Test conversion to numpy array
+def test_array_dict_to_array():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    np_array = np.array([[[1, 2, 3], [4, 5, np.nan]]])
+    assert np.array_equal(ad.array, np_array, True)
+
+# Test getting all keys
+def test_array_dict_all_keys():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    keys = (('a',), ('b', 'f'), ('c', 'd', 'e'))
+    assert ad.all_keys == keys
+
+# Test indexing with a single key
+def test_array_dict_single_key_indexing():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    subset = ArrayDict(**{'c': 1, 'd': 2, 'e': 3})
+    assert ad['a']['b'] == subset
+
+# Test indexing with a tuple of keys that leads to a scalar value
+def test_array_dict_scalar_value_indexing():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    assert ad['a']['b']['d'] == 2
+
+# Test shape property
+def test_array_dict_shape():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    assert ad.shape == (1, 2, 3)

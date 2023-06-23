@@ -17,7 +17,7 @@ class ArrayDict(OrderedDict, np.lib.mixins.NDArrayOperatorsMixin):
         def inner(data):
             if isinstance(data, dict):
                 return concatenate_arrays(
-                    [inner(d)[np.newaxis, ...]
+                    [np.array([inner(d)])
                      for d in data.values() if d is not False], axis=0)
             else:
                 return data
@@ -28,7 +28,9 @@ class ArrayDict(OrderedDict, np.lib.mixins.NDArrayOperatorsMixin):
 
         def inner(data, lvl=0):
             l = lvl + 1
-            if isinstance(data, dict):
+            if isinstance(data, (int, float, str, bool)):
+                return
+            elif isinstance(data, dict):
                 if len(keys) < l:
                     keys.append(list(data.keys()))
                 else:  # add unique keys to the level
