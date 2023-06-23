@@ -1,4 +1,74 @@
 import numpy as np
+from collections import OrderedDict
+
+
+class ArrayDict(OrderedDict, np.lib.mixins.NDArrayOperatorsMixin):
+    """A homogenous dictionary that can be converted to a numpy array."""
+    __array: np.ndarray = None
+    __all_keys: tuple[tuple[str | int], ...] = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in self.items():
+            if isinstance(v, dict):
+                self[k] = type(self)(**v)
+
+    def __array__(self) -> np.ndarray:
+        def inner(data):
+            if isinstance(data, dict):
+                return concatenate_arrays(
+                    [inner(d)[np.newaxis, ...]
+                     for d in data.values() if d is not False], axis=0)
+            else:
+                return data
+        return inner(self)
+
+    def __all_keys__(self) -> tuple[tuple[str | int], ...]:
+        keys = list()
+
+        def inner(data, lvl=0):
+            l = lvl + 1
+            if isinstance(data, dict):
+                if len(keys) < l:
+                    keys.append(list(data.keys()))
+                else:  # add unique keys to the level
+                    keys[lvl] += [k for k in data.keys() if k not in keys[lvl]]
+                for d in data.values():
+                    inner(d, l)
+            elif isinstance(data, np.ndarray):
+                rows = range(data.shape[0])
+                if len(keys) < l:
+                    keys.append(list(rows))
+                else:
+                    keys[lvl] += [k for k in rows if k not in keys[lvl]]
+                if len(data.shape) > 1:
+                    inner(data[0], l)
+            else:
+                raise TypeError(f"Unexpected data type: {type(data)}")
+        inner(self)
+        return tuple(tuple(k) for k in keys)
+
+    def __repr__(self) -> str:
+        return super(OrderedDict, self).__repr__()
+
+    @property
+    def array(self) -> np.ndarray:
+        """Convert the dictionary to a numpy array."""
+        if self.__array is None:
+            self.__array = self.__array__()
+        return self.__array
+
+    @property
+    def all_keys(self) -> tuple[tuple[str | int], ...]:
+        """Get all keys in the nested dictionary."""
+        if self.__all_keys is None:
+            self.__all_keys = self.__all_keys__()
+        return self.__all_keys
+
+    @property
+    def shape(self) -> tuple[int]:
+        """Get the shape of the array."""
+        return self.array.shape
 
 
 def get_elbow(data: np.ndarray) -> int:
