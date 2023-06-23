@@ -48,7 +48,7 @@ class ArrayDict(OrderedDict, np.lib.mixins.NDArrayOperatorsMixin):
             else:
                 raise TypeError(f"Unexpected data type: {type(data)}")
         inner(self)
-        return tuple(tuple(k) for k in keys)
+        return tuple(map(tuple, keys))
 
     def __repr__(self) -> str:
         return super(OrderedDict, self).__repr__()

@@ -92,6 +92,24 @@ def test_array_dict_all_keys():
     keys = (('a',), ('b', 'f'), ('c', 'd', 'e'))
     assert ad.all_keys == keys
 
+# Test getting all keys in a really nested ArrayDict
+def test_array_dict_all_keys_nested():
+    data = {'a': {'b': {'c': {'d': {'e': {'f': {'g': {'h': {'i': {'j': {
+        'k': 1}}}}}}}}}}}
+    ad = ArrayDict(**data)
+    keys = (('a',), ('b',), ('c',), ('d',), ('e',), ('f',), ('g',), ('h',),
+            ('i',), ('j',), ('k',))
+    assert ad.all_keys == keys
+
+
+# Test getting all keys in a large ArrayDict (10000 keys)
+def test_array_dict_all_keys_large():
+    data = {str(i): i for i in range(1000000)}
+    ad = ArrayDict(**data)
+    keys = (tuple(map(str, range(1000000))),)
+    assert ad.all_keys == keys
+
+
 # Test indexing with a single key
 def test_array_dict_single_key_indexing():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
