@@ -1,5 +1,5 @@
 import numpy as np
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 
 class ArrayDict(OrderedDict, np.lib.mixins.NDArrayOperatorsMixin):
@@ -24,31 +24,88 @@ class ArrayDict(OrderedDict, np.lib.mixins.NDArrayOperatorsMixin):
         return inner(self)
 
     def __all_keys__(self) -> tuple[tuple[str | int], ...]:
-        keys = list()
+        keys = deque()
 
         def inner(data, lvl=0):
-            l = lvl + 1
-            if isinstance(data, (int, float, str, bool)):
-                return
-            elif isinstance(data, dict):
-                if len(keys) < l:
-                    keys.append(list(data.keys()))
-                else:  # add unique keys to the level
-                    keys[lvl] += [k for k in data.keys() if k not in keys[lvl]]
-                for d in data.values():
-                    inner(d, l)
-            elif isinstance(data, np.ndarray):
-                rows = range(data.shape[0])
-                if len(keys) < l:
-                    keys.append(list(rows))
-                else:
-                    keys[lvl] += [k for k in rows if k not in keys[lvl]]
-                if len(data.shape) > 1:
-                    inner(data[0], l)
-            else:
-                raise TypeError(f"Unexpected data type: {type(data)}")
+            match data:
+                case int() | float() | str() | bool():
+                    return
+                case dict():
+                    if len(keys) < lvl + 1:
+                        keys.append(list(data.keys()))
+                    else:  # add unique keys to the level
+                        keys[lvl] += [k for k in data.keys() if k not in keys[lvl]]
+                    for d in data.values():
+                        inner(d, lvl+1)
+                case np.ndarray():
+                    rows = range(data.shape[0])
+                    if len(keys) < lvl+1:
+                        keys.append(list(rows))
+                    else:
+                        keys[lvl] += [k for k in rows if k not in keys[lvl]]
+                    if len(data.shape) > 1:
+                        inner(data[0], lvl+1)
+                case _:
+                    raise TypeError(f"Unexpected data type: {type(data)}")
         inner(self)
         return tuple(map(tuple, keys))
+
+    def combine_dims(self, dims: tuple[int, ...], delim: str = '-'
+                     ) -> 'ArrayDict':
+        """Combine the given dimensions into a single dimension.
+
+        Parameters
+        ----------
+        dims : tuple[int, ...]
+            The dimensions to combine.
+        delim : str, optional
+            The delimiter to use between the dimension keys, by default '-'.
+
+        Returns
+        -------
+        ArrayDict
+            The new ArrayDict with the combined dimensions.
+
+        Examples
+        --------
+        >>> data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3},
+        >>>               'f': {'c': 4, 'd': 5}}}
+        >>> ad = ArrayDict(**data)
+        >>> new = ad.combine_dims((1, 2))
+        >>> dict(new)
+        {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
+        >>> new.all_keys
+        (('a'), ('b-c', 'b-d', 'b-e', 'f-c', 'f-d'))
+        >>> new.shape
+        (1, 5)
+
+        """
+
+        combined_dict = ArrayDict()
+        keys = [None] * len(dims)
+
+        def combine_keys(out: ArrayDict, new_dict: ArrayDict, lvl=0):
+            if isinstance(new_dict, np.ndarray):
+                # turn the array into a dictionary
+                new_dict = dict(**{str(i): v for i, v in enumerate(new_dict)})
+            if lvl == dims[0]:
+                for k, v in new_dict.items():
+                    keys[0] = k
+                    combine_keys(out, v, lvl+1)
+            elif lvl == dims[-1]:
+                for k, v in new_dict.items():
+                    keys[-1] = k
+                    out[delim.join(keys)] = v
+            else:
+                for k, v in new_dict.items():
+                    if lvl in dims:
+                        keys[dims.index(lvl)] = k
+                    else:
+                        out.setdefault(k, ArrayDict())
+                    combine_keys(out[k], v, lvl+1)
+
+        combine_keys(combined_dict, self)
+        return combined_dict
 
     def __repr__(self) -> str:
         return super(OrderedDict, self).__repr__()
@@ -71,6 +128,15 @@ class ArrayDict(OrderedDict, np.lib.mixins.NDArrayOperatorsMixin):
     def shape(self) -> tuple[int]:
         """Get the shape of the array."""
         return self.array.shape
+
+
+def _transform_keys(old_keys):
+    # make 2d array of keys
+    old_keys = np.array(old_keys)
+
+    # get the unique values in each column
+    return tuple(tuple(np.unique(old_keys[:, i]))
+                 for i in range(old_keys.shape[1]))
 
 
 def get_elbow(data: np.ndarray) -> int:

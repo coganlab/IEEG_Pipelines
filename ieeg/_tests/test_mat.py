@@ -128,3 +128,20 @@ def test_array_dict_shape():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
     ad = ArrayDict(**data)
     assert ad.shape == (1, 2, 3)
+
+# Test combine dimensions
+def test_array_dict_combine_dimensions():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    new = ad.combine_dims((1, 2))
+    assert dict(new) == {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
+
+# Test combine dimensions with arrays
+def test_array_dict_combine_dimensions_with_arrays():
+    data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([1, 2, 3])},
+                  'f': {'c': np.array([1, 2, 3])}}
+    ad = ArrayDict(**data)
+    new = ad.combine_dims((1, 2))
+    assert new['b'] == {'c-0': 1, 'c-1': 2, 'c-2': 3, 'd-0': 1, 'd-1': 2,
+                        'd-2': 3}
+
