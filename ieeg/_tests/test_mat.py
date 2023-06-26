@@ -136,6 +136,13 @@ def test_array_dict_combine_dimensions():
     new = ad.combine_dims((1, 2))
     assert dict(new) == {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
 
+# Test combine dimensions with non contiguous dimensions
+def test_array_dict_combine_dimensions_non_contiguous():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = ArrayDict(**data)
+    new = ad.combine_dims((0, 2))
+    assert dict(new) == {'b': {'a-c': 1, 'a-d': 2, 'a-e': 3}, 'f': {'a-c': 4, 'a-d': 5}}
+
 # Test combine dimensions with arrays
 def test_array_dict_combine_dimensions_with_arrays():
     data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([1, 2, 3])},
