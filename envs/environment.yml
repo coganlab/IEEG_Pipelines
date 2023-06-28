@@ -8,6 +8,7 @@ dependencies:
   - matplotlib
   - scipy
   - scikit-image
+  - cython
   - pandas
   - joblib
   - tqdm
