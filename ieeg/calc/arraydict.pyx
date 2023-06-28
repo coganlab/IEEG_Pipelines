@@ -1,13 +1,14 @@
 import numpy as np
 cimport numpy as np
 from cython.view cimport array as cvarray
+from typing import List
 
 cdef class ArrayDict(dict, np.lib.mixins.NDArrayOperatorsMixin):
     cdef np.ndarray __array
     cdef tuple __all_keys
 
-    def __cinit__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         for k, v in self.items():
             if isinstance(v, dict):
                 self[k] = type(self)(**v)
@@ -23,7 +24,7 @@ cdef class ArrayDict(dict, np.lib.mixins.NDArrayOperatorsMixin):
     @property
     def all_keys(self):
         if self.__all_keys is None:
-            self.__all_keys = self.__all_keys__()
+            self.__all_keys = inner_all_keys(self)
         return self.__all_keys
 
     @property
@@ -66,14 +67,16 @@ cdef class ArrayDict(dict, np.lib.mixins.NDArrayOperatorsMixin):
 
 cdef inner_array(data):
     if isinstance(data, dict):
-        return np.concatenate([cvarray([inner_array(d)])
+        return concatenate_arrays([np.ndarray([inner_array(d)])
                                for d in data.values() if d is not False],
                               axis=0)
     else:
         return data
 
-cdef inner_all_keys(data, list keys, int lvl=0):
-    if isinstance(data, (int, float, str, bool)):
+cdef inner_all_keys(data, list keys=None, int lvl=0):
+    if keys is None:
+        keys = []
+    if isinstance(data, (int, float, str, bool)) or np.isscalar(data):
         return
     elif isinstance(data, dict):
         if len(keys) < lvl + 1:
@@ -81,17 +84,18 @@ cdef inner_all_keys(data, list keys, int lvl=0):
         else:
             keys[lvl] += [k for k in data.keys() if k not in keys[lvl]]
         for d in data.values():
-            inner_all_keys(d, keys, lvl + 1)
+            inner_all_keys(d, keys, lvl+1)
     elif isinstance(data, np.ndarray):
         rows = range(data.shape[0])
-        if len(keys) < lvl + 1:
+        if len(keys) < lvl+1:
             keys.append(list(rows))
         else:
             keys[lvl] += [k for k in rows if k not in keys[lvl]]
         if len(data.shape) > 1:
-            inner_all_keys(data[0], keys, lvl + 1)
+            inner_all_keys(data[0], keys, lvl+1)
     else:
         raise TypeError(f"Unexpected data type: {type(data)}")
+    return tuple(map(tuple, keys))
 
 
 def concatenate_arrays(arrays: list[np.ndarray], axis: int = None) -> np.ndarray:
@@ -128,12 +132,28 @@ def concatenate_arrays(arrays: list[np.ndarray], axis: int = None) -> np.ndarray
 
 
 def get_homogeneous_shapes(arrays):
-    max_ndim = max(ar.ndim for ar in arrays)
+    # Determine the maximum number of dimensions among the input arrays
+    max_dims = max([arr.ndim for arr in arrays])
 
-    shapes = []
-    for ar in arrays:
-        shape = list(ar.shape)
-        shape.extend([1] * (max_ndim - ar.ndim))
-        shapes.append(shape)
+    # Create a list to store the shapes with a homogeneous number of dimensions
+    homogeneous_shapes = []
 
-    return shapes
+    # Iterate over the arrays
+    for arr in arrays:
+        # Get the shape of the array
+        # Handle the case of an empty array
+        if len(arr) == 0:
+            shape = (0,)
+            dims = 1
+        else:
+            shape = arr.shape
+            dims = arr.ndim
+
+        # Pad the shape tuple with additional dimensions if necessary
+        num_dims_to_pad = max_dims - dims
+        shape += (1,) * num_dims_to_pad
+
+        # Add the shape to the list
+        homogeneous_shapes.append(shape)
+
+    return homogeneous_shapes
