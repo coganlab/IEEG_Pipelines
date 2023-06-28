@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from ieeg.calc.mat import ArrayDict, concatenate_arrays, get_homogeneous_shapes
+from ieeg.calc.arraydict import ArrayDict, concatenate_arrays, get_homogeneous_shapes
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [
