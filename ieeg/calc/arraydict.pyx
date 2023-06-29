@@ -1,31 +1,40 @@
+# cython: language_level=3, linetrace=True
 import numpy as np
 cimport numpy as np
-from cython.view cimport array as cvarray
-from typing import List
 
-cdef class ArrayDict(dict, np.lib.mixins.NDArrayOperatorsMixin):
+cdef class _ArrayDict(dict, np.lib.mixins.NDArrayOperatorsMixin):
     cdef np.ndarray __array
     cdef tuple __all_keys
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        cdef str k
+        cdef object v
+        cdef int i
+        cdef double [:] arr
         for k, v in self.items():
             if isinstance(v, dict):
                 self[k] = type(self)(**v)
             elif isinstance(v, np.ndarray):
-                self[k] = type(self)(**{str(i): v[i] for i in range(len(v))})
-
+                if isinstance(v[0], np.ndarray):
+                    self[k] = type(self)(**{str(i): v[i] for i in range(len(v))})
+                else:
+                    arr = v
+                    self[k] = type(self)(
+                        **{str(i): arr[i] for i in range(len(arr))})
     @property
     def array(self):
         if self.__array is None:
             self.__array = self.__array__()
         return self.__array
+        # return inner_array(self)
 
     @property
     def all_keys(self):
         if self.__all_keys is None:
             self.__all_keys = inner_all_keys(self)
         return self.__all_keys
+        # return inner_all_keys(self)
 
     @property
     def shape(self):
@@ -37,43 +46,19 @@ cdef class ArrayDict(dict, np.lib.mixins.NDArrayOperatorsMixin):
     def __all_keys__(self):
         cdef list keys = []
 
-        inner_all_keys(self, keys)
+        return inner_all_keys(self, keys)
 
-        return tuple(map(tuple, keys))
-
-    def combine_dims(self, dims: tuple[int]):
-        dims = sorted(dims)
-        new_data = {}
-        for key_tuple in self.all_keys:
-            value = self
-            for key in key_tuple:
-                value = value[key]
-            new_key_tuple = []
-            new_key = ''
-            for i, key in enumerate(key_tuple):
-                if i in dims:
-                    new_key += f'{key}-'
-                else:
-                    new_key_tuple.append(key)
-            new_key_tuple.append(new_key[:-1])
-            new_data[new_key_tuple[0]] = new_data.get(new_key_tuple[0], {})
-            current_level = new_data[new_key_tuple[0]]
-            for key in new_key_tuple[1:-2]:
-                current_level[key] = current_level.get(key, {})
-                current_level = current_level[key]
-            current_level[new_key_tuple[-2]] = current_level.get(new_key_tuple[-2], {})
-            current_level[new_key_tuple[-2]][new_key_tuple[-1]] = value
-        return ArrayDict(**new_data)
-
-cdef inner_array(data):
+cdef inner_array(object data):
+    cdef double [:] arr
     if isinstance(data, dict):
-        return concatenate_arrays([np.ndarray([inner_array(d)])
+        return concatenate_arrays([np.array([inner_array(d)])
                                for d in data.values() if d is not False],
                               axis=0)
     else:
-        return data
+        arr = memoryview(data)
+        return arr
 
-cdef inner_all_keys(data, list keys=None, int lvl=0):
+cdef inner_all_keys(object data, list keys=None, int lvl=0):
     if keys is None:
         keys = []
     if isinstance(data, (int, float, str, bool)) or np.isscalar(data):
