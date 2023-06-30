@@ -465,24 +465,41 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
     # Default montage positions are in m, whereas plotting functions assume mm
     left = [p * 1000 for k, p in pos.items() if k.startswith('L')]
-    if len(left) != 0:
+    right = [p * 1000 for k, p in pos.items() if k.startswith('R')]
+
+    if left:
         fig.add_foci(np.vstack(left), hemi='lh', color=color,
                      scale_factor=size)
-
-    right = [p * 1000 for k, p in pos.items() if k.startswith('R')]
-    if len(right) != 0:
+    if right:
         fig.add_foci(np.vstack(right), hemi='rh', color=color,
                      scale_factor=size)
 
     if labels_every is not None:
-        if isinstance(picks[0], (int, np.integer)):
-            picks = [info.ch_names[p] for p in picks]
-        names = picks[slice(labels_every - 1, info['nchan'], labels_every)]
+        settings = dict(shape=None, always_visible=True, text_color=(0, 0, 0),
+                        bold=False)
+        _add_labels(fig, info, picks, pos, labels_every, hemi, (left, right),
+                    **settings)
+
+    return fig
+
+
+def _add_labels(fig, info, picks, pos, every, hemi, lr, **kwargs):
+    picks = [info.ch_names[p] for p in picks] if isinstance(picks[0], (
+        int, np.integer)) else picks
+    names = picks[slice(every - 1, info['nchan'], every)]
+
+
+    if hemi == 'split':
+        for hems, positions in zip(range(2), lr):
+            pos = positions[slice(every - 1, info['nchan'], every)]
+            plt_names = [f'{sub}-{n}' for n in names if
+                         n.startswith(['L', 'R'][hems])]
+            fig.plotter.subplot(0, hems)
+            fig.plotter.add_point_labels(pos, plt_names, **kwargs)
+    else:
         plt_names = [f'{sub}-{n}' for n in names]
         positions = np.array([pos[name] for name in names]) * 1000
-        fig.plotter.add_point_labels(positions, plt_names, shape=None,
-                                     always_visible=True)
-    return fig
+        fig.plotter.add_point_labels(positions, plt_names, **kwargs)
 
 
 def subject_to_info(subject: str, subjects_dir: PathLike = None,
@@ -605,10 +622,10 @@ if __name__ == "__main__":
     sub_pad = "D" + str(sub_num).zfill(4)
     sub = "D{}".format(sub_num)
 
-    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-                           extension='.edf', desc='clean', preload=False)
+    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+    #                        extension='.edf', desc='clean', preload=False)
 
     ##
-    brain = plot_subj("D57")
+    brain = plot_subj("D53")
     # plot_on_average(filt)
     # plot_gamma(raw)
