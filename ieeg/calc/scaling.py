@@ -26,7 +26,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 
     Parameters
     ----------
-    data : array
+    data : array | mne.Epochs | mne.EpochsTFR
         It can be of any shape. The only constraint is that the last
         dimension should be time.
     basedata : array
@@ -47,6 +47,8 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
         dividing by the standard deviation of log baseline values ('zlogratio')
     copy : bool, optional
         Whether to return a new instance or modify in place.
+    axis : int or tuple[int], optional
+
 
     Returns
     -------

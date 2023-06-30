@@ -490,6 +490,8 @@ def _add_labels(fig, info, sub, picks, pos, every, hemi, lr, **kwargs):
 
     if hemi == 'split':
         for hems, positions in zip(range(2), lr):
+            if not positions:
+                continue
             pos = positions[slice(every - 1, info['nchan'], every)]
             plt_names = [f'{sub}-{n}' for n in names if
                          n.startswith(['L', 'R'][hems])]
@@ -615,7 +617,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 57
+    sub_num = 59
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
@@ -625,6 +627,6 @@ if __name__ == "__main__":
                            extension='.edf', desc='clean', preload=False)
 
     ##
-    brain = plot_subj("D53")
+    brain = plot_subj(filt)
     # plot_on_average(filt)
     # plot_gamma(raw)

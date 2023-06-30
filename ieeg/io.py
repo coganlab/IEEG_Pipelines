@@ -209,7 +209,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
-        write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
+        write_raw_bids(run, bids_path, allow_preload=True, format='BrainVision',
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
 
 
