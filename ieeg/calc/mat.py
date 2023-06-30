@@ -1,83 +1,5 @@
 import numpy as np
-from ieeg.calc.arraydict import _ArrayDict, concatenate_arrays
-from dataclasses import field
 
-
-class ArrayDict(_ArrayDict):
-    """A homogenous dictionary that can be converted to a numpy array.
-
-     a python dataclass that functions as an N-dimensional matrix with
-     matched word label columns. On the backend, this class stores the data
-     in nested homogenous dictionaries. This class is useful for storing
-     data that is not easily represented in a tabular format.
-
-     Examples
-     --------
-     >>>ar = ArrayDict({'a': {'b': {'c': 1}}})
-     >>>ar.shape
-     (1, 1, 1)
-     >>>ar.all_keys
-     (('a',), ('b',), ('c',))
-     >>>ar.array
-     array([[[1]]])
-     """
-
-    def combine_dims(self, dims: tuple[int, ...], delim: str = '-'
-                     ) -> 'ArrayDict':
-        """Combine the given dimensions into a single dimension.
-
-        Parameters
-        ----------
-        dims : tuple[int, ...]
-            The dimensions to combine.
-        delim : str, optional
-            The delimiter to use between the dimension keys, by default '-'.
-
-        Returns
-        -------
-        ArrayDict
-            The new ArrayDict with the combined dimensions.
-
-        Examples
-        --------
-        >>> data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3},
-        >>>               'f': {'c': 4, 'd': 5}}}
-        >>> ad = ArrayDict(**data)
-        >>> new = ad.combine_dims((1, 2))
-        >>> dict(new)
-        {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
-        >>> new.all_keys
-        (('a'), ('b-c', 'b-d', 'b-e', 'f-c', 'f-d'))
-        >>> new.shape
-        (1, 5)
-
-        """
-
-        combined_dict = ArrayDict()
-        keys = [None] * len(dims)
-
-        def _combine_keys(out: ArrayDict, new_dict: ArrayDict, lvl=0):
-            if isinstance(new_dict, np.ndarray):
-                # turn the array into a dictionary
-                new_dict = dict(**{str(i): v for i, v in enumerate(new_dict)})
-            if lvl == dims[0]:
-                for k, v in new_dict.items():
-                    keys[0] = k
-                    _combine_keys(out, v, lvl+1)
-            elif lvl == dims[-1]:
-                for k, v in new_dict.items():
-                    keys[-1] = k
-                    out[delim.join(keys)] = v
-            else:
-                for k, v in new_dict.items():
-                    if lvl in dims:
-                        keys[dims.index(lvl)] = k
-                    else:
-                        out.setdefault(k, ArrayDict())
-                    _combine_keys(out[k], v, lvl+1)
-
-        _combine_keys(combined_dict, self)
-        return combined_dict
 
 
 class LabeledArray(np.ndarray):
@@ -96,10 +18,6 @@ class LabeledArray(np.ndarray):
                 labels.append(tuple(range(obj.shape[i])))
         obj.labels = tuple(labels)
         return obj
-
-    def __array_finalize__(self, obj):
-        if obj is None: return
-        self.labels = getattr(obj, 'labels', None)
 
     @classmethod
     def from_dict(cls, data: dict) -> 'LabeledArray':
@@ -122,76 +40,73 @@ class LabeledArray(np.ndarray):
         keys = inner_all_keys(data)
         return cls(arr, keys)
 
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.labels = getattr(obj, 'labels', None)
+
+    def dropna(self) -> 'LabeledArray':
+        new_labels = list(self.labels)
+        idx = []
+        for i in range(self.ndim):
+            axes = tuple(j for j in range(self.ndim) if j != i)
+            mask = np.all(np.isnan(np.array(self)), axis=axes)
+            if np.any(mask):
+                new_labels[i] = tuple(np.array(new_labels[i])[~mask])
+            idx.append(~mask)
+        index = np.ix_(*idx)
+        new_array = LabeledArray(np.array(self)[index], new_labels)
+        return new_array
+
     @property
     def label_map(self) -> tuple[dict[str: int, ...], ...]:
         """maps the labels to the indices of the array."""
         return tuple({l: i for i, l in enumerate(labels)}
                      for labels in self.labels)
 
-    def __getitem__(self, key):
-        match key:
-            case tuple():
-                if len(key) == 1:
-                    key = key[0]
-                else:
-                    key = tuple(self.label_map[i][k] for i, k in enumerate(key))
-            case str():
-                i = 0
-                while key not in self.labels[i]:
-                    i += 1
-                    if i > self.ndim:
-                        raise KeyError(f'{key} not found in labels')
-                key = self.label_map[i][key]
-        return super().__getitem__(key)
+    def _str_parse(self, *keys) -> tuple[int, int]:
+        for key in keys:
+            match key:
+                case list() | tuple():
+                    key = list(key)
+                    while key:
+                        for value in self._str_parse(key.pop(0)):
+                            yield value
+                case str():
+                    i = 0
+                    while key not in self.labels[i]:
+                        i += 1
+                        if i > self.ndim:
+                            raise KeyError(f'{key} not found in labels')
+                    key = self.label_map[i][key]
+                    yield i, key
+                case _:
+                    yield 0, key
+
+    def __getitem__(self, *keys):
+        dim, keys = zip(*self._str_parse(*keys))
+        out = super(LabeledArray, self).__getitem__(*keys)
+        if isinstance(out, np.ndarray):
+            new_labels = list(self.labels)
+            for d in set(dim):
+                new_labels.pop(d)
+            setattr(out, 'labels', tuple(new_labels))
+            # out = out.dropna()
+        return out
 
     def __setitem__(self, key, value):
-        match key:
-            case tuple():
-                if len(key) == 1:
-                    key = key[0]
-                else:
-                    key = tuple(self.label_map[i][k] for i, k in enumerate(key))
-            case str():
-                i = 0
-                while key not in self.labels[i]:
-                    i += 1
-                    if i > self.ndim:
-                        raise KeyError(f'{key} not found in labels')
-                key = self.label_map[i][key]
-        return super().__setitem__(key, value)
-
-    def __contains__(self, key):
-        match key:
-            case tuple():
-                if len(key) == 1:
-                    key = key[0]
-                else:
-                    key = tuple(self.label_map[i][k] for i, k in enumerate(key))
-            case str():
-                i = 0
-                while key not in self.labels[i]:
-                    i += 1
-                    if i > self.ndim:
-                        return False
-                key = self.label_map[i][key]
-        return super().__contains__(key)
+        dim, num_key = self._str_parse(key)
+        if key not in self.labels[dim]:
+            self.labels[dim] += (key,)
+        super(LabeledArray, self).__setitem__(num_key, value)
 
     def __delitem__(self, key):
-        match key:
-            case tuple():
-                if len(key) == 1:
-                    key = key[0]
-                else:
-                    key = tuple(self.label_map[i][k] for i, k in enumerate(key))
-            case str():
-                i = 0
-                while key not in self.labels[i]:
-                    i += 1
-                    if i > self.ndim:
-                        raise KeyError(f'{key} not found in labels')
-                key = self.label_map[i][key]
-                self.labels[i].pop(key)
-        return super().__delitem__(key)
+        dim, num_key = self._str_parse(key)
+        if key in self.labels[dim]:
+            self.labels = list(self.labels)
+            self.labels[dim] = tuple(l for l in self.labels[dim]
+                                     if l != key)
+            self.labels = tuple(self.labels)
+        super(LabeledArray, self).__delitem__(key)
 
     def __repr__(self):
         """Display like a dictionary with labels as keys"""
@@ -215,6 +130,57 @@ class LabeledArray(np.ndarray):
 
     def values(self):
         return (a for a in self)
+
+    def combine_dims(self, dims: tuple[int, ...],
+                     delim: str = '-') -> 'LabeledArray':
+        """Combine the given dimensions into a single dimension.
+        Parameters
+        ----------
+        dims : tuple[int, ...]
+            The dimensions to combine.
+        delim : str, optional
+            The delimiter to use between the dimension labels, by default '-'.
+        Returns
+        -------
+        LabeledArray
+            The new LabeledArray with the combined dimensions.
+        """
+
+        # Create a new LabeledArray with the same data as the current instance
+        new = self.copy()
+
+        # Sort the dimensions in descending order to avoid changing the indices of
+        # dimensions that have not been processed yet
+        dims = sorted(dims, reverse=True)
+
+        # Iterate over the dimensions to combine
+        for dim in dims:
+            # Create a new list of labels for the current dimension by joining the labels
+            # of the current and next dimensions with the specified delimiter
+            new_labels = [f'{l}{delim}{ll}' for l in new.labels[dim] for ll in
+                          new.labels[dim + 1]]
+
+            # Update the labels attribute of the new LabeledArray by replacing the labels
+            # of the current and next dimensions with the new list of labels
+            labels = list(new.labels)
+            labels[dim] = new_labels
+            labels.pop(dim + 1)
+            new.labels = tuple(labels)
+
+            # Update the shape attribute of the new LabeledArray by multiplying the sizes
+            # of the current and next dimensions and removing the size of the next dimension
+            shape = list(new.shape)
+            shape[dim] *= shape[dim + 1]
+            shape.pop(dim + 1)
+            new.shape = tuple(shape)
+
+            # Update the data attribute of the new LabeledArray by combining the data along
+            # the current and next dimensions using np.reshape
+            data = np.reshape(new,
+                              new.shape[:dim] + (-1,) + new.shape[dim + 2:])
+            new = LabeledArray(data, labels=new.labels)
+
+        return new
 
 
 
@@ -438,6 +404,8 @@ if __name__ == "__main__":
                                  [5, 6, 7], [8, 9, 10]]))
     outs = concatenate_arrays(ins, axis)
     ar = LabeledArray.from_dict(dict(a=ins[1], b=ins[2]))
+    x = ar["a"]
+    y = ar.to_dict()
     conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
              "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
              "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
@@ -451,3 +419,5 @@ if __name__ == "__main__":
     data = LabeledArray.from_dict(dict(
         power=load_dict(layout, conds, "power", False),
         zscore=load_dict(layout, conds, "zscore", False)))
+
+    power = data["power"]
