@@ -181,7 +181,7 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
 @fill_doc
 @verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
-                    overwrite: bool = False, verbose=None):
+                    overwrite: bool = False, format: str = 'EDF', verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
@@ -209,7 +209,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
-        write_raw_bids(run, bids_path, allow_preload=True, format='BrainVision',
+        write_raw_bids(run, bids_path, allow_preload=True, format=format,
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
 
 
