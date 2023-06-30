@@ -477,17 +477,16 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if labels_every is not None:
         settings = dict(shape=None, always_visible=True, text_color=(0, 0, 0),
                         bold=False)
-        _add_labels(fig, info, picks, pos, labels_every, hemi, (left, right),
-                    **settings)
+        _add_labels(fig, info, sub, picks, pos, labels_every, hemi,
+                    (left, right), **settings)
 
     return fig
 
 
-def _add_labels(fig, info, picks, pos, every, hemi, lr, **kwargs):
+def _add_labels(fig, info, sub, picks, pos, every, hemi, lr, **kwargs):
     picks = [info.ch_names[p] for p in picks] if isinstance(picks[0], (
         int, np.integer)) else picks
     names = picks[slice(every - 1, info['nchan'], every)]
-
 
     if hemi == 'split':
         for hems, positions in zip(range(2), lr):
@@ -620,10 +619,10 @@ if __name__ == "__main__":
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
-    sub = "D{}".format(sub_num)
+    # sub = "D{}".format(sub_num)
 
-    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-    #                        extension='.edf', desc='clean', preload=False)
+    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+                           extension='.edf', desc='clean', preload=False)
 
     ##
     brain = plot_subj("D53")
