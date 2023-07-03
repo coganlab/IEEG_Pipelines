@@ -147,7 +147,7 @@ def proc_array(func: callable, arr_in: np.ndarray,
     array_gen = list(arr_in[indices] for indices in cross_sect_ind)
     # array_gen = tqdm(array_gen, desc=desc, total=len(cross_sect_ind))
 
-    gen = Parallel(n_jobs, return_generator=True, verbose=40)(
+    gen = Parallel(n_jobs, return_as='generator', verbose=40)(
         delayed(func)(x_) for x_ in array_gen)
 
     # Create process pool and apply the function in parallel
