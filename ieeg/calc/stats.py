@@ -282,7 +282,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         out = np.zeros(out_shape, dtype=int)
         ins = ((np.squeeze(sig1[:, i]), np.squeeze(sig2[:, i])) for i in
                np.ndindex(tuple(sig1.shape[j] for j in ignore_adjacency)))
-        proc = Parallel(n_jobs, return_generator=True, verbose=40)(
+        proc = Parallel(n_jobs, return_as='generator', verbose=40)(
             delayed(time_perm_cluster)(
                 *i, p_thresh=p_thresh, p_cluster=p_cluster, n_perm=n_perm,
                 tails=tails, axis=axis, stat_func=stat_func) for i in ins)
