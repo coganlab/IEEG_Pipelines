@@ -1,6 +1,32 @@
 import numpy as np
 
 
+def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
+    """Iterate over a nested dictionary, yielding the key and value.
+
+    Parameters
+    ----------
+    d : dict
+        The dictionary to iterate over.
+    _lvl : int, optional
+        The current level of nesting, by default 0
+    _coords : tuple, optional
+        The current coordinates of the array, by default ()
+
+    Yields
+    ------
+    tuple
+        The key and value of the dictionary.
+    """
+    for k, v in d.items():
+        if isinstance(v, dict):
+            yield from iter_nest_dict(v, _lvl + 1, _coords + (k,))
+        elif isinstance(v, np.ndarray):
+            yield from iter_nest_dict({i: val for i, val in enumerate(v)
+                                       }, _lvl + 1, _coords + (k,))
+        else:
+            yield _coords + (k,), v
+
 
 class LabeledArray(np.ndarray):
     """ A numpy array with labeled dimensions, acting like a dictionary.
@@ -131,9 +157,10 @@ class LabeledArray(np.ndarray):
     def values(self):
         return (a for a in self)
 
-    def combine_dims(self, dims: tuple[int, ...],
-                     delim: str = '-') -> 'LabeledArray':
+    def combine_dims(self, dims: tuple[int, ...], delim: str = '-'
+                     ) -> 'LabeledArray':
         """Combine the given dimensions into a single dimension.
+
         Parameters
         ----------
         dims : tuple[int, ...]
@@ -149,33 +176,36 @@ class LabeledArray(np.ndarray):
         # Create a new LabeledArray with the same data as the current instance
         new = self.copy()
 
-        # Sort the dimensions in descending order to avoid changing the indices of
-        # dimensions that have not been processed yet
+        # Sort the dimensions in descending order to avoid changing the indices
+        # of dimensions that have not been processed yet
         dims = sorted(dims, reverse=True)
 
         # Iterate over the dimensions to combine
         for dim in dims:
-            # Create a new list of labels for the current dimension by joining the labels
-            # of the current and next dimensions with the specified delimiter
+            # Create a new list of labels for the current dimension by joining
+            # the labels of the current and next dimensions with the specified
+            # delimiter
             new_labels = [f'{l}{delim}{ll}' for l in new.labels[dim] for ll in
                           new.labels[dim + 1]]
 
-            # Update the labels attribute of the new LabeledArray by replacing the labels
-            # of the current and next dimensions with the new list of labels
+            # Update the labels attribute of the new LabeledArray by replacing
+            # the labels of the current and next dimensions with the new list
+            # of labels
             labels = list(new.labels)
             labels[dim] = new_labels
             labels.pop(dim + 1)
             new.labels = tuple(labels)
 
-            # Update the shape attribute of the new LabeledArray by multiplying the sizes
-            # of the current and next dimensions and removing the size of the next dimension
+            # Update the shape attribute of the new LabeledArray by multiplying
+            # the sizes of the current and next dimensions and removing the
+            # size of the next dimension
             shape = list(new.shape)
             shape[dim] *= shape[dim + 1]
             shape.pop(dim + 1)
             new.shape = tuple(shape)
 
-            # Update the data attribute of the new LabeledArray by combining the data along
-            # the current and next dimensions using np.reshape
+            # Update the data attribute of the new LabeledArray by combining
+            # the data along the current and next dimensions using np.reshape
             data = np.reshape(new,
                               new.shape[:dim] + (-1,) + new.shape[dim + 2:])
             new = LabeledArray(data, labels=new.labels)
@@ -183,25 +213,24 @@ class LabeledArray(np.ndarray):
         return new
 
 
-
 def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     if keys is None:
         keys = []
-    if isinstance(data, (int, float, str, bool)) or np.isscalar(data):
+    if np.isscalar(data):
         return
     elif isinstance(data, dict):
         if len(keys) < lvl + 1:
-            keys.append(list(data.keys()))
+            keys.append(set(data.keys()))
         else:
-            keys[lvl] += [k for k in data.keys() if k not in keys[lvl]]
+            keys[lvl] = set(data.keys()) | keys[lvl]
         for d in data.values():
             inner_all_keys(d, keys, lvl+1)
     elif isinstance(data, np.ndarray):
         rows = range(data.shape[0])
         if len(keys) < lvl+1:
-            keys.append(list(rows))
+            keys.append(set(rows))
         else:
-            keys[lvl] += [k for k in rows if k not in keys[lvl]]
+            keys[lvl] = set(rows) | keys[lvl]
         if len(data.shape) > 1:
             inner_all_keys(data[0], keys, lvl+1)
     else:
@@ -223,12 +252,15 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
 
 def inner_dict(data: np.ndarray) -> dict | None:
     """Convert a nested array to a nested dictionary."""
-    if len(data) == 0:
+    if np.isscalar(data):
+        return data
+    elif len(data) == 0:
         return
-    elif isinstance(data, LabeledArray):
+    elif isinstance(data, np.ndarray):
         return {i: inner_dict(d) for i, d in enumerate(data)}
     else:
         return data
+
 
 def concatenate_arrays(arrays: list[np.ndarray], axis: int = None
                        ) -> np.ndarray:
@@ -416,8 +448,18 @@ if __name__ == "__main__":
 
     mne.set_log_level("ERROR")
 
-    data = LabeledArray.from_dict(dict(
-        power=load_dict(layout, conds, "power", False),
-        zscore=load_dict(layout, conds, "zscore", False)))
+    # data = LabeledArray.from_dict(dict(
+    #     power=load_dict(layout, conds, "power", False),
+    #     zscore=load_dict(layout, conds, "zscore", False)))
 
-    power = data["power"]
+    dict_data = dict(
+        power=load_dict(layout, conds, "power", False),
+        zscore=load_dict(layout, conds, "zscore", False))
+
+    keys = inner_all_keys(dict_data)
+
+    data = LabeledArray.from_dict(dict_data)
+
+    # data = SparseArray(dict_data)
+
+    # power = data["power"]
