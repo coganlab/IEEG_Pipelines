@@ -104,9 +104,9 @@ def is_number(s) -> bool:
         return False
 
 
-def proc_array(func: callable, arr_in: np.ndarray,
-               axes: int | tuple[int] = 0, n_jobs: int = None,
-               desc: str = "Slices", inplace: bool = True) -> np.ndarray:
+def proc_array(func: callable, arr_in: np.ndarray, axes: int | tuple[int] = 0,
+               n_jobs: int = None, desc: str = "Slices", inplace: bool = True,
+               **kwargs) -> np.ndarray:
     """Execute a function in parallel over slices of an array
 
     Parameters
@@ -148,7 +148,7 @@ def proc_array(func: callable, arr_in: np.ndarray,
     # array_gen = tqdm(array_gen, desc=desc, total=len(cross_sect_ind))
 
     gen = Parallel(n_jobs, return_as='generator', verbose=40)(
-        delayed(func)(x_) for x_ in array_gen)
+        delayed(func)(x_, **kwargs) for x_ in array_gen)
 
     # Create process pool and apply the function in parallel
     for out, ind in zip(gen, cross_sect_ind):
