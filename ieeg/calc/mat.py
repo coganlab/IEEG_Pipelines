@@ -239,7 +239,9 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
 
 
 def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
-    if len(data) == 0:
+    if np.isscalar(data):
+        return data
+    elif len(data) == 0:
         return
     elif isinstance(data, dict):
         arr = (inner_array(d) for d in data.values())
@@ -260,6 +262,45 @@ def inner_dict(data: np.ndarray) -> dict | None:
         return {i: inner_dict(d) for i, d in enumerate(data)}
     else:
         return data
+
+
+def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
+    """Combine any levels of a nested dict into the lower level
+
+    Takes the input nested dict and rearranges the top and bottom
+    sub-dictionary.
+
+    Parameters
+    data: dict
+        The nested dict to combine
+    levels: tuple[int, int]
+        The levels to combine, e.g. (0, 1) will combine the 1st and 2nd level
+        of the dict keys into one level at the 2nd level.
+
+    Returns
+    dict
+        The combined dict
+
+    Examples
+    >>> data = {'a': {'b': {'c': 1}}}
+    >>> combine(data, (0, 2))
+    {'b' {'a-c': 1}}
+
+    >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
+    >>> combine(data, (0, 2))
+    {'b' {'a-c': 1, 'd-c': 2, 'd-e': 3}}
+    """
+
+    assert levels[0] < levels[1], "levels must be in ascending order"
+
+    out = dict()
+    for key, val in data.items():
+        if isinstance(val, dict):
+            out.update(combine(val, levels))
+        else:
+            new_key = delim.join([key] + list(val.keys())[levels[0]:levels[1]])
+            out[new_key] = list(val.values())[levels[0]:levels[1]]
+    return out
 
 
 def concatenate_arrays(arrays: list[np.ndarray], axis: int = None

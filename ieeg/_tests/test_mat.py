@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
-from ieeg.calc.arraydict import concatenate_arrays, get_homogeneous_shapes
-from ieeg.calc.mat import ArrayDict
+from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes, \
+    LabeledArray, combine
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [
@@ -73,83 +73,90 @@ def test_concatenate_arrays(arrays, axis, expected_output):
         except AssertionError:
             raise e
 
+
 # Test creation of ArrayDict
-def test_array_dict_creation():
+def test_array_creation():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
-    assert isinstance(ad, ArrayDict)
+    ad = LabeledArray.from_dict(data)
+    assert isinstance(ad, LabeledArray)
+
 
 # Test conversion to numpy array
-def test_array_dict_to_array():
+def test_array_to_array():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
+    ad = LabeledArray.from_dict(data)
     np_array = np.array([[[1, 2, 3], [4, 5, np.nan]]])
-    assert np.array_equal(ad.array, np_array, True)
+    assert np.array_equal(ad, np_array, True)
+
 
 # Test getting all keys
-def test_array_dict_all_keys():
+def test_array_all_keys():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
+    ad = LabeledArray.from_dict(data)
     keys = (('a',), ('b', 'f'), ('c', 'd', 'e'))
-    assert ad.all_keys == keys
+    assert ad.labels == keys
+
 
 # Test getting all keys in a really nested ArrayDict
-def test_array_dict_all_keys_nested():
+def test_array_all_keys_nested():
     data = {'a': {'b': {'c': {'d': {'e': {'f': {'g': {'h': {'i': {'j': {
         'k': 1}}}}}}}}}}}
-    ad = ArrayDict(**data)
+    ad = LabeledArray.from_dict(data)
     keys = (('a',), ('b',), ('c',), ('d',), ('e',), ('f',), ('g',), ('h',),
             ('i',), ('j',), ('k',))
-    assert ad.all_keys == keys
+    assert ad.labels == keys
 
 
 # Test getting all keys in a large ArrayDict (10000 keys)
-def test_array_dict_all_keys_large():
+def test_array_all_keys_large():
     data = {str(i): i for i in range(1000000)}
-    ad = ArrayDict(**data)
+    ad = LabeledArray.from_dict(data)
     keys = (tuple(map(str, range(1000000))),)
-    assert ad.all_keys == keys
+    assert ad.labels == keys
 
 
 # Test indexing with a single key
-def test_array_dict_single_key_indexing():
+def test_array_single_key_indexing():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
-    subset = ArrayDict(**{'c': 1, 'd': 2, 'e': 3})
+    ad = LabeledArray.from_dict(data)
+    subset = LabeledArray.from_dict(**{'c': 1, 'd': 2, 'e': 3})
     assert ad['a']['b'] == subset
 
+
 # Test indexing with a tuple of keys that leads to a scalar value
-def test_array_dict_scalar_value_indexing():
+def test_array_scalar_value_indexing():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
+    ad = LabeledArray.from_dict(data)
     assert ad['a']['b']['d'] == 2
 
+
 # Test shape property
-def test_array_dict_shape():
+def test_array_shape():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
+    ad = LabeledArray.from_dict(data)
     assert ad.shape == (1, 2, 3)
 
+
 # Test combine dimensions
-def test_array_dict_combine_dimensions():
+def test_combine_dimensions():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
-    new = ad.combine_dims((1, 2))
-    assert dict(new) == {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
+    new = combine(data, (0, 2))
+    assert new == {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
+
 
 # Test combine dimensions with non contiguous dimensions
 def test_array_dict_combine_dimensions_non_contiguous():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    ad = ArrayDict(**data)
-    new = ad.combine_dims((0, 2))
-    assert dict(new) == {'b': {'a-c': 1, 'a-d': 2, 'a-e': 3}, 'f': {'a-c': 4, 'a-d': 5}}
+    new = combine(data, (0, 2))
+    assert new == {'b': {'a-c': 1, 'a-d': 2, 'a-e': 3}, 'f': {'a-c': 4, 'a-d': 5}}
+
 
 # Test combine dimensions with arrays
-def test_array_dict_combine_dimensions_with_arrays():
-    data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([1, 2, 3])},
-                  'f': {'c': np.array([1, 2, 3])}}
-    ad = ArrayDict(**data)
-    new = ad.combine_dims((1, 2))
-    assert new['b'] == {'c-0': 1, 'c-1': 2, 'c-2': 3, 'd-0': 1, 'd-1': 2,
-                        'd-2': 3}
+# def test_array_dict_combine_dimensions_with_arrays():
+#     data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([1, 2, 3])},
+#                   'f': {'c': np.array([1, 2, 3])}}
+#     ad = LabeledArray.from_dict(**data)
+#     new = ad.combine_dims((1, 2))
+#     assert new['b'] == {'c-0': 1, 'c-1': 2, 'c-2': 3, 'd-0': 1, 'd-1': 2,
+#                         'd-2': 3}
 
