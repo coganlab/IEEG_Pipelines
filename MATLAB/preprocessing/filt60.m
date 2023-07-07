@@ -1,3 +1,4 @@
+function ieegfilt = filt60(ieeg, fs)
 % filt60 - Apply a notch filter at 60 Hz to remove power line interference.
 %
 % Syntax: ieegfilt = filt60(ieeg, fs)
@@ -14,9 +15,6 @@
 %   fs = 1000; % Sampling frequency of 1000 Hz
 %   filteredSignal = filt60(ieegSignal, fs);
 %
-
-
-function ieegfilt = filt60(ieeg, fs)
     f60 = 60; % Power line frequency
     q = 10; % Quality factor
     bw = (f60 / (fs/2)) / q; % bandwidth

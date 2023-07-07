@@ -1,3 +1,4 @@
+function locs = extractTriggerOnset(trigger, fs)
 % extractTriggerOnset - Extracts trigger onset locations from a signal.
 %
 % Syntax: locs = extractTriggerOnset(trigger, fs)
@@ -9,10 +10,6 @@
 % Output:
 %   locs    - Array of trigger onset locations (in seconds)
 %
-
-
-
-function locs = extractTriggerOnset(trigger, fs)
     time = [0:length(trigger)-1]./fs;
     
     % Plot the trigger signal

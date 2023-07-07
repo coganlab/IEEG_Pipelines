@@ -1,3 +1,6 @@
+
+
+function [XMatrix, YMatrix, XMatCell, YMatCell, YMatChanCell] = dataProcessorStrfNoLag(WMel, SMellog, ieeg)
 % dataProcessorStrfNoLag - Process data for STRF analysis without time lag.
 %
 % Syntax: [XMatrix, YMatrix, XMatCell, YMatCell, YMatChanCell] = dataProcessorStrfNoLag(WMel, SMellog, ieeg)
@@ -14,9 +17,7 @@
 %   YMatCell    - Cell array of output matrices for each trial (1 x #trials)
 %   YMatChanCell- Cell array of output matrices for each channel within each trial (#trials x #channels)
 %
-
-
-function [XMatrix, YMatrix, XMatCell, YMatCell, YMatChanCell] = dataProcessorStrfNoLag(WMel, SMellog, ieeg)
+    
     % Initialize variables for storing matrices
     XMatrix = [];
     YMatrix = [];

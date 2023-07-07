@@ -1,3 +1,4 @@
+function goodTrialsCommon = extractCommonTrials(goodTrials)
 % extractCommonTrials - Extracts the common trials from multiple sets of good trials.
 %
 % Syntax: goodTrialsCommon = extractCommonTrials(goodTrials)
@@ -15,9 +16,6 @@
 %   goodTrials = {goodTrials1, goodTrials2, goodTrials3};
 %   goodTrialsCommon = extractCommonTrials(goodTrials);
 %
-
-
-function goodTrialsCommon = extractCommonTrials(goodTrials)
     % Initialize the common trials with the first set of good trials
     goodTrialsCommon = goodTrials{1};
     

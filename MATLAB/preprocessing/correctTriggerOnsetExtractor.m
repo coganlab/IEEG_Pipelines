@@ -1,3 +1,4 @@
+function [trigOnsUpdate, micSplitNew] = correctTriggerOnsetExtractor(trigOns, timitPath, audioPathUsed, micSplit, fsMic)
 % correctTriggerOnsetExtractor - Correct trigger onset extraction using audio alignment.
 %
 % Syntax: [trigOnsUpdate, micSplitNew] = correctTriggerOnsetExtractor(trigOns, timitPath, audioPathUsed, micSplit, fsMic)
@@ -20,11 +21,9 @@
 %   micSplit = [mic1; mic2; mic3]; % matrix of microphone split signals
 %   fsMic = 44100;
 %   [trigOnsUpdate, micSplitNew] = correctTriggerOnsetExtractor(trigOns, timitPath, audioPathUsed, micSplit, fsMic);
-%
+%   
 
-
-function [trigOnsUpdate, micSplitNew] = correctTriggerOnsetExtractor(trigOns, timitPath, audioPathUsed, micSplit, fsMic)
-    % Initialize variables for storing microphone delays and updated trigger onsets
+% Initialize variables for storing microphone delays and updated trigger onsets
     micDel = [];
     trigOnsUpdate = zeros(1, length(trigOns));
     micSplitNew = [];

@@ -1,3 +1,5 @@
+function [XMatrix, YMatrix] = dataProcessorStrf(SMel, ieeg, fsIeeg, lag)
+
 % dataProcessorStrf - Process data for spectrotemporal receptive field (STRF) analysis.
 %
 % Syntax: [XMatrix, YMatrix] = dataProcessorStrf(SMel, ieeg, fsIeeg, lag)
@@ -12,8 +14,6 @@
 %   XMatrix - Input matrix for STRF analysis (samples x frequency x lag)
 %   YMatrix - Output matrix for STRF analysis (samples x channels)
 
-
-function [XMatrix, YMatrix] = dataProcessorStrf(SMel, ieeg, fsIeeg, lag)
     % Initialize variables for storing input and output matrices
     XMatrix = [];
     YMatrix = [];

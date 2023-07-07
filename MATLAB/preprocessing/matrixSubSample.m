@@ -1,3 +1,4 @@
+function matrixPoints = matrixSubSample(chanMap, window, isOverlap)
 % matrixSubSample - Subsample a matrix by dividing it into smaller windowed segments.
 %
 % Syntax: matrixPoints = matrixSubSample(chanMap, window, isOverlap)
@@ -16,8 +17,6 @@
 %   overlap = 1; % Use overlapping windows
 %   subsampledMatrix = matrixSubSample(chanMatrix, windowSize, overlap);
 %
-
-function matrixPoints = matrixSubSample(chanMap, window, isOverlap)
     [m, n] = size(chanMap);
     mWindow = window(1);
     nWindow = window(2);

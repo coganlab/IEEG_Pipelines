@@ -1,3 +1,4 @@
+function ieegfilt = filtHarmInd(ieeg, fs, fFilt)
 % filtHarmInd - Apply a bandstop filter to remove a specific frequency component from an IEEG signal.
 %
 % Syntax: ieegfilt = filtHarmInd(ieeg, fs, fFilt)
@@ -16,8 +17,6 @@
 %   fFilt = 60; % Frequency component to filter (in Hz)
 %   filteredSignal = filtHarmInd(ieegSignal, fs, fFilt);
 
-
-function ieegfilt = filtHarmInd(ieeg, fs, fFilt)
     % Create a bandstop filter to remove the specified frequency component
     d = designfilt('bandstopiir', 'FilterOrder', 20, ...
                    'HalfPowerFrequency1', fFilt-1, 'HalfPowerFrequency2', fFilt+1, ...
