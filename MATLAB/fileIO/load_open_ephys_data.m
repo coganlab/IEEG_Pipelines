@@ -1,6 +1,5 @@
 function [data, timestamps, info] = load_open_ephys_data(filename)
 
-%
 % [data, timestamps, info] = load_open_ephys_data(filename)
 %
 %   Loads continuous, event, or spike data files into Matlab.

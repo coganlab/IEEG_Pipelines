@@ -1,5 +1,4 @@
 function [amplifier_data,board_adc_data,t_amplifier] = read_Intan_RHD2000_file_path_update(path,fileID,channel)
-
 % read_Intan_RHD2000_file_path_date
 % Update made by Kumar to read specific channels
 % 
