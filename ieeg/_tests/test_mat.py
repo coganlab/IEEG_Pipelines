@@ -111,7 +111,6 @@ def test_array_all_keys_nested():
 def test_array_all_keys_large():
     data = {str(i): i for i in range(100000)}
     ad = LabeledArray.from_dict(data)
-    # keys = (tuple(map(str, range(100000))),)
     labels = set(ad.labels[0])
     assert labels == set(map(str, range(100000)))
 

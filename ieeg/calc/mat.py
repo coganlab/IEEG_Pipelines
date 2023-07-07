@@ -1,5 +1,5 @@
 import numpy as np
-
+from collections.abc import Iterable
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
     """Iterate over a nested dictionary, yielding the key and value.
@@ -141,7 +141,7 @@ class LabeledArray(np.ndarray):
             if size < 1024.0 or unit == 'PiB':
                 break
             size /= 1024.0
-        return f'LabeledArray({super(LabeledArray, self).__repr__()}, ' \
+        return f'LabeledArray({super().__repr__()}, ' \
                f'labels={self.labels}) ~{size:.2f} {unit}'
 
     def to_dict(self) -> dict:
@@ -219,6 +219,12 @@ class LabeledArray(np.ndarray):
         return new
 
 
+def add_to_list_if_not_present(lst: list, element: Iterable):
+    seen = set()
+    seen_add = seen.add
+    lst.extend(x for x in element if not (x in seen or seen_add(x)))
+
+
 def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     if keys is None:
         keys = []
@@ -226,17 +232,17 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         return
     elif isinstance(data, dict):
         if len(keys) < lvl + 1:
-            keys.append(set(data.keys()))
+            keys.append(list(data.keys()))
         else:
-            keys[lvl] |= set(data.keys())
+            add_to_list_if_not_present(keys[lvl], data.keys())
         for d in data.values():
             inner_all_keys(d, keys, lvl+1)
     elif isinstance(data, np.ndarray):
         rows = range(data.shape[0])
         if len(keys) < lvl+1:
-            keys.append(set(rows))
+            keys.append(list(rows))
         else:
-            keys[lvl] |= set(rows)
+            add_to_list_if_not_present(keys[lvl], rows)
         if len(data.shape) > 1:
             inner_all_keys(data[0], keys, lvl+1)
     else:
