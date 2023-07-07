@@ -1,15 +1,15 @@
 function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTrial(ieegHGStruct, trialInfoStruct)
-    % Combines channels with maximum number of trials for each token.
+    % Combines channels with maximum trials for a specific token across subjects.
     %
-    % Input:
-    % ieegHGStruct: Struct array containing ephys data for each subject.
-    % trialInfoStruct: Struct array containing trial information for each subject.
+    % Arguments:
+    % - ieegHGStruct: Array of structures containing ephys data for each subject.
+    % - trialInfoStruct: Array of structures containing trial information for each subject.
     %
-    % Output:
-    % ieegStructAll: Combined ephys data.
-    % phonemeTrialAll: Combined trial information.
-    % channelNameAll: Combined channel names.
-
+    % Returns:
+    % - ieegStructAll: Combined ephys data structure with pooled channels.
+    % - phonemeTrialAll: Combined trial information for all tokens.
+    % - channelNameAll: Cell array of channel names from all subjects.
+    
     % Get the ephys data of the first subject
     ieegHGStructDummy = ieegHGStruct(1).ieegHGNorm;
     
@@ -25,7 +25,7 @@ function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTr
     % Find the token with the maximum number of unique occurrences across subjects
     for iSubject = 1:length(trialInfoStruct)
         uniqueTokenTemp = unique(trialInfoStruct(iSubject).phonemeTrial.tokenName);
-        if (length(uniqueTokenTemp) > length(uniqueToken))
+        if length(uniqueTokenTemp) > length(uniqueToken)
             uniqueToken = uniqueTokenTemp;
             subject2choose = iSubject;
         end
@@ -46,7 +46,7 @@ function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTr
         
         % Find the subject with the maximum number of repeats for the current token
         [maxRepeat, maxRepeatId] = max(numRepeats);
-        disp(['Number of maximum repeats : ' num2str(maxRepeat)])
+        disp(['Number of maximum repeats: ' num2str(maxRepeat)])
         
         % Extract trial information for the current token
         syllableToken = trialInfoStruct(maxRepeatId).phonemeTrial.syllableUnit(repeatIds{maxRepeatId}(1:maxRepeat), :);
@@ -62,7 +62,7 @@ function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTr
             repeatIdsShuffle = shuffle(repeatIds{iSubject});
             dataTemp = ieegHGStruct(iSubject).ieegHGNorm.data(:, repeatIdsShuffle, :);
             
-            if (maxRepeat - length(repeatIdsShuffle) > 0)
+            if maxRepeat - length(repeatIdsShuffle) > 0
                 numtrials2zeropad = maxRepeat - length(repeatIdsShuffle);
                 dataTemp = cat(2, dataTemp, zeros(size(dataTemp, 1), numtrials2zeropad, size(dataTemp, 3)));
                 totalzeropad = totalzeropad + numtrials2zeropad;
@@ -71,7 +71,7 @@ function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTr
             dataToken = cat(1, dataToken, dataTemp);
         end
         
-        disp(['Number of zero padded trials : ' num2str(totalzeropad)])
+        disp(['Number of zero padded trials: ' num2str(totalzeropad)])
         
         % Append the trial information and ephys data for the current token
         phonemeTrialAll.syllableUnit = cat(1, phonemeTrialAll.syllableUnit, syllableToken);

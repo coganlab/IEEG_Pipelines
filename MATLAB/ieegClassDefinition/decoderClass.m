@@ -1,4 +1,5 @@
 classdef decoderClass
+    % Class for decoder operations
     
     properties
         numFold double = 20 % Number of folds for cross-validation
@@ -13,7 +14,7 @@ classdef decoderClass
             %   numFold: Number of folds for cross-validation
             %   varExplained: Variance explained threshold
             %   nIter: Number of iterations
-           
+            
             obj.numFold = numFold;
             obj.varExplained = varExplained;      
             obj.nIter = nIter;     
@@ -57,12 +58,12 @@ classdef decoderClass
             %   Returns decodeResultStruct with classification results
             
             arguments
-                obj {mustBeA(obj, 'decoderClass')} % decoder class object
+                obj {mustBeA(obj, 'decoderClass')} % Decoder class object
                 ieegStruct {mustBeA(ieegStruct, 'ieegStructClass')} % ieeg class object
                 decoderUnit double {mustBeVector} % Decoder labels
-                options.d_time_window double = ieegStruct.tw; % decoder time window; Defaults to epoch time-window
-                options.selectChannel double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
-                options.selectTrial double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+                options.d_time_window double = ieegStruct.tw; % Decoder time window; Defaults to epoch time-window
+                options.selectChannel double = 1:size(ieegStruct.data,1); % Select number of electrodes for analysis; Defaults to all
+                options.selectTrial double = 1:size(ieegStruct.data,2); % Select number of trials for analysis; Defaults to all
                 options.isAuc logical = 0; % Select for AUC metric. Defaults to 0
             end
             
@@ -97,15 +98,15 @@ classdef decoderClass
             CmatAll = zeros(length(decodeUnitUnique), length(decodeUnitUnique));
             ytestall = [];
             
-            % Perform classification for nIter iterations
+            % Performclassification for nIter iterations
             for iTer = 1:obj.nIter
                 if(trainTestDiff == 0)
                     % Call pcaLinearDecoderWrap function for classification
-                    [~, ytest, ypred, ~, ~, modelWeightsAll] = pcaLinearDecoderWrap(ieegInput, decoderUnit, ieegStruct.tw, d_time_window, obj.varExplained, obj.numFold, isAuc);
+                    [~, ytest, ypred, optimVarAll, ~, modelWeightsAll] = pcaLinearDecoderWrap(ieegInput, decoderUnit, ieegStruct.tw, d_time_window, obj.varExplained, obj.numFold, isAuc);
                     %[~, ytest, ypred] = stmfDecodeWrap(ieegInput, decoderUnit, ieegStruct.tw, d_time_window, obj.numFold, isauc);
                 else
                     % Call pcaLinearDecoderWrapTrainTest function for classification with separate train and test time windows
-                    [~, ytest, ypred, ~, ~, modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegInput, decoderUnit, ieegStruct.tw, d_time_window(1,:), d_time_window(2,:), obj.varExplained, obj.numFold, isAuc);
+                    [~, ytest, ypred, optimVarAll, ~, modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegInput, decoderUnit, ieegStruct.tw, d_time_window(1,:), d_time_window(2,:), obj.varExplained, obj.numFold, isAuc);
                 end
                 
                 % Accumulate test labels and predictions
@@ -127,6 +128,7 @@ classdef decoderClass
             decodeResultStruct.cmat = CmatCatNorm;
             decodeResultStruct.p = StatThInv(ytestall, decodeResultStruct.accPhoneme * 100);
             decodeResultStruct.modelWeights = modelWeightsAll;
+            decodeResultStruct.optimVarAll = optimVarAll;
         end
 
         function decodeResultStruct = baseRegress(obj, ieegStruct, decoderUnit, d_time_window, selectChannel, selectTrial)
@@ -140,12 +142,12 @@ classdef decoderClass
             %   Returns decodeResultStruct with regression results
             
             arguments
-                obj {mustBeA(obj, 'decoderClass')} % decoder class object
+                obj {mustBeA(obj, 'decoderClass')} % Decoder class object
                 ieegStruct {mustBeA(ieegStruct, 'ieegStructClass')} % ieeg class object
                 decoderUnit double {mustBeVector} % Decoder labels
-                d_time_window double = ieegStruct.tw; % decoder time window; Defaults to epoch time-window
-                selectChannel double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
-                selectTrial double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+                d_time_window double = ieegStruct.tw; % Decoder time window; Defaults to epoch time-window
+                selectChannel double = 1:size(ieegStruct.data,1); % Select number of electrodes for analysis; Defaults to all
+                selectTrial double = 1:size(ieegStruct.data,2); % Select number of trials for analysis; Defaults to all
             end
             
             % Check if d_time_window has size 4
@@ -192,13 +194,14 @@ classdef decoderClass
             %   Returns decodeTimeStruct with temporal classification results
             
             arguments
-                obj {mustBeA(obj, 'decoderClass')} % decoder class object
+                obj {mustBeA(obj, 'decoderClass')} % Decoder class object
                 ieegStruct {mustBeA(ieegStruct, 'ieegStructClass')} % ieeg class object
                 decoderUnit double {mustBeVector} % Decoder labels
-                options.timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
+                options.timeRes double = 0.02; % Decoder time resolution; Defaults to 0.02
                 options.timeWin double; % Time window size for analysis
-                options.selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
-                options.selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+                options.selectChannels double = 1:size(ieegStruct.data,1); % Select number of electrodes for analysis; Defaults to all
+                options.selectTrials double = 1:size(ieegStruct.data,2); % Select number of trials for analysis; Defaults to all
+                options.isModelWeight logical  = 1 % Extract model weights if true;
             end
             
             % Retrieve options values
@@ -219,7 +222,7 @@ classdef decoderClass
             % Perform temporal classification in parallel for each time point
             parfor iTime = 1:nTime
                 % Call baseClassify function for classification at each time point
-                decodeResultStruct = baseClassify(obj, ieegStruct, decoderUnit, [timeRange(iTime) timeRange(iTime)+timeWin], selectChannels, selectTrials, 0);
+                decodeResultStruct = baseClassify(obj, ieegStruct, decoderUnit, d_time_window =  [timeRange(iTime) timeRange(iTime)+timeWin], selectChannel =  selectChannels, selectTrial =  selectTrials);
                 
                 % Store accuracy and p-value at each time point
                 accTime(iTime) = decodeResultStruct.accPhoneme;
@@ -233,7 +236,9 @@ classdef decoderClass
             decodeTimeStruct.accTime = accTime;
             decodeTimeStruct.timeRange = timeRange;
             decodeTimeStruct.pValTime = pValTime;
-            decodeTimeStruct.modelweightTime = modelweightTime;
+            if(options.isModelWeight)
+                decodeTimeStruct.modelweightTime = modelweightTime;
+            end
         end
 
         function decodeTimeStruct = tempGenClassify2D(obj, ieegStruct, decoderUnit, options)
@@ -248,13 +253,13 @@ classdef decoderClass
             %   Returns decodeTimeStruct with 2D temporal classification results
             
             arguments
-                obj {mustBeA(obj, 'decoderClass')} % decoder class object
+                obj {mustBeA(obj, 'decoderClass')} % Decoder class object
                 ieegStruct {mustBeA(ieegStruct, 'ieegStructClass')} % ieeg class object
                 decoderUnit double {mustBeVector} % Decoder labels
-                options.timeRes double = 0.02; % decoder time resolution; Defaults to 0.02
+                options.timeRes double = 0.02; % Decoder time resolution; Defaults to 0.02
                 options.timeWin double = 0.2; % Time window size for analysis; Defaults to 0.2
-                options.selectChannels double = 1:size(ieegStruct.data,1); % select number of electrodes for analysis; Defaults to all
-                options.selectTrials double = 1:size(ieegStruct.data,2); % select number of trials for analysis; Defaults to all
+                options.selectChannels double = 1:size(ieegStruct.data,1); % Select number of electrodes for analysis; Defaults to all
+                options.selectTrials double = 1:size(ieegStruct.data,2); % Select number of trials for analysis; Defaults to all
             end
             
             % Retrieve options values
@@ -276,23 +281,21 @@ classdef decoderClass
                 tsTrain = [timeRange(iTimeTrain) timeRange(iTimeTrain)+timeWin];
                 for iTimeTest = 1:nTime        
                     tsTest = [timeRange(iTimeTest) timeRange(iTimeTest)+timeWin];
+                    % Call baseClassify function for classification at each time point
+                    decodeResultStruct = baseClassify(obj, ieegStruct, decoderUnit, d_time_window = [tsTrain; tsTest], selectChannel = selectChannels, selectTrial = selectTrials);
                     
-                    % Call baseClassify function for classification at each time point pair
-                    decodeResultStruct = baseClassify(obj, ieegStruct, decoderUnit, [tsTrain; tsTest], selectChannels, selectTrials, 0);
-                    
-                    % Store accuracy and p-value in the corresponding position
+                    % Store accuracy and p-value at each time point
                     accTime(iTimeTrain, iTimeTest) = decodeResultStruct.accPhoneme;
                     pValTime(iTimeTrain, iTimeTest) = decodeResultStruct.p;
                 end
             end
             
             % Store 2D temporal classification results in decodeTimeStruct
-            decodeTimeStruct.accTime = accTime;   
-            decodeTimeStruct.pValTime = pValTime; 
+            decodeTimeStruct.accTime = accTime;
             decodeTimeStruct.timeRange = timeRange;
+            decodeTimeStruct.pValTime = pValTime;
         end
-
-        
+           
         function decodeTimeStruct = tempGenRegress1D(obj, ieegStruct, decoderUnit, options)
             % Generates 1D temporal regression results
             %   obj: decoderClass object

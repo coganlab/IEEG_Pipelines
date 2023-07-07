@@ -1,3 +1,4 @@
+function ieegHGAll = extractHGDataWithROI(Subject,options)
 % extractHGDataWithROI - Extracts high-gamma (HG) band data with region of interest (ROI) selection
 %
 % Usage:
@@ -46,8 +47,6 @@
 %     - trialInfo: struct
 %       Information about selected trials
 %
-
-function ieegHGAll = extractHGDataWithROI(Subject,options)
 arguments
     Subject struct % subject output of populated task
     options.Epoch string = 'ResponseStart' % Epoch information; e.g., 'Auditory', 'Go', 'ResponseStart'

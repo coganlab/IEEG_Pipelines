@@ -1,8 +1,35 @@
 function ieegStructAll = extractRawDataWithROI(Subject,options)
-% The extractRawDataWithROI function takes in a Subject structure and 
-% options as input and extracts raw data based on the specified options. 
-% It iterates over each subject, performs data extraction, and returns the 
-% extracted data in the ieegStructAll structure.
+% Extracts raw data based on specified options for each subject in the Subject structure
+% and returns the extracted data in the ieegStructAll structure.
+%
+% Arguments:
+%   Subject: struct
+%       Subject structure containing data for each subject
+%   options: struct (optional)
+%       Optional arguments for data extraction
+%       - Epoch: string (default: 'Start')
+%           Epoch information; e.g., 'Auditory', 'Go', 'ResponseStart'
+%       - Time: double array (default: [-1 1])
+%           Epoch time window
+%       - roi: string (default: '')
+%           Anatomical extraction; e.g., {'precentral', 'superiortemporal'}
+%       - subsetElec: cell (default: '')
+%           Subset of electrodes to select from stats
+%       - isCAR: logical (default: true)
+%           True to perform common average referencing (CAR)
+%       - remNoiseTrials: logical (default: true)
+%           True to remove all noisy trials
+%       - remNoResponseTrials: logical (default: true)
+%           True to remove all no-response trials
+%       - remFastResponseTimeTrials: double (default: -1)
+%           Response time threshold to remove faster response trials
+%       - remWMchannels: logical (default: true)
+%           True to remove white matter channels
+%
+% Returns:
+%   ieegStructAll: struct
+%       Extracted raw data for each subject
+
 arguments
     Subject struct % subject output of populated task
     options.Epoch string = 'Start' % Epoch information; e.g., 'Auditory', 'Go', 'ResponseStart'
@@ -136,7 +163,7 @@ for iSubject = 1:length(Subject)
     % Extract epoch data for selected trials and channels
     ieegEpoch = trialIEEG(TrialSelect, chanIdx, options.Epoch, options.Time .* 1000);
     ieegEpoch = permute(ieegEpoch, [2, 1, 3]);
-    fs = Subject(iSubject).Experiment.processing.ieeg.sample_rate;
+    fs = Subject(iSubject).Experiment.processing.ieeg.sample_rate```matlab
     ieegStruct = ieegStructClass(ieegEpoch, fs, options.Time, [1, fs/2], options.Epoch);
     
     % Perform common average referencing (CAR) if specified
@@ -155,3 +182,5 @@ for iSubject = 1:length(Subject)
     ieegStructAll(iSubject).trialInfo = Subject(iSubject).trialInfo(trials2select);
 end
 end
+
+

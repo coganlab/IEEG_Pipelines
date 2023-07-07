@@ -1,6 +1,7 @@
 classdef ieegStructClass
-    % IEEG structure class for storing and processing intracranial EEG data
-    
+    % The ieegStructClass is a class for handling iEEG data with various operations.
+    % It provides methods for common average referencing, band-pass filtering, high-gamma extraction,
+    % normalization, permutation cluster analysis, and more.
     
     properties 
         data % channels x trials x timepoints
@@ -24,6 +25,7 @@ classdef ieegStructClass
         
         function objCar = extractCar(obj, badChannels)
             % Common average referencing
+            % Extracts CAR-filtered data by subtracting the common average across channels
             
             if nargin < 2
                 badChannels = [];
@@ -66,16 +68,16 @@ classdef ieegStructClass
         function [ieegHiGamma, ieegHiGammaPower] = extractHiGamma(obj, fDown, gtw, normFactor, normType)
             % Extract high-gamma signal
             
-            % Extracts HG of ieeg (active) with normalization factors if provided
+            % Extracts high-gamma signal from the iEEG data
             % Input:
-            % obj - ieeg structure for baseline
-            % fDown - Downsampled frequency (Optional; if not present use same sampling frequency)
-            % gtw - gamma time window to normalize; (Optional; if not present use ieeg time-epoch)
-            % normFactor - normalization values (channels x 2; if not present, no normalization)
-            % normType - normalization type (1: z-score normalization, 2: mean subtraction) (Optional; default: 1)
+            %   fDown: Downsampled frequency (Optional; if not present, use the same sampling frequency)
+            %   gtw: Gamma time window to normalize (Optional; if not present, use the iEEG time-epoch)
+            %   normFactor: Normalization values (channels x 2; if not present, no normalization)
+            %   normType: Normalization type (1: z-score normalization, 2: mean subtraction) (Optional; default: 1)
             % 
             % Output:
-            % ieegHiGammaNorm - Extracted HG structure
+            %   ieegHiGamma: Extracted high-gamma structure
+            %   ieegHiGammaPower: Power of the extracted high-gamma signal
             
             disp(['Extracting High Gamma ' obj.name]);
             fGamma = [70 150];
@@ -122,6 +124,8 @@ classdef ieegStructClass
         function normFactor = extractHGnormFactor(obj)
             % Extract normalization factors for ieeg (mean & standard deviation)
             
+            % Calculates the mean and standard deviation normalization factors for each channel in the iEEG data
+            
             normFactor = zeros(size(obj.data, 1), 2);
             for iChan = 1:size(obj.data, 1)
                 normFactor(iChan, :) = [mean2(squeeze(obj.data(iChan, :, :))), std2(squeeze(obj.data(iChan, :, :)))];
@@ -131,16 +135,16 @@ classdef ieegStructClass
         function [ieegHiGammaNorm, normFactor] = extractHiGammaNorm(obj1, obj2, fDown, gtw1, gtw2)
             % Extract normalized high-gamma
             
-            % Extracts normalized HG of obj1 (active) with normalization factors from obj2 (passive)
+            % Extracts normalized high-gamma signal of obj1 (active) with normalization factors from obj2 (passive)
             % Input:
-            % obj1 - active ieeg structure for target (auditory, go, response)
-            % obj2 - passive ieeg structure for baseline 
-            % fDown - Downsampled frequency (optional)
-            % gtw1 - output time window after normalization (optional)
-            % gtw2 - base time window to normalize (optional)
-            
+            %   obj1: Active ieegStructClass object for the target (auditory, go, response)
+            %   obj2: Passive ieegStructClass object for the baseline 
+            %   fDown: Downsampled frequency (optional)
+            %   gtw1: Output time window after normalization (optional)
+            %   gtw2: Base time window to normalize (optional)
+            % 
             % Output:
-            % ieegHiGammaNorm - Normalized HG structure
+            %   ieegHiGammaNorm: Normalized high-gamma structure
             
             switch nargin
                 case 2
@@ -156,12 +160,14 @@ classdef ieegStructClass
             end 
             
             ieegHiGammaBase = extractHiGamma(obj2, fDown, gtw2);
-            normFactor = extractHGnormFactor(ieegHiGammaBase);            
-            ieegHiGammaNorm = extractHiGamma(obj1, fDown, gtw1, normFactor);            
+            normFactor = extractHGnormFactor(ieegHiGammaBase);
+            ieegHiGammaNorm = extractHiGamma(obj1, fDown, gtw1, normFactor);
         end
         
         function ieegHiGammaNorm = normHiGamma(obj1, normFactor, normType)
             % Normalize high-gamma
+            
+            % Normalizes the high-gamma signal using normalization factors
             
             ieegHiGammaNormData = obj1.data;
             
@@ -181,19 +187,22 @@ classdef ieegStructClass
         function chanSig = extractTimePermCluster(obj1, obj2)
             % Time Series permutation cluster
             
-            % Input:
-            % obj1 - active IEEG structure
-            % obj2 - passive IEEG structure
+            % Performs time series permutation cluster analysis on the iEEG data
             
+            % Input:
+            %   obj1: Active ieegStructClass object
+            %   obj2: Passive ieegStructClass object
+            % 
             % Output:
-            % chanSig - cluster correction output
+            %   chanSig: Cluster correction output
             
             chanSig = {};
             baseData = obj2.data;
-            targetData = obj1.data;      
-            time2pad = size(targetData, 3) / size(baseData, 3);            
+            targetData = obj1.data;
+            time2pad = size(targetData, 3) / size(baseData, 3);
+            
             parfor iChan = 1:size(baseData, 1)
-                 % Assumption: target data window is longer than base data
+                % Assumption: target data window is longer than base data
                 % Correction: Random sampling & padding base window trials
                 % to account for time difference
                 
@@ -213,6 +222,6 @@ classdef ieegStructClass
                 chanSig{iChan}.actClust = actClust;               
                 disp(iChan)
             end            
-        end % Time Series permutation cluster          
+        end     
     end
 end
