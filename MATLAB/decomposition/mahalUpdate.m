@@ -1,3 +1,4 @@
+function dist = mahalUpdate(noise, signal, sigma)
 % mahalUpdate - Calculate Mahalanobis distance between signal and noise.
 %
 % Syntax: dist = mahalUpdate(noise, signal, sigma)
@@ -17,8 +18,6 @@
 %   dist = mahalUpdate(noise, signal, sigma);
 %
 
-
-function dist = mahalUpdate(noise, signal, sigma)
     % Calculate the mean of the noise samples
     meanN = mean(noise, 1)';
     

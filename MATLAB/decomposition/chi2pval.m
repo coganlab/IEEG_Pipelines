@@ -1,5 +1,5 @@
 function p = chi2pval(x,v)
-%FPVAL Chi-square distribution p-value function.
+%   FPVAL Chi-square distribution p-value function.
 %   P = CHI2PVAL(X,V) returns the upper tail of the chi-square cumulative
 %   distribution function with V degrees of freedom at the values in X.  If X
 %   is the observed value of a chi-square test statistic, then P is its

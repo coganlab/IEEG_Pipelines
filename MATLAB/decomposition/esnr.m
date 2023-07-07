@@ -1,3 +1,4 @@
+function evokeSnr = esnr(chanSignal, chanNoise)
 % esnr - Calculate the Evoke Signal-to-Noise Ratio (eSNR) between a channel signal and channel noise.
 %
 % Syntax: evokeSnr = esnr(chanSignal, chanNoise)
@@ -15,8 +16,6 @@
 %   evokeSnr = esnr(chanSignal, chanNoise);
 %
 
-
-function evokeSnr = esnr(chanSignal, chanNoise)
     % Calculate the covariance matrix of the noise
     sigmaNoise = cov1para(chanNoise);
     
