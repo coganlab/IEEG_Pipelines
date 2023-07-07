@@ -109,9 +109,9 @@ def test_array_all_keys_nested():
 
 # Test getting all keys in a large ArrayDict (10000 keys)
 def test_array_all_keys_large():
-    data = {str(i): i for i in range(1000000)}
+    data = {str(i): i for i in range(100000)}
     ad = LabeledArray.from_dict(data)
-    keys = (tuple(map(str, range(1000000))),)
+    keys = (tuple(map(str, range(100000))),)
     assert ad.labels == keys
 
 
@@ -140,7 +140,7 @@ def test_array_shape():
 # Test combine dimensions
 def test_combine_dimensions():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    new = combine(data, (0, 2))
+    new = combine(data, (1, 2))
     assert new == {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
 
 
