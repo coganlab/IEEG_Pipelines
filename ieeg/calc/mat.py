@@ -136,7 +136,13 @@ class LabeledArray(np.ndarray):
 
     def __repr__(self):
         """Display like a dictionary with labels as keys"""
-        return str(self.to_dict())
+        size = self.__sizeof__()
+        for unit in ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']:
+            if size < 1024.0 or unit == 'PiB':
+                break
+            size /= 1024.0
+        return f'LabeledArray({super(LabeledArray, self).__repr__()}, ' \
+               f'labels={self.labels}) ~{size:.2f} {unit}'
 
     def to_dict(self) -> dict:
         """Convert to a dictionary."""
@@ -222,7 +228,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         if len(keys) < lvl + 1:
             keys.append(set(data.keys()))
         else:
-            keys[lvl] = set(data.keys()) | keys[lvl]
+            keys[lvl] |= set(data.keys())
         for d in data.values():
             inner_all_keys(d, keys, lvl+1)
     elif isinstance(data, np.ndarray):
@@ -230,7 +236,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         if len(keys) < lvl+1:
             keys.append(set(rows))
         else:
-            keys[lvl] = set(rows) | keys[lvl]
+            keys[lvl] |= set(rows)
         if len(data.shape) > 1:
             inner_all_keys(data[0], keys, lvl+1)
     else:
@@ -264,8 +270,7 @@ def inner_dict(data: np.ndarray) -> dict | None:
         return data
 
 
-def combine(data: dict, levels: tuple[int, int], delim: str = '-',
-            _level: int = 0) -> dict:
+def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     """Combine any levels of a nested dict into the lower level
 
     Takes the input nested dict and rearranges the top and bottom
@@ -285,35 +290,47 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-',
     Examples
     >>> data = {'a': {'b': {'c': 1}}}
     >>> combine(data, (0, 2))
-    {'b' {'a-c': 1}}
+    {'b': {'a-c': 1}}
 
     >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
     >>> combine(data, (0, 2))
-    {'b' {'a-c': 1, 'd-c': 2, 'd-e': 3}}
+    {'b': {'a-c': 1, 'd-c': 2, 'd-e': 3}}
     """
 
-    if _level == levels[1]:
-        return data
-    new_data = {}
-    for key, value in data.items():
-        if isinstance(value, dict):
-            combined_value = combine(value, levels, delim, _level + 1)
-            if _level == levels[0]:
-                for k1, v1 in combined_value.items():
-                    if isinstance(v1, dict):
-                        for k2, v2 in v1.items():
-                            new_key = f"{key}{delim}{k2}"
-                            if k1 not in new_data:
-                                new_data[k1] = {}
-                            new_data[k1][new_key] = v2
+    assert levels[0] >= 0, "first level must be >= 0"
+    assert levels[1] > levels[0], "second level must be > first level"
+
+    def _combine_helper(data, levels, depth, keys):
+        if depth == levels[1]:
+            return {f'{keys[levels[0]]}{delim}{k}': v for k, v in data.items()}
+        elif depth == levels[0]:
+            new_dict = {}
+            for k, v in data.items():
+                for k2, v2 in _combine_helper(v, levels, depth + 1,
+                                             keys + [k]).items():
+                    if isinstance(v2, dict):
+                        if k2 in new_dict:
+                            new_dict[k2] = _merge(new_dict[k2], v2)
+                        else:
+                            new_dict[k2] = v2
                     else:
-                        new_key = f"{key}{delim}{k1}"
-                        new_data[new_key] = v1
-            else:
-                new_data[key] = combined_value
+                        new_dict[k2] = v2
+            return new_dict
         else:
-            new_data[key] = value
-    return new_data
+            return {k: _combine_helper(v, levels, depth + 1, keys + [k]) for
+                    k, v in data.items()}
+
+    def _merge(d1: dict, d2: dict) -> dict:
+        for k, v in d2.items():
+            if isinstance(v, dict):
+                d1[k] = _merge(d1.get(k, {}), v)
+            else:
+                d1[k] = v
+        return d1
+
+    result = _combine_helper(data, levels, 0, [])
+
+    return result
 
 
 def concatenate_arrays(arrays: list[np.ndarray], axis: int = None

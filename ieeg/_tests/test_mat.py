@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes, \
-    LabeledArray, combine
+    LabeledArray, combine, iter_nest_dict
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [
@@ -111,15 +111,16 @@ def test_array_all_keys_nested():
 def test_array_all_keys_large():
     data = {str(i): i for i in range(100000)}
     ad = LabeledArray.from_dict(data)
-    keys = (tuple(map(str, range(100000))),)
-    assert ad.labels == keys
+    # keys = (tuple(map(str, range(100000))),)
+    labels = set(ad.labels[0])
+    assert labels == set(map(str, range(100000)))
 
 
 # Test indexing with a single key
 def test_array_single_key_indexing():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
     ad = LabeledArray.from_dict(data)
-    subset = LabeledArray.from_dict(**{'c': 1, 'd': 2, 'e': 3})
+    subset = LabeledArray.from_dict({'c': 1, 'd': 2, 'e': 3})
     assert ad['a']['b'] == subset
 
 
@@ -137,18 +138,29 @@ def test_array_shape():
     assert ad.shape == (1, 2, 3)
 
 
-# Test combine dimensions
-def test_combine_dimensions():
-    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    new = combine(data, (1, 2))
-    assert new == {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}
+# Test combine
+@pytest.mark.parametrize('data, dims, expected', [
+    ({'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}, (1, 2),
+        {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}),
+    ({'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}, (0, 2),
+        {'b': {'a-c': 1, 'a-d': 2, 'a-e': 3}, 'f': {'a-c': 4, 'a-d': 5}}),
+    ({'a': {'b': {'c': {'d': {'e': 1, 'f': 2}}}}}, (0, 4),
+        {'b': {'c': {'d': {'a-e': 1, 'a-f': 2}}}}),
+    ({'a': {'b': {'c': {'d': {'e': 1, 'f': 2}}}},
+        'g': {'b': {'c': {'d': {'e': 3, 'f': 4}}}}}, (0, 4),
+        {'b': {'c': {'d': {'a-e': 1, 'a-f': 2, 'g-e': 3, 'g-f': 4}}}})
+])
+def test_combine(data, dims, expected):
+    new = combine(data, dims)
+    assert new == expected
 
 
-# Test combine dimensions with non contiguous dimensions
-def test_array_dict_combine_dimensions_non_contiguous():
-    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    new = combine(data, (0, 2))
-    assert new == {'b': {'a-c': 1, 'a-d': 2, 'a-e': 3}, 'f': {'a-c': 4, 'a-d': 5}}
+# Test nested dict iterator
+def test_dict_iterator():
+    data = {'a': {'b': {'c': {'d': {'e': 1, 'f': 2}}}}}
+    iterator = iter_nest_dict(data)
+    assert len(list(iterator)) == 2
+
 
 
 # Test combine dimensions with arrays
