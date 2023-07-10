@@ -161,13 +161,82 @@ def test_dict_iterator():
     assert len(list(iterator)) == 2
 
 
-
 # Test combine dimensions with arrays
-# def test_array_dict_combine_dimensions_with_arrays():
-#     data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([1, 2, 3])},
-#                   'f': {'c': np.array([1, 2, 3])}}
-#     ad = LabeledArray.from_dict(**data)
-#     new = ad.combine_dims((1, 2))
-#     assert new['b'] == {'c-0': 1, 'c-1': 2, 'c-2': 3, 'd-0': 1, 'd-1': 2,
-#                         'd-2': 3}
+def test_array_dict_combine_dimensions_with_arrays():
+    data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([1, 2, 3])},
+                  'f': {'c': np.array([1, 2, 3])}}
+    ad = LabeledArray.from_dict(data)
+    new = ad.combine((1, 2))
+    assert new['b'] == LabeledArray(np.array([1, 2, 3, 1, 2, 3]),
+                                    labels=(('c-0', 'c-1', 'c-2', 'd-0', 'd-1', 'd-2'),))
+    assert new['b'].to_dict() == {'c-0': 1., 'c-1': 2., 'c-2': 3., 'd-0': 1.,
+                                  'd-1': 2., 'd-2': 3.}
 
+
+def test_from_dict():
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    ad = LabeledArray.from_dict(data)
+    expected_labels = (('a',), ('b', 'f'), ('c', 'd', 'e'))
+    assert ad.labels == expected_labels
+    expected_array = np.array([[[1, 2, 3], [4, 5, 0]]])
+    np.testing.assert_array_equal(ad, expected_array)
+
+
+def test_combine():
+    data = {'a': {'b': {'c': 1}}}
+    ad = LabeledArray.from_dict(data)
+    ad_combined = ad.combine((0, 2))
+    expected_labels = (('b',), ('a-c',))
+    assert ad_combined.labels == expected_labels
+    expected_array = np.array([1])
+    np.testing.assert_array_equal(ad_combined, expected_array)
+
+
+def test_eq():
+    data1 = {'a': {'b': {'c': 1}}}
+    ad1 = LabeledArray.from_dict(data1)
+
+    data2 = {'a': {'b': {'c': 1}}}
+    ad2 = LabeledArray.from_dict(data2)
+
+    data3 = {'a': {'b': {'d': 1}}}
+    ad3 = LabeledArray.from_dict(data3)
+
+    assert ad1 == ad2
+    assert ad1 != ad3
+
+
+def test_repr():
+    data = {'a': {'b': {'c': 1}}}
+    ad = LabeledArray.from_dict(data)
+    expected_repr = "LabeledArray([[[1]]], labels=(('a',), ('b',), ('c',))) "
+    assert repr(ad) == expected_repr
+
+
+@pytest.mark.parametrize('idx', [
+    (0,),
+    (0, 0),
+    (..., 0, 0),
+    (..., 0),
+    (slice(None), 0),
+    (slice(None), 0, ...)
+])
+def test_numpy_idx(idx):
+    data = np.array([[1., 2., 3.], [4., 5., 6.]])
+    ad = LabeledArray(data, labels=(('a', 'b'), ('c','d', 'e')))
+    assert np.array_equal(ad[*idx], data[*idx])
+
+
+@pytest.mark.parametrize('idx, expected', [
+    ((0,), (('b',), ('c','d'))),
+    ((0, 0), (('c', 'd'),)),
+    ((..., 0, 0), (('a',),)),
+    ((..., 0), (('a',), ('b',))),
+    ((slice(None), 0), (('a',), ('c','d'))),
+    ((slice(None), 0, slice(None)), (('a',), ('c','d'))),
+    (('b',), (('a',), ('c','d'))),
+    (('b', 'c'), (('a',),)),
+])
+def test_idx(idx, expected):
+    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c','d')))
+    assert ad[*idx].labels == expected
