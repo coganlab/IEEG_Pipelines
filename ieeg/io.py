@@ -261,7 +261,20 @@ def update(filename: PathLike, channels: list[str],
 
 
 @update.register
-def _(inst: mne.io.base.BaseRaw | mne.time_frequency._BaseTFR,
+def _(inst: mne.io.base.BaseRaw,
+      layout: BIDSLayout, description: list[str] | str = None, verbose=None):
+    if not hasattr(inst, 'filenames'):
+        inst.filenames = inst.info['subject_info'].get('files', None)
+    for i, file in enumerate(inst.filenames):
+        fname = op.join(layout.root, file)
+        update(fname, inst.info['bads'], description=description, status='bad',
+               verbose=verbose)
+        goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
+        update(fname, channels=goods, status='good', verbose=None)
+
+
+@update.register
+def _(inst: mne.time_frequency._BaseTFR,
       layout: BIDSLayout, description: list[str] | str = None, verbose=None):
     if not hasattr(inst, 'filenames'):
         inst.filenames = inst.info['subject_info'].get('files', None)
