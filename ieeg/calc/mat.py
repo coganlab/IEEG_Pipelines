@@ -85,7 +85,7 @@ class LabeledArray(np.ndarray):
         return obj
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'LabeledArray':
+    def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
         """Create a LabeledArray from a dictionary.
 
         Parameters
@@ -101,7 +101,7 @@ class LabeledArray(np.ndarray):
 
         arr = inner_array(data)
         keys = inner_all_keys(data)
-        return cls(arr, keys)
+        return cls(arr, keys, **kwargs)
 
     def __array_finalize__(self, obj):
         if obj is None: return
@@ -146,9 +146,7 @@ class LabeledArray(np.ndarray):
                 case _:
                     yield 0, key
 
-    def __getitem__(self, keys):
-        if not isinstance(keys, tuple):
-            keys = (keys,)
+    def _parse_labels(self, keys: tuple) -> tuple:
         new_keys = []
         new_labels = []
         dim = 0
@@ -183,6 +181,12 @@ class LabeledArray(np.ndarray):
         while dim < self.ndim:
             new_labels.append(self.labels[dim])
             dim += 1
+        return new_labels, new_keys
+
+    def __getitem__(self, keys):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        new_labels, new_keys = self._parse_labels(keys)
         out = super().__getitem__(tuple(new_keys))
         if isinstance(out, np.ndarray):
             setattr(out, 'labels', tuple(new_labels))
@@ -215,8 +219,12 @@ class LabeledArray(np.ndarray):
 
     def __eq__(self, other):
         if isinstance(other, LabeledArray):
-            return np.array_equal(self, other) and self.labels == other.labels
+            return np.array_equal(self, other, True) and \
+                self.labels == other.labels
         return super().__eq__(other)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
     def to_dict(self) -> dict:
         """Convert to a dictionary."""
@@ -259,22 +267,30 @@ class LabeledArray(np.ndarray):
         Examples
         --------
         >>> data = {'a': {'b': {'c': 1}}}
-        >>> ad = LabeledArray.from_dict(data)
+        >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.combine((0, 2))
-        LabeledArray([1], labels=(('b',), ('a-c',)))
+        LabeledArray([[1]]), labels=(('b',), ('a-c',)) ~4.00 B
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
         assert levels[1] > levels[0], "second level must be > first level"
 
         new_labels = list(self.labels)
-        new_labels.pop(levels[0])
-        new_labels[levels[1] - 1] = tuple(
-            f'{self.labels[levels[0]][i]}{delim}{l}' for i in
-            range(self.shape[levels[0]]) for l in self.labels[levels[1]])
 
-        new_array = np.moveaxis(self, (levels[0], levels[1]), (0, 1)).reshape(
-            self.shape[levels[1]], -1)
+        new_labels.pop(levels[0])
+
+        new_labels[levels[1] - 1] = tuple(
+            f'{i}{delim}{l}' for i in
+            self.labels[levels[0]] for l in self.labels[levels[1]])
+
+        new_shape = list(self.shape)
+
+        new_shape[levels[1]] = self.shape[levels[0]] * self.shape[
+            levels[1]]
+
+        new_shape.pop(levels[0])
+
+        new_array = np.reshape(self, new_shape)
 
         return LabeledArray(new_array, new_labels)
 

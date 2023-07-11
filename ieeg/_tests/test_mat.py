@@ -163,14 +163,16 @@ def test_dict_iterator():
 
 # Test combine dimensions with arrays
 def test_array_dict_combine_dimensions_with_arrays():
-    data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([1, 2, 3])},
-                  'f': {'c': np.array([1, 2, 3])}}
+    data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([4, 5, 6])},
+                  'f': {'c': np.array([7, 8, 9])}}
     ad = LabeledArray.from_dict(data)
     new = ad.combine((1, 2))
-    assert new['b'] == LabeledArray(np.array([1, 2, 3, 1, 2, 3]),
-                                    labels=(('c-0', 'c-1', 'c-2', 'd-0', 'd-1', 'd-2'),))
-    assert new['b'].to_dict() == {'c-0': 1., 'c-1': 2., 'c-2': 3., 'd-0': 1.,
-                                  'd-1': 2., 'd-2': 3.}
+    assert new == LabeledArray([[1., 2., 3., 4., 5., 6.],
+                                [7., 8., 9., np.nan, np.nan, np.nan]],
+                               labels=(('b', 'f'),('c-0', 'c-1', 'c-2',
+                                                  'd-0', 'd-1', 'd-2')))
+    assert new['b'].to_dict() == {'c-0': 1., 'c-1': 2., 'c-2': 3., 'd-0': 4.,
+                                  'd-1': 5., 'd-2': 6.}
 
 
 def test_from_dict():
@@ -178,7 +180,7 @@ def test_from_dict():
     ad = LabeledArray.from_dict(data)
     expected_labels = (('a',), ('b', 'f'), ('c', 'd', 'e'))
     assert ad.labels == expected_labels
-    expected_array = np.array([[[1, 2, 3], [4, 5, 0]]])
+    expected_array = np.array([[[1, 2, 3], [4, 5, float('nan')]]])
     np.testing.assert_array_equal(ad, expected_array)
 
 
@@ -188,7 +190,7 @@ def test_combine():
     ad_combined = ad.combine((0, 2))
     expected_labels = (('b',), ('a-c',))
     assert ad_combined.labels == expected_labels
-    expected_array = np.array([1])
+    expected_array = np.array([[1]])
     np.testing.assert_array_equal(ad_combined, expected_array)
 
 
@@ -209,7 +211,8 @@ def test_eq():
 def test_repr():
     data = {'a': {'b': {'c': 1}}}
     ad = LabeledArray.from_dict(data)
-    expected_repr = "LabeledArray([[[1]]], labels=(('a',), ('b',), ('c',))) "
+    expected_repr = "LabeledArray([[[1.]]]), labels=(('a',), ('b',), ('c',))" \
+                    " ~8.00 B"
     assert repr(ad) == expected_repr
 
 
