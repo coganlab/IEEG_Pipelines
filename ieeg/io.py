@@ -181,7 +181,8 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
 @fill_doc
 @verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
-                    overwrite: bool = False, verbose=None):
+                    overwrite: bool = False, format: str = 'EDF',
+                    verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
@@ -193,6 +194,8 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
     pipeline : str
         The name of the pipeline.
     %(overwrite)s
+    format : str
+        The format to save the data in. Defaults to EDF.
     %(verbose)s
     """
     save_dir = op.join(layout.root, "derivatives", pipeline)
@@ -209,7 +212,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
-        write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
+        write_raw_bids(run, bids_path, allow_preload=True, format=format,
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
 
 
@@ -258,8 +261,21 @@ def update(filename: PathLike, channels: list[str],
 
 
 @update.register
-def _(inst: mne.io.base.BaseRaw, layout: BIDSLayout,
-      description: list[str] | str = None, verbose=None):
+def _(inst: mne.io.base.BaseRaw,
+      layout: BIDSLayout, description: list[str] | str = None, verbose=None):
+    if not hasattr(inst, 'filenames'):
+        inst.filenames = inst.info['subject_info'].get('files', None)
+    for i, file in enumerate(inst.filenames):
+        fname = op.join(layout.root, file)
+        update(fname, inst.info['bads'], description=description, status='bad',
+               verbose=verbose)
+        goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
+        update(fname, channels=goods, status='good', verbose=None)
+
+
+@update.register
+def _(inst: mne.time_frequency._BaseTFR,
+      layout: BIDSLayout, description: list[str] | str = None, verbose=None):
     if not hasattr(inst, 'filenames'):
         inst.filenames = inst.info['subject_info'].get('files', None)
     for i, file in enumerate(inst.filenames):
