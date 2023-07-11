@@ -210,14 +210,13 @@ class LabeledArray(np.ndarray):
         super(LabeledArray, self).__delitem__(key)
 
     def __repr__(self):
-        """Display like a dictionary with labels as keys"""
         size = self.nbytes
         for unit in ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']:
             if size < 1024.0 or unit == 'PiB':
                 break
             size /= 1024.0
 
-        return f'{super().__repr__()}, labels={self.labels} ~{size:.2f} {unit}'
+        return f'{super().__repr__()}\nlabels={self.labels} ~{size:.2f} {unit}'
 
     def __eq__(self, other):
         if isinstance(other, LabeledArray):

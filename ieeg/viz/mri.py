@@ -1,5 +1,6 @@
 import os.path as op
 from collections import OrderedDict
+from collections.abc import Iterable
 import csv
 from functools import singledispatch
 
@@ -244,9 +245,9 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
-def plot_on_average(sigs: Signal | str | list[Signal | str],
+def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
                     subj_dir: PathLike = None, rm_wm: bool = True,
-                    picks: list[int | str] = None, surface: str = 'pial',
+                    picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None) -> Brain:
     """Plots the signal on the average brain
@@ -289,7 +290,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
-    if isinstance(sigs, list):
+    if isinstance(sigs, Iterable):
         sigs = {get_sub(v): v for v in sigs}
 
     for subj, inst in sigs.items():
@@ -299,7 +300,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         elif isinstance(inst, Signal):
             new = inst.info.copy()
         elif isinstance(inst, str):
-            new = subject_to_info(inst)
+            new = subject_to_info(subj)
+            new['subject_info'] = dict(his_id=f"sub-{inst}")
         else:
             raise TypeError(type(inst))
 
@@ -308,7 +310,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
                                                 trans=to_fsaverage['trans'])
 
         these_picks = range(len(new.ch_names))
-        if isinstance(picks, (tuple, list)):
+        if isinstance(picks, Iterable):
             if len(picks) == 0:
                 continue
             elif isinstance(picks[0], int):
@@ -371,7 +373,7 @@ def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
     return picks
 
 
-def get_sub(inst: Signal | mne.Info) -> str:
+def get_sub(inst: Signal | mne.Info | str) -> str:
     """Gets the subject from the instance
 
     Parameters
@@ -385,6 +387,8 @@ def get_sub(inst: Signal | mne.Info) -> str:
         The subject"""
     if isinstance(inst, Signal):
         inst = inst.info
+    elif isinstance(inst, str):
+        return f"{inst[0]}{int(inst[1:])}"
     return "D" + str(int(inst['subject_info']['his_id'][5:]))
 
 
