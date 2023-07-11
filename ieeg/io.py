@@ -181,7 +181,8 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
 @fill_doc
 @verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
-                    overwrite: bool = False, format: str = 'EDF', verbose=None):
+                    overwrite: bool = False, format: str = 'EDF',
+                    verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
@@ -193,6 +194,8 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
     pipeline : str
         The name of the pipeline.
     %(overwrite)s
+    format : str
+        The format to save the data in. Defaults to EDF.
     %(verbose)s
     """
     save_dir = op.join(layout.root, "derivatives", pipeline)

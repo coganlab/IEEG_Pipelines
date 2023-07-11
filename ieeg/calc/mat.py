@@ -1,6 +1,7 @@
 import numpy as np
 from collections.abc import Iterable
 
+
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
     """Iterate over a nested dictionary, yielding the key and value.
 
@@ -104,7 +105,8 @@ class LabeledArray(np.ndarray):
         return cls(arr, keys, **kwargs)
 
     def __array_finalize__(self, obj):
-        if obj is None: return
+        if obj is None:
+            return
         self.labels = getattr(obj, 'labels', None)
 
     def dropna(self) -> 'LabeledArray':
@@ -202,8 +204,8 @@ class LabeledArray(np.ndarray):
         dim, num_key = self._str_parse(key)
         if key in self.labels[dim]:
             self.labels = list(self.labels)
-            self.labels[dim] = tuple(l for l in self.labels[dim]
-                                     if l != key)
+            self.labels[dim] = tuple(lab for lab in self.labels[dim]
+                                     if lab != key)
             self.labels = tuple(self.labels)
         super(LabeledArray, self).__delitem__(key)
 
@@ -240,13 +242,13 @@ class LabeledArray(np.ndarray):
         return zip(self.keys(), self.values())
 
     def keys(self):
-        return (l for l in self.labels[0])
+        return (lab for lab in self.labels[0])
 
     def values(self):
         return (a for a in self)
 
     def combine(self, levels: tuple[int, int],
-                delim: str = '-') -> 'LabeledArray':
+                delim: str = '-', drop_nan: bool = True) -> 'LabeledArray':
         """Combine any levels of a LabeledArray into the lower level
 
         Takes the input LabeledArray and rearranges its dimensions.
@@ -254,10 +256,12 @@ class LabeledArray(np.ndarray):
         Parameters
         ----------
         levels : tuple[int, int]
-            The levels to combine, e.g. (0, 1) will combine the 1st and 2nd level
-            of the array labels into one level at the 2nd level.
+            The levels to combine, e.g. (0, 1) will combine the 1st and 2nd
+            level of the array labels into one level at the 2nd level.
         delim : str, optional
             The delimiter to use when combining labels, by default '-'
+        drop_nan : bool, optional
+            Whether to drop all NaN columns, by default True
 
         Returns
         -------
@@ -280,8 +284,8 @@ class LabeledArray(np.ndarray):
         new_labels.pop(levels[0])
 
         new_labels[levels[1] - 1] = tuple(
-            f'{i}{delim}{l}' for i in
-            self.labels[levels[0]] for l in self.labels[levels[1]])
+            f'{i}{delim}{j}' for i in
+            self.labels[levels[0]] for j in self.labels[levels[1]])
 
         new_shape = list(self.shape)
 
@@ -292,7 +296,10 @@ class LabeledArray(np.ndarray):
 
         new_array = np.reshape(self, new_shape)
 
-        return LabeledArray(new_array, new_labels)
+        if drop_nan:
+            return LabeledArray(new_array, new_labels).dropna()
+        else:
+            return LabeledArray(new_array, new_labels)
 
 
 def add_to_list_if_not_present(lst: list, element: Iterable):
@@ -391,7 +398,7 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
             new_dict = {}
             for k, v in data.items():
                 for k2, v2 in _combine_helper(v, levels, depth + 1,
-                                             keys + [k]).items():
+                                              keys + [k]).items():
                     if isinstance(v2, dict):
                         if k2 in new_dict:
                             new_dict[k2] = _merge(new_dict[k2], v2)
@@ -587,8 +594,8 @@ if __name__ == "__main__":
     import mne
     ins, axis, exp = ([np.array([]), np.array([[1., 2.], [3., 4.]]),
                        np.array([[5., 6., 7.], [8., 9., 10.]])], 0,
-                       np.array([[1, 2, np.nan], [3, 4, np.nan],
-                                 [5, 6, 7], [8, 9, 10]]))
+                      np.array([[1, 2, np.nan], [3, 4, np.nan],
+                                [5, 6, 7], [8, 9, 10]]))
     outs = concatenate_arrays(ins, axis)
     ar = LabeledArray.from_dict(dict(a=ins[1], b=ins[2]))
     x = ar["a"]
@@ -609,7 +616,7 @@ if __name__ == "__main__":
 
     dict_data = dict(
         power=load_dict(layout, conds, "power", False))
-        # zscore=load_dict(layout, conds, "zscore", False))
+    # zscore=load_dict(layout, conds, "zscore", False))
 
     keys = inner_all_keys(dict_data)
 

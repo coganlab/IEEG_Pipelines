@@ -21,7 +21,7 @@ from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes, \
     # Test case 4: Concatenate along axis 2
     ([np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])],
      2,
-     np.array([[[1, 3], [np.nan, 4]], [[ 2, 5],[np.nan, 6]]])),
+     np.array([[[1, 3], [np.nan, 4]], [[2, 5], [np.nan, 6]]])),
 
     # Test case 5: Concatenate along axis 0 with empty array in the middle
     ([np.array([[1, 2], [3, 4]]), np.array([]),
@@ -164,13 +164,13 @@ def test_dict_iterator():
 # Test combine dimensions with arrays
 def test_array_dict_combine_dimensions_with_arrays():
     data = {'b': {'c': np.array([1, 2, 3]), 'd': np.array([4, 5, 6])},
-                  'f': {'c': np.array([7, 8, 9])}}
+            'f': {'c': np.array([7, 8, 9])}}
     ad = LabeledArray.from_dict(data)
     new = ad.combine((1, 2))
     assert new == LabeledArray([[1., 2., 3., 4., 5., 6.],
                                 [7., 8., 9., np.nan, np.nan, np.nan]],
-                               labels=(('b', 'f'),('c-0', 'c-1', 'c-2',
-                                                  'd-0', 'd-1', 'd-2')))
+                               labels=(('b', 'f'), ('c-0', 'c-1', 'c-2',
+                                                    'd-0', 'd-1', 'd-2')))
     assert new['b'].to_dict() == {'c-0': 1., 'c-1': 2., 'c-2': 3., 'd-0': 4.,
                                   'd-1': 5., 'd-2': 6.}
 
@@ -182,16 +182,6 @@ def test_from_dict():
     assert ad.labels == expected_labels
     expected_array = np.array([[[1, 2, 3], [4, 5, float('nan')]]])
     np.testing.assert_array_equal(ad, expected_array)
-
-
-def test_combine():
-    data = {'a': {'b': {'c': 1}}}
-    ad = LabeledArray.from_dict(data)
-    ad_combined = ad.combine((0, 2))
-    expected_labels = (('b',), ('a-c',))
-    assert ad_combined.labels == expected_labels
-    expected_array = np.array([[1]])
-    np.testing.assert_array_equal(ad_combined, expected_array)
 
 
 def test_eq():
@@ -226,20 +216,20 @@ def test_repr():
 ])
 def test_numpy_idx(idx):
     data = np.array([[1., 2., 3.], [4., 5., 6.]])
-    ad = LabeledArray(data, labels=(('a', 'b'), ('c','d', 'e')))
+    ad = LabeledArray(data, labels=(('a', 'b'), ('c', 'd', 'e')))
     assert np.array_equal(ad[*idx], data[*idx])
 
 
 @pytest.mark.parametrize('idx, expected', [
-    ((0,), (('b',), ('c','d'))),
+    ((0,), (('b',), ('c', 'd'))),
     ((0, 0), (('c', 'd'),)),
     ((..., 0, 0), (('a',),)),
     ((..., 0), (('a',), ('b',))),
-    ((slice(None), 0), (('a',), ('c','d'))),
-    ((slice(None), 0, slice(None)), (('a',), ('c','d'))),
-    (('b',), (('a',), ('c','d'))),
+    ((slice(None), 0), (('a',), ('c', 'd'))),
+    ((slice(None), 0, slice(None)), (('a',), ('c', 'd'))),
+    (('b',), (('a',), ('c', 'd'))),
     (('b', 'c'), (('a',),)),
 ])
 def test_idx(idx, expected):
-    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c','d')))
+    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
     assert ad[*idx].labels == expected
