@@ -217,7 +217,7 @@ def test_repr():
 def test_numpy_idx(idx):
     data = np.array([[1., 2., 3.], [4., 5., 6.]])
     ad = LabeledArray(data, labels=(('a', 'b'), ('c', 'd', 'e')))
-    assert np.array_equal(ad[*idx], data[*idx])
+    assert np.array_equal(ad[idx], data[idx])
 
 
 @pytest.mark.parametrize('idx, expected', [
@@ -232,4 +232,4 @@ def test_numpy_idx(idx):
 ])
 def test_idx(idx, expected):
     ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
-    assert ad[*idx].labels == expected
+    assert ad[idx].labels == expected
