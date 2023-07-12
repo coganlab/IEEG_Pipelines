@@ -65,9 +65,6 @@ jobs:
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
-      - uses: actions/cache@v3
-        with:
-          path: ~/mne_data
       - name: Test with pytest
         run: |
            pytest ieeg -v --cov=. --pycodestyle --cov-report xml
