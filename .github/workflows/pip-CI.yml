@@ -32,7 +32,7 @@ jobs:
     - uses: pyvista/setup-headless-display-action@main
       with:
         qt: true
-        pyvista: false
+        pyvista: true
     - name: Test with pytest
       run: |
         pytest ieeg -v --pycodestyle
