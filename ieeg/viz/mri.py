@@ -388,7 +388,10 @@ def get_sub(inst: Signal | mne.Info | str) -> str:
         inst = inst.info
     elif isinstance(inst, str):
         return f"{inst[0]}{int(inst[1:])}"
-    return "D" + str(int(inst['subject_info']['his_id'][5:]))
+    out_str = inst['subject_info']['his_id'][4:]
+    if len(out_str) == 1:
+        return out_str
+    return out_str[0] + str(int(out_str[1:]))
 
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
@@ -396,7 +399,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'split', fig: Brain = None,
               trans=None, color: matplotlib.colors = (1, 1, 1),
-              size: float = 0.35) -> Brain:
+              size: float = 0.35, show: bool = True) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -423,6 +426,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         The color of the electrodes, by default (1,1,1)
     size : float, optional
         The size of the electrodes, by default 0.35
+    show : bool, optional
+        Whether to show the figure, by default True
 
     Returns
     -------
@@ -448,7 +453,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.5, background='grey', surf=surface, hemi=hemi)
+                    alpha=0.5, background='grey', surf=surface, hemi=hemi,
+                    show=show)
     if picks is None:
         picks = info.ch_names
     if no_wm:
@@ -625,10 +631,13 @@ if __name__ == "__main__":
     sub_pad = "D" + str(sub_num).zfill(4)
     # sub = "D{}".format(sub_num)
 
-    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-                           extension='.edf', desc='clean', preload=False)
+    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+    #                        extension='.edf', desc='clean', preload=False)
 
     ##
+    sample_path = mne.datasets.sample.data_path()
+    subjects_dir = sample_path / "subjects"
+
     brain = plot_subj(filt)
     # plot_on_average(filt)
     # plot_gamma(raw)
