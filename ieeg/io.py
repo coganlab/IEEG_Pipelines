@@ -11,6 +11,7 @@ from mne_bids.write import _from_tsv
 from bids import BIDSLayout
 import numpy as np
 import mne
+import pandas as pd
 
 
 def find_dat(folder: PathLike) -> (PathLike, PathLike):
@@ -284,3 +285,16 @@ def _(inst: mne.time_frequency._BaseTFR,
                verbose=verbose)
         goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
         update(fname, channels=goods, status='good', verbose=None)
+
+
+def get_elec_volume_labels(subj: str, subj_dir: PathLike, radius: int = 3
+                           ) -> pd.DataFrame:
+    filename = op.join(subj_dir, subj, "elec_recon",
+                       f"{subj}_elec_location_radius_{radius}mm_aparc.a2009s+"
+                       f"aseg.mgz")
+    if op.exists(filename+"_brainshifted.csv"):
+        filename += "_brainshifted.csv"
+    else:
+        filename += ".csv"
+    out = pd.read_csv(filename, header=None, skiprows=1, index_col=1)
+    return out

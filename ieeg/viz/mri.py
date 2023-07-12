@@ -13,6 +13,7 @@ import nibabel as nib
 import numpy as np
 
 from ieeg import Signal, PathLike
+from ieeg.io import get_elec_volume_labels
 
 try:
     matplotlib.use("TkAgg")
@@ -576,7 +577,7 @@ def _(info: mne.Info, frame: str):
 
 
 def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
-               picks: list[str | int] = None) -> OrderedDict[str, list[str]]:
+               picks: list[str] = None) -> OrderedDict[str, list[str]]:
     """Generates the labels for the electrodes
 
     Parameters
@@ -598,16 +599,25 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
     subj_dir = get_sub_dir(subj_dir)
     montage = info.get_montage()
     force2frame(montage, 'mri')
-    aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
-    labels, colors = mne.get_montage_volume_labels(
-        montage, sub, subjects_dir=subj_dir, aseg=aseg)
+    # aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
+    labels = get_elec_volume_labels(sub, subj_dir)
 
     new_labels = OrderedDict()
-    if picks is not None:
-        for i, key in enumerate(labels.keys()):
-            if any((i in picks, key in picks)):
-                new_labels[key] = labels[key]
+    if picks is None:
+        picks = info.ch_names
 
+    bad_words = ('Unknown', 'unknown', 'hypointensities')
+    for p in picks:
+        i = 2
+        label = labels.T[p].T
+        while (("White-Matter" in label[i] and label[i+1] < 0.8)
+               or (any(w in label[i] for w in bad_words) and label[i+1] < 1)):
+            if (i+2) <= len(label.T):
+                break
+            elif label[i+2].isspace():
+                break
+            i += 2
+        new_labels[p] = label[i]
     return new_labels
 
 
@@ -638,6 +648,6 @@ if __name__ == "__main__":
     sample_path = mne.datasets.sample.data_path()
     subjects_dir = sample_path / "subjects"
 
-    brain = plot_subj(filt)
+    brain = plot_subj("D29")
     # plot_on_average(filt)
     # plot_gamma(raw)
