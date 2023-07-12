@@ -1,15 +1,9 @@
 name: 'Tests'
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
-  cancel-in-progress: false
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
-permissions:
-  contents: read
 
 jobs:
 
@@ -76,7 +70,6 @@ jobs:
       - name: Test with pytest
         run: |
            pytest ieeg -v --cov=. --pycodestyle --cov-report xml
-
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
         if: matrix.kind == 'mamba'
