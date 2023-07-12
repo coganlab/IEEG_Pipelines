@@ -255,7 +255,6 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
     Takes a signal instance or list of signal instances and plots them on the
     fsaverage brain.
 
-
     Parameters
     ----------
     sigs : Union[Signal, list[Signal]]
@@ -449,8 +448,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.5,
-                    background='grey', surf=surface, hemi=hemi)
+                    alpha=0.5, background='grey', surf=surface, hemi=hemi)
     if picks is None:
         picks = info.ch_names
     if no_wm:
