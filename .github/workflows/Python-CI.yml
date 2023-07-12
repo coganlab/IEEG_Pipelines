@@ -48,7 +48,7 @@ jobs:
       - name: install pip requirements
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flake8 pytest tqdm #cython setuptools
+          python -m pip install flake8 pytest tqdm pyqt5-tools
           if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
         if: startswith(matrix.kind, 'pip')
       # Python (if conda)
