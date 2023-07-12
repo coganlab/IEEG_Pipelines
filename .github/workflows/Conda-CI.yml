@@ -34,10 +34,6 @@ jobs:
         with:
           qt: true
           pyvista: true
-      - name: 'Install OSMesa VTK variant'
-        run: |
-          mamba install -c conda-forge "vtk>=9.2=*osmesa*" "mesalib=21.2.5"
-          mamba list
       - name: Display environment
         run: |
           conda info

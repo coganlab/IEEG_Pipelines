@@ -29,10 +29,10 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install flake8 pytest tqdm #cython setuptools
         if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
-    - uses: pyvista/setup-headless-display-action@main
-      with:
-        qt: true
-        pyvista: true
+    - name: 'Install OSMesa VTK variant'
+      run: |
+        mamba install -c conda-forge "vtk>=9.2=*osmesa*" "mesalib=21.2.5"
+        mamba list
     - name: Test with pytest
       run: |
         pytest ieeg -v --pycodestyle
