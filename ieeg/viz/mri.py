@@ -337,12 +337,12 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
                   trans=to_fsaverage, color=color, size=size,
-                  labels_every=None)
+                  labels_every=None, hemi=hemi)
 
     return fig
 
 
-def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
+def pick_no_wm(picks: list[str], labels: OrderedDict[str: str]):
     """Picks the channels that are not in the white matter
 
     Parameters
@@ -357,19 +357,13 @@ def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
     list[str | int]
         The channels that are not in the white matter
     """
-
-    # remove 'Unknown' values from label lists
-    for k, v in labels.items():
-        while 'Unknown' in v:
-            labels[k].remove('Unknown')
-            v = labels[k]
+    bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
 
     # remove corresponding picks with either 'White-Matter' in the left most
     # entry or empty lists
     if isinstance(picks[0], int):
         picks = [list(labels.keys())[p] for p in picks]
-    picks = [p for p in picks if labels[p]]
-    picks = [p for p in picks if 'White-Matter' not in labels[p][0]]
+    picks = [p for p in picks if not any(w in labels[p] for w in bad_words)]
     return picks
 
 
@@ -476,10 +470,10 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     left = [p * 1000 for k, p in pos.items() if k.startswith('L')]
     right = [p * 1000 for k, p in pos.items() if k.startswith('R')]
 
-    if left:
+    if left and hemi != 'rh':
         fig.add_foci(np.vstack(left), hemi='lh', color=color,
                      scale_factor=size)
-    if right:
+    if right and hemi != 'lh':
         fig.add_foci(np.vstack(right), hemi='rh', color=color,
                      scale_factor=size)
 
