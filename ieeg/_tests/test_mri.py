@@ -4,6 +4,7 @@ import os
 misc_path = mne.datasets.misc.data_path()
 sample_path = mne.datasets.sample.data_path()
 subjects_dir = sample_path / "subjects"
+mne.viz.set_3d_backend('pyvistaqt')
 
 
 def test_plot_seeg():
