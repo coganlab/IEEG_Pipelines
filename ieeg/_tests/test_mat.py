@@ -201,7 +201,7 @@ def test_eq():
 def test_repr():
     data = {'a': {'b': {'c': 1}}}
     ad = LabeledArray.from_dict(data)
-    expected_repr = "LabeledArray([[[1.]]]), labels=(('a',), ('b',), ('c',))" \
+    expected_repr = "LabeledArray([[[1.]]])\nlabels=(('a',), ('b',), ('c',))" \
                     " ~8.00 B"
     assert repr(ad) == expected_repr
 

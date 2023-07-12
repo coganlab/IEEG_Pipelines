@@ -4,7 +4,6 @@ import os
 misc_path = mne.datasets.misc.data_path()
 sample_path = mne.datasets.sample.data_path()
 subjects_dir = sample_path / "subjects"
-mne.datasets.fetch_fsaverage(subjects_dir=subjects_dir, verbose=True)
 
 
 def test_plot_seeg():

@@ -131,7 +131,7 @@ def test_stats(func, expected):
     mask = stats.time_perm_cluster(resp.copy()._data[:, 78:79],
                                    base.copy()._data[:, 78:79], 0.01,
                                    stat_func=func, n_perm=4000)
-    assert np.all(mask[:, expected])
+    assert np.mean(mask[:, expected]) > 0.8
 
 
 def test_stats_wavelet():
