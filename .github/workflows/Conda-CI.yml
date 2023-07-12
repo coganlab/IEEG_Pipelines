@@ -30,9 +30,10 @@ jobs:
           environment-file: envs/environment.yml
           python-version: ${{ matrix.python-version }}
           auto-activate-base: false
-      - name: Install off screen dependencies
-        run: |
-          conda install -c conda-forge "vtk>=9.2=*osmesa*" "mesalib=21.2.5"
+      - uses: pyvista/setup-headless-display-action@main
+        with:
+          qt: true
+          pyvista: false
       - name: Display environment
         run: |
           conda info

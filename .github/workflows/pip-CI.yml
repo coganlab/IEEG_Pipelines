@@ -29,6 +29,10 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install flake8 pytest tqdm #cython setuptools
         if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
+    - uses: pyvista/setup-headless-display-action@main
+      with:
+        qt: true
+        pyvista: false
     - name: Test with pytest
       run: |
         pytest ieeg -v --pycodestyle
