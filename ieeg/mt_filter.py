@@ -102,6 +102,18 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     www.chronux.org and the book "Observed Brain Dynamics" by Partha Mitra
     & Hemant Bokil, Oxford University Press, New York, 2008. Please
     cite this in publications if this function is used.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from bids import BIDSLayout
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> filt = line_filter(raw, freqs=[60, 120, 180])
     """
     if fs is None:
         fs = raw.info["sfreq"]

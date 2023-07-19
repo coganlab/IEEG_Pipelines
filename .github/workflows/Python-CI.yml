@@ -67,7 +67,7 @@ jobs:
         if: ${{ env.MNE_QT_BACKEND != '' }}
       - name: Test with pytest
         run: |
-           pytest ieeg -v --cov=. --pycodestyle --cov-report xml
+           pytest ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
         if: matrix.kind == 'mamba'

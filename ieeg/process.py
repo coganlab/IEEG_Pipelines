@@ -1,6 +1,6 @@
 import operator
 from os import environ
-from typing import TypeVar, Iterable, Union
+from typing import TypeVar, Iterable, Union, Generator
 from itertools import chain
 import inspect
 
@@ -11,7 +11,7 @@ from joblib import Parallel, delayed, cpu_count
 from mne.utils import config, logger
 
 
-def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
+def ensure_int(x, name: str = 'unknown', must_be: str = 'an int', *, extra=''):
     """Ensure a variable is an integer.
 
     Parameters
@@ -24,9 +24,30 @@ def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
         The type of the variable to check.
     extra : str
         Extra text to add to the error message.
+
+    Notes
+    -----
+    This is preferred over numbers.Integral, see:
+    https://github.com/scipy/scipy/pull/7351#issuecomment-299713159
+
+    Examples
+    --------
+    >>> ensure_int(1)
+    1
+    >>> ensure_int(1.0)
+    Traceback (most recent call last):
+    ...
+    TypeError: unknown must be an int, got <class 'float'>
+    >>> ensure_int('1')
+    Traceback (most recent call last):
+    ...
+    TypeError: unknown must be an int, got <class 'str'>
+    >>> ensure_int('1.0', extra='a string')
+    Traceback (most recent call last):
+    ...
+    TypeError: unknown must be an int a string, got <class 'str'>
     """
-    # This is preferred over numbers.Integral, see:
-    # https://github.com/scipy/scipy/pull/7351#issuecomment-299713159
+
     extra = f' {extra}' if extra else extra
     try:
         # someone passing True/False is much more likely to be an error than
@@ -128,14 +149,17 @@ def proc_array(func: callable, arr_in: np.ndarray, axes: int | tuple[int] = 0,
     -------
     np.ndarray
         The output of the function, same shape as the input array
+
+    Examples
+    --------
+    >>> def square(x):
+    ...     return x ** 2
+    >>> proc_array(square, np.arange(10))
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
     """
 
     if isinstance(axes, int):
         axes = (axes,)
-
-    # dump the array to disk for memmap
-    # dump(arr_in, 'temp.npy')
-    # arr_in = load('temp', mmap_mode='w+')
 
     if inplace:
         arr_out = arr_in
@@ -145,7 +169,6 @@ def proc_array(func: callable, arr_in: np.ndarray, axes: int | tuple[int] = 0,
     # Get the cross-section indices and array input generator
     cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
     array_gen = list(arr_in[indices] for indices in cross_sect_ind)
-    # array_gen = tqdm(array_gen, desc=desc, total=len(cross_sect_ind))
 
     gen = Parallel(n_jobs, return_as='generator', verbose=40)(
         delayed(func)(x_, **kwargs) for x_ in array_gen)
@@ -193,6 +216,13 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
     -------
     list
         The output of the function for each element in par_var
+
+    Examples
+    --------
+    >>> def square(x):
+    ...     return x ** 2
+    >>> parallelize(square, [1, 2, 3])
+    [1, 4, 9]
     """
 
     assert ins
@@ -223,9 +253,11 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
     for var in ins:
         if isinstance(var, tuple):
             x_is_tup = True
+        elif isinstance(ins, Generator):
+            x_is_tup = False
+            ins = chain((var,), ins)
         else:
             x_is_tup = False
-        ins = chain((var,), ins)
         break
 
     if x_is_tup:

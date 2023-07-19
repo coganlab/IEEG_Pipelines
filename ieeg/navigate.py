@@ -10,8 +10,9 @@ from ieeg import Doubles, Signal
 from scipy.signal import detrend
 
 
-def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
-                    end_pad: str = "10s") -> mne.io.Raw:
+def crop_empty_data(raw: mne.io.Raw, bound: str = 'boundary',
+                    start_pad: str = "10s", end_pad: str = "10s"
+                    ) -> mne.io.Raw:
     """Crops out long stretches of data with no events.
 
     Takes raw instance with annotated events and crops the instance so that the
@@ -22,6 +23,8 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
     ----------
     raw : mne.io.Raw
         The raw file to crop.
+    bound : str, optional
+        The annotation description to use as a boundary, by default 'boundary'
     start_pad : str, optional
         The amount of time to pad the start of the file, by default "10s"
     end_pad : str, optional
@@ -31,6 +34,19 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
     -------
     mne.io.Raw
         The cropped raw file.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> cropped = crop_empty_data(raw, 'onset')
+    >>> cropped.times[0], cropped.times[-1]
+    (0.0, 104.94)
     """
 
     crop_list = []
@@ -41,7 +57,7 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
     # split annotations into blocks
     annot = raw.annotations.copy()
     block_idx = [idx + 1 for idx, val in
-                 enumerate(annot) if 'BAD boundary' in val['description']]
+                 enumerate(annot) if bound in val['description']]
     block_annot = [annot[i: j] for i, j in
                    zip([0] + block_idx, block_idx +
                        ([len(annot)] if block_idx[-1] != len(annot) else []))]
@@ -50,7 +66,7 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
         # remove boundary events from annotations
         no_bound = None
         for an in block_an:
-            if 'boundary' not in an['description']:
+            if bound not in an['description']:
                 if no_bound is None:
                     no_bound = mne.Annotations(**an)
                 else:
@@ -98,6 +114,23 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     -------
     list[str]
         List of bad channel names.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> bads = channel_outlier_marker(raw, 3, 2)
+    outlier round 1 channels: ['AST2']
+    outlier round 1 channels: ['AST2', 'RQ2']
+    outlier round 1 channels: ['AST2', 'RQ2', 'N/A']
+    outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32']
+    outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3']
+    outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3', 'PD4']
     """
 
     tmp = input_raw.copy()
@@ -142,6 +175,33 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     -------
     mne.epochs.BaseEpochs
         The trials with outliers set to nan.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
+    ... verbose=False)
+    >>> epochs = outliers_to_nan(epochs, 3)
+    >>> epochs['AD1-4, ATT1,2'].get_data()[0]
+    array([[        nan,         nan,         nan, ...,         nan,
+                    nan,         nan],
+           [-0.00030586, -0.00030625, -0.00031171, ..., -0.00016054,
+            -0.00015976, -0.00015664],
+           [        nan,         nan,         nan, ...,         nan,
+                    nan,         nan],
+           ...,
+           [-0.00021483, -0.00021131, -0.00023084, ..., -0.00034295,
+            -0.00032381, -0.00031444],
+           [-0.00052188, -0.00052852, -0.00053125, ..., -0.00046211,
+            -0.00047148, -0.00047891],
+           [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
+            -0.00042341, -0.00040973]])
     """
     if copy:
         trials = trials.copy()
@@ -200,6 +260,34 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
     -------
     mne.Epochs
         The epoched data.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), "onset", (-1, 0.5),
+    ... verbose=True) # doctest: +ELLIPSIS
+    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD',...
+    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD',...
+    Not setting metadata
+    1 matching events found
+    No baseline correction applied
+    0 projection items activated
+    Using data from preloaded Raw for 1 events and 3001 original time points...
+    0 bad epochs dropped
+    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD',...
+    Not setting metadata
+    1 matching events found
+    No baseline correction applied
+    0 projection items activated
+    Using data from preloaded Raw for 1 events and 1501 original time points...
+    0 bad epochs dropped
+    Applying baseline correction (mode: mean)
     """
 
     # determine the events

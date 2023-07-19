@@ -9,15 +9,21 @@ def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
     ----------
     d : dict
         The dictionary to iterate over.
-    _lvl : int, optional
-        The current level of nesting, by default 0
-    _coords : tuple, optional
-        The current coordinates of the array, by default ()
 
     Yields
     ------
     tuple
         The key and value of the dictionary.
+
+    Examples
+    --------
+    >>> d = {'a': {'b': 1, 'c': 2}, 'd': {'e': 3, 'f': 4}}
+    >>> for k, v in iter_nest_dict(d):
+    ...     print(k, v)
+    ('a', 'b') 1
+    ('a', 'c') 2
+    ('d', 'e') 3
+    ('d', 'f') 4
     """
     for k, v in d.items():
         if isinstance(v, dict):
@@ -56,19 +62,24 @@ class LabeledArray(np.ndarray):
     --------
     >>> import numpy as np
     >>> from ieeg.calc.mat import LabeledArray
-    >>> arr = np.ones((2, 3, 4))
+    >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
-    >>> la.to_dict()
-    {'a': {'c': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                 'd': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                'e': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0}},
-        'b': {'c': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                    'd': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                    'e': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0}}}
-    >>> la['a', 'c', 'f'] = 2.
-    >>> la['a', 'c', 'f']
-    2.0
+    >>> la
+    LabeledArray([[[1, 1, 1, 1],
+                   [1, 1, 1, 1],
+                   [1, 1, 1, 1]],
+    <BLANKLINE>
+                  [[1, 1, 1, 1],
+                   [1, 1, 1, 1],
+                   [1, 1, 1, 1]]])
+    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')) ~96.00 B
+    >>> la.to_dict() # doctest: +ELLIPSIS
+    {'a': {'c': {'f': 1, 'g': 1, 'h': 1, 'i': 1}, 'd': {'f': 1, 'g': 1,...
+    >>> la['a', 'c', 'f'] = 2
+    >>> la['a', 'c']
+    LabeledArray([2, 1, 1, 1])
+    labels=(('f', 'g', 'h', 'i'),) ~16.00 B
 
     References
     ----------
@@ -130,7 +141,7 @@ class LabeledArray(np.ndarray):
                      for labels in self.labels)
 
     def _str_parse(self, *keys) -> tuple[int, int]:
-        for key in keys:
+        for i, key in enumerate(keys):
             match key:
                 case list() | tuple():
                     key = list(key)
@@ -138,15 +149,15 @@ class LabeledArray(np.ndarray):
                         for value in self._str_parse(key.pop(0)):
                             yield value
                 case str():
-                    i = 0
-                    while key not in self.labels[i]:
-                        i += 1
-                        if i > self.ndim:
+                    j = 0
+                    while key not in self.labels[j]:
+                        j += 1
+                        if j > self.ndim:
                             raise KeyError(f'{key} not found in labels')
-                    key = self.label_map[i][key]
-                    yield i, key
+                    key = self.label_map[j][key]
+                    yield j, key
                 case _:
-                    yield 0, key
+                    yield i, key
 
     def _parse_labels(self, keys: tuple) -> tuple:
         new_keys = []
@@ -195,10 +206,20 @@ class LabeledArray(np.ndarray):
         return out
 
     def __setitem__(self, key, value):
-        dim, num_key = self._str_parse(key)
-        if key not in self.labels[dim]:
-            self.labels[dim] += (key,)
-        super(LabeledArray, self).__setitem__(num_key, value)
+        coords = []
+        for i, (dim, num_key) in enumerate(self._str_parse(*key)):
+            if isinstance(key[i], str) and key[i] not in self.labels[dim]:
+                self.labels[dim] += (key[i],)
+
+            # set num_keys
+            while len(coords) <= dim:
+                coords.append(None)
+            if coords[dim] is None:
+                coords[dim] = (num_key,)
+            else:
+                coords[dim] += (num_key,)
+        coords = tuple(c if len(c) > 1 else c[0] for c in coords)
+        super(LabeledArray, self).__setitem__(coords, value)
 
     def __delitem__(self, key):
         dim, num_key = self._str_parse(key)
@@ -272,7 +293,8 @@ class LabeledArray(np.ndarray):
         >>> data = {'a': {'b': {'c': 1}}}
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.combine((0, 2))
-        LabeledArray([[1]]), labels=(('b',), ('a-c',)) ~4.00 B
+        LabeledArray([[1]])
+        labels=(('b',), ('a-c',)) ~4.00 B
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
@@ -587,40 +609,41 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
 
 
 if __name__ == "__main__":
-    import os
-    from ieeg.io import get_data
-    from utils.mat_load import load_dict
-    import mne
-    ins, axis, exp = ([np.array([]), np.array([[1., 2.], [3., 4.]]),
-                       np.array([[5., 6., 7.], [8., 9., 10.]])], 0,
-                      np.array([[1, 2, np.nan], [3, 4, np.nan],
-                                [5, 6, 7], [8, 9, 10]]))
-    outs = concatenate_arrays(ins, axis)
-    ar = LabeledArray.from_dict(dict(a=ins[1], b=ins[2]))
-    x = ar["a"]
-    y = ar.to_dict()
-    conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
-             "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
-             "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
-             "go_jl": (-0.5, 1.5)}
-    task = "SentenceRep"
-    root = os.path.expanduser("~/Box/CoganLab")
-    layout = get_data(task, root=root)
-
-    mne.set_log_level("ERROR")
+    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
+    # import os
+    # from ieeg.io import get_data
+    # from utils.mat_load import load_dict
+    # import mne
+    # ins, axis, exp = ([np.array([]), np.array([[1., 2.], [3., 4.]]),
+    #                    np.array([[5., 6., 7.], [8., 9., 10.]])], 0,
+    #                   np.array([[1, 2, np.nan], [3, 4, np.nan],
+    #                             [5, 6, 7], [8, 9, 10]]))
+    # outs = concatenate_arrays(ins, axis)
+    # ar = LabeledArray.from_dict(dict(a=ins[1], b=ins[2]))
+    # x = ar["a"]
+    # y = ar.to_dict()
+    # conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
+    #          "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
+    #          "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
+    #          "go_jl": (-0.5, 1.5)}
+    # task = "SentenceRep"
+    # root = os.path.expanduser("~/Box/CoganLab")
+    # layout = get_data(task, root=root)
+    #
+    # mne.set_log_level("ERROR")
 
     # data = LabeledArray.from_dict(dict(
     #     power=load_dict(layout, conds, "power", False),
     #     zscore=load_dict(layout, conds, "zscore", False)))
 
-    dict_data = dict(
-        power=load_dict(layout, conds, "power", False))
-    # zscore=load_dict(layout, conds, "zscore", False))
-
-    keys = inner_all_keys(dict_data)
-
-    data = LabeledArray.from_dict(dict_data)
-    data.__repr__()
+    # dict_data = dict(
+    #     power=load_dict(layout, conds, "power", False))
+    # # zscore=load_dict(layout, conds, "zscore", False))
+    #
+    # keys = inner_all_keys(dict_data)
+    #
+    # data = LabeledArray.from_dict(dict_data)
+    # data.__repr__()
 
     # data = SparseArray(dict_data)
 

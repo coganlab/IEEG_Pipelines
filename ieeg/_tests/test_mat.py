@@ -233,3 +233,17 @@ def test_numpy_idx(idx):
 def test_idx(idx, expected):
     ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
     assert ad[idx].labels == expected
+
+
+@pytest.mark.parametrize('idx, val, expected', [
+    ((0, 0, 0), 3, [[[3, 2]]]),
+    ((0, 0, 1), 3, [[[1, 3]]]),
+    (('a', 'b', 'c'), 3, [[[3, 2]]]),
+    (('a', 'b', 'd'), 3, [[[1, 3]]]),
+    ((0, 0), [3, 4], [[[3, 4]]]),
+    ((0, 'b'), [3, 4], [[[3, 4]]])
+])
+def test_set_array_val(idx, val, expected):
+    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
+    ad[idx] = val
+    np.testing.assert_array_equal(ad, np.array(expected))

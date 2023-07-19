@@ -89,7 +89,18 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     Returns
     -------
     mne.io.Raw
+
+    Examples
+    --------
+
+    >>> import mne
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
     """
+    verbose = kwargs.pop('verbose', True)
     if run is None:
         runs = layout.get(return_type="id", target="run", **kwargs)
     else:
@@ -98,12 +109,12 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     if runs:
         for r in runs:
             BIDS_path = bidspath_from_layout(layout, run=r, **kwargs)
-            new_raw = read_raw_bids(bids_path=BIDS_path)
+            new_raw = read_raw_bids(bids_path=BIDS_path, verbose=verbose)
             raw.append(new_raw.copy())
         whole_raw: mne.io.Raw = mne.concatenate_raws(raw)
     else:
         BIDS_path = bidspath_from_layout(layout, **kwargs)
-        whole_raw = read_raw_bids(bids_path=BIDS_path)
+        whole_raw = read_raw_bids(bids_path=BIDS_path, verbose=verbose)
     if preload:
         whole_raw.load_data()
     return whole_raw
