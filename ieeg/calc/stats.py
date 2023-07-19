@@ -27,6 +27,14 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     -------
     Doubles
         Tuple containing the mean and standard deviation of the matrix.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> mat = np.array([[1, 2, 3], [4, 5, 6]])
+    >>> dist(mat)
+    (array([2.5, 3.5, 4.5]), array([1.06066017, 1.06066017, 1.06066017]))
+
     """
 
     if mask is None:
@@ -46,7 +54,7 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     return np.squeeze(avg), stdev
 
 
-def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
+def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
                    axis: int = 0) -> tuple[tuple[int, int]]:
     """ Remove outliers from data and repeat until no outliers are left.
 
@@ -72,6 +80,17 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
     tuple[tuple[int, int]]
         Tuple of tuples containing the index of the outlier and the round in
         which it was removed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> tuple(outlier_repeat(data, 1))
+    ((1, 1), (3, 2))
+    >>> tuple(outlier_repeat(data, 1, rounds=1))
+    ((1, 1),)
+    >>> tuple(outlier_repeat(data, 1, rounds=0))
+    ()
     """
     inds = list(range(data.shape[axis]))
 
@@ -120,7 +139,19 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
     -------
     np.ndarray[bool]
         Boolean array with True for trials that are not outliers and False
-        for trials that are outliers."""
+        for trials that are outliers.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> find_outliers(data, 1)
+    array([ True, False,  True,  True,  True])
+    >>> find_outliers(data, 3)
+    array([ True,  True,  True,  True,  True])
+    >>> find_outliers(data, 0.1)
+    array([ True, False,  True, False,  True])
+    """
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
     max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
     std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
@@ -152,6 +183,28 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
     -------
     np.ndarray
         Average of data without outliers.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([[[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]]).T
+    >>> avg_no_outlier(data, 1)
+    Removed Trial 0 in Channel 0
+    Removed Trial 1 in Channel 0
+    Removed Trial 1 in Channel 1
+    Removed Trial 2 in Channel 0
+    Removed Trial 3 in Channel 0
+    Removed Trial 4 in Channel 0
+    array([[nan],
+           [2.5]])
+    >>> avg_no_outlier(data, 3)
+    Removed Trial 0 in Channel 0
+    Removed Trial 1 in Channel 0
+    Removed Trial 2 in Channel 0
+    Removed Trial 3 in Channel 0
+    Removed Trial 4 in Channel 0
+    array([[nan],
+           [14.]])
     """
     if data.ndim not in (3, 4):
         raise ValueError("Data must be 3D or 4D")
@@ -198,6 +251,18 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     -------
     avg1 - avg2 : array or float
         The mean difference between the two groups.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]).T
+    >>> mean_diff(group1, group2)
+    7.0
+    >>> mean_diff(group1, group2, axis=0)
+    array([ 0., 14.])
+    >>> mean_diff(group1, group2, axis=1)
+    array([ 0., 30.,  0.,  5.,  0.])
     """
 
     avg1 = np.nanmean(group1, axis=axis)
@@ -260,6 +325,42 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     References
     ----------
     1. https://www.sciencedirect.com/science/article/pii/S0165027007001707
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> sig1 = np.array([[[1, 1, 1, 1, 1, 1]], [[0, 60, 30, 20, 10, 0]]])
+    >>> sig2 = np.array([[[1, 1, 1, 1, 1, 1]], [[0, 0, 0, 0, 0, 0]]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.32)
+    >>> clusters
+    array([[False, False, False, False, False]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.1, tails=2)
+    >>> clusters
+    array([[False, False, False,  True, False]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.1, p_cluster=0.05)
+    >>> clusters
+    array([[False, False, False, False, False]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.1, p_cluster=0.05,
+    ...                              n_perm=10000)
+    >>> clusters
+    array([[False, False, False,  True, False]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
+    ...                              n_perm=10000, tails=2)
+    >>> clusters
+    array([[False, False, False,  True, False]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
+    ...                              n_perm=10000, tails=2, axis=1)
+    >>> clusters
+    array([[False, False, False,  True, False]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
+    ...                              n_perm=10000, tails=2, axis=1,
+    ...                              ignore_adjacency=1)
+    >>> clusters
+    array([[False, False, False, False, False]])
+    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
+    ...                              n_perm=10000, tails=2, axis=1,
+    ...                              ignore_adjacency=(1,))
+    >>>
     """
     # check inputs
     if p_cluster is None:
