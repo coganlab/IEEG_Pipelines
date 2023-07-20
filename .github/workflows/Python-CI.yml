@@ -30,7 +30,7 @@ jobs:
           kind: conda
         - os: ubuntu-latest
           python: '3.11'
-          kind: pip-pre
+          kind: pip
         - os: windows-latest
           python: '3.11'
           kind: mamba
@@ -65,6 +65,8 @@ jobs:
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
+      - run: ./.github/setup_xvfb.sh
+        if: matrix.kind == conda
       - name: Test with pytest
         run: |
            pytest ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
