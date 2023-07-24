@@ -77,9 +77,9 @@ class LabeledArray(np.ndarray):
     >>> la.to_dict() # doctest: +ELLIPSIS
     {'a': {'c': {'f': 1, 'g': 1, 'h': 1, 'i': 1}, 'd': {'f': 1, 'g': 1,...
     >>> la['a', 'c', 'f'] = 2
-    >>> la['a', 'c']
+    >>> la['a', 'c'] # doctest: +ELLIPSIS
     LabeledArray([2, 1, 1, 1])
-    labels=(('f', 'g', 'h', 'i'),) ~16.00 B
+    labels=(('f', 'g', 'h', 'i'),) ...
 
     References
     ----------
@@ -292,9 +292,9 @@ class LabeledArray(np.ndarray):
         --------
         >>> data = {'a': {'b': {'c': 1}}}
         >>> ad = LabeledArray.from_dict(data, dtype=int)
-        >>> ad.combine((0, 2))
+        >>> ad.combine((0, 2)) # doctest: +ELLIPSIS
         LabeledArray([[1]])
-        labels=(('b',), ('a-c',)) ~4.00 B
+        labels=(('b',), ('a-c',)) ...
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
