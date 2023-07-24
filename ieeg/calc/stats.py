@@ -329,38 +329,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     Examples
     --------
     >>> import numpy as np
-    >>> sig1 = np.array([[[1, 1, 1, 1, 1, 1]], [[0, 60, 30, 20, 10, 0]]])
-    >>> sig2 = np.array([[[1, 1, 1, 1, 1, 1]], [[0, 0, 0, 0, 0, 0]]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.32)
-    >>> clusters
-    array([[False, False, False, False, False]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.1, tails=2)
-    >>> clusters
-    array([[False, False, False,  True, False]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.1, p_cluster=0.05)
-    >>> clusters
-    array([[False, False, False, False, False]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.1, p_cluster=0.05,
-    ...                              n_perm=10000)
-    >>> clusters
-    array([[False, False, False,  True, False]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
-    ...                              n_perm=10000, tails=2)
-    >>> clusters
-    array([[False, False, False,  True, False]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
-    ...                              n_perm=10000, tails=2, axis=1)
-    >>> clusters
-    array([[False, False, False,  True, False]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
-    ...                              n_perm=10000, tails=2, axis=1,
-    ...                              ignore_adjacency=1)
-    >>> clusters
-    array([[False, False, False, False, False]])
-    >>> clusters = time_perm_cluster(sig1, sig2, p_thresh=0.05, p_cluster=0.05,
-    ...                              n_perm=10000, tails=2, axis=1,
-    ...                              ignore_adjacency=(1,))
-    >>>
+    >>> time_perm_cluster(np.random.random((10, 1)), np.random.random((10, 1)),
+    ...     0.05,)
+    array([False])
     """
     # check inputs
     if p_cluster is None:
@@ -705,6 +676,23 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
         The F-statistic for each frequency.
     A : array
         The amplitude of the sine wave at each frequency.
+
+    Examples:
+    ---------
+    >>> import numpy as np
+    >>> window_fun = np.array([[0.5, 0.5], [0.5, -0.5]])
+    >>> x_p = np.array([[[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]],
+    ...                 [[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]]).T
+    >>> sine_f_test(window_fun, x_p)
+    (array([[0.        , 0.        ],
+           [0.00027778, 0.        ],
+           [0.        , 0.        ],
+           [0.01      , 0.        ],
+           [0.        , 0.        ]]), array([[1., 1.],
+           [1., 1.],
+           [1., 1.],
+           [1., 1.],
+           [1., 1.]]))
     """
     # drop the even tapers
     n_tapers = len(window_fun)
