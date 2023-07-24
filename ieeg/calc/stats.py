@@ -186,7 +186,9 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
 
     Examples
     --------
-    >>> import numpy as np
+import mne    >>> import numpy as np
+    >>> import mne
+    >>> mne.set_log_file(None)
     >>> data = np.array([[[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]]).T
     >>> avg_no_outlier(data, 1)
     Removed Trial 0 in Channel 0

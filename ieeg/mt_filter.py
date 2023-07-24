@@ -113,7 +113,9 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
     Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> mne.set_log_level("WARNING")
     >>> filt = line_filter(raw, freqs=[60, 120, 180])
+    >>> mne.set_log_level("INFO")
     """
     if fs is None:
         fs = raw.info["sfreq"]

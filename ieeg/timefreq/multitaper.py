@@ -59,9 +59,6 @@ class WindowingRemover(object):
         self.bandwidth = bandwidth
         self.logger = logger
         self.rm_freqs = list()
-        mne.set_log_file("output.log",
-                         "%(levelname)s: %(message)s - %(asctime)s")
-        mne.set_log_level("INFO")
 
     def dpss_windows(self, N: int, half_nbw: float, Kmax: int, *,
                      sym: bool = True, norm: Union[int, str] = None

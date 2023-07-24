@@ -13,12 +13,6 @@ bids_root = mne.datasets.epilepsy_ecog.data_path()
 seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
                        'seeg' / 'sample_seeg_ieeg.fif')
 layout = BIDSLayout(bids_root)
-log_filename = "output.log"
-# op.join(LAB_root, "Aaron_test", "Information.log")
-mne.set_log_file(log_filename,
-                 "%(levelname)s: %(message)s - %(asctime)s",
-                 overwrite=True)
-mne.set_log_level("DEBUG")
 
 
 def test_bids():
@@ -42,6 +36,10 @@ def test_raw_from_layout():
 @pytest.mark.parametrize("n_jobs", [1, 8])
 def test_line_filter(n_jobs):
     from ieeg.mt_filter import line_filter
+    mne.set_log_file("output.log",
+                     "%(levelname)s: %(message)s - %(asctime)s",
+                     overwrite=True)
+    mne.set_log_level("DEBUG")
     raw = raw_from_layout(layout, subject="pt1", preload=True,
                           extension=".vhdr")
     filt = line_filter(raw, raw.info['sfreq'], [60])
