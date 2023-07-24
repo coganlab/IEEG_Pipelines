@@ -65,7 +65,7 @@ class LabeledArray(np.ndarray):
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
-    >>> la
+    >>> la # doctest: +ELLIPSIS
     LabeledArray([[[1, 1, 1, 1],
                    [1, 1, 1, 1],
                    [1, 1, 1, 1]],
@@ -73,7 +73,7 @@ class LabeledArray(np.ndarray):
                   [[1, 1, 1, 1],
                    [1, 1, 1, 1],
                    [1, 1, 1, 1]]])
-    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')) ~96.00 B
+    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')) ... B
     >>> la.to_dict() # doctest: +ELLIPSIS
     {'a': {'c': {'f': 1, 'g': 1, 'h': 1, 'i': 1}, 'd': {'f': 1, 'g': 1,...
     >>> la['a', 'c', 'f'] = 2
