@@ -15,11 +15,6 @@ import numpy as np
 from ieeg import Signal, PathLike
 from ieeg.io import get_elec_volume_labels
 
-try:
-    matplotlib.use("TkAgg")
-except ImportError:
-    pass
-
 import matplotlib.pyplot as plt  # noqa: E402
 
 

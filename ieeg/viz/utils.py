@@ -1,6 +1,5 @@
 import gc
 
-import matplotlib as mpl
 from joblib import cpu_count
 from mne.io import Raw
 import numpy as np
@@ -8,12 +7,6 @@ import numpy as np
 from ieeg import Signal, Doubles
 from ieeg.calc import stats
 from functools import partial
-
-# Vizualization on Pycharm doesn't work unless using TkAgg
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
 
 
 import matplotlib.pyplot as plt  # noqa: E402
