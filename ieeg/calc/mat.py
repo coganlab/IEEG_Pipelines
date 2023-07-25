@@ -111,6 +111,19 @@ class LabeledArray(np.ndarray):
         -------
         LabeledArray
             The LabeledArray created from the dictionary.
+
+        Examples
+        --------
+        >>> data = {'a': {'b': {'c': 1}}}
+        >>> LabeledArray.from_dict(data, dtype=int) # doctest: +ELLIPSIS
+        LabeledArray([[[1]]])
+        labels=(('a',), ('b',), ('c',)) ...
+        >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
+        >>> LabeledArray.from_dict(data) # doctest: +ELLIPSIS
+        LabeledArray([[[ 1., nan]],
+        <BLANKLINE>
+                      [[ 2.,  3.]]])
+        labels=(('a', 'd'), ('b',), ('c', 'e')) ...
         """
 
         arr = inner_array(data)
@@ -153,6 +166,7 @@ class LabeledArray(np.ndarray):
         dim = 0
         for key in keys:
             if isinstance(key, str):
+                # TODO: fix this is you want multi-label parsing per level
                 i, key = next(self._str_parse(key))
                 new_keys.append(key)
                 while dim < i:
@@ -351,6 +365,10 @@ def add_to_list_if_not_present(lst: list, element: Iterable):
         The list to add the element to.
     element : Iterable
         The element to add to the list.
+
+    References
+    ----------
+    [1] https://www.youtube.com/watch?v=PXWL_Xzyrp4
 
     Examples
     --------
