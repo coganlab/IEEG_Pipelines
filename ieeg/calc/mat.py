@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 
 import numpy as np
+from numpy.matlib import repmat
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -120,20 +121,6 @@ class LabeledArray(np.ndarray):
         if obj is None:
             return
         self.labels = getattr(obj, 'labels', None)
-
-    def dropna(self) -> 'LabeledArray':
-        """Remove all nan values from the array."""
-        new_labels = list(self.labels)
-        idx = []
-        for i in range(self.ndim):
-            axes = tuple(j for j in range(self.ndim) if j != i)
-            mask = np.all(np.isnan(np.array(self)), axis=axes)
-            if np.any(mask):
-                new_labels[i] = tuple(np.array(new_labels[i])[~mask])
-            idx.append(~mask)
-        index = np.ix_(*idx)
-        new_array = LabeledArray(np.array(self)[index], new_labels)
-        return new_array
 
     @property
     def label_map(self) -> tuple[dict[str: int, ...], ...]:
@@ -323,15 +310,85 @@ class LabeledArray(np.ndarray):
         else:
             return LabeledArray(new_array, new_labels)
 
+    def dropna(self) -> 'LabeledArray':
+        """Remove all nan values from the array.
+
+        Scans each column along any axis and removes all rows that contain
+        only nan values.
+
+        Returns
+        -------
+        LabeledArray
+            The array with all nan values removed.
+
+        Examples
+        --------
+        >>> data = {'a': {'b': {'c': 1., 'd': np.nan}}}
+        >>> ad = LabeledArray.from_dict(data)
+        >>> ad.dropna() # doctest: +ELLIPSIS
+        LabeledArray([[[1.]]])
+        labels=(('a',), ('b',), ('c',)) ...
+        """
+        new_labels = list(self.labels)
+        idx = []
+        for i in range(self.ndim):
+            axes = tuple(j for j in range(self.ndim) if j != i)
+            mask = np.all(np.isnan(np.array(self)), axis=axes)
+            if np.any(mask):
+                new_labels[i] = tuple(np.array(new_labels[i])[~mask])
+            idx.append(~mask)
+        index = np.ix_(*idx)
+        new_array = LabeledArray(np.array(self)[index], new_labels)
+        return new_array
+
 
 def add_to_list_if_not_present(lst: list, element: Iterable):
-    """Add an element to a list if it is not present. Runs in O(1) time."""
+    """Add an element to a list if it is not present. Runs in O(1) time.
+
+    Parameters
+    ----------
+    lst : list
+        The list to add the element to.
+    element : Iterable
+        The element to add to the list.
+
+    Examples
+    --------
+    >>> lst = [1, 2, 3]
+    >>> add_to_list_if_not_present(lst, [3, 4, 5])
+    >>> lst
+    [1, 2, 3, 4, 5]
+    """
     seen = set(lst)
     lst.extend(x for x in element if not (x in seen or seen.add(x)))
 
 
 def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
-    """Get all keys of a nested dictionary."""
+    """Get all keys of a nested dictionary.
+
+    Parameters
+    ----------
+    data : dict
+        The nested dictionary to get the keys of.
+    keys : list, optional
+        The list of keys, by default None
+    lvl : int, optional
+        The level of the dictionary, by default 0
+
+    Returns
+    -------
+    tuple
+        The tuple of keys.
+
+    Examples
+    --------
+    >>> data = {'a': {'b': {'c': 1}}}
+    >>> inner_all_keys(data)
+    (('a',), ('b',), ('c',))
+    >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
+    >>> inner_all_keys(data)
+    (('a', 'd'), ('b',), ('c', 'e'))
+    """
     if keys is None:
         keys = []
     if np.isscalar(data):
@@ -357,7 +414,29 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
 
 
 def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
-    """Convert a nested dictionary to a nested array."""
+    """Convert a nested dictionary to a nested array.
+
+    Parameters
+    ----------
+    data : dict or np.ndarray
+        The nested dictionary to convert.
+
+    Returns
+    -------
+    np.ndarray or None
+        The converted nested array.
+
+    Examples
+    --------
+    >>> data = {'a': {'b': {'c': 1}}}
+    >>> inner_array(data)
+    array([[[1.]]])
+    >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
+    >>> inner_array(data)
+    array([[[ 1., nan]],
+    <BLANKLINE>
+           [[ 2.,  3.]]])
+    """
     if np.isscalar(data):
         return data
     elif len(data) == 0:
@@ -372,7 +451,28 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
 
 
 def inner_dict(data: np.ndarray) -> dict | None:
-    """Convert a nested array to a nested dictionary."""
+    """Convert a nested array to a nested dictionary.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The nested array to convert.
+
+    Returns
+    -------
+    dict or None
+        The converted nested dictionary.
+
+    Examples
+    --------
+    >>> data = np.array([[[1]]])
+    >>> inner_dict(data)
+    {0: {0: {0: 1}}}
+    >>> data = np.array([[[1, np.nan]],
+    ...                  [[2, 3]]])
+    >>> inner_dict(data)
+    {0: {0: {0: 1.0, 1: nan}}, 1: {0: {0: 2.0, 1: 3.0}}}
+    """
     if np.isscalar(data):
         return data
     elif len(data) == 0:
@@ -506,6 +606,25 @@ def concatenate_arrays(arrays: list[np.ndarray], axis: int = None
 
 
 def get_homogeneous_shapes(arrays):
+    """Get the shapes of the input arrays with a homogeneous number of
+    dimensions.
+
+    Parameters
+    ----------
+    arrays
+        A list of arrays
+
+    Returns
+    -------
+    homogeneous_shapes
+        A list of shapes with a homogeneous number of dimensions
+
+    Examples
+    --------
+    >>> arrays = [np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10]])]
+    >>> get_homogeneous_shapes(arrays)
+    [(2, 2), (2, 3)]
+    """
     # Determine the maximum number of dimensions among the input arrays
     max_dims = max([arr.ndim for arr in arrays])
 
@@ -546,6 +665,15 @@ def get_elbow(data: np.ndarray) -> int:
     -------
     int
         The index of the elbow point.
+
+    Examples
+    --------
+    >>> data = np.array([0, 1, 2, 3, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10])
+    >>> get_elbow(data)
+    4
+    >>> data = np.array([1, 2, 3, 4, 5, 4.5, 4, 3.5, 3, 2, 1])
+    >>> get_elbow(data)
+    4
     """
     nPoints = len(data)
     allCoord = np.vstack((range(nPoints), data)).T
@@ -554,7 +682,7 @@ def get_elbow(data: np.ndarray) -> int:
     lineVec = allCoord[-1] - allCoord[0]
     lineVecNorm = lineVec / np.sqrt(np.sum(lineVec ** 2))
     vecFromFirst = allCoord - firstPoint
-    scalarProduct = np.sum(vecFromFirst * np.matlib.repmat(
+    scalarProduct = np.sum(vecFromFirst * repmat(
         lineVecNorm, nPoints, 1), axis=1)
     vecFromFirstParallel = np.outer(scalarProduct, lineVecNorm)
     vecToLine = vecFromFirst - vecFromFirstParallel
@@ -583,6 +711,19 @@ def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
     -------
     np.ndarray
         The stitched matrix
+
+    Examples
+    --------
+    >>> mat1 = np.array([[1, 2, 3], [4, 5, 6]])
+    >>> mat2 = np.array([[7, 8, 9], [10, 11, 12]])
+    >>> mat3 = np.array([[13, 14, 15], [16, 17, 18]])
+    >>> stitch_mats([mat1, mat2, mat3], [1, 1])
+    array([[ 1,  2,  3],
+           [10, 11, 12],
+           [16, 17, 18]])
+    >>> stitch_mats([mat1, mat2, mat3], [0, 0], axis=1)
+    array([[ 1,  2,  3,  7,  8,  9, 13, 14, 15],
+           [ 4,  5,  6, 10, 11, 12, 16, 17, 18]])
     """
     stitches = [mats[0]]
     if len(mats) != len(overlaps) + 1:
@@ -606,7 +747,9 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
     middle = np.add(middle1, middle2)
     sl[axis] = slice(overlap, mat2.shape[axis])
     last = mat2[tuple(sl)]
-    return [start, middle, last]
+
+    return [start.astype(mat1.dtype), middle.astype(mat1.dtype),
+            last.astype(mat1.dtype)]
 
 
 if __name__ == "__main__":
