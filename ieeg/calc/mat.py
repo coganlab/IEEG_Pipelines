@@ -621,7 +621,8 @@ def get_homogeneous_shapes(arrays):
 
     Examples
     --------
-    >>> arrays = [np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10]])]
+    >>> arrays = [np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10
+    ... ]])]
     >>> get_homogeneous_shapes(arrays)
     [(2, 2), (2, 3)]
     """
@@ -724,6 +725,10 @@ def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
     >>> stitch_mats([mat1, mat2, mat3], [0, 0], axis=1)
     array([[ 1,  2,  3,  7,  8,  9, 13, 14, 15],
            [ 4,  5,  6, 10, 11, 12, 16, 17, 18]])
+    >>> mat4 = np.array([[19, 20, 21], [22, 23, float("nan")]])
+    >>> stitch_mats([mat3, mat4], [0], axis=1)
+    array([[13., 14., 15., 19., 20., 21.],
+           [16., 17., 18., 22., 23., nan]])
     """
     stitches = [mats[0]]
     if len(mats) != len(overlaps) + 1:
@@ -731,11 +736,15 @@ def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
                          "ber of overlaps")
     for i, over in enumerate(overlaps):
         stitches = stitches[:-2] + merge(stitches[-1], mats[i+1], over, axis)
-    return np.concatenate(stitches, axis=axis)
+    out = np.concatenate(stitches, axis=axis)
+    if np.array_equal(out.astype(int), out):
+        return out.astype(int)
+    else:
+        return out
 
 
 def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
-          ) -> list[np.ndarray]:
+          ) -> list[np.ndarray[float]]:
     """Take two arrays and merge them over the overlap gradually"""
     sl = [slice(None)] * mat1.ndim
     sl[axis] = slice(0, mat1.shape[axis]-overlap)
@@ -748,8 +757,7 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
     sl[axis] = slice(overlap, mat2.shape[axis])
     last = mat2[tuple(sl)]
 
-    return [start.astype(mat1.dtype), middle.astype(mat1.dtype),
-            last.astype(mat1.dtype)]
+    return [start, middle, last]
 
 
 if __name__ == "__main__":
