@@ -1,11 +1,13 @@
-from naplib.preprocessing import filterbank_hilbert
-from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
-from ieeg.process import get_mem, cpu_count, COLA, parallelize
-from mne.io import base, Raw
-from mne import Epochs
 from functools import singledispatch
-from tqdm import tqdm
+
 import numpy as np
+from mne import Epochs
+from mne.io import Raw, base
+from naplib.preprocessing import filterbank_hilbert
+from tqdm import tqdm
+
+from ieeg.process import COLA, cpu_count, get_mem, parallelize
+from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
 
 
 @singledispatch

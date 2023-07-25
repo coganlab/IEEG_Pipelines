@@ -1,21 +1,20 @@
-from typing import Union
-from functools import singledispatch, cache
 from collections import Counter
+from functools import cache, singledispatch
+from typing import Union
 
 import numpy as np
-from mne.utils import verbose, fill_doc, logger, _pl
+from mne import Epochs, event, events_from_annotations
 from mne.epochs import BaseEpochs
-from mne.io import base, Raw
+from mne.io import Raw, base
 from mne.time_frequency import AverageTFR, tfr_multitaper
-from mne import events_from_annotations, Epochs, event
-import mne
+from mne.utils import _pl, fill_doc, logger, verbose
 from scipy import fft, signal, stats
 
-from ieeg.timefreq.utils import crop_pad, to_samples
+from ieeg import ListNum
 from ieeg.calc.scaling import rescale
 from ieeg.calc.stats import sine_f_test
 from ieeg.process import COLA, is_number
-from ieeg import ListNum
+from ieeg.timefreq.utils import crop_pad, to_samples
 
 
 class WindowingRemover(object):

@@ -3,22 +3,15 @@
 .. include:: ../ieeg/README.md
     :parser: myst_parser.sphinx_
 """
-import mne.io
 from os import PathLike as PL
-from numpy import ndarray
+
+import mne.io
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
 from mne.time_frequency import _BaseTFR
+from numpy import ndarray
 
-# from . import (  # noqa: F401
-#     calc,
-#     timefreq,
-#     viz,
-#     io,
-#     mt_filter,
-#     navigate,
-#     process)
 
 PathLike = str | PL
 RunDict = dict[int, mne.io.Raw]

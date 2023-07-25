@@ -1,14 +1,14 @@
-from typing import Union
 import argparse
+from typing import Union
 
 import numpy as np
 from mne.io import pick
-from mne.utils import logger, verbose, fill_doc
+from mne.utils import fill_doc, logger, verbose
 
+from ieeg import ListNum
+from ieeg.process import proc_array
 from ieeg.timefreq import utils as mt_utils
 from ieeg.timefreq.multitaper import WindowingRemover
-from ieeg.process import proc_array
-from ieeg import ListNum
 
 
 @fill_doc

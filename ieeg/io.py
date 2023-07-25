@@ -1,17 +1,18 @@
-from ieeg import PathLike, Signal
 import re
-from os import walk, listdir, mkdir, path as op
 from functools import singledispatch
+from os import listdir, mkdir, path as op, walk
 
-from bids.layout import BIDSFile, parse_file_entities
-from mne_bids import read_raw_bids, BIDSPath, write_raw_bids, \
-    mark_channels, get_bids_path_from_fname
-from mne.utils import verbose, fill_doc
-from mne_bids.write import _from_tsv
-from bids import BIDSLayout
-import numpy as np
 import mne
+import numpy as np
 import pandas as pd
+from bids import BIDSLayout
+from bids.layout import BIDSFile, parse_file_entities
+from mne.utils import fill_doc, verbose
+from mne_bids import BIDSPath, get_bids_path_from_fname, mark_channels, \
+    read_raw_bids, write_raw_bids
+from mne_bids.write import _from_tsv
+
+from ieeg import PathLike, Signal
 
 
 def find_dat(folder: PathLike) -> (PathLike, PathLike):

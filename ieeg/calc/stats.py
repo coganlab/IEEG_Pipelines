@@ -1,10 +1,9 @@
 import numpy as np
-
-from skimage import measure
+from joblib import Parallel, delayed
 from mne.utils import logger
+from skimage import measure
 
 from ieeg import Doubles
-from joblib import Parallel, delayed
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:

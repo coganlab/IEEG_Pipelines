@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
-from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes, \
-    LabeledArray, combine, iter_nest_dict
+
+from ieeg.calc.mat import LabeledArray, combine, concatenate_arrays, \
+    get_homogeneous_shapes, iter_nest_dict
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [

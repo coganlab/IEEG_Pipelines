@@ -1,13 +1,13 @@
 import mne
-from mne.utils import verbose, fill_doc
 import numpy as np
 from bids import BIDSLayout
+from mne.utils import fill_doc, verbose
+from scipy.signal import detrend
 
+from ieeg import Doubles, Signal
+from ieeg.calc import scaling, stats
 from ieeg.io import update
 from ieeg.timefreq.utils import to_samples
-from ieeg.calc import scaling, stats
-from ieeg import Doubles, Signal
-from scipy.signal import detrend
 
 
 def crop_empty_data(raw: mne.io.Raw, bound: str = 'boundary',

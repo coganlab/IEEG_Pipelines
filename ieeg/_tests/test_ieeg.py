@@ -1,13 +1,15 @@
+import os
+
 import mne
-import pytest
 import numpy as np
+import pytest
+import scipy
 from bids import BIDSLayout
 from mne.io import BaseRaw
 from mne_bids import BIDSPath
-from ieeg.io import raw_from_layout
+
 from ieeg.calc.stats import mean_diff
-import scipy
-import os
+from ieeg.io import raw_from_layout
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 seeg = mne.io.read_raw(mne.datasets.misc.data_path() /

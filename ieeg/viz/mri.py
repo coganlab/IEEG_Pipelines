@@ -1,21 +1,19 @@
+import csv
 import os.path as op
 from collections import OrderedDict
 from collections.abc import Iterable
-import csv
 from functools import singledispatch
 
 import matplotlib
-from mne.viz import Brain
 import matplotlib.patheffects as path_effects
-
+import matplotlib.pyplot as plt  # noqa: E402
 import mne
 import nibabel as nib
 import numpy as np
+from mne.viz import Brain
 
-from ieeg import Signal, PathLike
+from ieeg import PathLike, Signal
 from ieeg.io import get_elec_volume_labels
-
-import matplotlib.pyplot as plt  # noqa: E402
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
@@ -611,7 +609,7 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
 
 
 if __name__ == "__main__":
-    from ieeg.io import get_data, raw_from_layout
+    from ieeg.io import get_data
     from os import path
 
     HOME = path.expanduser("~")

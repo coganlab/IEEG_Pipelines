@@ -1,14 +1,14 @@
-import operator
-from os import environ
-from typing import TypeVar, Iterable, Union, Generator
-from itertools import chain
 import inspect
+import operator
+from itertools import chain
+from os import environ
+from typing import Generator, Iterable, TypeVar, Union
 
 import numpy as np
 import pandas as pd
-from scipy.signal import get_window
-from joblib import Parallel, delayed, cpu_count
+from joblib import Parallel, cpu_count, delayed
 from mne.utils import config, logger
+from scipy.signal import get_window
 
 
 def ensure_int(x, name: str = 'unknown', must_be: str = 'an int', *, extra=''):

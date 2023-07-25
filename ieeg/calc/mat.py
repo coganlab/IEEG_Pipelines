@@ -1,5 +1,6 @@
-import numpy as np
 from collections.abc import Iterable
+
+import numpy as np
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
