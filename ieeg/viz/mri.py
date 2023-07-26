@@ -243,7 +243,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
-                    size: float = 0.35, fig: Brain = None) -> Brain:
+                    size: float = 0.35, fig: Brain = None,
+                    background: str = 'white') -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -269,6 +270,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
         The size of the markers, by default 0.35
     fig : Brain, optional
         The figure to plot on, by default None
+    background: str, optional
+        Background color
 
     Returns
     -------
@@ -279,7 +282,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
     subj_dir = get_sub_dir(subj_dir)
     if fig is None:
         fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.6, background='grey', surf=surface, hemi=hemi)
+                    alpha=0.6, background=background, surf=surface, hemi=hemi)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
@@ -330,7 +333,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
                   trans=to_fsaverage, color=color, size=size,
-                  labels_every=None, hemi=hemi)
+                  labels_every=None, hemi=hemi, background=background)
 
     return fig
 
@@ -387,7 +390,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'split', fig: Brain = None,
               trans=None, color: matplotlib.colors = (1, 1, 1),
-              size: float = 0.35, show: bool = True) -> Brain:
+              size: float = 0.35, show: bool = True, background: str = 'white'
+              ) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -416,6 +420,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         The size of the electrodes, by default 0.35
     show : bool, optional
         Whether to show the figure, by default True
+    background: str, optional
+        Background color
 
     Returns
     -------
@@ -441,7 +447,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.5, background='grey', surf=surface, hemi=hemi,
+                    alpha=0.5, background=background, surf=surface, hemi=hemi,
                     show=show)
     if picks is None:
         picks = info.ch_names

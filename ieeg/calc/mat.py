@@ -256,6 +256,8 @@ class LabeledArray(np.ndarray):
         for k, v in self.items():
             if isinstance(v, LabeledArray):
                 out[k] = v.to_dict()
+            elif np.isnan(v):
+                continue
             else:
                 out[k] = v
         return out
