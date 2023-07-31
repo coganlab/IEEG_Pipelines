@@ -272,6 +272,56 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     return avg1 - avg2
 
 
+def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
+                            n_perm: int = 1000, tails: int = 1, axis: int = 0,
+                            stat_func: callable = mean_diff, n_jobs: int = -1
+                            ) -> np.ndarray:
+    """ Calculate the window averaged shuffle distribution.
+
+    This function calculates the window averaged shuffle distribution for two
+    groups of data. The shuffle distribution is calculated by randomly
+    shuffling the data between the two groups and calculating the statistic
+    function for each window, returning a distribution of the statistic
+    corresponding to each window. The function returns the shuffle
+    distribution."""
+
+    # Make sure the data is the same shape
+    sig2 = pad_to_match(sig1, sig2, axis=axis)
+
+    # Average across time
+    sig1 = np.nanmean(sig1, axis=-1)
+    sig2 = np.nanmean(sig2, axis=-1)
+
+    # Calculate the shuffle distribution
+    out = np.zeros((n_perm, sig1.shape[0]))
+
+    ins = ((np.squeeze(sig1[:, i]), np.squeeze(sig2[:, i])) for i in
+           np.ndindex(tuple(sig1.shape[j] for j in ignore_adjacency)))
+
+    proc = Parallel(n_jobs=n_jobs, return_as='generator', verbose=40)(
+        delayed(time_perm_shuffle)(sig1, sig2, n_perm=n_perm, tails=tails,
+                                   axis=axis, func=stat_func))
+    for i, iout in enumerate(proc):
+        out[i] = iout
+
+
+def pad_to_match(sig1: np.ndarray, sig2: np.ndarray, axis: int = 0
+                 ) -> np.ndarray:
+    """ Pad the second signal to match the first signal along all axes not
+    specified."""
+    # Make sure the data is the same shape
+    eq = list(np.equal(sig1.shape, sig2.shape)[np.arange(sig1.ndim) != axis])
+    if not all(eq):
+        eq.insert(axis, True)
+        pad_shape = [(0, 0) if eq[i] else
+                     (0, sig1.shape[i] - sig2.shape[i])
+                     for i in range(sig1.ndim)]
+        sig2 = np.pad(sig2, pad_shape, mode='reflect')
+    return sig2
+
+
+
+
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
@@ -363,14 +413,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             out[i] = iout
         return out
 
-    # Make sure the data is the same shape
-    eq = list(np.equal(sig1.shape, sig2.shape)[np.arange(sig1.ndim) != axis])
-    if not all(eq):
-        eq.insert(axis, True)
-        pad_shape = [(0, 0) if eq[i] else
-                     (0, sig1.shape[i] - sig2.shape[i])
-                     for i in range(sig1.ndim)]
-        sig2 = np.pad(sig2, pad_shape, mode='reflect')
+    sig2 = pad_to_match(sig1, sig2, axis)
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')
