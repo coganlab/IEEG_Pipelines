@@ -1,5 +1,8 @@
 import gc
 from functools import partial
+import matplotlib # noqa: E402
+
+matplotlib.use('Qt5Agg')
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np
