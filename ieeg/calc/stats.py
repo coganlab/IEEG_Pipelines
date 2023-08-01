@@ -273,10 +273,11 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
 
 
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
-                            n_perm: int = 1000, tails: int = 1, axis: int = 0,
-                            stat_func: callable = mean_diff, n_jobs: int = -1
-                            ) -> np.ndarray:
-    """ Calculate the window averaged shuffle distribution.
+                            p_thresh: float, n_perm: int = 1000,
+                            tails: int = 1, obs_axis: int = 0,
+                            window_axis: int = -1,
+                            stat_func: callable = mean_diff) -> np.ndarray:
+    """Calculate the window averaged shuffle distribution.
 
     This function calculates the window averaged shuffle distribution for two
     groups of data. The shuffle distribution is calculated by randomly
@@ -285,32 +286,29 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     corresponding to each window. The function returns the shuffle
     distribution."""
 
-    # Make sure the data is the same shape
-    sig2 = pad_to_match(sig1, sig2, axis=axis)
+    sig2 = pad_to_match(sig1, sig2, axis=(obs_axis, window_axis))
 
-    # Average across time
-    sig1 = np.nanmean(sig1, axis=-1)
-    sig2 = np.nanmean(sig2, axis=-1)
+    # Average across time, shape is now (obs, ...)
+    sig1 = np.nanmean(sig1, axis=window_axis)
+    sig2 = np.nanmean(sig2, axis=window_axis)
 
     # Calculate the shuffle distribution
-    out = np.zeros((n_perm, sig1.shape[0]))
+    p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
+                              stat_func)
 
-    ins = ((np.squeeze(sig1[:, i]), np.squeeze(sig2[:, i])) for i in
-           np.ndindex(tuple(sig1.shape[j] for j in ignore_adjacency)))
-
-    proc = Parallel(n_jobs=n_jobs, return_as='generator', verbose=40)(
-        delayed(time_perm_shuffle)(sig1, sig2, n_perm=n_perm, tails=tails,
-                                   axis=axis, func=stat_func))
-    for i, iout in enumerate(proc):
-        out[i] = iout
+    return tail_compare(1 - p_act, 1 - p_thresh, tails)
 
 
-def pad_to_match(sig1: np.ndarray, sig2: np.ndarray, axis: int = 0
-                 ) -> np.ndarray:
+def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
+                 axis: int | tuple[int, ...] = 0) -> np.ndarray:
     """ Pad the second signal to match the first signal along all axes not
     specified."""
     # Make sure the data is the same shape
-    eq = list(np.equal(sig1.shape, sig2.shape)[np.arange(sig1.ndim) != axis])
+    axis = list(axis)
+    for i, ax in enumerate(axis):
+        axis[i] = np.arange(sig1.ndim)[ax]
+    eq = list(e for i, e in enumerate(np.equal(sig1.shape, sig2.shape))
+              if i not in axis)
     if not all(eq):
         eq.insert(axis, True)
         pad_shape = [(0, 0) if eq[i] else
@@ -318,8 +316,6 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray, axis: int = 0
                      for i in range(sig1.ndim)]
         sig2 = np.pad(sig2, pad_shape, mode='reflect')
     return sig2
-
-
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
