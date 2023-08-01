@@ -1,3 +1,4 @@
+import mne.stats
 import numpy as np
 from joblib import Parallel, delayed
 from mne.utils import logger
@@ -316,12 +317,12 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     >>> import numpy as np
     >>> rng = np.random.default_rng(seed=42)
     >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
-    ... for _ in range(50)]) - rng.random((50, 15)) * 3.3
+    ... for _ in range(50)]) - rng.random((50, 15)) * 3.323
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
     >>> window_averaged_shuffle(sig1, sig2, 0.05, n_perm=3000)
-    array([ True])
+    array(True)
     >>> window_averaged_shuffle(sig1, sig2, 0.01, n_perm=3000)
-    array([False])
+    array(False)
     """
 
     sig2 = pad_to_match(sig1, sig2, axis=(obs_axis, window_axis))
@@ -334,10 +335,16 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
                               stat_func)
 
-    out = tail_compare(1 - p_act, 1 - p_thresh, tails)
-    if np.isscalar(out):
-        return np.array([out])
-    return out
+    if tails == -1:
+        method = 'negcorr'
+    else:
+        method = 'indep'
+
+    reject, p_corr = mne.stats.fdr_correction(p_act, 0.05, method)
+
+    if np.isscalar(reject):
+        return np.array([reject])
+    return reject
 
 
 def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
