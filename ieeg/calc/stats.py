@@ -276,7 +276,8 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             p_thresh: float, n_perm: int = 1000,
                             tails: int = 1, obs_axis: int = 0,
                             window_axis: int = -1,
-                            stat_func: callable = mean_diff) -> np.ndarray:
+                            stat_func: callable = mean_diff
+                            ) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
 
     This function calculates the window averaged shuffle distribution for two
@@ -284,7 +285,44 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     shuffling the data between the two groups and calculating the statistic
     function for each window, returning a distribution of the statistic
     corresponding to each window. The function returns the shuffle
-    distribution."""
+    distribution.
+
+    Parameters
+    ----------
+    sig1 : array, shape (trials, ..., time)
+        The first group of observations.
+    sig2 : array, shape (trials, ..., time)
+        The second group of observations.
+    p_thresh : float
+        The p-value threshold for the shuffle distribution.
+    n_perm : int, optional
+        The number of permutations to perform. Default is 1000.
+    tails : int, optional
+        The number of tails to use for the p-value. Default is 1.
+    obs_axis : int, optional
+        The axis along which to calculate the statistic function. Default is 0.
+    window_axis : int, optional
+        The axis along which to calculate the window average. Default is -1.
+    stat_func : callable, optional
+        The statistic function to use. Default is mean_diff.
+
+    Returns
+    -------
+    shuffle_dist : np.ndarray
+        The shuffle distribution.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(seed=42)
+    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
+    ... for _ in range(50)]) - rng.random((50, 15)) * 3.3
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
+    >>> window_averaged_shuffle(sig1, sig2, 0.05, n_perm=3000)
+    array([ True])
+    >>> window_averaged_shuffle(sig1, sig2, 0.01, n_perm=3000)
+    array([False])
+    """
 
     sig2 = pad_to_match(sig1, sig2, axis=(obs_axis, window_axis))
 
@@ -292,11 +330,14 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     sig1 = np.nanmean(sig1, axis=window_axis)
     sig2 = np.nanmean(sig2, axis=window_axis)
 
-    # Calculate the shuffle distribution
+    # Calculate the shuffle distribution, shape is now (...)
     p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
                               stat_func)
 
-    return tail_compare(1 - p_act, 1 - p_thresh, tails)
+    out = tail_compare(1 - p_act, 1 - p_thresh, tails)
+    if np.isscalar(out):
+        return np.array([out])
+    return out
 
 
 def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
@@ -304,6 +345,8 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
     """ Pad the second signal to match the first signal along all axes not
     specified."""
     # Make sure the data is the same shape
+    if np.isscalar(axis):
+        axis = (axis,)
     axis = list(axis)
     for i, ax in enumerate(axis):
         axis[i] = np.arange(sig1.ndim)[ax]
@@ -323,8 +366,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = mean_diff,
                       ignore_adjacency: tuple[int] | int = None,
-                      n_jobs: int = -1) -> np.ndarray:
-    """ Calculate significant clusters using permutation testing and cluster
+                      n_jobs: int = -1) -> np.ndarray[bool]:
+    """Calculate significant clusters using permutation testing and cluster
     correction.
 
     Takes two time series signals, finding clusters of activation defined as
@@ -363,6 +406,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         The axis or axes to ignore when finding clusters. For example, if
         sig1.shape = (trials, channels, time), and you want to find clusters
         across time, but not channels, you would set ignore_adjacency = 1.
+    n_jobs : int, optional
+        The number of jobs to run in parallel. -1 for all processors. Default
+        is -1.
 
     Returns
     -------
@@ -376,9 +422,16 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     Examples
     --------
     >>> import numpy as np
-    >>> time_perm_cluster(np.random.random((10, 1)), np.random.random((10, 1)),
-    ...     0.05,)
-    array([False])
+    >>> rng = np.random.default_rng(seed=42)
+    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
+    ... for _ in range(50)]) - rng.random((50, 15)) * 4
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
+    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=3000)
+    array([False, False, False,  True,  True,  True,  True,  True,  True,
+            True,  True,  True, False, False, False])
+    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=3000)
+    array([False, False, False,  True,  True,  True,  True,  True,  True,
+            True,  True, False, False, False, False])
     """
     # check inputs
     if p_cluster is None:

@@ -1,6 +1,6 @@
 import gc
 from functools import partial
-import matplotlib # noqa: E402
+import matplotlib
 
 matplotlib.use('Qt5Agg')
 

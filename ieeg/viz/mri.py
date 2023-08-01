@@ -3,12 +3,11 @@ import os.path as op
 from collections import OrderedDict
 from collections.abc import Iterable
 from functools import singledispatch
-
-import matplotlib # noqa: E402
+import matplotlib
 
 matplotlib.use('Qt5Agg')
 
-import matplotlib.patheffects as path_effects
+import matplotlib.patheffects as path_effects  # noqa: E402
 import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
