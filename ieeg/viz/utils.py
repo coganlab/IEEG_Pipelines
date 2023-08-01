@@ -1,16 +1,16 @@
 import gc
 from functools import partial
-import matplotlib
-
-matplotlib.use('Qt5Agg')
-
-import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np
 from joblib import cpu_count
 from mne.io import Raw
 
 from ieeg import Doubles, Signal
 from ieeg.calc import stats
+import matplotlib
+
+matplotlib.use('Qt5Agg')
+
+import matplotlib.pyplot as plt  # noqa: E402
 
 
 def figure_compare(raw: list[Raw], labels: list[str], avg: bool = True,

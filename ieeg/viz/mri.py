@@ -3,12 +3,6 @@ import os.path as op
 from collections import OrderedDict
 from collections.abc import Iterable
 from functools import singledispatch
-import matplotlib
-
-matplotlib.use('Qt5Agg')
-
-import matplotlib.patheffects as path_effects  # noqa: E402
-import matplotlib.pyplot as plt
 import mne
 import nibabel as nib
 import numpy as np
@@ -16,6 +10,12 @@ from mne.viz import Brain
 
 from ieeg import PathLike, Signal
 from ieeg.io import get_elec_volume_labels
+import matplotlib
+
+matplotlib.use('Qt5Agg')
+
+import matplotlib.patheffects as path_effects  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
 
 
 def plot_overlay(image: nib.Nifti1Image, compare: nib.Nifti1Image,
