@@ -130,10 +130,11 @@ class LabeledArray(np.ndarray):
         keys = inner_all_keys(data)
         return cls(arr, keys, **kwargs)
 
-    def __array_finalize__(self, obj):
+    def __array_finalize__(self, obj, *args, **kwargs):
         if obj is None:
             return
         self.labels = getattr(obj, 'labels', None)
+        super(LabeledArray, self).__array_finalize__(obj, *args, **kwargs)
 
     @property
     def label_map(self) -> tuple[dict[str: int, ...], ...]:
@@ -421,6 +422,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         for d in data.values():
             inner_all_keys(d, keys, lvl+1)
     elif isinstance(data, np.ndarray):
+        data = np.atleast_1d(data)
         rows = range(data.shape[0])
         if len(keys) < lvl+1:
             keys.append(list(rows))
@@ -459,13 +461,15 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
     """
     if np.isscalar(data):
         return data
-    elif len(data) == 0:
-        return
     elif isinstance(data, dict):
         arr = (inner_array(d) for d in data.values())
         arr = [a for a in arr if a is not None]
         if len(arr) > 0:
             return concatenate_arrays(arr, axis=None)
+    elif len(np.atleast_1d(data)) == 0:
+        return
+    elif len(np.atleast_1d(data)) == 1:
+        return data
     else:
         return np.array(data)
 

@@ -334,17 +334,17 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     # Calculate the shuffle distribution, shape is now (...)
     p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
                               stat_func)
+    return 1 - p_act
+    # if tails == -1:
+    #     method = 'negcorr'
+    # else:
+    #     method = 'indep'
 
-    if tails == -1:
-        method = 'negcorr'
-    else:
-        method = 'indep'
-
-    reject, p_corr = mne.stats.fdr_correction(p_act, 0.05, method)
-
-    if np.isscalar(reject):
-        return np.array([reject])
-    return reject
+    # reject, p_corr = mne.stats.fdr_correction(p_act, 0.05, method)
+    #
+    # if np.isscalar(reject):
+    #     return np.array([reject])
+    # return reject
 
 
 def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
