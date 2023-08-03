@@ -1,10 +1,10 @@
-import mne.stats
 import numpy as np
 from joblib import Parallel, delayed
 from mne.utils import logger
 from skimage import measure
 
 from ieeg import Doubles
+from ieeg.calc.reshape import pad_to_match
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
@@ -347,27 +347,6 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     # return reject
 
 
-def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
-                 axis: int | tuple[int, ...] = 0) -> np.ndarray:
-    """ Pad the second signal to match the first signal along all axes not
-    specified."""
-    # Make sure the data is the same shape
-    if np.isscalar(axis):
-        axis = (axis,)
-    axis = list(axis)
-    for i, ax in enumerate(axis):
-        axis[i] = np.arange(sig1.ndim)[ax]
-    eq = list(e for i, e in enumerate(np.equal(sig1.shape, sig2.shape))
-              if i not in axis)
-    if not all(eq):
-        eq.insert(axis, True)
-        pad_shape = [(0, 0) if eq[i] else
-                     (0, sig1.shape[i] - sig2.shape[i])
-                     for i in range(sig1.ndim)]
-        sig2 = np.pad(sig2, pad_shape, mode='reflect')
-    return sig2
-
-
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
@@ -513,46 +492,6 @@ def _perm_iter(array: np.ndarray, perm: int, axis: int = 0, tails: int = 0
     larger = tail_compare(array[perm],
                           array[np.arange(len(array)) != perm], tails)
     return np.mean(larger, axis=axis)
-
-
-def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
-    """Force the last dimension of data_fix to match the last dimension of
-    shape.
-
-    Takes the two arrays and checks if the last dimension of data_fix is
-    smaller than the last dimension of shape. If there's more than two
-    dimensions, it will rearrange the data to match the shape. If there's only
-    two dimensions, it will repeat the signal to match the shape of data_like.
-    If the last dimension of data_fix is larger than the last dimension of
-    shape, it will return a subset of data_fix.
-
-    Parameters
-    ----------
-    data_fix : array
-        The data to reshape.
-    shape : list | tuple
-        The shape of data to match.
-
-    Returns
-    -------
-    data_fix : array
-        The reshaped data.
-    """
-
-    # Find the new shape
-    x = 1
-    for s in shape[1:]:
-        x *= s
-    trials = int(data_fix.size / x)
-    temp = np.full((trials, *shape[1:]), np.nan)
-
-    # Assign the data to the new shape, concatenating the first dimension along
-    # the last dimension
-    for i in np.ndindex(shape[1:-1]):
-        index = (slice(None),) + tuple(j for j in i)
-        temp[index].flat = data_fix[index].flat
-
-    return temp
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
