@@ -4,7 +4,7 @@ from mne.utils import logger
 from skimage import measure
 
 from ieeg import Doubles
-from ieeg.calc.reshape import pad_to_match
+from ieeg.calc.reshape import make_data_same
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
@@ -325,7 +325,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     array(False)
     """
 
-    sig2 = pad_to_match(sig1, sig2, axis=(obs_axis, window_axis))
+    sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
 
     # Average across time, shape is now (obs, ...)
     sig1 = np.nanmean(sig1, axis=window_axis)
@@ -448,7 +448,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             out[i] = iout
         return out
 
-    sig2 = pad_to_match(sig1, sig2, axis)
+    sig2 = make_data_same(sig2, sig1.shape, axis)
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')

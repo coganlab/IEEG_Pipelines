@@ -174,7 +174,8 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
     return [start, middle, last]
 
 
-def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
+def make_data_same(data_fix: np.ndarray, shape: tuple | list,
+                   stack_ax: int = 0, pad_ax: int = -1) -> np.ndarray:
     """Force the last dimension of data_fix to match the last dimension of
     shape.
 
@@ -198,18 +199,43 @@ def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
         The reshaped data.
     """
 
-    # Find the new shape
-    x = 1
-    for s in shape[1:]:
-        x *= s
-    trials = int(data_fix.size / x)
-    temp = np.full((trials, *shape[1:]), np.nan)
+    stack_ax, pad_ax = list(range(len(shape)))[stack_ax], \
+                            list(range(len(shape)))[pad_ax]
 
-    # Assign the data to the new shape, concatenating the first dimension along
-    # the last dimension
-    for i in np.ndindex(shape[1:-1]):
-        index = (slice(None),) + tuple(j for j in i)
-        temp[index].flat = data_fix[index].flat
+    # Check if the pad dimension of data_fix is smaller than the pad
+    # dimension of shape
+    if data_fix.shape[pad_ax] <= shape[pad_ax]:
+        return pad_to_match(np.zeros(shape), data_fix, stack_ax)
+
+    # When the pad dimension of data_fix is larger than the pad dimension of
+    # shape, take subsets of data_fix and stack them together on the stack
+    # dimension
+    else:
+        return rand_offset_reshape(data_fix, shape, stack_ax, pad_ax)
+
+
+def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
+                        pad_ax: int) -> np.ndarray:
+    # Calculate the number of subsets to take
+    num_stack = shape[pad_ax] // data_fix.shape[pad_ax]
+    if shape[pad_ax] % data_fix.shape[pad_ax] == 0:
+        num_stack -= 1
+
+    # Randomly offset the start of the first subset
+    offset = np.random.randint(0, data_fix.shape[pad_ax] - 1)
+
+    # Take the subsets
+    temp = np.zeros([s if i != stack_ax else num_stack * data_fix.shape[
+        stack_ax] for i, s in enumerate(shape)])
+    out_idx = [slice(None)] * data_fix.ndim
+    in_idx = [slice(None)] * data_fix.ndim
+    for i in range(num_stack):
+        for j in range(data_fix.shape[stack_ax]):
+            in_idx[stack_ax] = j
+            out_idx[stack_ax] = i + j
+            out_idx[pad_ax] = slice(i * data_fix.shape[pad_ax] + offset,
+                                    (i + 1) * data_fix.shape[pad_ax] + offset)
+            temp[tuple(out_idx)] = data_fix[tuple(in_idx)]
 
     return temp
 
