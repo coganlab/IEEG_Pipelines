@@ -211,6 +211,8 @@ class LabeledArray(np.ndarray):
 
     def __setitem__(self, key, value):
         coords = []
+        if not isinstance(key, tuple):
+            key = (key,)
         for i, (dim, num_key) in enumerate(self._str_parse(*key)):
             if isinstance(key[i], str) and key[i] not in self.labels[dim]:
                 self.labels[dim] += (key[i],)
