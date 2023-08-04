@@ -253,7 +253,8 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
     eq = list(e for i, e in enumerate(np.equal(sig1.shape, sig2.shape))
               if i not in axis)
     if not all(eq):
-        eq.insert(axis, True)
+        for ax in axis:
+            eq.insert(ax, True)
         pad_shape = [(0, 0) if eq[i] else
                      (0, sig1.shape[i] - sig2.shape[i])
                      for i in range(sig1.ndim)]
