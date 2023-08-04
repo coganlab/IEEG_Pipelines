@@ -334,7 +334,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     # Calculate the shuffle distribution, shape is now (...)
     p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
                               stat_func)
-    return 1 - p_act
+    return p_act
     # if tails == -1:
     #     method = 'negcorr'
     # else:
