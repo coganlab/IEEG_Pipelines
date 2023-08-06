@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from functools import cache
 from ieeg.calc.reshape import concatenate_arrays
 
 import numpy as np
@@ -140,8 +141,10 @@ class LabeledArray(np.ndarray):
     @property
     def label_map(self) -> tuple[dict[str: int, ...], ...]:
         """maps the labels to the indices of the array."""
-        return tuple({l: i for i, l in enumerate(labels)}
-                     for labels in self.labels)
+        @cache
+        def _label_map(labels: tuple[str, ...]):
+            return {l: i for i, l in enumerate(labels)}
+        return tuple(_label_map(labels) for labels in self.labels)
 
     def _str_parse(self, *keys) -> tuple[int, int]:
         for i, key in enumerate(keys):
