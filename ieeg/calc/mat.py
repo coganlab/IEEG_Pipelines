@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from functools import cache
+import functools
 from ieeg.calc.reshape import concatenate_arrays
 
 import numpy as np
@@ -138,13 +138,11 @@ class LabeledArray(np.ndarray):
         self.labels = getattr(obj, 'labels', None)
         super(LabeledArray, self).__array_finalize__(obj, *args, **kwargs)
 
-    @property
-    def label_map(self) -> tuple[dict[str: int, ...], ...]:
-        """maps the labels to the indices of the array."""
-        @cache
-        def _label_map(labels: tuple[str, ...]):
-            return {l: i for i, l in enumerate(labels)}
-        return tuple(_label_map(labels) for labels in self.labels)
+    @functools.cached_property
+    def coord_map(self) -> dict[str, tuple[int, int]]:
+        """A dictionary mapping labels to coordinates in the array."""
+        return {label: (i, j) for i, labels in enumerate(self.labels)
+                for j, label in enumerate(labels)}
 
     def _str_parse(self, *keys) -> tuple[int, int]:
         for i, key in enumerate(keys):
@@ -155,13 +153,7 @@ class LabeledArray(np.ndarray):
                         for value in self._str_parse(key.pop(0)):
                             yield value
                 case str():
-                    j = 0
-                    while key not in self.labels[j]:
-                        j += 1
-                        if j > self.ndim:
-                            raise KeyError(f'{key} not found in labels')
-                    key = self.label_map[j][key]
-                    yield j, key
+                    yield self.coord_map[key]
                 case _:
                     yield i, key
 
@@ -472,9 +464,16 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         arr = [a for a in arr if a is not None]
         if len(arr) > 0:
             return concatenate_arrays(arr, axis=None)
-    elif len(np.atleast_1d(data)) == 0:
+    # elif not isinstance(data, np.ndarray):
+    #     raise TypeError(f"Unexpected data type: {type(data)}")
+
+    # Call np.atleast_1d once and store the result in a variable
+    data_1d = np.atleast_1d(data)
+
+    # Use the stored result to check the length of data
+    if len(data_1d) == 0:
         return
-    elif len(np.atleast_1d(data)) == 1:
+    elif len(data_1d) == 1:
         return data
     else:
         return np.array(data)
