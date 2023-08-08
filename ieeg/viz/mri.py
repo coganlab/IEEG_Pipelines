@@ -390,7 +390,7 @@ def get_sub(inst: Signal | mne.Info | str) -> str:
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int | None = 8, surface: str = 'pial',
-              hemi: str = 'split', fig: Brain = None,
+              hemi: str = 'both', fig: Brain = None,
               trans=None, color: matplotlib.colors = (1, 1, 1),
               size: float = 0.35, show: bool = True, background: str = 'white'
               ) -> Brain:
@@ -465,45 +465,51 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     montage = info.get_montage()
     force2frame(montage, trans.from_str)
     montage.apply_trans(trans)
-    pos = montage.get_positions()['ch_pos']
+    pos = {k: v * 1000 for k, v in montage.get_positions()['ch_pos'].items()}
 
     # Default montage positions are in m, whereas plotting functions assume mm
-    left = [p * 1000 for k, p in pos.items() if k.startswith('L')]
-    right = [p * 1000 for k, p in pos.items() if k.startswith('R')]
+    left = {k:p for k, p in pos.items() if k.startswith('L')}
+    right = {k:p for k, p in pos.items() if k.startswith('R')}
 
     if left and hemi != 'rh':
-        fig.add_foci(np.vstack(left), hemi='lh', color=color,
+        fig.add_foci(np.vstack(list(left.values())), hemi='lh', color=color,
                      scale_factor=size)
     if right and hemi != 'lh':
-        fig.add_foci(np.vstack(right), hemi='rh', color=color,
+        fig.add_foci(np.vstack(list(right.values())), hemi='rh', color=color,
                      scale_factor=size)
 
     if labels_every is not None:
         settings = dict(shape=None, always_visible=True, text_color=(0, 0, 0),
                         bold=False)
-        _add_labels(fig, info, sub, picks, pos, labels_every, hemi,
+        _add_labels(fig, info, sub, labels_every, hemi,
                     (left, right), **settings)
 
     return fig
 
 
-def _add_labels(fig, info, sub, picks, pos, every, hemi, lr, **kwargs):
-    picks = [info.ch_names[p] for p in picks] if isinstance(picks[0], (
-        int, np.integer)) else picks
-    names = picks[slice(every - 1, info['nchan'], every)]
+def _add_labels(fig, info, sub, every, hemi, lr, **kwargs):
 
-    if hemi == 'split':
-        for hems, positions in zip(range(2), lr):
-            if not positions:
+    names = info.ch_names[slice(every - 1, -1, every)]
+
+    if not hemi == 'both':
+        for hems, pos in enumerate(lr):
+            if  (not pos) or \
+                (hemi == 'lh' and hems == 1) or \
+                (hemi == 'rh' and hems == 0):
                 continue
-            pos = positions[slice(every - 1, info['nchan'], every)]
-            plt_names = [f'{sub}-{n}' for n in names if
-                         n.startswith(['L', 'R'][hems])]
+
+            plt_names = filter(lambda x: x.startswith(['L', 'R'][hems]), names)
+            plt_names = [f'{sub}-{n}' for n in plt_names]
+            positions = np.array([pos[n.split("-")[1]] for n in plt_names])
             fig.plotter.subplot(0, hems)
-            fig.plotter.add_point_labels(pos, plt_names, **kwargs)
+            fig.plotter.add_point_labels(positions, plt_names, **kwargs)
     else:
+        pos = {}
+        for hem in lr:
+            if hem:
+                pos.update(hem)
         plt_names = [f'{sub}-{n}' for n in names]
-        positions = np.array([pos[name] for name in names]) * 1000
+        positions = np.array([pos[name] for name in names])
         fig.plotter.add_point_labels(positions, plt_names, **kwargs)
 
 

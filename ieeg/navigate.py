@@ -5,7 +5,7 @@ from mne.utils import fill_doc, verbose
 from scipy.signal import detrend
 
 from ieeg import Doubles, Signal
-from ieeg.calc import scaling, stats
+from ieeg.calc import stats
 from ieeg.io import update
 from ieeg.timefreq.utils import to_samples
 
@@ -221,9 +221,8 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
 
 @fill_doc
 @verbose
-def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
-               baseline: str = None, basetimes: Doubles = None,
-               mode: str = "mean", outliers: int = None, verbose=None,
+def trial_ieeg(raw: mne.io.Raw, event: str | list[str, ...], times: Doubles,
+               event_hierarchy_delim: str = "/", verbose=None,
                **kwargs) -> mne.Epochs:
     """Epochs data from a mne Raw iEEG instance.
 
@@ -239,13 +238,6 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
         The event to epoch around.
     times : tuple[float, float]
         The time window to epoch around the event.
-    baseline : str
-        The event to epoch the baseline.
-    basetimes : tuple[float, float]
-        The time window to epoch around the baseline event.
-    mode : str
-        The mode to use for baseline rescaling. See `mne.baseline.rescale` for
-        more information.
     %(picks_all)s
     %(reject_epochs)s
     %(flat)s
@@ -270,62 +262,24 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
     Reading 0 ... 269079  =      0.000 ...   269.079 secs...
-    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), "onset", (-1, 0.5),
-    ... verbose=True) # doctest: +ELLIPSIS
-    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD',...
-    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD',...
-    Not setting metadata
-    1 matching events found
-    No baseline correction applied
-    0 projection items activated
-    Using data from preloaded Raw for 1 events and 3001 original time points...
-    0 bad epochs dropped
+    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), verbose=True
+    ... ) # doctest: +ELLIPSIS
     Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD',...
     Not setting metadata
     1 matching events found
     No baseline correction applied
     0 projection items activated
-    Using data from preloaded Raw for 1 events and 1501 original time points...
-    0 bad epochs dropped
-    Applying baseline correction (mode: mean)
+    >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=True
+    ... )
     """
 
     # determine the events
     events, ids = mne.events_from_annotations(raw)
     dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
-    if len(dat_ids) > 1:
-        event_ids = {key.replace(event, "").strip("/"): value for key, value in
-                     ids.items() if value in dat_ids}
-    else:
-        event_ids = {key: value for key, value in ids.items() if value in
-                     dat_ids}
+
     # epoch the data
-
-    if baseline is None:
-        epochs = mne.Epochs(raw, events, event_id=event_ids, tmin=times[0],
-                            tmax=times[1], baseline=None, verbose=verbose,
-                            **kwargs)
-    elif basetimes is None:
-        raise ValueError("Baseline event input {} must be paired with times"
-                         "".format(baseline))
-    else:
-        kwargs['preload'] = True
-        epochs = trial_ieeg(raw, event, times, **kwargs)
-        base = trial_ieeg(raw, baseline, basetimes, **kwargs)
-        scaling.rescale(epochs, base, mode=mode, copy=False)
-
-    if outliers is not None:
-        # epochs.get_data()
-        # gives a numpy array of (trials X channels X timepoints)
-        data = np.abs(epochs.get_data())
-        max = np.max(data, axis=-1)
-        std = np.std(data, axis=(-1, 0))
-        mean = np.mean(data, axis=(-1, 0))
-        # max and std have dims (trials X channels)
-        reject = np.any(max > ((outliers * std) + mean), axis=-1)
-        epochs.drop(reject, reason="outlier")
-
-    return epochs
+    return mne.Epochs(raw, events, event_id=dat_ids, tmin=times[0],
+                      tmax=times[1], baseline=None, verbose=verbose, **kwargs)
 
 
 if __name__ == "__main__":
