@@ -455,7 +455,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
                     background='grey', surf=surface, hemi=hemi)
     # Set the title if provided
     if title is not None:
-        fig.plotter.set_title(title)
+        mne.viz.set_3d_title(fig, title, size=40)
     if picks is None:
         picks = info.ch_names
     if no_wm:
