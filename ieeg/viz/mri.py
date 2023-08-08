@@ -452,7 +452,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5,
-                    background='grey', surf=surface, hemi=hemi)
+                    background='black', foreground='white', surf=surface, hemi=hemi)
     # Set the title if provided
     if title is not None:
         mne.viz.set_3d_title(fig, title, size=40)
@@ -487,7 +487,6 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
                         bold=False)
         _add_labels(fig, info, sub, pos, labels_every, hemi,
                     (left, right), **settings)
-
     return fig
 
 
