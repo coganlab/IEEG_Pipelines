@@ -393,7 +393,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'split', fig: Brain = None,
               trans=None, color: matplotlib.colors = (1, 1, 1),
-              size: float = 0.35) -> Brain:
+              size: float = 0.3, title: str = None) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -420,12 +420,17 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         The color of the electrodes, by default (1,1,1)
     size : float, optional
         The size of the electrodes, by default 0.35
+    title : string, optional
+        Title the plot
 
     Returns
     -------
     Brain
         The brain plot
     """
+
+ 
+
     if isinstance(inst, Signal):
         info = inst.info
         sub = get_sub(info)
@@ -438,6 +443,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     else:
         raise TypeError(
             f"inst must be Signal, mne.Info, or str, not {type(inst)}")
+    
 
     if subj_dir is None:
         subj_dir = get_sub_dir(subj_dir)
@@ -447,6 +453,9 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5,
                     background='grey', surf=surface, hemi=hemi)
+    # Set the title if provided
+    if title is not None:
+        fig.plotter.set_title(title)
     if picks is None:
         picks = info.ch_names
     if no_wm:
@@ -456,7 +465,6 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         picks = mne.pick_channels(info.ch_names, picks)
 
     info: mne.Info = mne.pick_info(info, picks)
-
     # fig.add_sensors(info, trans)
     montage = info.get_montage()
     force2frame(montage, trans.from_str)
@@ -477,15 +485,16 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if labels_every is not None:
         settings = dict(shape=None, always_visible=True, text_color=(0, 0, 0),
                         bold=False)
-        _add_labels(fig, info, sub, picks, pos, labels_every, hemi,
+        _add_labels(fig, info, sub, pos, labels_every, hemi,
                     (left, right), **settings)
 
     return fig
 
 
-def _add_labels(fig, info, sub, picks, pos, every, hemi, lr, **kwargs):
-    picks = [info.ch_names[p] for p in picks] if isinstance(picks[0], (
-        int, np.integer)) else picks
+def _add_labels(fig, info, sub, pos, every, hemi, lr, **kwargs):
+
+    picks = info.ch_names
+
     names = picks[slice(every - 1, info['nchan'], every)]
 
     if hemi == 'split':
