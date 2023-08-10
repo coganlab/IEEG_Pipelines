@@ -275,7 +275,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         The size of the markers, by default 0.35
     fig : Brain, optional
         The figure to plot on, by default None
-
+    title : string, optional
+        Title the plot
     Returns
     -------
     Brain
@@ -321,7 +322,11 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
                                new['subject_info']['his_id']]
         elif picks is not None:
             raise TypeError(picks)
-
+        
+        # Set the title if provided
+        if title is not None:
+            mne.viz.set_3d_title(fig, title, size=40)
+            
         if len(these_picks) == 0:
             continue
 
