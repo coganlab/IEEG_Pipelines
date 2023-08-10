@@ -200,7 +200,7 @@ def get_subj_dir(subj_dir: PathLike = None):
     if subj_dir is None:
         from os import path
         HOME = path.expanduser("~")
-        subj_dir = op.join(HOME, "Box", "ECoG_Recon")
+        subj_dir = op.join(HOME, "Box", "ECoG_Recon_Full")
     return subj_dir
 
 
@@ -261,7 +261,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
     sigs : Union[Signal, list[Signal]]
         The signal(s) to plot
     subj_dir : PathLike, optional
-        The subjects directory, by default LAB_root / 'ECoG_Recon'
+        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
     rm_wm : bool, optional
         Whether to remove white matter electrodes, by default True
     picks : list[int | str], optional
@@ -291,11 +291,21 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
-    #added code snippet 8/10/23
-    if isinstance(sigs, list) and all(isinstance(item, str) for item in sigs):
-    # Handle the case where sigs is a list of strings (electrode names)
-    # You might need to add logic here to map these electrode names to specific subjects or signals
-        sigs = {get_sub_from_electrode(v): v for v in sigs}
+
+    # New code snippet to handle dictionary input 8/10/23
+    if isinstance(sigs, dict):
+        for subj, electrodes in sigs.items():
+            # Plot the electrodes on the average brain using the plot_subj function
+
+            to_fsaverage = mne.read_talxfm(subj, subj_dir)
+            to_fsaverage = mne.transforms.Transform(fro='head', to='mri',
+                                                trans=to_fsaverage['trans'])
+            
+            plot_subj(subj, subj_dir, picks=electrodes, no_wm=False, fig=fig,
+                  trans=to_fsaverage, color=color, size=size,
+                  labels_every=None)
+  
+        return fig  # Return the figure after plotting all electrodes in the dictionary
 
     elif isinstance(sigs, list):
         sigs = {get_sub(v): v for v in sigs}
