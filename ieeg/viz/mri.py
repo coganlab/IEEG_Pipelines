@@ -201,7 +201,7 @@ def get_subj_dir(subj_dir: PathLike = None):
     if subj_dir is None:
         from os import path
         HOME = path.expanduser("~")
-        subj_dir = os.path.join(HOME, "Library", "CloudStorage", "Box-Box", "CoganLab", "ECoG_Recon_Full")
+        subj_dir = os.path.join(HOME, "Box", "CoganLab", "ECoG_Recon_Full")
     return subj_dir
 
 
