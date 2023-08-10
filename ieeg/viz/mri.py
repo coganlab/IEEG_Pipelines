@@ -244,6 +244,7 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
+
 def plot_on_average(sigs: Signal | str | list[Signal | str],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str] = None, surface: str = 'pial',
@@ -290,7 +291,13 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
-    if isinstance(sigs, list):
+    #added code snippet 8/10/23
+    if isinstance(sigs, list) and all(isinstance(item, str) for item in sigs):
+    # Handle the case where sigs is a list of strings (electrode names)
+    # You might need to add logic here to map these electrode names to specific subjects or signals
+        sigs = {get_sub_from_electrode(v): v for v in sigs}
+
+    elif isinstance(sigs, list):
         sigs = {get_sub(v): v for v in sigs}
 
     for subj, inst in sigs.items():
