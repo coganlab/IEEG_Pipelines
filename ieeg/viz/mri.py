@@ -104,7 +104,7 @@ def show_brain(my_raw: Signal, trans: mne.transforms.Transform,
     overwrite : bool, optional
         Whether to overwrite the watershed bem, by default False
     """
-    subjects_dir = get_sub_dir(subjects_dir)
+    subjects_dir = get_subj_dir(subjects_dir)
     try:
         mne.bem.make_watershed_bem(sub_id, subjects_dir, overwrite=overwrite)
     except RuntimeError:
@@ -184,7 +184,7 @@ def imshow_mri(data, img: nib.spatialimages.SpatialImage,
     return fig
 
 
-def get_sub_dir(subj_dir: PathLike = None):
+def get_subj_dir(subj_dir: PathLike = None):
     """Gets the subjects directory
 
     Parameters
@@ -275,15 +275,15 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         The size of the markers, by default 0.35
     fig : Brain, optional
         The figure to plot on, by default None
-    title : string, optional
-        Title the plot
+
     Returns
     -------
     Brain
         The figure brain object
     """
 
-    subj_dir = get_sub_dir(subj_dir)
+    subj_dir = get_subj_dir(subj_dir)
+
     if fig is None:
         fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.6, background='grey', surf=surface, hemi=hemi)
@@ -322,11 +322,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
                                new['subject_info']['his_id']]
         elif picks is not None:
             raise TypeError(picks)
-        
-        # Set the title if provided
-        if title is not None:
-            mne.viz.set_3d_title(fig, title, size=40)
-            
+
         if len(these_picks) == 0:
             continue
 
@@ -451,16 +447,16 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     
 
     if subj_dir is None:
-        subj_dir = get_sub_dir(subj_dir)
+        subj_dir = get_subj_dir(subj_dir)
     if trans is None:
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5,
-                    background='black', foreground='white', surf=surface, hemi=hemi)
+                    background='white', foreground='black', surf=surface, hemi=hemi)
     # Set the title if provided
     if title is not None:
-        mne.viz.set_3d_title(fig, title, size=40)
+        mne.viz.set_3d_title(fig, title, size=40, color='black')
     if picks is None:
         picks = info.ch_names
     if no_wm:
@@ -536,7 +532,7 @@ def subject_to_info(subject: str, subjects_dir: PathLike = None,
     mne.Info
         The info for the subject
     """
-    subjects_dir = get_sub_dir(subjects_dir)
+    subjects_dir = get_subj_dir(subjects_dir)
     elec_file = op.join(subjects_dir, subject, 'elec_recon',
                         subject + '_elec_locations_RAS_brainshifted.txt')
     elecs = dict()
@@ -600,7 +596,7 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
     """
 
     sub = get_sub(info) if sub is None else sub
-    subj_dir = get_sub_dir(subj_dir)
+    subj_dir = get_subj_dir(subj_dir)
     montage = info.get_montage()
     force2frame(montage, 'mri')
     aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
