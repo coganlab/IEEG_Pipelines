@@ -270,13 +270,18 @@ def trial_ieeg(raw: mne.io.Raw, event: str | list[str, ...], times: Doubles,
     No baseline correction applied
     0 projection items activated
     >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=True
-    ... )
+    ... ) # doctest: +ELLIPSIS
+    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD', ...
+    Not setting metadata
+    2 matching events found
+    No baseline correction applied
+    0 projection items activated
     """
 
     # determine the events
     events, ids = mne.events_from_annotations(raw)
     dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
-    rev = {k:v for k, v in events.items() if v in dat_ids}
+    rev = {k: v for k, v in ids.items() if v in dat_ids}
 
 
     # epoch the data
