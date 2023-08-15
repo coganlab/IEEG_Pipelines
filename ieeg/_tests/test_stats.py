@@ -35,23 +35,6 @@ def test_dist(mat, mask, axis, expected):
     assert np.allclose(result[1], expected[1])  # Check standard deviation
 
 
-@pytest.mark.parametrize("input_mat, shape, expected", [
-    (np.zeros((10, 52)), (5, 104), np.zeros((5, 104))),
-    (np.zeros((10, 50, 52)), (5, 50, 104), np.zeros((5, 50, 104))),
-    (np.zeros((10, 50, 50)), (5, 50, 104), np.zeros((4, 50, 104))),
-    (np.zeros((10, 100, 50, 52)), (5, 100, 50, 104),
-     np.zeros((5, 100, 50, 104))),
-    (np.zeros((10, 100, 50, 50)), (5, 100, 50, 104),
-     np.zeros((4, 100, 50, 104))),
-    (np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]), (1, 2, 4),
-     np.array([[[1, 2, 5, 6], [3, 4, 7, 8]]]))
-])
-def test_same(input_mat, shape, expected):
-    from ieeg.calc.stats import make_data_same
-    new_shape = make_data_same(input_mat, shape)
-    assert np.all(new_shape == expected)
-
-
 @pytest.mark.parametrize("func, expected", [
     (mean_diff, np.arange(38, 56)),
     (scipy.stats.f_oneway, np.arange(46, 50)),

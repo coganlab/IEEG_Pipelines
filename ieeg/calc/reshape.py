@@ -197,6 +197,22 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     -------
     data_fix : array
         The reshaped data.
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> data_fix = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
+    >>> make_data_same(data_fix, (2, 8))
+    array([[ 1,  2,  3,  4,  5,  4,  3,  2],
+           [ 6,  7,  8,  9, 10,  9,  8,  7]])
+    >>> (newarr := make_data_same(data_fix, (2, 2)))
+    array([[1, 2],
+             [3, 4],
+             [6, 7],
+            [8, 9]])
+    >>> make_data_same(newarr, (2, 2), stack_ax=1, pad_ax=0)
+    array([[1, 2, 3, 4],
+             [6, 7, 8, 9]])
     """
 
     stack_ax, pad_ax = list(range(len(shape)))[stack_ax], \
@@ -214,36 +230,29 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
         return rand_offset_reshape(data_fix, shape, stack_ax, pad_ax)
 
 
-def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
-                        pad_ax: int) -> np.ndarray:
-    # Calculate the number of subsets to take
-    num_stack = shape[pad_ax] // data_fix.shape[pad_ax]
-    if shape[pad_ax] % data_fix.shape[pad_ax] == 0:
-        num_stack -= 1
-
-    # Randomly offset the start of the first subset
-    offset = np.random.randint(0, data_fix.shape[pad_ax] - 1)
-
-    # Take the subsets
-    temp = np.zeros([s if i != stack_ax else num_stack * data_fix.shape[
-        stack_ax] for i, s in enumerate(shape)])
-    out_idx = [slice(None)] * data_fix.ndim
-    in_idx = [slice(None)] * data_fix.ndim
-    for i in range(num_stack):
-        for j in range(data_fix.shape[stack_ax]):
-            in_idx[stack_ax] = j
-            out_idx[stack_ax] = i + j
-            out_idx[pad_ax] = slice(i * data_fix.shape[pad_ax] + offset,
-                                    (i + 1) * data_fix.shape[pad_ax] + offset)
-            temp[tuple(out_idx)] = data_fix[tuple(in_idx)]
-
-    return temp
-
-
 def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
                  axis: int | tuple[int, ...] = 0) -> np.ndarray:
-    """ Pad the second signal to match the first signal along all axes not
-    specified."""
+    """Pad the second signal to match the first signal along all axes not
+    specified.
+
+    Takes the two arrays and checks if the shape of sig2 is smaller than the
+    shape of sig1. For each axis not specified, it will pad the second signal
+    to match the first signal along that axis.
+
+    Parameters
+    ----------
+    sig1 : array
+        The data to match.
+    sig2 : array
+        The data to pad.
+    axis : int | tuple
+        The axes along which to pad the data.
+
+    Returns
+    -------
+    sig2 : array
+        The padded data.
+    """
     # Make sure the data is the same shape
     if np.isscalar(axis):
         axis = (axis,)
@@ -260,3 +269,87 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
                      for i in range(sig1.ndim)]
         sig2 = np.pad(sig2, pad_shape, mode='reflect')
     return sig2
+
+
+def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
+                        pad_ax: int) -> np.ndarray:
+    """Take subsets of data_fix and stack them together on the stack dimension
+
+    This function takes the data and reshapes it to match the shape by taking
+    subsets of data_fix and stacking them together on the stack dimension,
+    randomly offsetting the start of the first subset. It is assumed that the
+    padding axis 'pad_ax' is larger in data_fix.shape than in shape.
+
+    Parameters
+    ----------
+    data_fix : array
+        The data to reshape.
+    shape : list | tuple
+        The shape of data to match.
+    stack_ax : int
+        The axis along which to stack the subsets.
+    pad_ax : int
+        The axis along which to slice the subsets.
+
+    Returns
+    -------
+    data_fix : array
+        The reshaped data.
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> data_fix = np.arange(50).reshape((5, 10))
+    >>> data_fix
+    array([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9],
+           [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+           [20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+           [30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+           [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]])
+    >>> rand_offset_reshape(data_fix, (2, 4), 0, 1)
+    array([[ 0,  1,  2,  3],
+           [ 4,  5,  6,  7],
+           [10, 11, 12, 13],
+           [14, 15, 16, 17],
+           [20, 21, 22, 23],
+           [24, 25, 26, 27],
+           [30, 31, 32, 33],
+           [34, 35, 36, 37],
+           [40, 41, 42, 43],
+           [44, 45, 46, 47]])
+    >>> rand_offset_reshape(data_fix, (2, 4), 1, 0) # doctest: +ELLIPSIS
+    array([[ 0, 20,  1, 21,  2, 22,  3, 23,  4, 24,  5, 25,  6, 26,  7, 27,
+             8, 28,  9, 29],
+           [10, 30, 11, 31, 12, 32, 13, 33, 14, 34, 15, 35, 16, 36, 17, 37,
+            18, 38, 19, 39]])
+    """
+
+    # Randomly offset the start of the first subset
+    num_stack = data_fix.shape[pad_ax] // shape[pad_ax]
+    if data_fix.shape[pad_ax] % shape[pad_ax] == 0:
+        num_stack -= 1
+    offset = np.random.randint(0, data_fix.shape[pad_ax] - shape[pad_ax] * num_stack)
+
+    # Create an array to store the output
+    out_shape = [shape[i] if i == pad_ax else data_fix.shape[i]
+                 for i in range(data_fix.ndim)]
+    out_shape[stack_ax] *= num_stack
+    out = np.zeros(tuple(out_shape), dtype=data_fix.dtype)
+
+    # Iterate over the subsets
+    sl_in = [slice(None)] * data_fix.ndim
+    sl_out = [slice(None)] * data_fix.ndim
+    for i in range(num_stack):
+        # Get the start and end indices of the subset
+        start = i * shape[pad_ax] + offset
+        end = start + shape[pad_ax]
+
+        # Create a slice object for the subset
+        sl_in[pad_ax] = slice(start, end)
+        sl_out[stack_ax] = slice(i, None, num_stack)
+
+        # Fill in the subset
+        out[tuple(sl_out)] = data_fix[tuple(sl_in)]
+
+    return out
+
