@@ -222,8 +222,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
 @fill_doc
 @verbose
 def trial_ieeg(raw: mne.io.Raw, event: str | list[str, ...], times: Doubles,
-               event_hierarchy_delim: str = "/", verbose=None,
-               **kwargs) -> mne.Epochs:
+               verbose=None, **kwargs) -> mne.Epochs:
     """Epochs data from a mne Raw iEEG instance.
 
     Takes a mne Raw instance and epochs the data around a specified event. If
@@ -282,7 +281,6 @@ def trial_ieeg(raw: mne.io.Raw, event: str | list[str, ...], times: Doubles,
     events, ids = mne.events_from_annotations(raw)
     dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
     rev = {k: v for k, v in ids.items() if v in dat_ids}
-
 
     # epoch the data
     return mne.Epochs(raw, events, event_id=rev, tmin=times[0],

@@ -616,7 +616,6 @@ def get_elbow(data: np.ndarray) -> int:
     return idxOfBestPoint
 
 
-
 if __name__ == "__main__":
     ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
     # import os

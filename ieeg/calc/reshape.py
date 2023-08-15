@@ -149,7 +149,7 @@ def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
         raise ValueError("The number of matrices must be one more than the num"
                          "ber of overlaps")
     for i, over in enumerate(overlaps):
-        stitches = stitches[:-2] + merge(stitches[-1], mats[i+1], over, axis)
+        stitches = stitches[:-2] + merge(stitches[-1], mats[i + 1], over, axis)
     out = np.concatenate(stitches, axis=axis)
     if np.array_equal(out.astype(int), out):
         return out.astype(int)
@@ -161,9 +161,9 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
           ) -> list[np.ndarray[float]]:
     """Take two arrays and merge them over the overlap gradually"""
     sl = [slice(None)] * mat1.ndim
-    sl[axis] = slice(0, mat1.shape[axis]-overlap)
+    sl[axis] = slice(0, mat1.shape[axis] - overlap)
     start = mat1[tuple(sl)]
-    sl[axis] = slice(mat1.shape[axis]-overlap, mat1.shape[axis])
+    sl[axis] = slice(mat1.shape[axis] - overlap, mat1.shape[axis])
     middle1 = np.multiply(np.linspace(1, 0, overlap), mat1[tuple(sl)])
     sl[axis] = slice(0, overlap)
     middle2 = np.multiply(np.linspace(0, 1, overlap), mat2[tuple(sl)])
@@ -217,7 +217,7 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     """
 
     stack_ax, pad_ax = list(range(len(shape)))[stack_ax], \
-                            list(range(len(shape)))[pad_ax]
+        list(range(len(shape)))[pad_ax]
 
     # Check if the pad dimension of data_fix is smaller than the pad
     # dimension of shape
@@ -329,7 +329,8 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
     num_stack = data_fix.shape[pad_ax] // shape[pad_ax]
     if data_fix.shape[pad_ax] % shape[pad_ax] == 0:
         num_stack -= 1
-    offset = np.random.randint(0, data_fix.shape[pad_ax] - shape[pad_ax] * num_stack)
+    offset = np.random.randint(0, data_fix.shape[pad_ax] - shape[
+        pad_ax] * num_stack)
 
     # Create an array to store the output
     out_shape = [shape[i] if i == pad_ax else data_fix.shape[i]
@@ -353,4 +354,3 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
         out[tuple(sl_out)] = data_fix[tuple(sl_in)]
 
     return out
-

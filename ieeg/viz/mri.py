@@ -468,8 +468,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     pos = {k: v * 1000 for k, v in montage.get_positions()['ch_pos'].items()}
 
     # Default montage positions are in m, whereas plotting functions assume mm
-    left = {k:p for k, p in pos.items() if k.startswith('L')}
-    right = {k:p for k, p in pos.items() if k.startswith('R')}
+    left = {k: p for k, p in pos.items() if k.startswith('L')}
+    right = {k: p for k, p in pos.items() if k.startswith('R')}
 
     if left and hemi != 'rh':
         fig.add_foci(np.vstack(list(left.values())), hemi='lh', color=color,
@@ -488,14 +488,13 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
 
 def _add_labels(fig, info, sub, every, hemi, lr, **kwargs):
-
     names = info.ch_names[slice(every - 1, -1, every)]
 
     if not hemi == 'both':
         for hems, pos in enumerate(lr):
-            if  (not pos) or \
-                (hemi == 'lh' and hems == 1) or \
-                (hemi == 'rh' and hems == 0):
+            if (not pos) or \
+                    (hemi == 'lh' and hems == 1) or \
+                    (hemi == 'rh' and hems == 0):
                 continue
 
             plt_names = filter(lambda x: x.startswith(['L', 'R'][hems]), names)
@@ -611,11 +610,12 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
     for p in picks:
         i = 2
         label = labels.T[p].T
-        while (("White-Matter" in label[i] and label[i+1] < 0.8)
-               or (any(w in label[i] for w in bad_words) and label[i+1] < 1)):
-            if (i+2) <= len(label.T):
+        while (("White-Matter" in label[i] and label[i + 1] < 0.8)
+               or (any(w in label[i] for w in bad_words) and label[
+                    i + 1] < 1)):
+            if (i + 2) <= len(label.T):
                 break
-            elif label[i+2].isspace():
+            elif label[i + 2].isspace():
                 break
             i += 2
         new_labels[p] = label[i]
