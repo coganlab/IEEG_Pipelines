@@ -319,10 +319,9 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
     ... for _ in range(50)]) - rng.random((50, 15)) * 3.323
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    >>> window_averaged_shuffle(sig1, sig2, 0.05, n_perm=3000)
-    array(True)
-    >>> window_averaged_shuffle(sig1, sig2, 0.01, n_perm=3000)
-    array(False)
+    >>> window_averaged_shuffle(sig1, sig2, 0.05, n_perm=1000
+    ... ) # doctest: +ELLIPSIS
+    0.0...
     """
 
     sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)

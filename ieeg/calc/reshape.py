@@ -207,12 +207,13 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
            [ 6,  7,  8,  9, 10,  9,  8,  7]])
     >>> (newarr := make_data_same(data_fix, (2, 2)))
     array([[1, 2],
-             [3, 4],
-             [6, 7],
-            [8, 9]])
-    >>> make_data_same(newarr, (2, 2), stack_ax=1, pad_ax=0)
-    array([[1, 2, 3, 4],
-             [6, 7, 8, 9]])
+           [3, 4],
+           [6, 7],
+           [8, 9]])
+    >>> make_data_same(newarr, (3, 2), stack_ax=1, pad_ax=0)
+    array([[1, 2],
+           [3, 4],
+           [6, 7]])
     """
 
     stack_ax, pad_ax = list(range(len(shape)))[stack_ax], \
