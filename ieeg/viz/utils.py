@@ -1,20 +1,14 @@
 import gc
-
-import matplotlib as mpl
+from functools import partial
+import numpy as np
 from joblib import cpu_count
 from mne.io import Raw
-import numpy as np
 
-from ieeg import Signal, Doubles
+from ieeg import Doubles, Signal
 from ieeg.calc import stats
-from functools import partial
+import matplotlib
 
-# Vizualization on Pycharm doesn't work unless using TkAgg
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
-
+matplotlib.use('Qt5Agg')
 
 import matplotlib.pyplot as plt  # noqa: E402
 

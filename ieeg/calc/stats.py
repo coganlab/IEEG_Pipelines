@@ -1,10 +1,10 @@
 import numpy as np
-
-from skimage import measure
+from joblib import Parallel, delayed
 from mne.utils import logger
+from skimage import measure
 
 from ieeg import Doubles
-from joblib import Parallel, delayed
+from ieeg.calc.reshape import make_data_same
 
 
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
@@ -27,6 +27,14 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     -------
     Doubles
         Tuple containing the mean and standard deviation of the matrix.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> mat = np.array([[1, 2, 3], [4, 5, 6]])
+    >>> dist(mat)
+    (array([2.5, 3.5, 4.5]), array([1.06066017, 1.06066017, 1.06066017]))
+
     """
 
     if mask is None:
@@ -46,7 +54,7 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     return np.squeeze(avg), stdev
 
 
-def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
+def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
                    axis: int = 0) -> tuple[tuple[int, int]]:
     """ Remove outliers from data and repeat until no outliers are left.
 
@@ -72,6 +80,17 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = None,
     tuple[tuple[int, int]]
         Tuple of tuples containing the index of the outlier and the round in
         which it was removed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> tuple(outlier_repeat(data, 1))
+    ((1, 1), (3, 2))
+    >>> tuple(outlier_repeat(data, 1, rounds=1))
+    ((1, 1),)
+    >>> tuple(outlier_repeat(data, 1, rounds=0))
+    ()
     """
     inds = list(range(data.shape[axis]))
 
@@ -120,7 +139,19 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
     -------
     np.ndarray[bool]
         Boolean array with True for trials that are not outliers and False
-        for trials that are outliers."""
+        for trials that are outliers.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> find_outliers(data, 1)
+    array([ True, False,  True,  True,  True])
+    >>> find_outliers(data, 3)
+    array([ True,  True,  True,  True,  True])
+    >>> find_outliers(data, 0.1)
+    array([ True, False,  True, False,  True])
+    """
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
     max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
     std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
@@ -152,6 +183,30 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
     -------
     np.ndarray
         Average of data without outliers.
+
+    Examples
+    --------
+import mne    >>> import numpy as np
+    >>> import mne
+    >>> mne.set_log_file(None)
+    >>> data = np.array([[[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]]).T
+    >>> avg_no_outlier(data, 1)
+    Removed Trial 0 in Channel 0
+    Removed Trial 1 in Channel 0
+    Removed Trial 1 in Channel 1
+    Removed Trial 2 in Channel 0
+    Removed Trial 3 in Channel 0
+    Removed Trial 4 in Channel 0
+    array([[nan],
+           [2.5]])
+    >>> avg_no_outlier(data, 3)
+    Removed Trial 0 in Channel 0
+    Removed Trial 1 in Channel 0
+    Removed Trial 2 in Channel 0
+    Removed Trial 3 in Channel 0
+    Removed Trial 4 in Channel 0
+    array([[nan],
+           [14.]])
     """
     if data.ndim not in (3, 4):
         raise ValueError("Data must be 3D or 4D")
@@ -198,6 +253,18 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     -------
     avg1 - avg2 : array or float
         The mean difference between the two groups.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]).T
+    >>> mean_diff(group1, group2)
+    7.0
+    >>> mean_diff(group1, group2, axis=0)
+    array([ 0., 14.])
+    >>> mean_diff(group1, group2, axis=1)
+    array([ 0., 30.,  0.,  5.,  0.])
     """
 
     avg1 = np.nanmean(group1, axis=axis)
@@ -206,13 +273,86 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     return avg1 - avg2
 
 
+def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
+                            p_thresh: float, n_perm: int = 1000,
+                            tails: int = 1, obs_axis: int = 0,
+                            window_axis: int = -1,
+                            stat_func: callable = mean_diff
+                            ) -> np.ndarray[bool]:
+    """Calculate the window averaged shuffle distribution.
+
+    This function calculates the window averaged shuffle distribution for two
+    groups of data. The shuffle distribution is calculated by randomly
+    shuffling the data between the two groups and calculating the statistic
+    function for each window, returning a distribution of the statistic
+    corresponding to each window. The function returns the shuffle
+    distribution.
+
+    Parameters
+    ----------
+    sig1 : array, shape (trials, ..., time)
+        The first group of observations.
+    sig2 : array, shape (trials, ..., time)
+        The second group of observations.
+    p_thresh : float
+        The p-value threshold for the shuffle distribution.
+    n_perm : int, optional
+        The number of permutations to perform. Default is 1000.
+    tails : int, optional
+        The number of tails to use for the p-value. Default is 1.
+    obs_axis : int, optional
+        The axis along which to calculate the statistic function. Default is 0.
+    window_axis : int, optional
+        The axis along which to calculate the window average. Default is -1.
+    stat_func : callable, optional
+        The statistic function to use. Default is mean_diff.
+
+    Returns
+    -------
+    shuffle_dist : np.ndarray
+        The shuffle distribution.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(seed=42)
+    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
+    ... for _ in range(50)]) - rng.random((50, 15)) * 3.323
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
+    >>> window_averaged_shuffle(sig1, sig2, 0.05, n_perm=1000
+    ... ) # doctest: +ELLIPSIS
+    0.0...
+    """
+
+    sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
+
+    # Average across time, shape is now (obs, ...)
+    sig1 = np.nanmean(sig1, axis=window_axis)
+    sig2 = np.nanmean(sig2, axis=window_axis)
+
+    # Calculate the shuffle distribution, shape is now (...)
+    p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
+                              stat_func)
+    return p_act
+    # if tails == -1:
+    #     method = 'negcorr'
+    # else:
+    #     method = 'indep'
+
+    # reject, p_corr = mne.stats.fdr_correction(p_act, 0.05, method)
+    #
+    # if np.isscalar(reject):
+    #     return np.array([reject])
+    # return reject
+
+
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = mean_diff,
                       ignore_adjacency: tuple[int] | int = None,
-                      n_jobs: int = -1) -> np.ndarray:
-    """ Calculate significant clusters using permutation testing and cluster
+                      n_jobs: int = -1) -> np.ndarray[bool]:
+    """Calculate significant clusters using permutation testing and cluster
     correction.
 
     Takes two time series signals, finding clusters of activation defined as
@@ -251,6 +391,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         The axis or axes to ignore when finding clusters. For example, if
         sig1.shape = (trials, channels, time), and you want to find clusters
         across time, but not channels, you would set ignore_adjacency = 1.
+    n_jobs : int, optional
+        The number of jobs to run in parallel. -1 for all processors. Default
+        is -1.
 
     Returns
     -------
@@ -260,6 +403,20 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     References
     ----------
     1. https://www.sciencedirect.com/science/article/pii/S0165027007001707
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(seed=42)
+    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
+    ... for _ in range(50)]) - rng.random((50, 15)) * 4
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
+    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=3000)
+    array([False, False, False,  True,  True,  True,  True,  True,  True,
+            True,  True,  True, False, False, False])
+    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=3000)
+    array([False, False, False,  True,  True,  True,  True,  True,  True,
+            True,  True, False, False, False, False])
     """
     # check inputs
     if p_cluster is None:
@@ -290,14 +447,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             out[i] = iout
         return out
 
-    # Make sure the data is the same shape
-    eq = list(np.equal(sig1.shape, sig2.shape)[np.arange(sig1.ndim) != axis])
-    if not all(eq):
-        eq.insert(axis, True)
-        pad_shape = [(0, 0) if eq[i] else
-                     (0, sig1.shape[i] - sig2.shape[i])
-                     for i in range(sig1.ndim)]
-        sig2 = np.pad(sig2, pad_shape, mode='reflect')
+    sig2 = make_data_same(sig2, sig1.shape, axis)
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')
@@ -341,46 +491,6 @@ def _perm_iter(array: np.ndarray, perm: int, axis: int = 0, tails: int = 0
     larger = tail_compare(array[perm],
                           array[np.arange(len(array)) != perm], tails)
     return np.mean(larger, axis=axis)
-
-
-def make_data_shape(data_fix: np.ndarray, shape: tuple | list) -> np.ndarray:
-    """Force the last dimension of data_fix to match the last dimension of
-    shape.
-
-    Takes the two arrays and checks if the last dimension of data_fix is
-    smaller than the last dimension of shape. If there's more than two
-    dimensions, it will rearrange the data to match the shape. If there's only
-    two dimensions, it will repeat the signal to match the shape of data_like.
-    If the last dimension of data_fix is larger than the last dimension of
-    shape, it will return a subset of data_fix.
-
-    Parameters
-    ----------
-    data_fix : array
-        The data to reshape.
-    shape : list | tuple
-        The shape of data to match.
-
-    Returns
-    -------
-    data_fix : array
-        The reshaped data.
-    """
-
-    # Find the new shape
-    x = 1
-    for s in shape[1:]:
-        x *= s
-    trials = int(data_fix.size / x)
-    temp = np.full((trials, *shape[1:]), np.nan)
-
-    # Assign the data to the new shape, concatenating the first dimension along
-    # the last dimension
-    for i in np.ndindex(shape[1:-1]):
-        index = (slice(None),) + tuple(j for j in i)
-        temp[index].flat = data_fix[index].flat
-
-    return temp
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
@@ -604,6 +714,23 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
         The F-statistic for each frequency.
     A : array
         The amplitude of the sine wave at each frequency.
+
+    Examples:
+    ---------
+    >>> import numpy as np
+    >>> window_fun = np.array([[0.5, 0.5], [0.5, -0.5]])
+    >>> x_p = np.array([[[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]],
+    ...                 [[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]]).T
+    >>> sine_f_test(window_fun, x_p)
+    (array([[0.        , 0.        ],
+           [0.00027778, 0.        ],
+           [0.        , 0.        ],
+           [0.01      , 0.        ],
+           [0.        , 0.        ]]), array([[1., 1.],
+           [1., 1.],
+           [1., 1.],
+           [1., 1.],
+           [1., 1.]]))
     """
     # drop the even tapers
     n_tapers = len(window_fun)

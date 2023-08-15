@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
-from ieeg.calc.mat import concatenate_arrays, get_homogeneous_shapes, \
-    LabeledArray, combine, iter_nest_dict
+
+from ieeg.calc.mat import LabeledArray, combine, iter_nest_dict
+from ieeg.calc.reshape import concatenate_arrays, get_homogeneous_shapes
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [
@@ -201,7 +202,7 @@ def test_eq():
 def test_repr():
     data = {'a': {'b': {'c': 1}}}
     ad = LabeledArray.from_dict(data)
-    expected_repr = "LabeledArray([[[1.]]]), labels=(('a',), ('b',), ('c',))" \
+    expected_repr = "LabeledArray([[[1.]]])\nlabels=(('a',), ('b',), ('c',))" \
                     " ~8.00 B"
     assert repr(ad) == expected_repr
 
@@ -233,3 +234,17 @@ def test_numpy_idx(idx):
 def test_idx(idx, expected):
     ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
     assert ad[idx].labels == expected
+
+
+@pytest.mark.parametrize('idx, val, expected', [
+    ((0, 0, 0), 3, [[[3, 2]]]),
+    ((0, 0, 1), 3, [[[1, 3]]]),
+    (('a', 'b', 'c'), 3, [[[3, 2]]]),
+    (('a', 'b', 'd'), 3, [[[1, 3]]]),
+    ((0, 0), [3, 4], [[[3, 4]]]),
+    ((0, 'b'), [3, 4], [[[3, 4]]])
+])
+def test_set_array_val(idx, val, expected):
+    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
+    ad[idx] = val
+    np.testing.assert_array_equal(ad, np.array(expected))

@@ -1,6 +1,3 @@
-import matplotlib as mpl
+import matplotlib
 
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
+matplotlib.use('Qt5Agg')
