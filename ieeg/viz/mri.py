@@ -10,10 +10,11 @@ from mne.viz import Brain
 
 from ieeg import PathLike, Signal
 from ieeg.io import get_elec_volume_labels
-import matplotlib
+from ieeg.viz import _qt_backend
 
-matplotlib.use('Qt5Agg')
+_qt_backend()
 
+import matplotlib  # noqa: E402
 import matplotlib.patheffects as path_effects  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 

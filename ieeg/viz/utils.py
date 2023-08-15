@@ -6,9 +6,10 @@ from mne.io import Raw
 
 from ieeg import Doubles, Signal
 from ieeg.calc import stats
-import matplotlib
 
-matplotlib.use('Qt5Agg')
+from ieeg.viz import _qt_backend
+
+_qt_backend()
 
 import matplotlib.pyplot as plt  # noqa: E402
 

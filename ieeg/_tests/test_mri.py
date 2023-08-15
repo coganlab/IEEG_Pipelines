@@ -1,5 +1,4 @@
 import os
-
 import mne
 
 misc_path = mne.datasets.misc.data_path()
