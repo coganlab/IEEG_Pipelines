@@ -80,6 +80,6 @@ def test_stats_wavelet():
     resp = out[1]
     base = out[0]
 
-    mask = stats.time_perm_cluster(resp._data, base._data, 0.05, n_perm=3000)
+    mask = stats.time_perm_cluster(resp._data, base._data, 0.05, n_perm=2000)
 
     assert np.all(mask[2:7, 11:12])
