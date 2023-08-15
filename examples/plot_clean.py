@@ -10,6 +10,7 @@ import mne
 import os
 from ieeg.io import raw_from_layout
 from ieeg.mt_filter import line_filter
+from ieeg.viz.utils import figure_compare
 from ieeg import viz
 from bids import BIDSLayout
 
@@ -41,7 +42,7 @@ filt = line_filter(raw, mt_bandwidth=10., n_jobs=6,
 
 # %% plot the data
 data = [raw, filt]
-viz.utils.figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
+figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
                    verbose=10, proj=True, fmax=250)
 
 # %% Our Data Unfiltered
