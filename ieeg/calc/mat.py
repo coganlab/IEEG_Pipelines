@@ -1,6 +1,10 @@
 from collections.abc import Iterable
 import functools
+
+import mne
+
 from ieeg.calc.reshape import concatenate_arrays
+from ieeg import Signal
 
 import numpy as np
 from numpy.matlib import repmat
@@ -131,6 +135,83 @@ class LabeledArray(np.ndarray):
         arr = inner_array(data)
         keys = inner_all_keys(data)
         return cls(arr, keys, **kwargs)
+
+    @classmethod
+    def from_signal(cls, sig: Signal, **kwargs) -> 'LabeledArray':
+        """Create a LabeledArray from a Signal.
+
+        Parameters
+        ----------
+        sig : Signal
+            The Signal to convert to a LabeledArray.
+
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray created from the Signal.
+
+        Examples
+        --------
+        >>> from bids import BIDSLayout
+        >>> from ieeg.io import raw_from_layout
+        >>> from ieeg.navigate import trial_ieeg
+        >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+        >>> layout = BIDSLayout(bids_root)
+        >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+        ... extension=".vhdr", verbose=False)
+        Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+        >>> LabeledArray.from_signal(raw, dtype=float) # doctest: +ELLIPSIS
+        LabeledArray([[-8.98329883e-06,  8.20419238e-06,  7.42294287e-06, ...,
+                        1.07177293e-09,  1.07177293e-09,  1.07177293e-09],
+                      [ 2.99222000e-04,  3.03518844e-04,  2.96878250e-04, ...,
+                        3.64667153e-09,  3.64667153e-09,  3.64667153e-09],
+                      [ 2.44140953e-04,  2.30078469e-04,  2.19140969e-04, ...,
+                        3.85053724e-10,  3.85053724e-10,  3.85053724e-10],
+                      ...,
+                      [ 1.81263844e-04,  1.74232594e-04,  1.56263875e-04, ...,
+                        1.41283798e-08,  1.41283798e-08,  1.41283798e-08],
+                      [ 2.25390219e-04,  2.16015219e-04,  1.91405859e-04, ...,
+                       -2.91418821e-10, -2.91418821e-10, -2.91418821e-10],
+                      [ 3.14092313e-04,  3.71123375e-04,  3.91826437e-04, ...,
+                        3.07457047e-08,  3.07457047e-08,  3.07457047e-08]])
+        labels=(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'...
+               2.69078e+02, 2.69079e+02])) ~201.19 MiB
+        >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
+        ... verbose=False)
+        >>> LabeledArray.from_signal(epochs, dtype=float) # doctest: +ELLIPSIS
+        LabeledArray([[[ 0.00021563,  0.00021563,  0.00020703, ...
+                        -0.00051445, -0.00050351],
+                       [-0.00030586, -0.00030625, -0.00031171, ...
+                        -0.00015976, -0.00015664],
+                       [-0.00010781, -0.00010469, -0.00010859, ...
+                         0.00027695,  0.00030156],
+                       ...,
+                       [-0.00021483, -0.00021131, -0.00023084, ...
+                        -0.00032381, -0.00031444],
+                       [-0.00052188, -0.00052852, -0.00053125, ...
+                        -0.00047148, -0.00047891],
+                       [-0.00033708, -0.00028005, -0.00020934, ...
+                        -0.00042341, -0.00040973]]])
+        labels=(['AD1-4, ATT1,2'], ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'...
+        """
+
+        arr = sig.get_data()
+        match sig:
+            case mne.io.base.BaseRaw():
+                labels = (sig.ch_names, sig.times)
+            case mne.BaseEpochs():
+                events = list(sig.event_id.keys())
+                labels = (events, sig.ch_names, sig.times)
+            case mne.evoked.Evoked():
+                labels = (sig.ch_names, sig.times)
+            case mne.time_frequency.EpochsTFR():
+                events = list(sig.event_id.keys())
+                labels = (events, sig.ch_names, sig.freqs, sig.times)
+            case mne.time_frequency.AverageTFR():
+                labels = (sig.ch_names, sig.freqs, sig.times)
+            case _:
+                raise TypeError(f"Unexpected data type: {type(sig)}")
+        return cls(arr, labels, **kwargs)
 
     def __array_finalize__(self, obj, *args, **kwargs):
         if obj is None:
