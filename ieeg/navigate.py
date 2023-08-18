@@ -204,15 +204,28 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
 
     # determine the events
     events, ids = mne.events_from_annotations(raw)
-    dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
-    if len(dat_ids) > 1:
-        event_ids = {key.replace(event, "").strip("/"): value for key, value in
-                     ids.items() if value in dat_ids}
-    else:
-        event_ids = {key: value for key, value in ids.items() if value in
-                     dat_ids}
-    # epoch the data
 
+    #this is aaron's old way that requires the event name to be found by mne. Doesn't work with i and c.
+
+    # dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)] 
+    
+
+    dat_ids = [value for key, value in ids.items() if event in key]
+    print("dat_ids: ", dat_ids)
+    
+    event_ids = {key: value for key, value in ids.items() if value in
+                     dat_ids}
+    print("event_ids: ", event_ids)
+
+    # if len(dat_ids) > 1:
+    #     event_ids = {key.replace(event, "").strip("/"): value for key, value in
+    #                  ids.items() if value in dat_ids}
+    # else:
+    #     event_ids = {key: value for key, value in ids.items() if value in
+    #                  dat_ids}
+    
+
+    # epoch the data
     if baseline is None:
         epochs = mne.Epochs(raw, events, event_id=event_ids, tmin=times[0],
                             tmax=times[1], baseline=None, verbose=verbose,

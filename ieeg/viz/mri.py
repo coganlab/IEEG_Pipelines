@@ -289,7 +289,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
     if fig is None:
         fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.6, background='grey', surf=surface, hemi=hemi)
+                    alpha=0.6, background='black', surf=surface, hemi=hemi)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
@@ -305,7 +305,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
             
             plot_subj(subj, subj_dir, picks=electrodes, no_wm=False, fig=fig,
                   trans=to_fsaverage, color=color, size=size,
-                  labels_every=None)
+                  labels_every=1)
   
         return fig  # Return the figure after plotting all electrodes in the dictionary
 
@@ -355,7 +355,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
                   trans=to_fsaverage, color=color, size=size,
-                  labels_every=None)
+                  labels_every=1)
 
     return fig
 
@@ -502,6 +502,17 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         fig.add_foci(np.vstack(right), hemi='rh', color=color,
                      scale_factor=size)
 
+    print(f"fig: {fig}")
+    print(f"info: {info}")
+    print(f"sub: {sub}")
+    print(f"pos: {pos}")
+    print(f"labels_every: {labels_every}")
+    print(f"hemi: {hemi}")
+
+    print(f"fig attributes: {dir(fig)}")
+    print(f"fig shape: {getattr(fig, 'shape', 'Attribute not found')}")
+
+
     if labels_every is not None:
         settings = dict(shape=None, always_visible=True, text_color=(0, 0, 0),
                         bold=False)
@@ -513,8 +524,10 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 def _add_labels(fig, info, sub, pos, every, hemi, lr, **kwargs):
 
     picks = info.ch_names
+    print(f"picks shape: {len(picks)}, picks: {picks}")
 
     names = picks[slice(every - 1, info['nchan'], every)]
+    print(f"names shape: {len(names)}, names: {names}")
 
     if hemi == 'split':
         for hems, positions in zip(range(2), lr):
