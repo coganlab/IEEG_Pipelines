@@ -304,8 +304,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
                                                 trans=to_fsaverage['trans'])
             
             plot_subj(subj, subj_dir, picks=electrodes, no_wm=False, fig=fig,
-                  trans=to_fsaverage, color=color, size=size,
-                  labels_every=1)
+                  trans=to_fsaverage, color=color, size=size)
   
         return fig  # Return the figure after plotting all electrodes in the dictionary
 
@@ -472,10 +471,10 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5,
-                    background='white', foreground='black', surf=surface, hemi=hemi)
+                    background='black', foreground='white', surf=surface, hemi=hemi)
     # Set the title if provided
     if title is not None:
-        mne.viz.set_3d_title(fig, title, size=40, color='black')
+        mne.viz.set_3d_title(fig, title, size=40)
     if picks is None:
         picks = info.ch_names
     if no_wm:
@@ -529,14 +528,30 @@ def _add_labels(fig, info, sub, pos, every, hemi, lr, **kwargs):
     names = picks[slice(every - 1, info['nchan'], every)]
     print(f"names shape: {len(names)}, names: {names}")
 
+    print(f"Plotter shape: {fig.plotter.shape}")
+    # aaron's old code as of 8/21/23
+    # if hemi == 'split':
+    #     for hems, positions in zip(range(2), lr):
+    #         if not positions:
+    #             continue
+    #         pos = positions[slice(every - 1, info['nchan'], every)]
+    #         plt_names = [f'{sub}-{n}' for n in names if
+    #                      n.startswith(['L', 'R'][hems])]
+    #         fig.plotter.subplot(0, hems)
+    #         fig.plotter.add_point_labels(pos, plt_names, **kwargs)
+    
+    #untested new code to fix IndexError as of 8/21/23
     if hemi == 'split':
         for hems, positions in zip(range(2), lr):
             if not positions:
                 continue
             pos = positions[slice(every - 1, info['nchan'], every)]
             plt_names = [f'{sub}-{n}' for n in names if
-                         n.startswith(['L', 'R'][hems])]
-            fig.plotter.subplot(0, hems)
+                        n.startswith(['L', 'R'][hems])]
+            if fig.plotter.shape == (1, 1):
+                fig.plotter.subplot(0, 0)  # Update this line if shape is (1, 1)
+            else:
+                fig.plotter.subplot(0, hems)  # Use original code otherwise
             fig.plotter.add_point_labels(pos, plt_names, **kwargs)
     else:
         plt_names = [f'{sub}-{n}' for n in names]
