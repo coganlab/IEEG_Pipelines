@@ -325,7 +325,8 @@ class LabeledArray(np.ndarray):
         if isinstance(other, LabeledArray):
             return np.array_equal(self, other, True) and \
                 self.labels == other.labels
-        return super().__eq__(other)
+        else:
+            return super().__eq__(other)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -350,6 +351,35 @@ class LabeledArray(np.ndarray):
 
     def values(self):
         return (a for a in self)
+
+    def prepend_labels(self, pre: str, level: int) -> 'LabeledArray':
+        """Prepend a string to all labels at a given level.
+
+        Parameters
+        ----------
+        pre : str
+            The string to prepend to all labels.
+        level : int
+            The level to prepend the string to.
+
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray with the prepended labels.
+
+        Examples
+        --------
+        >>> data = {'a': {'b': {'c': 1}}}
+        >>> ad = LabeledArray.from_dict(data, dtype=int)
+        >>> ad.prepend_labels('pre-', 1) # doctest: +ELLIPSIS
+        LabeledArray([[[1]]])
+        labels=(('a',), ('pre-b',), ('c',)) ...
+        """
+        assert 0 <= level < self.ndim, "level must be >= 0 and < ndim"
+        labels = list(self.labels)
+        labels[level] = tuple(pre + lab for lab in labels[level])
+        self.labels = tuple(labels)
+        return LabeledArray(self.view(np.ndarray), self.labels)
 
     def combine(self, levels: tuple[int, int],
                 delim: str = '-', drop_nan: bool = True) -> 'LabeledArray':
