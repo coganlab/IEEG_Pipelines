@@ -403,6 +403,10 @@ class LabeledArray(np.ndarray):
         (('a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'), ('f', 'g', 'h', 'i'))
         >>> ad.reshape((2, 12)).labels # doctest: +ELLIPSIS
         (('a', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
+        >>> arr = np.arange(10000)
+        >>> labels = (tuple(map(str, arr)),)
+        >>> ad = LabeledArray(arr, labels)
+        >>> ad.reshape((2, 5000)).labels
         """
         new_array = super().reshape(*shape, order=order)
         new_labels = label_reshape(self.labels, shape, order)
@@ -465,7 +469,6 @@ class LabeledArray(np.ndarray):
         >>> ad.combine((0, 2)) # doctest: +ELLIPSIS
         LabeledArray([[1]])
         labels=(('b',), ('a-c',)) ...
-        >>>
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
@@ -486,7 +489,7 @@ class LabeledArray(np.ndarray):
 
         new_shape.pop(levels[0])
 
-        new_array = self.reshape(new_shape)
+        new_array = self.view(np.ndarray).reshape(new_shape)
 
         if drop_nan:
             return LabeledArray(new_array, new_labels).dropna()
@@ -569,37 +572,42 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
     """
     labels = list(labels)
     types = list(map(lambda x: type(x[0]), labels))
+    m = 0
     for i, l in enumerate(labels):
         labels[i] = tuple(map(str, l))
+        m = max((max(map(len, labels[i])), m))
     labels = tuple(labels)
+    count = int(np.multiply.reduce(shape))
+
     if order == 'F':
-        prod = map(reversed, itertools.product(*reversed(labels)))
+        prod = ((*reversed(x),) for x in itertools.product(*reversed(labels)))
     else:
         prod = itertools.product(*labels)
-    flattened = tuple(map(delim.join, prod))
-    temp = np.full(shape, '0'*max(map(len, flattened)))
-    if order == 'F':
-        temp.T.flat = flattened
-    else:
-        temp.flat = flattened
+
+    # Pre-allocate the output array
+    out = np.empty(count, dtype=np.dtype((f'U{m}', len(labels))))
+
+    # Fill the output array using a loop
+    for i, x in enumerate(prod):
+        out[i] = x
+    out = out.reshape(*shape, len(labels), order=order)
 
     # now that temp is a char array of corresponding labels, we can factor the
     # matrix into the new labels
-    new_labels = [[] for _ in range(len(shape))]
+    new_labels = [[None for _ in range(s)] for s in shape]
     for i, dim in enumerate(shape):
         if len(labels[i]) == dim == 1:
             new_labels[i] = labels[i]
             continue
         for j in range(dim):
-            row = list(np.take(temp, j, axis=i).flat)
-            delimed = tuple(map(lambda x: tuple(x.split(delim)), row))
-            common = _longest_common_substring(delimed)
+            row = np.take(out, j, axis=i).reshape(-1, len(labels))
+            common = _longest_common_substring(tuple(map(tuple, row.tolist())))
             if len(common) == 0:
                 logging.warn(f"Could not find common substring for "
                              f"labels dimension {i} index {j}")
-                common = sorted(list(set(d[i] for d in delimed)),
+                common = sorted(list(set(d[i] for d in row)),
                                 key=labels[i].index)
-            new_labels[i].append(delim.join(common))
+            new_labels[i][j] = delim.join(common)
         for t in (t for t in set(types) if t is not str):
             try:
                 new_labels[i] = list(map(t, new_labels[i]))
@@ -886,32 +894,24 @@ def get_elbow(data: np.ndarray) -> int:
 
 
 if __name__ == "__main__":
-    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
-    # import os
-    # from ieeg.io import get_data
-    # from utils.mat_load import load_dict
-    # import mne
-    # ins, axis, exp = ([np.array([]), np.array([[1., 2.], [3., 4.]]),
-    #                    np.array([[5., 6., 7.], [8., 9., 10.]])], 0,
-    #                   np.array([[1, 2, np.nan], [3, 4, np.nan],
-    #                             [5, 6, 7], [8, 9, 10]]))
-    # outs = concatenate_arrays(ins, axis)
-    # ar = LabeledArray.from_dict(dict(a=ins[1], b=ins[2]))
-    # x = ar["a"]
-    # y = ar.to_dict()
-    # conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
-    #          "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
-    #          "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
-    #          "go_jl": (-0.5, 1.5)}
-    # task = "SentenceRep"
-    # root = os.path.expanduser("~/Box/CoganLab")
-    # layout = get_data(task, root=root)
-    #
-    # mne.set_log_level("ERROR")
+    import os
+    from ieeg.io import get_data
+    from utils.mat_load import load_dict
+    import mne
+    conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
+             "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
+             "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
+             "go_jl": (-0.5, 1.5)}
+    task = "SentenceRep"
+    root = os.path.expanduser("~/Box/CoganLab")
+    layout = get_data(task, root=root)
+    folder = 'stats'
 
-    # data = LabeledArray.from_dict(dict(
-    #     power=load_dict(layout, conds, "power", False),
-    #     zscore=load_dict(layout, conds, "zscore", False)))
+    mne.set_log_level("ERROR")
+
+    data = LabeledArray.from_dict(dict(
+        power=load_dict(layout, conds, "power", False, folder),
+        zscore=load_dict(layout, conds, "zscore", False, folder)))
 
     # dict_data = dict(
     #     power=load_dict(layout, conds, "power", False))
