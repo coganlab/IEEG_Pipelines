@@ -227,11 +227,13 @@ class LabeledArray(np.ndarray):
         inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
                        else i for i in inputs)
         if out is not None:
-            kwargs['out'] = tuple(o.view(np.ndarray) if isinstance(o, LabeledArray)
+            kwargs['out'] = tuple(o.view(np.ndarray) if
+                                  isinstance(o, LabeledArray)
                                   else o for o in out)
         outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
         if isinstance(outputs, tuple):
-            outputs = tuple(LabeledArray(o, labels) if isinstance(o, np.ndarray)
+            outputs = tuple(LabeledArray(o, labels)
+                            if isinstance(o, np.ndarray)
                             else o for o in outputs)
         elif isinstance(outputs, np.ndarray):
             outputs = LabeledArray(outputs, labels)
@@ -523,7 +525,8 @@ class LabeledArray(np.ndarray):
 
 
 def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
-                  order: str = 'C', delim: str = '-') -> tuple[tuple[str, ...], ...]:
+                  order: str = 'C', delim: str = '-'
+                  ) -> tuple[tuple[str, ...], ...]:
     """Reshape the labels of a LabeledArray.
 
     Takes the labels corresponding to the shape of an array and reshapes them
