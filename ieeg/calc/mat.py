@@ -1,4 +1,5 @@
-from collections.abc import Iterable
+import logging
+from collections.abc import Iterable, Sequence
 import functools
 import itertools
 
@@ -220,6 +221,22 @@ class LabeledArray(np.ndarray):
         self.labels = getattr(obj, 'labels', None)
         super(LabeledArray, self).__array_finalize__(obj, *args, **kwargs)
 
+    def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
+        """Override numpy ufuncs to preserve labels."""
+        labels = self.labels
+        inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
+                       else i for i in inputs)
+        if out is not None:
+            kwargs['out'] = tuple(o.view(np.ndarray) if isinstance(o, LabeledArray)
+                                  else o for o in out)
+        outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
+        if isinstance(outputs, tuple):
+            outputs = tuple(LabeledArray(o, labels) if isinstance(o, np.ndarray)
+                            else o for o in outputs)
+        elif isinstance(outputs, np.ndarray):
+            outputs = LabeledArray(outputs, labels)
+        return outputs
+
     @functools.cached_property
     def coord_map(self) -> dict[str, tuple[int, int]]:
         """A dictionary mapping labels to coordinates in the array."""
@@ -385,30 +402,9 @@ class LabeledArray(np.ndarray):
         >>> ad.reshape((2, 12)).labels # doctest: +ELLIPSIS
         (('a', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
         """
-        new_labels = []
         new_array = super().reshape(*shape, order=order)
-        curr_labels = [list(lab) for lab in self.labels]
-        lengths = [len(lab) for lab in self.labels]
-        for dim in shape:
-            if lengths[0] == dim:
-                new_labels.append(tuple(curr_labels.pop(0)))
-                lengths.pop(0)
-                continue
-            lab_len = 1
-            curr = []
-            while lab_len < dim and lengths:
-                lab_len *= lengths.pop(0)
-                curr.append(curr_labels.pop(0))
-            if lab_len != dim:
-                raise ArithmeticError("what?")
-            if order == 'F':
-                prod = map(reversed, itertools.product(*reversed(curr)))
-            else:
-                prod = itertools.product(*curr)
-            new_labels.append(tuple(map('-'.join, prod)))
+        new_labels = label_reshape(self.labels, shape, order)
         return LabeledArray(new_array, new_labels)
-
-
 
     def prepend_labels(self, pre: str, level: int) -> 'LabeledArray':
         """Prepend a string to all labels at a given level.
@@ -557,6 +553,10 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
     (('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i'))
     >>> label_reshape(labels, (6, 4), 'F')
     (('az-c', 'b-c', 'az-d', 'b-d', 'az-e', 'b-e'), ('f', 'g', 'h', 'i'))
+    >>> label_reshape(labels, (2, 12)) # doctest: +ELLIPSIS
+    (('az', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
+    >>> label_reshape(labels, (3, 2, 4))
+    (('az', 'az-b', 'b'), ('c-d-e', 'c-d-e'), ('f', 'g', 'h', 'i'))
     """
     if order == 'F':
         prod = map(reversed, itertools.product(*reversed(labels)))
@@ -564,32 +564,47 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
         prod = itertools.product(*labels)
     flattened = tuple(map(delim.join, prod))
     temp = np.full(shape, '0'*max(map(len, flattened)))
-    # temp.flat = list(map(lambda x: x.split(delim), flattened))
-    temp.flat = flattened
+    if order == 'F':
+        temp.T.flat = flattened
+    else:
+        temp.flat = flattened
 
     # now that temp is a char array of corresponding labels, we can factor the
     # matrix into the new labels
+    new_labels = [[] for _ in range(len(shape))]
     for i, dim in enumerate(shape):
+        if len(labels[i]) == dim == 1:
+            new_labels[i] = labels[i]
+            continue
         for j in range(dim):
-            np.take(temp, j, axis=i).tolist()
+            row = list(np.take(temp, j, axis=i).flat)
+            delimed = tuple(map(lambda x: tuple(x.split(delim)), row))
+            common = longest_common_substring(delimed)
+            if len(common) == 0:
+                logging.warn(f"Could not find common substring for "
+                             f"labels dimension {i} index {j}")
+                common = sorted(list(set(d[i] for d in delimed)),
+                                key=labels[i].index)
+            new_labels[i].append(delim.join(common))
+    return tuple(map(tuple, new_labels))
 
 
-def longest_common_substring(strings: list[str]) -> str:
+def longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
+    matrix = [[] for _ in range(len(strings))]
     for i in range(len(strings) - 1):
-        strings[i + 1] = longest_common_subsequence(strings[i], strings[i + 1])
-    return strings[-1]
+        matrix[i] = lcs(strings[i], strings[i + 1])
+    else:
+        matrix[-1] = [True for _ in range(len(strings[-1]))]
+    return np.array(strings[0])[np.all(matrix, axis=0)].tolist()
 
 
-def longest_common_subsequence(text1: str, text2: str) -> int:
-    dp = [[0 for j in range(len(text2)+1)] for i in range(len(text1)+1)]
-
-    for i in range(len(text1)-1,-1,-1):
-        for j in range(len(text2)-1,-1,-1):
-            if text1[i] == text2[j]:
-                dp[i][j] = 1 + dp[i+1][j+1]
-            else:
-                dp[i][j] = max(dp[i][j+1],dp[i+1][j])
-    return dp[0][0]
+@functools.lru_cache(None)
+def lcs(s1: tuple, s2: tuple) -> list[bool]:
+    matrix = [False for _ in range(len(s1))]
+    for i in range(len(s1)):
+        if s1[i] == s2[i]:
+            matrix[i] = True
+    return matrix
 
 
 def add_to_list_if_not_present(lst: list, element: Iterable):
