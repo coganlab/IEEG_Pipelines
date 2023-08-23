@@ -582,7 +582,7 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
         for j in range(dim):
             row = list(np.take(temp, j, axis=i).flat)
             delimed = tuple(map(lambda x: tuple(x.split(delim)), row))
-            common = longest_common_substring(delimed)
+            common = _longest_common_substring(delimed)
             if len(common) == 0:
                 logging.warn(f"Could not find common substring for "
                              f"labels dimension {i} index {j}")
@@ -592,17 +592,17 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
     return tuple(map(tuple, new_labels))
 
 
-def longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
+def _longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
     matrix = [[] for _ in range(len(strings))]
     for i in range(len(strings) - 1):
-        matrix[i] = lcs(strings[i], strings[i + 1])
+        matrix[i] = _lcs(strings[i], strings[i + 1])
     else:
         matrix[-1] = [True for _ in range(len(strings[-1]))]
     return np.array(strings[0])[np.all(matrix, axis=0)].tolist()
 
 
 @functools.lru_cache(None)
-def lcs(s1: tuple, s2: tuple) -> list[bool]:
+def _lcs(s1: tuple, s2: tuple) -> list[bool]:
     matrix = [False for _ in range(len(s1))]
     for i in range(len(s1)):
         if s1[i] == s2[i]:
