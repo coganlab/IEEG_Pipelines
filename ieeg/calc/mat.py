@@ -465,6 +465,7 @@ class LabeledArray(np.ndarray):
         >>> ad.combine((0, 2)) # doctest: +ELLIPSIS
         LabeledArray([[1]])
         labels=(('b',), ('a-c',)) ...
+        >>>
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
@@ -485,7 +486,7 @@ class LabeledArray(np.ndarray):
 
         new_shape.pop(levels[0])
 
-        new_array = np.reshape(self, new_shape)
+        new_array = self.reshape(new_shape)
 
         if drop_nan:
             return LabeledArray(new_array, new_labels).dropna()
@@ -560,7 +561,17 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
     (('az', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
     >>> label_reshape(labels, (3, 2, 4))
     (('az', 'az-b', 'b'), ('c-d-e', 'c-d-e'), ('f', 'g', 'h', 'i'))
+    >>> labels = labels[:2] + ((1, 2, 3, 4),)
+    >>> label_reshape(labels, (6, 4))
+    (('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), (1, 2, 3, 4))
+    >>> label_reshape(labels, (2, 12), 'F') # doctest: +ELLIPSIS
+    (('az', 'b'), ('c-1', 'd-1', 'e-1', 'c-2', 'd-2', 'e-2', 'c-3', 'd-3', ...
     """
+    labels = list(labels)
+    types = list(map(lambda x: type(x[0]), labels))
+    for i, l in enumerate(labels):
+        labels[i] = tuple(map(str, l))
+    labels = tuple(labels)
     if order == 'F':
         prod = map(reversed, itertools.product(*reversed(labels)))
     else:
@@ -589,6 +600,11 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
                 common = sorted(list(set(d[i] for d in delimed)),
                                 key=labels[i].index)
             new_labels[i].append(delim.join(common))
+        for t in (t for t in set(types) if t is not str):
+            try:
+                new_labels[i] = list(map(t, new_labels[i]))
+            except ValueError:
+                pass
     return tuple(map(tuple, new_labels))
 
 
