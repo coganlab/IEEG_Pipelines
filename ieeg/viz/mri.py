@@ -304,7 +304,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
                                                 trans=to_fsaverage['trans'])
             
             plot_subj(subj, subj_dir, picks=electrodes, no_wm=False, fig=fig,
-                  trans=to_fsaverage, color=color, size=size)
+                  trans=to_fsaverage, color=color, size=size, labels_every=None)
   
         return fig  # Return the figure after plotting all electrodes in the dictionary
 
@@ -354,7 +354,7 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
                   trans=to_fsaverage, color=color, size=size,
-                  labels_every=1)
+                  labels_every=None)
 
     return fig
 
@@ -511,7 +511,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     print(f"fig attributes: {dir(fig)}")
     print(f"fig shape: {getattr(fig, 'shape', 'Attribute not found')}")
 
-
+    
     if labels_every is not None:
         settings = dict(shape=None, always_visible=True, text_color=(0, 0, 0),
                         bold=False)
@@ -540,7 +540,7 @@ def _add_labels(fig, info, sub, pos, every, hemi, lr, **kwargs):
     #         fig.plotter.subplot(0, hems)
     #         fig.plotter.add_point_labels(pos, plt_names, **kwargs)
     
-    #untested new code to fix IndexError as of 8/21/23
+    #broken new code to fix IndexError as of 8/21/23
     if hemi == 'split':
         for hems, positions in zip(range(2), lr):
             if not positions:
