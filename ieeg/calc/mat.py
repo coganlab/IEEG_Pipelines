@@ -104,6 +104,9 @@ class LabeledArray(np.ndarray):
             if len(labels) < i + 1:
                 labels.append(tuple(range(obj.shape[i])))
         obj.labels = tuple(labels)
+        assert tuple(map(len, obj.labels)) == obj.shape, \
+            f"labels must have the same length as the shape of the array, " \
+            f"instead got {tuple(map(len, obj.labels))} and {obj.shape}"
         return obj
 
     @classmethod
@@ -218,8 +221,8 @@ class LabeledArray(np.ndarray):
     def __array_finalize__(self, obj, *args, **kwargs):
         if obj is None:
             return
-        self.labels = getattr(obj, 'labels', None)
-        super(LabeledArray, self).__array_finalize__(obj, *args, **kwargs)
+        self.labels = getattr(obj, 'labels', kwargs.pop('labels', ()))
+        super().__array_finalize__(obj, *args, **kwargs)
 
     def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
         """Override numpy ufuncs to preserve labels."""
@@ -321,7 +324,7 @@ class LabeledArray(np.ndarray):
             else:
                 coords[dim] += (num_key,)
         coords = tuple(c if len(c) > 1 else c[0] for c in coords)
-        super(LabeledArray, self).__setitem__(coords, value)
+        super().__setitem__(coords, value)
 
     def __delitem__(self, key):
         dim, num_key = self._str_parse(key)
@@ -330,7 +333,7 @@ class LabeledArray(np.ndarray):
             self.labels[dim] = tuple(lab for lab in self.labels[dim]
                                      if lab != key)
             self.labels = tuple(self.labels)
-        super(LabeledArray, self).__delitem__(key)
+        super().__delitem__(key)
 
     def __repr__(self):
         size = self.nbytes
@@ -339,14 +342,15 @@ class LabeledArray(np.ndarray):
                 break
             size /= 1024.0
 
-        return f'{super().__repr__()}\nlabels={self.labels} ~{size:.2f} {unit}'
+        return (f'{super().__repr__()}\nlabels={self.labels}'
+                f'\n~{size:.2f} {unit}')
 
     def __eq__(self, other):
         if isinstance(other, LabeledArray):
             return np.array_equal(self, other, True) and \
                 self.labels == other.labels
         else:
-            return super().__eq__(other)
+            return self.__array__().__eq__(other)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -737,8 +741,8 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
     if np.isscalar(data):
         return data
     elif isinstance(data, dict):
-        arr = (inner_array(d) for d in data.values())
-        arr = [a for a in arr if a is not None]
+        gen_arr = (inner_array(d) for d in data.values())
+        arr = [a for a in gen_arr if a is not None]
         if len(arr) > 0:
             return concatenate_arrays(arr, axis=None)
     # elif not isinstance(data, np.ndarray):
@@ -909,9 +913,12 @@ if __name__ == "__main__":
 
     mne.set_log_level("ERROR")
 
-    data = LabeledArray.from_dict(dict(
-        power=load_dict(layout, conds, "power", False, folder),
-        zscore=load_dict(layout, conds, "zscore", False, folder)))
+    power = LabeledArray.from_dict(combine(load_dict(
+        layout, conds, "power", False, folder), (0, 3)))
+
+    # x = np.where(np.isnan(data)==False)
+    # sp = LabeledCOO(x, data[x], data.shape, cache=True,
+    #                 fill_value=np.nan, labels=data.labels)
 
     # dict_data = dict(
     #     power=load_dict(layout, conds, "power", False))
