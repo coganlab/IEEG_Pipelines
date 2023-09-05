@@ -169,7 +169,13 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
                     dtype=np.float64)  # ch X trials X freq X time
     ins = ((f[:, None, i], i) for i in range(f.shape[1]))
 
+
     def _ifft_abs(x, i):
+    
+        print("Shape of x:", x.shape)
+        print("Shape of daughter:", daughter.shape)
+        print("Shape of np.tile(daughter, (f.shape[0], 1, 1)):", np.tile(daughter, (f.shape[0], 1, 1)).shape)
+
         np.abs(np.fft.ifft(x * np.tile(daughter, (
             f.shape[0], 1, 1)))[..., ::decim], out=wave[:, i])
 
