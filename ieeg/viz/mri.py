@@ -242,7 +242,7 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
-def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
+def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),

@@ -515,9 +515,20 @@ class LabeledArray(np.ndarray):
         --------
         >>> data = {'a': {'b': {'c': 1., 'd': np.nan}}}
         >>> ad = LabeledArray.from_dict(data)
-        >>> ad.dropna() # doctest: +ELLIPSIS
+        >>> ad.dropna()
         LabeledArray([[[1.]]])
-        labels=(('a',), ('b',), ('c',)) ...
+        labels=(('a',), ('b',), ('c',))
+        ~8.00 B
+        >>> ad2 = LabeledArray([[[1,2],[3,4]],[[4,5],[6,7]],
+        ... [[np.nan, np.nan], [np.nan, np.nan]]])
+        >>> ad2.dropna()
+        LabeledArray([[[1., 2.],
+                       [3., 4.]],
+        <BLANKLINE>
+                      [[4., 5.],
+                       [6., 7.]]])
+        labels=((0, 1), (0, 1), (0, 1))
+        ~64.00 B
         """
         new_labels = list(self.labels)
         idx = []
@@ -530,6 +541,37 @@ class LabeledArray(np.ndarray):
         index = np.ix_(*idx)
         new_array = LabeledArray(np.array(self)[index], new_labels)
         return new_array
+
+    def append(self, arr: 'LabeledArray', axis: int = 0):
+        """Append a LabeledArray to the end of this LabeledArray.
+
+        Parameters
+        ----------
+        arr : LabeledArray
+            The LabeledArray to append to the end of this LabeledArray.
+        axis : int, optional
+            The axis to append the array along, by default 0
+
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray with the appended array.
+
+        Examples
+        --------
+        >>> data1 = {'a': {'b': 1}}
+        >>> data2 = {'a': {'c': 2}}
+        >>> ad1 = LabeledArray.from_dict(data1, dtype=int)
+        >>> ad2 = LabeledArray.from_dict(data2, dtype=int)
+        >>> ad1.append(ad2, 1)
+        LabeledArray([[1, 2]])
+        labels=(('a',), ('b', 'c'))
+        ~8.00 B
+        """
+        new_labels = list(self.labels)
+        new_labels[axis] += arr.labels[axis]
+        new_array = concatenate_arrays([self, arr], axis).astype(self.dtype)
+        return LabeledArray(new_array, new_labels)
 
 
 def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
@@ -900,7 +942,7 @@ def get_elbow(data: np.ndarray) -> int:
 if __name__ == "__main__":
     import os
     from ieeg.io import get_data
-    from utils.mat_load import load_dict
+    from analysis.utils.mat_load import load_dict
     import mne
     conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
              "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
@@ -915,6 +957,8 @@ if __name__ == "__main__":
 
     power = LabeledArray.from_dict(combine(load_dict(
         layout, conds, "power", False, folder), (0, 3)))
+    ad2 = LabeledArray([[[1, 2], [3, 4]], [[4, 5], [6, 7]],
+                        [[np.nan, np.nan], [np.nan, np.nan]]])
 
     # x = np.where(np.isnan(data)==False)
     # sp = LabeledCOO(x, data[x], data.shape, cache=True,

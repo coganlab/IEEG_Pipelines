@@ -2,3 +2,6 @@
 	path = mne-python
 	url = git@github.com:Aaronearlerichardson/mne-python.git
 	branch = 1.4
+[submodule "decoding"]
+	path = decoding
+	url = git@github.com:dsuseendar/Neural_Decoding.git
