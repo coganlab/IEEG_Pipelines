@@ -75,7 +75,7 @@ class LabeledArray(np.ndarray):
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
-    >>> la # doctest: +ELLIPSIS
+    >>> la
     LabeledArray([[[1, 1, 1, 1],
                    [1, 1, 1, 1],
                    [1, 1, 1, 1]],
@@ -83,13 +83,19 @@ class LabeledArray(np.ndarray):
                   [[1, 1, 1, 1],
                    [1, 1, 1, 1],
                    [1, 1, 1, 1]]])
-    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')) ... B
+    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la.to_dict() # doctest: +ELLIPSIS
     {'a': {'c': {'f': 1, 'g': 1, 'h': 1, 'i': 1}, 'd': {'f': 1, 'g': 1,...
     >>> la['a', 'c', 'f'] = 2
-    >>> la['a', 'c'] # doctest: +ELLIPSIS
+    >>> la['a', 'c']
     LabeledArray([2, 1, 1, 1])
-    labels=(('f', 'g', 'h', 'i'),) ...
+    labels=(('f', 'g', 'h', 'i'),)
+    ~16.00 B
+    >>> la[np.array([False, True])]
+    LabeledArray([[[1, 1, 1, 1],
+                   [1, 1, 1, 1],
+                   [1, 1, 1, 1]]])
+    labels=(('b',), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
 
     References
     ----------
@@ -128,13 +134,13 @@ class LabeledArray(np.ndarray):
         >>> data = {'a': {'b': {'c': 1}}}
         >>> LabeledArray.from_dict(data, dtype=int) # doctest: +ELLIPSIS
         LabeledArray([[[1]]])
-        labels=(('a',), ('b',), ('c',)) ...
+        labels=(('a',), ('b',), ('c',))
         >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
         >>> LabeledArray.from_dict(data) # doctest: +ELLIPSIS
         LabeledArray([[[ 1., nan]],
         <BLANKLINE>
                       [[ 2.,  3.]]])
-        labels=(('a', 'd'), ('b',), ('c', 'e')) ...
+        labels=(('a', 'd'), ('b',), ('c', 'e'))
         """
 
         arr = inner_array(data)
@@ -180,7 +186,7 @@ class LabeledArray(np.ndarray):
                       [ 3.14092313e-04,  3.71123375e-04,  3.91826437e-04, ...,
                         3.07457047e-08,  3.07457047e-08,  3.07457047e-08]])
         labels=(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'...
-               2.69078e+02, 2.69079e+02])) ~201.19 MiB
+               2.69078e+02, 2.69079e+02]))
         >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
         ... verbose=False)
         >>> LabeledArray.from_signal(epochs, dtype=float) # doctest: +ELLIPSIS
@@ -286,13 +292,13 @@ class LabeledArray(np.ndarray):
             elif isinstance(key, int):
                 new_keys.append(key)
                 dim += 1
-            elif isinstance(key, slice):
-                new_keys.append(key)
-                new_labels.append(self.labels[dim])
-                dim += 1
             else:
                 new_keys.append(key)
-                new_labels.append(self.labels[dim])
+                if isinstance(key, (Sequence, np.ndarray, slice)):
+                    new = np.array(self.labels[dim])[key]
+                    new_labels.append(tuple(new.tolist()))
+                else:
+                    new_labels.append(self.labels[dim])
                 dim += 1
         while dim < self.ndim:
             new_labels.append(self.labels[dim])
@@ -336,14 +342,15 @@ class LabeledArray(np.ndarray):
         super().__delitem__(key)
 
     def __repr__(self):
+        return f'{super().__repr__()}\nlabels={self.labels}'
+
+    def memory(self):
         size = self.nbytes
         for unit in ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']:
             if size < 1024.0 or unit == 'PiB':
                 break
             size /= 1024.0
-
-        return (f'{super().__repr__()}\nlabels={self.labels}'
-                f'\n~{size:.2f} {unit}')
+        return size, unit
 
     def __eq__(self, other):
         if isinstance(other, LabeledArray):
@@ -397,7 +404,8 @@ class LabeledArray(np.ndarray):
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.reshape((1, 1, 1))
         LabeledArray([[[1]]])
-        labels=(('a',), ('b',), ('c',)) ~4.00 B
+        labels=(('a',), ('b',), ('c',))
+        ~4.00 B
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
         >>> ad = LabeledArray(arr, labels)
@@ -437,7 +445,7 @@ class LabeledArray(np.ndarray):
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.prepend_labels('pre-', 1) # doctest: +ELLIPSIS
         LabeledArray([[[1]]])
-        labels=(('a',), ('pre-b',), ('c',)) ...
+        labels=(('a',), ('pre-b',), ('c',))
         """
         assert 0 <= level < self.ndim, "level must be >= 0 and < ndim"
         labels = list(self.labels)
@@ -472,7 +480,7 @@ class LabeledArray(np.ndarray):
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.combine((0, 2)) # doctest: +ELLIPSIS
         LabeledArray([[1]])
-        labels=(('b',), ('a-c',)) ...
+        labels=(('b',), ('a-c',))
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
@@ -518,7 +526,6 @@ class LabeledArray(np.ndarray):
         >>> ad.dropna()
         LabeledArray([[[1.]]])
         labels=(('a',), ('b',), ('c',))
-        ~8.00 B
         >>> ad2 = LabeledArray([[[1,2],[3,4]],[[4,5],[6,7]],
         ... [[np.nan, np.nan], [np.nan, np.nan]]])
         >>> ad2.dropna()
@@ -528,7 +535,6 @@ class LabeledArray(np.ndarray):
                       [[4., 5.],
                        [6., 7.]]])
         labels=((0, 1), (0, 1), (0, 1))
-        ~64.00 B
         """
         new_labels = list(self.labels)
         idx = []
@@ -542,7 +548,7 @@ class LabeledArray(np.ndarray):
         new_array = LabeledArray(np.array(self)[index], new_labels)
         return new_array
 
-    def append(self, arr: 'LabeledArray', axis: int = 0):
+    def appended(self, arr: 'LabeledArray', axis: int = 0) -> 'LabeledArray':
         """Append a LabeledArray to the end of this LabeledArray.
 
         Parameters
@@ -563,13 +569,13 @@ class LabeledArray(np.ndarray):
         >>> data2 = {'a': {'c': 2}}
         >>> ad1 = LabeledArray.from_dict(data1, dtype=int)
         >>> ad2 = LabeledArray.from_dict(data2, dtype=int)
-        >>> ad1.append(ad2, 1)
+        >>> ad1.appended(ad2, 1)
         LabeledArray([[1, 2]])
         labels=(('a',), ('b', 'c'))
-        ~8.00 B
         """
         new_labels = list(self.labels)
         new_labels[axis] += arr.labels[axis]
+        self.labels = tuple(new_labels)
         new_array = concatenate_arrays([self, arr], axis).astype(self.dtype)
         return LabeledArray(new_array, new_labels)
 
