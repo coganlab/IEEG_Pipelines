@@ -101,15 +101,16 @@ class LabeledArray(np.ndarray):
     ----------
     [1] https://numpy.org/doc/stable/user/basics.subclassing.html
     """
+    __slots__ = ['labels', '__dict__']
 
-    def __new__(cls, input_array, labels: tuple[tuple[str, ...], ...] = (),
+    def __new__(cls, input_array, labels: list[tuple[str, ...], ...] = (),
                 **kwargs):
         obj = np.asarray(input_array, **kwargs).view(cls)
         labels = list(labels)
         for i in range(obj.ndim):
             if len(labels) < i + 1:
                 labels.append(tuple(range(obj.shape[i])))
-        obj.labels = tuple(labels)
+        obj.labels = labels
         assert tuple(map(len, obj.labels)) == obj.shape, \
             f"labels must have the same length as the shape of the array, " \
             f"instead got {tuple(map(len, obj.labels))} and {obj.shape}"
@@ -209,17 +210,17 @@ class LabeledArray(np.ndarray):
         arr = sig.get_data()
         match sig:
             case mne.io.base.BaseRaw():
-                labels = (sig.ch_names, sig.times)
+                labels = [sig.ch_names, sig.times]
             case mne.BaseEpochs():
-                events = list(sig.event_id.keys())
-                labels = (events, sig.ch_names, sig.times)
+                events = events_in_order(sig)
+                labels = [events, sig.ch_names, sig.times]
             case mne.evoked.Evoked():
-                labels = (sig.ch_names, sig.times)
+                labels = [sig.ch_names, sig.times]
             case mne.time_frequency.EpochsTFR():
-                events = list(sig.event_id.keys())
-                labels = (events, sig.ch_names, sig.freqs, sig.times)
+                events = events_in_order(sig)
+                labels = [events, sig.ch_names, sig.freqs, sig.times]
             case mne.time_frequency.AverageTFR():
-                labels = (sig.ch_names, sig.freqs, sig.times)
+                labels = [sig.ch_names, sig.freqs, sig.times]
             case _:
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
@@ -311,7 +312,7 @@ class LabeledArray(np.ndarray):
         new_labels, new_keys = self._parse_labels(keys)
         out = super().__getitem__(tuple(new_keys))
         if isinstance(out, np.ndarray):
-            setattr(out, 'labels', tuple(new_labels))
+            setattr(out, 'labels', list(new_labels))
         return out
 
     def __setitem__(self, key, value):
@@ -338,11 +339,11 @@ class LabeledArray(np.ndarray):
             self.labels = list(self.labels)
             self.labels[dim] = tuple(lab for lab in self.labels[dim]
                                      if lab != key)
-            self.labels = tuple(self.labels)
+            self.labels = list(self.labels)
         super().__delitem__(key)
 
     def __repr__(self):
-        return f'{super().__repr__()}\nlabels={self.labels}'
+        return f'{super().__repr__()}\nlabels={tuple(self.labels)}'
 
     def memory(self):
         size = self.nbytes
@@ -416,7 +417,7 @@ class LabeledArray(np.ndarray):
         >>> ad.reshape((2, 12)).labels # doctest: +ELLIPSIS
         (('a', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
         >>> arr = np.arange(10000)
-        >>> labels = (tuple(map(str, arr)),)
+        >>> labels = (list(map(str, arr)),)
         >>> ad = LabeledArray(arr, labels)
         >>> ad.reshape((2, 5000)).labels
         """
@@ -448,9 +449,7 @@ class LabeledArray(np.ndarray):
         labels=(('a',), ('pre-b',), ('c',))
         """
         assert 0 <= level < self.ndim, "level must be >= 0 and < ndim"
-        labels = list(self.labels)
-        labels[level] = tuple(pre + lab for lab in labels[level])
-        self.labels = tuple(labels)
+        self.labels[level] = tuple(pre + lab for lab in self.labels[level])
         return LabeledArray(self.view(np.ndarray), self.labels)
 
     def combine(self, levels: tuple[int, int],
@@ -507,6 +506,12 @@ class LabeledArray(np.ndarray):
             return LabeledArray(new_array, new_labels).dropna()
         else:
             return LabeledArray(new_array, new_labels)
+
+    def take(self, indices, axis=None, **kwargs):
+        labels = self.labels.copy()
+        arr = np.take(self, indices, axis, **kwargs)
+        labels[axis] = tuple(np.array(labels[axis])[indices].tolist())
+        return LabeledArray(arr.__array__(), labels)
 
     def dropna(self) -> 'LabeledArray':
         """Remove all nan values from the array.
@@ -573,11 +578,9 @@ class LabeledArray(np.ndarray):
         LabeledArray([[1, 2]])
         labels=(('a',), ('b', 'c'))
         """
-        new_labels = list(self.labels)
-        new_labels[axis] += arr.labels[axis]
-        self.labels = tuple(new_labels)
+        self.labels += arr.labels[axis]
         new_array = concatenate_arrays([self, arr], axis).astype(self.dtype)
-        return LabeledArray(new_array, new_labels)
+        return LabeledArray(new_array, self.labels)
 
 
 def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
@@ -665,7 +668,7 @@ def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
                 new_labels[i] = list(map(t, new_labels[i]))
             except ValueError:
                 pass
-    return tuple(map(tuple, new_labels))
+    return list(map(tuple, new_labels))
 
 
 def _longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
@@ -943,6 +946,11 @@ def get_elbow(data: np.ndarray) -> int:
     distToLine[vecToLine[:, 1] < 0] = 0
     idxOfBestPoint = np.argmax(distToLine)
     return idxOfBestPoint
+
+
+def events_in_order(inst: mne.BaseEpochs) -> list[str]:
+    ids = {v: k for k, v in inst.event_id.items()}
+    return [ids[e[2]] for e in inst.events]
 
 
 if __name__ == "__main__":
