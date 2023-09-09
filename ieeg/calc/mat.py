@@ -297,7 +297,7 @@ class LabeledArray(np.ndarray):
                 new_keys.append(key)
                 if isinstance(key, (Sequence, np.ndarray, slice)):
                     new = np.array(self.labels[dim])[key]
-                    new_labels.append(tuple(new.tolist()))
+                    new_labels.append(tuple(new.squeeze().tolist()))
                 else:
                     new_labels.append(self.labels[dim])
                 dim += 1
@@ -452,8 +452,8 @@ class LabeledArray(np.ndarray):
         self.labels[level] = tuple(pre + lab for lab in self.labels[level])
         return LabeledArray(self.view(np.ndarray), self.labels)
 
-    def combine(self, levels: tuple[int, int],
-                delim: str = '-', drop_nan: bool = True) -> 'LabeledArray':
+    def combine(self, levels: tuple[int, int], delim: str = '-',
+                drop_nan: bool = True) -> 'LabeledArray':
         """Combine any levels of a LabeledArray into the lower level
 
         Takes the input LabeledArray and rearranges its dimensions.
@@ -509,7 +509,7 @@ class LabeledArray(np.ndarray):
 
     def take(self, indices, axis=None, **kwargs):
         labels = self.labels.copy()
-        arr = np.take(self, indices, axis, **kwargs)
+        arr = np.take(self.__array__(), indices, axis, **kwargs)
         labels[axis] = tuple(np.array(labels[axis])[indices].tolist())
         return LabeledArray(arr.__array__(), labels)
 
@@ -583,9 +583,9 @@ class LabeledArray(np.ndarray):
         return LabeledArray(new_array, self.labels)
 
 
-def label_reshape(labels: tuple[tuple[str, ...], ...], shape: tuple[int, ...],
+def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
                   order: str = 'C', delim: str = '-'
-                  ) -> tuple[tuple[str, ...], ...]:
+                  ) -> list[tuple[str, ...], ...]:
     """Reshape the labels of a LabeledArray.
 
     Takes the labels corresponding to the shape of an array and reshapes them
