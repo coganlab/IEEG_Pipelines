@@ -233,7 +233,9 @@ class LabeledArray(np.ndarray):
 
     def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
         """Override numpy ufuncs to preserve labels."""
-        labels = self.labels
+        labels = inputs[0].labels.copy()
+        assert all(i.labels == labels for i in inputs
+                   if isinstance(i, LabeledArray)), "Labels are not equal"
         inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
                        else i for i in inputs)
         if out is not None:
@@ -290,7 +292,7 @@ class LabeledArray(np.ndarray):
                 new_keys.append(key)
                 new_labels.append(self.labels[dim])
                 dim += 1
-            elif isinstance(key, int):
+            elif isinstance(key, (int, np.integer)):
                 new_keys.append(key)
                 dim += 1
             else:
@@ -453,7 +455,7 @@ class LabeledArray(np.ndarray):
         return LabeledArray(self.view(np.ndarray), self.labels)
 
     def combine(self, levels: tuple[int, int], delim: str = '-',
-                drop_nan: bool = True) -> 'LabeledArray':
+                drop_nan: bool = False) -> 'LabeledArray':
         """Combine any levels of a LabeledArray into the lower level
 
         Takes the input LabeledArray and rearranges its dimensions.
@@ -965,12 +967,14 @@ if __name__ == "__main__":
     task = "SentenceRep"
     root = os.path.expanduser("~/Box/CoganLab")
     layout = get_data(task, root=root)
-    folder = 'stats'
+    folder = 'stats_old'
 
     mne.set_log_level("ERROR")
 
-    power = LabeledArray.from_dict(combine(load_dict(
-        layout, conds, "power", False, folder), (0, 3)))
+    power = load_dict(layout, conds, "power", False, folder)
+    power = LabeledArray.from_dict(combine(power, (0, 3)))
+    x = power[(0,) + (0,)]
+
     ad2 = LabeledArray([[[1, 2], [3, 4]], [[4, 5], [6, 7]],
                         [[np.nan, np.nan], [np.nan, np.nan]]])
 
