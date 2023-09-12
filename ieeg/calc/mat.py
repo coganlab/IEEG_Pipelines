@@ -234,15 +234,28 @@ class LabeledArray(np.ndarray):
 
     def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
         """Override numpy ufuncs to preserve labels."""
-        labels = inputs[0].labels.copy()
-        assert all(i.labels == labels for i in inputs
-                   if isinstance(i, LabeledArray)), "Labels are not equal"
+        la_inputs = (i for i in inputs if isinstance(i, LabeledArray))
+        labels = next(la_inputs).labels.copy()
         inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
                        else i for i in inputs)
         if out is not None:
             kwargs['out'] = tuple(o.view(np.ndarray) if
                                   isinstance(o, LabeledArray)
                                   else o for o in out)
+        if method == 'reduce':
+            axis = kwargs.get('axis', None)
+            if axis is None:
+                axis = range(inputs[0].ndim)
+            elif not isinstance(axis, tuple):
+                axis = (axis,)
+            i = 0
+            for ax in axis:
+                if kwargs.get('keepdims', False):
+                    labels[ax] = ("-".join(labels[ax]),)
+                else:
+                    labels.pop(ax - i)
+                    i += 1
+
         outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
         if isinstance(outputs, tuple):
             outputs = tuple(LabeledArray(o, labels)
@@ -387,7 +400,7 @@ class LabeledArray(np.ndarray):
     def values(self):
         return (a for a in self)
 
-    def reshape(self, shape, order='C') -> 'LabeledArray':
+    def _reshape(self, shape, order='C') -> 'LabeledArray':
         """Reshape the array.
 
         Parameters
@@ -409,20 +422,21 @@ class LabeledArray(np.ndarray):
         >>> ad.reshape((1, 1, 1))
         LabeledArray([[[1]]])
         labels=(('a',), ('b',), ('c',))
-        ~4.00 B
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
         >>> ad = LabeledArray(arr, labels)
         >>> ad.reshape((6, 4)).labels
-        (('a-c', 'a-d', 'a-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i'))
+        [('a-c', 'a-d', 'a-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i')]
         >>> ad.reshape((6, 4), 'F').labels
-        (('a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'), ('f', 'g', 'h', 'i'))
+        [('a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'), ('f', 'g', 'h', 'i')]
         >>> ad.reshape((2, 12)).labels # doctest: +ELLIPSIS
-        (('a', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
-        >>> arr = np.arange(10000)
-        >>> labels = (list(map(str, arr)),)
+        [('a', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
+        >>> arr = np.arange(10)
+        >>> labels = [list(map(str, arr))]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad.reshape((2, 5000)).labels
+        >>> ad.reshape((2, 5)).labels
+        [('0-1-2-3-4', '5-6-7-8-9'), ('0-5', '1-6', '2-7', '3-8', '4-9')]
+        >>> ad.reshape((1, 2, 5)).labels
         """
         new_array = super().reshape(*shape, order=order)
         new_labels = label_reshape(self.labels, shape, order)
@@ -614,27 +628,28 @@ def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
     Examples
     --------
     >>> labels = (('az', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
-    >>> label_reshape(labels, (6, 4))
-    (('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i'))
-    >>> label_reshape(labels, (6, 4), 'F')
-    (('az-c', 'b-c', 'az-d', 'b-d', 'az-e', 'b-e'), ('f', 'g', 'h', 'i'))
-    >>> label_reshape(labels, (2, 12)) # doctest: +ELLIPSIS
-    (('az', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
-    >>> label_reshape(labels, (3, 2, 4))
-    (('az', 'az-b', 'b'), ('c-d-e', 'c-d-e'), ('f', 'g', 'h', 'i'))
+    >>> label_reshape(list(labels), (6, 4))
+    [('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i')]
+    >>> label_reshape(list(labels), (6, 4), 'F')
+    [('az-c', 'b-c', 'az-d', 'b-d', 'az-e', 'b-e'), ('f', 'g', 'h', 'i')]
+    >>> label_reshape(list(labels), (2, 12)) # doctest: +ELLIPSIS
+    [('az', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
+    >>> label_reshape(list(labels), (3, 2, 4))
+    [('az', 'az-b', 'b'), ('c-d-e', 'c-d-e'), ('f', 'g', 'h', 'i')]
     >>> labels = labels[:2] + ((1, 2, 3, 4),)
-    >>> label_reshape(labels, (6, 4))
-    (('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), (1, 2, 3, 4))
-    >>> label_reshape(labels, (2, 12), 'F') # doctest: +ELLIPSIS
-    (('az', 'b'), ('c-1', 'd-1', 'e-1', 'c-2', 'd-2', 'e-2', 'c-3', 'd-3', ...
+    >>> label_reshape(list(labels), (6, 4))
+    [('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), (1, 2, 3, 4)]
+    >>> label_reshape(list(labels), (2, 12), 'F') # doctest: +ELLIPSIS
+    [('az', 'b'), ('c-1', 'd-1', 'e-1', 'c-2', 'd-2', 'e-2', 'c-3', 'd-3', ...
+    >>> label_reshape(list(labels), (1, 1, 2, 12))
+    [(1,), (1,), ('az-1', 'b-1'), ('c-1-1', 'c-2-1', 'c-3-1', 'c-4-1', ...
     """
-    labels = list(labels)
+    labels = labels.copy()
     types = list(map(lambda x: type(x[0]), labels))
     m = 0
     for i, l in enumerate(labels):
         labels[i] = tuple(map(str, l))
         m = max((max(map(len, labels[i])), m))
-    labels = tuple(labels)
     count = int(np.multiply.reduce(shape))
 
     if order == 'F':
@@ -647,6 +662,8 @@ def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
 
     # Fill the output array using a loop
     for i, x in enumerate(prod):
+        if len(x) == 1:
+            x = x[0]
         out[i] = x
     out = out.reshape(*shape, len(labels), order=order)
 
