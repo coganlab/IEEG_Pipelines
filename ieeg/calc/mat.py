@@ -10,6 +10,7 @@ from ieeg import Signal
 
 import numpy as np
 from numpy.matlib import repmat
+from tqdm import tqdm
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -960,10 +961,10 @@ if __name__ == "__main__":
     from ieeg.io import get_data
     from analysis.utils.mat_load import load_dict
     import mne
-    conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
-             "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
-             "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
-             "go_jl": (-0.5, 1.5)}
+    conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5), "Audio/LS"),
+             "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5), "Audio/JL"),
+             "go_ls": ((-0.5, 1.5),"Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
+             "go_jl": ((-0.5, 1.5), "Go/JL")}
     task = "SentenceRep"
     root = os.path.expanduser("~/Box/CoganLab")
     layout = get_data(task, root=root)
@@ -971,9 +972,21 @@ if __name__ == "__main__":
 
     mne.set_log_level("ERROR")
 
-    power = load_dict(layout, conds, "power", False, folder)
-    power = LabeledArray.from_dict(combine(power, (0, 3)))
-    x = power[(0,) + (0,)]
+    # power = load_dict(layout, conds, "power", False, folder)
+    # power = LabeledArray.from_dict(combine(power, (0, 3)))
+
+    power = dict()
+    for subj in tqdm(layout.get_subjects()):
+        file = os.path.join(layout.root, 'derivatives', 'stats',
+                                            subj + '_power-epo.fif')
+        if not os.path.exists(file):
+            continue
+        epoch = mne.read_epochs(file, preload=True)
+        power[subj] = dict()
+        for cond, times in conds.items():
+            power[subj][cond] = dict()
+            for stim in ['heat', 'hot', 'hoot', 'hut']:
+                power[subj][cond][stim] = epoch[stim].crop(*times).average().data
 
     ad2 = LabeledArray([[[1, 2], [3, 4]], [[4, 5], [6, 7]],
                         [[np.nan, np.nan], [np.nan, np.nan]]])
