@@ -272,40 +272,40 @@ class LabeledArray(np.ndarray):
                     yield i, key
 
     def _parse_labels(self, keys: tuple) -> tuple:
+        labels = self.labels
+        ndim = self.ndim
         new_keys = []
         new_labels = []
         dim = 0
         for key in keys:
-            if isinstance(key, str):
-                # TODO: fix this is you want multi-label parsing per level
+            key_type = type(key)
+            if key_type is str:
                 i, key = next(self._str_parse(key))
                 new_keys.append(key)
                 while dim < i:
-                    new_labels.append(self.labels[dim])
+                    new_labels.append(labels[dim])
                     dim += 1
                 dim += 1
             elif key is Ellipsis:
                 new_keys.append(key)
-                num_ellipsis_dims = self.ndim - len(keys) + 1
-                new_labels.extend(self.labels[dim:dim + num_ellipsis_dims])
+                num_ellipsis_dims = ndim - len(keys) + 1
+                new_labels.extend(labels[dim:dim + num_ellipsis_dims])
                 dim += num_ellipsis_dims
-            elif key is None:
+            elif key is None or np.issubdtype(key_type, np.integer):
                 new_keys.append(key)
-                new_labels.append(self.labels[dim])
-                dim += 1
-            elif isinstance(key, (int, np.integer)):
-                new_keys.append(key)
+                if key is None:
+                    new_labels.append(labels[dim])
                 dim += 1
             else:
                 new_keys.append(key)
                 if isinstance(key, (Sequence, np.ndarray, slice)):
-                    new = np.array(self.labels[dim])[key]
+                    new = np.array(labels[dim])[key]
                     new_labels.append(tuple(new.squeeze().tolist()))
                 else:
-                    new_labels.append(self.labels[dim])
+                    new_labels.append(labels[dim])
                 dim += 1
-        while dim < self.ndim:
-            new_labels.append(self.labels[dim])
+        while dim < ndim:
+            new_labels.append(labels[dim])
             dim += 1
         return new_labels, new_keys
 
