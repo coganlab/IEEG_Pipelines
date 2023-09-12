@@ -1,10 +1,10 @@
 from functools import singledispatch
 
 import numpy as np
-from mne.utils import logger, verbose
-from mne.epochs import BaseEpochs
 from mne import Epochs
-from mne.time_frequency import EpochsTFR, AverageTFR, _BaseTFR
+from mne.epochs import BaseEpochs
+from mne.time_frequency import AverageTFR, EpochsTFR, _BaseTFR
+from mne.utils import logger, verbose
 
 
 def _log_rescale(baseline, mode='mean'):

@@ -7,6 +7,7 @@ Below is a code sample for extracting high gamma power from a raw data file
 
 from ieeg.navigate import channel_outlier_marker, trial_ieeg
 from ieeg.io import raw_from_layout
+from ieeg.calc.scaling import rescale
 from ieeg.timefreq.utils import crop_pad
 from ieeg.timefreq import gamma
 from bids import BIDSLayout
@@ -37,11 +38,18 @@ good.set_eeg_reference()
 
 # %% High Gamma Filter
 
-ev1 = trial_ieeg(good, "AD1-4, ATT1,2", (-1, 2), "onset", (-1, 0.5))
+ev1 = trial_ieeg(good, "AD1-4, ATT1,2", (-1, 2), preload=True)
+base = trial_ieeg(good, "onset", (-1, 0.5), preload=True)
 
-HG_ev1 = gamma.extract(ev1)
-crop_pad(HG_ev1, "500ms")
+gamma.extract(ev1, copy=False, n_jobs=1)
+gamma.extract(base, copy=False, n_jobs=1)
+crop_pad(ev1, "500ms")
+crop_pad(base, "500ms")
+
+# %% Normalization
+
+rescale(ev1, base, 'zscore', copy=False)
 
 # %% plotting
-resp_evoke = HG_ev1.average()
+resp_evoke = ev1.average()
 resp_evoke.plot()

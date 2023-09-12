@@ -21,3 +21,4 @@ pytz
 tqdm
 h5io
 dipy
+mne-qt-browser

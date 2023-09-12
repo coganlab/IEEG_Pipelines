@@ -1,15 +1,14 @@
 from typing import Union
 
 import numpy as np
-from mne.utils import fill_doc
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
-from mne.time_frequency import AverageTFR, EpochsTFR
-from mne.utils import verbose
+from mne.time_frequency import EpochsTFR
+from mne.utils import fill_doc, verbose
 
-from ieeg.process import validate_type, ensure_int, parallelize
 from ieeg import Signal
+from ieeg.process import ensure_int, parallelize, validate_type
 
 
 def to_samples(time_length: Union[str, int], sfreq: float) -> int:

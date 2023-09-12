@@ -1,17 +1,18 @@
 import mne
-from mne.utils import verbose, fill_doc
 import numpy as np
 from bids import BIDSLayout
-
-from ieeg.io import update
-from ieeg.timefreq.utils import to_samples
-from ieeg.calc import scaling, stats
-from ieeg import Doubles, Signal
+from mne.utils import fill_doc, verbose
 from scipy.signal import detrend
 
+from ieeg import Doubles, Signal
+from ieeg.calc import stats
+from ieeg.io import update
+from ieeg.timefreq.utils import to_samples
 
-def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
-                    end_pad: str = "10s") -> mne.io.Raw:
+
+def crop_empty_data(raw: mne.io.Raw, bound: str = 'boundary',
+                    start_pad: str = "10s", end_pad: str = "10s"
+                    ) -> mne.io.Raw:
     """Crops out long stretches of data with no events.
 
     Takes raw instance with annotated events and crops the instance so that the
@@ -22,6 +23,8 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
     ----------
     raw : mne.io.Raw
         The raw file to crop.
+    bound : str, optional
+        The annotation description to use as a boundary, by default 'boundary'
     start_pad : str, optional
         The amount of time to pad the start of the file, by default "10s"
     end_pad : str, optional
@@ -31,6 +34,19 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
     -------
     mne.io.Raw
         The cropped raw file.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> cropped = crop_empty_data(raw, 'onset')
+    >>> cropped.times[0], cropped.times[-1]
+    (0.0, 104.94)
     """
 
     crop_list = []
@@ -41,7 +57,7 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
     # split annotations into blocks
     annot = raw.annotations.copy()
     block_idx = [idx + 1 for idx, val in
-                 enumerate(annot) if 'BAD boundary' in val['description']]
+                 enumerate(annot) if bound in val['description']]
     block_annot = [annot[i: j] for i, j in
                    zip([0] + block_idx, block_idx +
                        ([len(annot)] if block_idx[-1] != len(annot) else []))]
@@ -50,7 +66,7 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
         # remove boundary events from annotations
         no_bound = None
         for an in block_an:
-            if 'boundary' not in an['description']:
+            if bound not in an['description']:
                 if no_bound is None:
                     no_bound = mne.Annotations(**an)
                 else:
@@ -61,7 +77,7 @@ def crop_empty_data(raw: mne.io.Raw, start_pad: str = "10s",
         if no_bound is None:
             continue
         # get start and stop time from raw.annotations onset attribute
-        t_min = no_bound.onset[0] - start_pad
+        t_min = max(0, no_bound.onset[0] - start_pad)
         t_max = no_bound.onset[-1] + end_pad
 
         # create new cropped raw file
@@ -98,6 +114,23 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     -------
     list[str]
         List of bad channel names.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> bads = channel_outlier_marker(raw, 3, 2)
+    outlier round 1 channels: ['AST2']
+    outlier round 1 channels: ['AST2', 'RQ2']
+    outlier round 1 channels: ['AST2', 'RQ2', 'N/A']
+    outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32']
+    outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3']
+    outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3', 'PD4']
     """
 
     tmp = input_raw.copy()
@@ -142,6 +175,33 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     -------
     mne.epochs.BaseEpochs
         The trials with outliers set to nan.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
+    ... verbose=False)
+    >>> epochs = outliers_to_nan(epochs, 3)
+    >>> epochs['AD1-4, ATT1,2'].get_data()[0]
+    array([[        nan,         nan,         nan, ...,         nan,
+                    nan,         nan],
+           [-0.00030586, -0.00030625, -0.00031171, ..., -0.00016054,
+            -0.00015976, -0.00015664],
+           [        nan,         nan,         nan, ...,         nan,
+                    nan,         nan],
+           ...,
+           [-0.00021483, -0.00021131, -0.00023084, ..., -0.00034295,
+            -0.00032381, -0.00031444],
+           [-0.00052188, -0.00052852, -0.00053125, ..., -0.00046211,
+            -0.00047148, -0.00047891],
+           [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
+            -0.00042341, -0.00040973]])
     """
     if copy:
         trials = trials.copy()
@@ -161,10 +221,8 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
 
 @fill_doc
 @verbose
-def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
-               baseline: str = None, basetimes: Doubles = None,
-               mode: str = "mean", outliers: int = None, verbose=None,
-               **kwargs) -> mne.Epochs:
+def trial_ieeg(raw: mne.io.Raw, event: str | list[str, ...], times: Doubles,
+               verbose=None, **kwargs) -> mne.Epochs:
     """Epochs data from a mne Raw iEEG instance.
 
     Takes a mne Raw instance and epochs the data around a specified event. If
@@ -179,13 +237,6 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
         The event to epoch around.
     times : tuple[float, float]
         The time window to epoch around the event.
-    baseline : str
-        The event to epoch the baseline.
-    basetimes : tuple[float, float]
-        The time window to epoch around the baseline event.
-    mode : str
-        The mode to use for baseline rescaling. See `mne.baseline.rescale` for
-        more information.
     %(picks_all)s
     %(reject_epochs)s
     %(flat)s
@@ -200,57 +251,40 @@ def trial_ieeg(raw: mne.io.Raw, event: str, times: Doubles,
     -------
     mne.Epochs
         The epoched data.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), verbose=True
+    ... ) # doctest: +ELLIPSIS
+    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD',...
+    Not setting metadata
+    1 matching events found
+    No baseline correction applied
+    0 projection items activated
+    >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=True
+    ... ) # doctest: +ELLIPSIS
+    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD', ...
+    Not setting metadata
+    2 matching events found
+    No baseline correction applied
+    0 projection items activated
     """
 
     # determine the events
     events, ids = mne.events_from_annotations(raw)
-
-    #this is aaron's old way that requires the event name to be found by mne. Doesn't work with i and c.
-
-    # dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)] 
-    
-
-    dat_ids = [value for key, value in ids.items() if event in key]
-    print("dat_ids: ", dat_ids)
-    
-    event_ids = {key: value for key, value in ids.items() if value in
-                     dat_ids}
-    print("event_ids: ", event_ids)
-
-    # if len(dat_ids) > 1:
-    #     event_ids = {key.replace(event, "").strip("/"): value for key, value in
-    #                  ids.items() if value in dat_ids}
-    # else:
-    #     event_ids = {key: value for key, value in ids.items() if value in
-    #                  dat_ids}
-    
+    dat_ids = [ids[i] for i in mne.event.match_event_names(ids, event)]
+    rev = {k: v for k, v in ids.items() if v in dat_ids}
 
     # epoch the data
-    if baseline is None:
-        epochs = mne.Epochs(raw, events, event_id=event_ids, tmin=times[0],
-                            tmax=times[1], baseline=None, verbose=verbose,
-                            **kwargs)
-    elif basetimes is None:
-        raise ValueError("Baseline event input {} must be paired with times"
-                         "".format(baseline))
-    else:
-        kwargs['preload'] = True
-        epochs = trial_ieeg(raw, event, times, **kwargs)
-        base = trial_ieeg(raw, baseline, basetimes, **kwargs)
-        scaling.rescale(epochs, base, mode=mode, copy=False)
-
-    if outliers is not None:
-        # epochs.get_data()
-        # gives a numpy array of (trials X channels X timepoints)
-        data = np.abs(epochs.get_data())
-        max = np.max(data, axis=-1)
-        std = np.std(data, axis=(-1, 0))
-        mean = np.mean(data, axis=(-1, 0))
-        # max and std have dims (trials X channels)
-        reject = np.any(max > ((outliers * std) + mean), axis=-1)
-        epochs.drop(reject, reason="outlier")
-
-    return epochs
+    return mne.Epochs(raw, events, event_id=rev, tmin=times[0],
+                      tmax=times[1], baseline=None, verbose=verbose, **kwargs)
 
 
 if __name__ == "__main__":

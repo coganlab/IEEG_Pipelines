@@ -1,5 +1,13 @@
-import numpy as np
 from collections.abc import Iterable
+import functools
+
+import mne
+
+from ieeg.calc.reshape import concatenate_arrays
+from ieeg import Signal
+
+import numpy as np
+from numpy.matlib import repmat
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -9,15 +17,21 @@ def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
     ----------
     d : dict
         The dictionary to iterate over.
-    _lvl : int, optional
-        The current level of nesting, by default 0
-    _coords : tuple, optional
-        The current coordinates of the array, by default ()
 
     Yields
     ------
     tuple
         The key and value of the dictionary.
+
+    Examples
+    --------
+    >>> d = {'a': {'b': 1, 'c': 2}, 'd': {'e': 3, 'f': 4}}
+    >>> for k, v in iter_nest_dict(d):
+    ...     print(k, v)
+    ('a', 'b') 1
+    ('a', 'c') 2
+    ('d', 'e') 3
+    ('d', 'f') 4
     """
     for k, v in d.items():
         if isinstance(v, dict):
@@ -56,19 +70,24 @@ class LabeledArray(np.ndarray):
     --------
     >>> import numpy as np
     >>> from ieeg.calc.mat import LabeledArray
-    >>> arr = np.ones((2, 3, 4))
+    >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
-    >>> la.to_dict()
-    {'a': {'c': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                 'd': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                'e': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0}},
-        'b': {'c': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                    'd': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0},
-                    'e': {'f': 1.0, 'g': 1.0, 'h': 1.0, 'i': 1.0}}}
-    >>> la['a', 'c', 'f'] = 2.
-    >>> la['a', 'c', 'f']
-    2.0
+    >>> la # doctest: +ELLIPSIS
+    LabeledArray([[[1, 1, 1, 1],
+                   [1, 1, 1, 1],
+                   [1, 1, 1, 1]],
+    <BLANKLINE>
+                  [[1, 1, 1, 1],
+                   [1, 1, 1, 1],
+                   [1, 1, 1, 1]]])
+    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')) ... B
+    >>> la.to_dict() # doctest: +ELLIPSIS
+    {'a': {'c': {'f': 1, 'g': 1, 'h': 1, 'i': 1}, 'd': {'f': 1, 'g': 1,...
+    >>> la['a', 'c', 'f'] = 2
+    >>> la['a', 'c'] # doctest: +ELLIPSIS
+    LabeledArray([2, 1, 1, 1])
+    labels=(('f', 'g', 'h', 'i'),) ...
 
     References
     ----------
@@ -98,39 +117,116 @@ class LabeledArray(np.ndarray):
         -------
         LabeledArray
             The LabeledArray created from the dictionary.
+
+        Examples
+        --------
+        >>> data = {'a': {'b': {'c': 1}}}
+        >>> LabeledArray.from_dict(data, dtype=int) # doctest: +ELLIPSIS
+        LabeledArray([[[1]]])
+        labels=(('a',), ('b',), ('c',)) ...
+        >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
+        >>> LabeledArray.from_dict(data) # doctest: +ELLIPSIS
+        LabeledArray([[[ 1., nan]],
+        <BLANKLINE>
+                      [[ 2.,  3.]]])
+        labels=(('a', 'd'), ('b',), ('c', 'e')) ...
         """
 
         arr = inner_array(data)
         keys = inner_all_keys(data)
         return cls(arr, keys, **kwargs)
 
-    def __array_finalize__(self, obj):
+    @classmethod
+    def from_signal(cls, sig: Signal, **kwargs) -> 'LabeledArray':
+        """Create a LabeledArray from a Signal.
+
+        Parameters
+        ----------
+        sig : Signal
+            The Signal to convert to a LabeledArray.
+
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray created from the Signal.
+
+        Examples
+        --------
+        >>> from bids import BIDSLayout
+        >>> from ieeg.io import raw_from_layout
+        >>> from ieeg.navigate import trial_ieeg
+        >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+        >>> layout = BIDSLayout(bids_root)
+        >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+        ... extension=".vhdr", verbose=False)
+        Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+        >>> LabeledArray.from_signal(raw, dtype=float) # doctest: +ELLIPSIS
+        LabeledArray([[-8.98329883e-06,  8.20419238e-06,  7.42294287e-06, ...,
+                        1.07177293e-09,  1.07177293e-09,  1.07177293e-09],
+                      [ 2.99222000e-04,  3.03518844e-04,  2.96878250e-04, ...,
+                        3.64667153e-09,  3.64667153e-09,  3.64667153e-09],
+                      [ 2.44140953e-04,  2.30078469e-04,  2.19140969e-04, ...,
+                        3.85053724e-10,  3.85053724e-10,  3.85053724e-10],
+                      ...,
+                      [ 1.81263844e-04,  1.74232594e-04,  1.56263875e-04, ...,
+                        1.41283798e-08,  1.41283798e-08,  1.41283798e-08],
+                      [ 2.25390219e-04,  2.16015219e-04,  1.91405859e-04, ...,
+                       -2.91418821e-10, -2.91418821e-10, -2.91418821e-10],
+                      [ 3.14092313e-04,  3.71123375e-04,  3.91826437e-04, ...,
+                        3.07457047e-08,  3.07457047e-08,  3.07457047e-08]])
+        labels=(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'...
+               2.69078e+02, 2.69079e+02])) ~201.19 MiB
+        >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
+        ... verbose=False)
+        >>> LabeledArray.from_signal(epochs, dtype=float) # doctest: +ELLIPSIS
+        LabeledArray([[[ 0.00021563,  0.00021563,  0.00020703, ...
+                        -0.00051445, -0.00050351],
+                       [-0.00030586, -0.00030625, -0.00031171, ...
+                        -0.00015976, -0.00015664],
+                       [-0.00010781, -0.00010469, -0.00010859, ...
+                         0.00027695,  0.00030156],
+                       ...,
+                       [-0.00021483, -0.00021131, -0.00023084, ...
+                        -0.00032381, -0.00031444],
+                       [-0.00052188, -0.00052852, -0.00053125, ...
+                        -0.00047148, -0.00047891],
+                       [-0.00033708, -0.00028005, -0.00020934, ...
+                        -0.00042341, -0.00040973]]])
+        labels=(['AD1-4, ATT1,2'], ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'...
+        """
+
+        arr = sig.get_data()
+        match sig:
+            case mne.io.base.BaseRaw():
+                labels = (sig.ch_names, sig.times)
+            case mne.BaseEpochs():
+                events = list(sig.event_id.keys())
+                labels = (events, sig.ch_names, sig.times)
+            case mne.evoked.Evoked():
+                labels = (sig.ch_names, sig.times)
+            case mne.time_frequency.EpochsTFR():
+                events = list(sig.event_id.keys())
+                labels = (events, sig.ch_names, sig.freqs, sig.times)
+            case mne.time_frequency.AverageTFR():
+                labels = (sig.ch_names, sig.freqs, sig.times)
+            case _:
+                raise TypeError(f"Unexpected data type: {type(sig)}")
+        return cls(arr, labels, **kwargs)
+
+    def __array_finalize__(self, obj, *args, **kwargs):
         if obj is None:
             return
         self.labels = getattr(obj, 'labels', None)
+        super(LabeledArray, self).__array_finalize__(obj, *args, **kwargs)
 
-    def dropna(self) -> 'LabeledArray':
-        """Remove all nan values from the array."""
-        new_labels = list(self.labels)
-        idx = []
-        for i in range(self.ndim):
-            axes = tuple(j for j in range(self.ndim) if j != i)
-            mask = np.all(np.isnan(np.array(self)), axis=axes)
-            if np.any(mask):
-                new_labels[i] = tuple(np.array(new_labels[i])[~mask])
-            idx.append(~mask)
-        index = np.ix_(*idx)
-        new_array = LabeledArray(np.array(self)[index], new_labels)
-        return new_array
-
-    @property
-    def label_map(self) -> tuple[dict[str: int, ...], ...]:
-        """maps the labels to the indices of the array."""
-        return tuple({l: i for i, l in enumerate(labels)}
-                     for labels in self.labels)
+    @functools.cached_property
+    def coord_map(self) -> dict[str, tuple[int, int]]:
+        """A dictionary mapping labels to coordinates in the array."""
+        return {label: (i, j) for i, labels in enumerate(self.labels)
+                for j, label in enumerate(labels)}
 
     def _str_parse(self, *keys) -> tuple[int, int]:
-        for key in keys:
+        for i, key in enumerate(keys):
             match key:
                 case list() | tuple():
                     key = list(key)
@@ -138,15 +234,9 @@ class LabeledArray(np.ndarray):
                         for value in self._str_parse(key.pop(0)):
                             yield value
                 case str():
-                    i = 0
-                    while key not in self.labels[i]:
-                        i += 1
-                        if i > self.ndim:
-                            raise KeyError(f'{key} not found in labels')
-                    key = self.label_map[i][key]
-                    yield i, key
+                    yield self.coord_map[key]
                 case _:
-                    yield 0, key
+                    yield i, key
 
     def _parse_labels(self, keys: tuple) -> tuple:
         new_keys = []
@@ -154,6 +244,7 @@ class LabeledArray(np.ndarray):
         dim = 0
         for key in keys:
             if isinstance(key, str):
+                # TODO: fix this is you want multi-label parsing per level
                 i, key = next(self._str_parse(key))
                 new_keys.append(key)
                 while dim < i:
@@ -195,10 +286,22 @@ class LabeledArray(np.ndarray):
         return out
 
     def __setitem__(self, key, value):
-        dim, num_key = self._str_parse(key)
-        if key not in self.labels[dim]:
-            self.labels[dim] += (key,)
-        super(LabeledArray, self).__setitem__(num_key, value)
+        coords = []
+        if not isinstance(key, tuple):
+            key = (key,)
+        for i, (dim, num_key) in enumerate(self._str_parse(*key)):
+            if isinstance(key[i], str) and key[i] not in self.labels[dim]:
+                self.labels[dim] += (key[i],)
+
+            # set num_keys
+            while len(coords) <= dim:
+                coords.append(None)
+            if coords[dim] is None:
+                coords[dim] = (num_key,)
+            else:
+                coords[dim] += (num_key,)
+        coords = tuple(c if len(c) > 1 else c[0] for c in coords)
+        super(LabeledArray, self).__setitem__(coords, value)
 
     def __delitem__(self, key):
         dim, num_key = self._str_parse(key)
@@ -210,14 +313,13 @@ class LabeledArray(np.ndarray):
         super(LabeledArray, self).__delitem__(key)
 
     def __repr__(self):
-        """Display like a dictionary with labels as keys"""
         size = self.nbytes
         for unit in ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']:
             if size < 1024.0 or unit == 'PiB':
                 break
             size /= 1024.0
 
-        return f'{super().__repr__()}, labels={self.labels} ~{size:.2f} {unit}'
+        return f'{super().__repr__()}\nlabels={self.labels} ~{size:.2f} {unit}'
 
     def __eq__(self, other):
         if isinstance(other, LabeledArray):
@@ -234,6 +336,8 @@ class LabeledArray(np.ndarray):
         for k, v in self.items():
             if isinstance(v, LabeledArray):
                 out[k] = v.to_dict()
+            elif np.isnan(v):
+                continue
             else:
                 out[k] = v
         return out
@@ -272,8 +376,9 @@ class LabeledArray(np.ndarray):
         --------
         >>> data = {'a': {'b': {'c': 1}}}
         >>> ad = LabeledArray.from_dict(data, dtype=int)
-        >>> ad.combine((0, 2))
-        LabeledArray([[1]]), labels=(('b',), ('a-c',)) ~4.00 B
+        >>> ad.combine((0, 2)) # doctest: +ELLIPSIS
+        LabeledArray([[1]])
+        labels=(('b',), ('a-c',)) ...
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
@@ -301,15 +406,89 @@ class LabeledArray(np.ndarray):
         else:
             return LabeledArray(new_array, new_labels)
 
+    def dropna(self) -> 'LabeledArray':
+        """Remove all nan values from the array.
+
+        Scans each column along any axis and removes all rows that contain
+        only nan values.
+
+        Returns
+        -------
+        LabeledArray
+            The array with all nan values removed.
+
+        Examples
+        --------
+        >>> data = {'a': {'b': {'c': 1., 'd': np.nan}}}
+        >>> ad = LabeledArray.from_dict(data)
+        >>> ad.dropna() # doctest: +ELLIPSIS
+        LabeledArray([[[1.]]])
+        labels=(('a',), ('b',), ('c',)) ...
+        """
+        new_labels = list(self.labels)
+        idx = []
+        for i in range(self.ndim):
+            axes = tuple(j for j in range(self.ndim) if j != i)
+            mask = np.all(np.isnan(np.array(self)), axis=axes)
+            if np.any(mask):
+                new_labels[i] = tuple(np.array(new_labels[i])[~mask])
+            idx.append(~mask)
+        index = np.ix_(*idx)
+        new_array = LabeledArray(np.array(self)[index], new_labels)
+        return new_array
+
 
 def add_to_list_if_not_present(lst: list, element: Iterable):
-    """Add an element to a list if it is not present. Runs in O(1) time."""
+    """Add an element to a list if it is not present. Runs in O(1) time.
+
+    Parameters
+    ----------
+    lst : list
+        The list to add the element to.
+    element : Iterable
+        The element to add to the list.
+
+    References
+    ----------
+    [1] https://www.youtube.com/watch?v=PXWL_Xzyrp4
+
+    Examples
+    --------
+    >>> lst = [1, 2, 3]
+    >>> add_to_list_if_not_present(lst, [3, 4, 5])
+    >>> lst
+    [1, 2, 3, 4, 5]
+    """
     seen = set(lst)
     lst.extend(x for x in element if not (x in seen or seen.add(x)))
 
 
 def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
-    """Get all keys of a nested dictionary."""
+    """Get all keys of a nested dictionary.
+
+    Parameters
+    ----------
+    data : dict
+        The nested dictionary to get the keys of.
+    keys : list, optional
+        The list of keys, by default None
+    lvl : int, optional
+        The level of the dictionary, by default 0
+
+    Returns
+    -------
+    tuple
+        The tuple of keys.
+
+    Examples
+    --------
+    >>> data = {'a': {'b': {'c': 1}}}
+    >>> inner_all_keys(data)
+    (('a',), ('b',), ('c',))
+    >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
+    >>> inner_all_keys(data)
+    (('a', 'd'), ('b',), ('c', 'e'))
+    """
     if keys is None:
         keys = []
     if np.isscalar(data):
@@ -322,6 +501,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         for d in data.values():
             inner_all_keys(d, keys, lvl+1)
     elif isinstance(data, np.ndarray):
+        data = np.atleast_1d(data)
         rows = range(data.shape[0])
         if len(keys) < lvl+1:
             keys.append(list(rows))
@@ -335,22 +515,74 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
 
 
 def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
-    """Convert a nested dictionary to a nested array."""
+    """Convert a nested dictionary to a nested array.
+
+    Parameters
+    ----------
+    data : dict or np.ndarray
+        The nested dictionary to convert.
+
+    Returns
+    -------
+    np.ndarray or None
+        The converted nested array.
+
+    Examples
+    --------
+    >>> data = {'a': {'b': {'c': 1}}}
+    >>> inner_array(data)
+    array([[[1.]]])
+    >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
+    >>> inner_array(data)
+    array([[[ 1., nan]],
+    <BLANKLINE>
+           [[ 2.,  3.]]])
+    """
     if np.isscalar(data):
         return data
-    elif len(data) == 0:
-        return
     elif isinstance(data, dict):
         arr = (inner_array(d) for d in data.values())
         arr = [a for a in arr if a is not None]
         if len(arr) > 0:
             return concatenate_arrays(arr, axis=None)
+    # elif not isinstance(data, np.ndarray):
+    #     raise TypeError(f"Unexpected data type: {type(data)}")
+
+    # Call np.atleast_1d once and store the result in a variable
+    data_1d = np.atleast_1d(data)
+
+    # Use the stored result to check the length of data
+    if len(data_1d) == 0:
+        return
+    elif len(data_1d) == 1:
+        return data
     else:
         return np.array(data)
 
 
 def inner_dict(data: np.ndarray) -> dict | None:
-    """Convert a nested array to a nested dictionary."""
+    """Convert a nested array to a nested dictionary.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The nested array to convert.
+
+    Returns
+    -------
+    dict or None
+        The converted nested dictionary.
+
+    Examples
+    --------
+    >>> data = np.array([[[1]]])
+    >>> inner_dict(data)
+    {0: {0: {0: 1}}}
+    >>> data = np.array([[[1, np.nan]],
+    ...                  [[2, 3]]])
+    >>> inner_dict(data)
+    {0: {0: {0: 1.0, 1: nan}}, 1: {0: {0: 2.0, 1: 3.0}}}
+    """
     if np.isscalar(data):
         return data
     elif len(data) == 0:
@@ -424,93 +656,6 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     return result
 
 
-def concatenate_arrays(arrays: list[np.ndarray], axis: int = None
-                       ) -> np.ndarray:
-    """Concatenate arrays along a specified axis, filling in empty arrays with
-    nan values.
-
-    Parameters
-    ----------
-    arrays
-        A list of arrays to concatenate
-    axis
-        The axis along which to concatenate the arrays
-
-    Returns
-    -------
-    result
-        The concatenated arrays
-    """
-
-    if axis is None:
-        axis = 0
-        arrays = [np.expand_dims(ar, axis) for ar in arrays]
-
-    while axis < 0:
-        axis += max(ar.ndim for ar in arrays)
-
-    # Determine the maximum shape along the specified axis
-    max_shape = np.max(get_homogeneous_shapes(arrays), axis=0)
-
-    # Create a list to store the modified arrays
-    modified_arrays = []
-
-    # Iterate over the arrays
-    for arr in arrays:
-        if len(arr) == 0:
-            continue
-        # Determine the shape of the array
-        arr_shape = list(max_shape)
-        arr_shape[axis] = arr.shape[axis]
-
-        # Create an array filled with nan values
-        nan_array = np.full(arr_shape, np.nan)
-
-        # Fill in the array with the original values
-        indexing = [slice(None)] * arr.ndim
-        for ax in range(arr.ndim):
-            if ax == axis:
-                continue
-            indexing[ax] = slice(0, arr.shape[ax])
-        nan_array[tuple(indexing)] = arr
-
-        # Append the modified array to the list
-        modified_arrays.append(nan_array)
-
-    # Concatenate the modified arrays along the specified axis
-    result = np.concatenate(modified_arrays, axis=axis)
-
-    return result
-
-
-def get_homogeneous_shapes(arrays):
-    # Determine the maximum number of dimensions among the input arrays
-    max_dims = max([arr.ndim for arr in arrays])
-
-    # Create a list to store the shapes with a homogeneous number of dimensions
-    homogeneous_shapes = []
-
-    # Iterate over the arrays
-    for arr in arrays:
-        # Get the shape of the array
-        # Handle the case of an empty array
-        if len(arr) == 0:
-            shape = (0,)
-            dims = 1
-        else:
-            shape = arr.shape
-            dims = arr.ndim
-
-        # Pad the shape tuple with additional dimensions if necessary
-        num_dims_to_pad = max_dims - dims
-        shape += (1,) * num_dims_to_pad
-
-        # Add the shape to the list
-        homogeneous_shapes.append(shape)
-
-    return homogeneous_shapes
-
-
 def get_elbow(data: np.ndarray) -> int:
     """Draws a line between the first and last points in a dataset and finds
     the point furthest from that line.
@@ -524,6 +669,15 @@ def get_elbow(data: np.ndarray) -> int:
     -------
     int
         The index of the elbow point.
+
+    Examples
+    --------
+    >>> data = np.array([0, 1, 2, 3, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10])
+    >>> get_elbow(data)
+    4
+    >>> data = np.array([1, 2, 3, 4, 5, 4.5, 4, 3.5, 3, 2, 1])
+    >>> get_elbow(data)
+    4
     """
     nPoints = len(data)
     allCoord = np.vstack((range(nPoints), data)).T
@@ -532,7 +686,7 @@ def get_elbow(data: np.ndarray) -> int:
     lineVec = allCoord[-1] - allCoord[0]
     lineVecNorm = lineVec / np.sqrt(np.sum(lineVec ** 2))
     vecFromFirst = allCoord - firstPoint
-    scalarProduct = np.sum(vecFromFirst * np.matlib.repmat(
+    scalarProduct = np.sum(vecFromFirst * repmat(
         lineVecNorm, nPoints, 1), axis=1)
     vecFromFirstParallel = np.outer(scalarProduct, lineVecNorm)
     vecToLine = vecFromFirst - vecFromFirstParallel
@@ -543,85 +697,42 @@ def get_elbow(data: np.ndarray) -> int:
     return idxOfBestPoint
 
 
-def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
-                ) -> np.ndarray:
-    """break up the matrices into their overlapping and non-overlapping parts
-    then stitch them back together
-
-    Parameters
-    ----------
-    mats : list
-        The matrices to stitch together
-    overlaps : list
-        The number of overlapping rows between each matrix
-    axis : int, optional
-        The axis to stitch along, by default 0
-
-    Returns
-    -------
-    np.ndarray
-        The stitched matrix
-    """
-    stitches = [mats[0]]
-    if len(mats) != len(overlaps) + 1:
-        raise ValueError("The number of matrices must be one more than the num"
-                         "ber of overlaps")
-    for i, over in enumerate(overlaps):
-        stitches = stitches[:-2] + merge(stitches[-1], mats[i+1], over, axis)
-    return np.concatenate(stitches, axis=axis)
-
-
-def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
-          ) -> list[np.ndarray]:
-    """Take two arrays and merge them over the overlap gradually"""
-    sl = [slice(None)] * mat1.ndim
-    sl[axis] = slice(0, mat1.shape[axis]-overlap)
-    start = mat1[tuple(sl)]
-    sl[axis] = slice(mat1.shape[axis]-overlap, mat1.shape[axis])
-    middle1 = np.multiply(np.linspace(1, 0, overlap), mat1[tuple(sl)])
-    sl[axis] = slice(0, overlap)
-    middle2 = np.multiply(np.linspace(0, 1, overlap), mat2[tuple(sl)])
-    middle = np.add(middle1, middle2)
-    sl[axis] = slice(overlap, mat2.shape[axis])
-    last = mat2[tuple(sl)]
-    return [start, middle, last]
-
-
 if __name__ == "__main__":
-    import os
-    from ieeg.io import get_data
-    from utils.mat_load import load_dict
-    import mne
-    ins, axis, exp = ([np.array([]), np.array([[1., 2.], [3., 4.]]),
-                       np.array([[5., 6., 7.], [8., 9., 10.]])], 0,
-                      np.array([[1, 2, np.nan], [3, 4, np.nan],
-                                [5, 6, 7], [8, 9, 10]]))
-    outs = concatenate_arrays(ins, axis)
-    ar = LabeledArray.from_dict(dict(a=ins[1], b=ins[2]))
-    x = ar["a"]
-    y = ar.to_dict()
-    conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
-             "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
-             "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
-             "go_jl": (-0.5, 1.5)}
-    task = "SentenceRep"
-    root = os.path.expanduser("~/Box/CoganLab")
-    layout = get_data(task, root=root)
-
-    mne.set_log_level("ERROR")
+    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
+    # import os
+    # from ieeg.io import get_data
+    # from utils.mat_load import load_dict
+    # import mne
+    # ins, axis, exp = ([np.array([]), np.array([[1., 2.], [3., 4.]]),
+    #                    np.array([[5., 6., 7.], [8., 9., 10.]])], 0,
+    #                   np.array([[1, 2, np.nan], [3, 4, np.nan],
+    #                             [5, 6, 7], [8, 9, 10]]))
+    # outs = concatenate_arrays(ins, axis)
+    # ar = LabeledArray.from_dict(dict(a=ins[1], b=ins[2]))
+    # x = ar["a"]
+    # y = ar.to_dict()
+    # conds = {"resp": (-1, 1), "aud_ls": (-0.5, 1.5),
+    #          "aud_lm": (-0.5, 1.5), "aud_jl": (-0.5, 1.5),
+    #          "go_ls": (-0.5, 1.5), "go_lm": (-0.5, 1.5),
+    #          "go_jl": (-0.5, 1.5)}
+    # task = "SentenceRep"
+    # root = os.path.expanduser("~/Box/CoganLab")
+    # layout = get_data(task, root=root)
+    #
+    # mne.set_log_level("ERROR")
 
     # data = LabeledArray.from_dict(dict(
     #     power=load_dict(layout, conds, "power", False),
     #     zscore=load_dict(layout, conds, "zscore", False)))
 
-    dict_data = dict(
-        power=load_dict(layout, conds, "power", False))
-    # zscore=load_dict(layout, conds, "zscore", False))
-
-    keys = inner_all_keys(dict_data)
-
-    data = LabeledArray.from_dict(dict_data)
-    data.__repr__()
+    # dict_data = dict(
+    #     power=load_dict(layout, conds, "power", False))
+    # # zscore=load_dict(layout, conds, "zscore", False))
+    #
+    # keys = inner_all_keys(dict_data)
+    #
+    # data = LabeledArray.from_dict(dict_data)
+    # data.__repr__()
 
     # data = SparseArray(dict_data)
 
