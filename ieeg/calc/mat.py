@@ -119,11 +119,50 @@ class LabeledArray(np.ndarray):
         for i in range(obj.ndim):
             if len(labels) < i + 1:
                 labels.append(tuple(range(obj.shape[i])))
-        obj.labels = labels
+        obj.labels = list(map(np.array, labels))
         assert tuple(map(len, obj.labels)) == obj.shape, \
             f"labels must have the same length as the shape of the array, " \
             f"instead got {tuple(map(len, obj.labels))} and {obj.shape}"
         return obj
+
+    def __array_finalize__(self, obj, *args, **kwargs):
+        if obj is None:
+            return
+        self.labels = getattr(obj, 'labels', kwargs.pop('labels', ()))
+        super().__array_finalize__(obj, *args, **kwargs)
+
+    def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
+        """Override numpy ufuncs to preserve labels."""
+        la_inputs = (i for i in inputs if isinstance(i, LabeledArray))
+        labels = next(la_inputs).labels.copy()
+        inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
+                       else i for i in inputs)
+        if out is not None:
+            kwargs['out'] = tuple(o.view(np.ndarray) if
+                                  isinstance(o, LabeledArray)
+                                  else o for o in out)
+        if method == 'reduce':
+            axis = kwargs.get('axis', None)
+            if axis is None:
+                axis = range(inputs[0].ndim)
+            elif not isinstance(axis, tuple):
+                axis = (axis,)
+            i = 0
+            for ax in axis:
+                if kwargs.get('keepdims', False):
+                    labels[ax] = ("-".join(labels[ax]),)
+                else:
+                    labels.pop(ax - i)
+                    i += 1
+
+        outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
+        if isinstance(outputs, tuple):
+            outputs = tuple(LabeledArray(o, labels)
+                            if isinstance(o, np.ndarray)
+                            else o for o in outputs)
+        elif isinstance(outputs, np.ndarray):
+            outputs = LabeledArray(outputs, labels)
+        return outputs
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
@@ -234,44 +273,39 @@ class LabeledArray(np.ndarray):
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
 
-    def __array_finalize__(self, obj, *args, **kwargs):
-        if obj is None:
-            return
-        self.labels = getattr(obj, 'labels', kwargs.pop('labels', ()))
-        super().__array_finalize__(obj, *args, **kwargs)
+    def _parse_index(self, keys: tuple) -> tuple:
+        ndim = self.ndim
+        new_keys = [slice(None) for _ in range(ndim)]
+        dim = 0
+        for key in keys:
+            key_type = type(key)
+            if np.issubdtype(key_type, str):
+                key = np.where(self.labels[dim] == key)[0][0]
+            elif key is Ellipsis:
+                num_ellipsis_dims = ndim - len(keys) + 1 + dim
+                while dim < num_ellipsis_dims:
+                    dim += 1
+                continue
+            elif key_type in (list, tuple) or isinstance(key, np.ndarray):
+                key = np.array(key)
+                for i, k in enumerate(key):
+                    if isinstance(k, str):
+                        key[i] = np.where(self.labels[dim] == k)[0][0]
+            new_keys[dim] = key
+            dim += 1
+        return tuple(new_keys)
 
-    def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
-        """Override numpy ufuncs to preserve labels."""
-        la_inputs = (i for i in inputs if isinstance(i, LabeledArray))
-        labels = next(la_inputs).labels.copy()
-        inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
-                       else i for i in inputs)
-        if out is not None:
-            kwargs['out'] = tuple(o.view(np.ndarray) if
-                                  isinstance(o, LabeledArray)
-                                  else o for o in out)
-        if method == 'reduce':
-            axis = kwargs.get('axis', None)
-            if axis is None:
-                axis = range(inputs[0].ndim)
-            elif not isinstance(axis, tuple):
-                axis = (axis,)
-            i = 0
-            for ax in axis:
-                if kwargs.get('keepdims', False):
-                    labels[ax] = ("-".join(labels[ax]),)
-                else:
-                    labels.pop(ax - i)
-                    i += 1
-
-        outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        if isinstance(outputs, tuple):
-            outputs = tuple(LabeledArray(o, labels)
-                            if isinstance(o, np.ndarray)
-                            else o for o in outputs)
-        elif isinstance(outputs, np.ndarray):
-            outputs = LabeledArray(outputs, labels)
-        return outputs
+    def __getitem__(self, keys):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        keys = self._parse_index(keys)
+        out = super().__getitem__(keys)
+        lab_gen = (self.labels[i][key] if key is not slice(None)
+                   else self.labels[i] for i, key in enumerate(keys))
+        new_labels = [lab for lab in lab_gen if not np.isscalar(lab)]
+        if isinstance(out, np.ndarray):
+            setattr(out, 'labels', list(new_labels))
+        return out
 
     @functools.cached_property
     def coord_map(self) -> dict[str, tuple[int, int]]:
@@ -291,39 +325,6 @@ class LabeledArray(np.ndarray):
                     yield self.coord_map[key]
                 case _:
                     yield i, key
-
-    def _parse_index(self, keys: tuple) -> tuple:
-        ndim = self.ndim
-        new_keys = [slice(None) for _ in range(ndim)]
-        dim = 0
-        for key in keys:
-            key_type = type(key)
-            if np.issubdtype(key_type, str):
-                key = self.labels[dim].index(key)
-            elif key is Ellipsis:
-                num_ellipsis_dims = ndim - len(keys) + 1 + dim
-                while dim < num_ellipsis_dims:
-                    dim += 1
-                continue
-            elif key_type in (list, tuple) or isinstance(key, np.ndarray):
-                key = np.array(key)
-                for i, k in enumerate(key):
-                    if isinstance(k, str):
-                        key[i] = self.labels[dim].index(k)
-            new_keys[dim] = key
-            dim += 1
-        return tuple(new_keys)
-
-    def __getitem__(self, keys):
-        if not isinstance(keys, tuple):
-            keys = (keys,)
-        keys = self._parse_index(keys)
-        out = super().__getitem__(keys)
-        lab_gen = (np.array(self.labels[i])[key] for i, key in enumerate(keys))
-        new_labels = [tuple(lab) for lab in lab_gen if not np.isscalar(lab)]
-        if isinstance(out, np.ndarray):
-            setattr(out, 'labels', list(new_labels))
-        return out
 
     def __setitem__(self, key, value):
         coords = []
