@@ -84,27 +84,28 @@ class LabeledArray(np.ndarray):
                   [[1, 1, 1, 1],
                    [1, 1, 1, 1],
                    [1, 1, 1, 1]]])
-    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+    labels=[('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
     >>> la.to_dict() # doctest: +ELLIPSIS
     {'a': {'c': {'f': 1, 'g': 1, 'h': 1, 'i': 1}, 'd': {'f': 1, 'g': 1,...
     >>> la['a', 'c', 'f'] = 2
     >>> la['a', 'c']
     LabeledArray([2, 1, 1, 1])
-    labels=(('f', 'g', 'h', 'i'),)
+    labels=[('f', 'g', 'h', 'i')]
+    >>> la['a','d'] = np.array([3,3,3,3])
     >>> la[('a','b'), :]
     LabeledArray([[[2, 1, 1, 1],
-                   [1, 1, 1, 1],
+                   [3, 3, 3, 3],
                    [1, 1, 1, 1]],
     <BLANKLINE>
                   [[1, 1, 1, 1],
                    [1, 1, 1, 1],
                    [1, 1, 1, 1]]])
-    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+    labels=[('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
     >>> la[np.array([False, True])]
     LabeledArray([[[1, 1, 1, 1],
                    [1, 1, 1, 1],
                    [1, 1, 1, 1]]])
-    labels=(('b',), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+    labels=[('b',), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
 
     References
     ----------
@@ -273,88 +274,54 @@ class LabeledArray(np.ndarray):
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
 
-    def _parse_index(self, keys: tuple) -> tuple:
+    def _parse_index(self, keys: tuple) -> tuple[Sequence[int | bool, ...], ...]:
         ndim = self.ndim
-        new_keys = [slice(None) for _ in range(ndim)]
+        new_keys = [range(self.shape[i]) for i in range(ndim)]
         dim = 0
         for key in keys:
             key_type = type(key)
             if np.issubdtype(key_type, str):
-                key = np.where(self.labels[dim] == key)[0][0]
+                key = array_idx(self.labels[dim], key)
             elif key is Ellipsis:
-                num_ellipsis_dims = ndim - len(keys) + 1 + dim
+                num_ellipsis_dims = ndim - len(keys) + 1
                 while dim < num_ellipsis_dims:
                     dim += 1
                 continue
+            elif key_type is slice:
+                key = new_keys[dim][key]
             elif key_type in (list, tuple) or isinstance(key, np.ndarray):
-                key = np.array(key)
+                key = np.squeeze(np.array(key))
                 for i, k in enumerate(key):
-                    if isinstance(k, str):
-                        key[i] = np.where(self.labels[dim] == k)[0][0]
+                    if np.issubdtype(type(k), str):
+                        key[i] = array_idx(self.labels[dim], k)
+                key = key.astype(np.intp)
+
+            if np.isscalar(key):
+                key = (key,)
             new_keys[dim] = key
             dim += 1
         return tuple(new_keys)
 
-    def __getitem__(self, keys):
+    def _to_coords(self, keys):
         if not isinstance(keys, tuple):
             keys = (keys,)
-        keys = self._parse_index(keys)
-        out = super().__getitem__(keys)
-        lab_gen = (self.labels[i][key] if key is not slice(None)
-                   else self.labels[i] for i, key in enumerate(keys))
+        return self._parse_index(keys)
+
+    def __getitem__(self, keys):
+        keys = self._to_coords(keys)
+        lab_gen = (self.labels[i][key] for i, key in enumerate(keys))
         new_labels = [lab for lab in lab_gen if not np.isscalar(lab)]
+        out = np.squeeze(super().__getitem__(np.ix_(*keys)))
         if isinstance(out, np.ndarray):
             setattr(out, 'labels', list(new_labels))
         return out
 
-    @functools.cached_property
-    def coord_map(self) -> dict[str, tuple[int, int]]:
-        """A dictionary mapping labels to coordinates in the array."""
-        return {label: (i, j) for i, labels in enumerate(self.labels)
-                for j, label in enumerate(labels)}
-
-    def _str_parse(self, *keys) -> tuple[int, int]:
-        for i, key in enumerate(keys):
-            match key:
-                case list() | tuple():
-                    key = list(key)
-                    while key:
-                        for value in self._str_parse(key.pop(0)):
-                            yield value
-                case str():
-                    yield self.coord_map[key]
-                case _:
-                    yield i, key
-
-    def __setitem__(self, key, value):
-        coords = []
-        if not isinstance(key, tuple):
-            key = (key,)
-        for i, (dim, num_key) in enumerate(self._str_parse(*key)):
-            if isinstance(key[i], str) and key[i] not in self.labels[dim]:
-                self.labels[dim] += (key[i],)
-
-            # set num_keys
-            while len(coords) <= dim:
-                coords.append(None)
-            if coords[dim] is None:
-                coords[dim] = (num_key,)
-            else:
-                coords[dim] += (num_key,)
-        coords = tuple(c if len(c) > 1 else c[0] for c in coords)
-        super().__setitem__(coords, value)
-
-    def __delitem__(self, key):
-        dim, num_key = self._str_parse(key)
-        if key in self.labels[dim]:
-            self.labels = list(self.labels)
-            self.labels[dim] = tuple(lab for lab in self.labels[dim]
-                                     if lab != key)
-            self.labels = list(self.labels)
-        super().__delitem__(key)
+    def __setitem__(self, keys, value):
+        keys = self._to_coords(keys)
+        super().__setitem__(np.ix_(*keys), value)
 
     def __repr__(self):
-        return f'{super().__repr__()}\nlabels={tuple(self.labels)}'
+        return f"{super().__repr__()}\nlabels={list(map(tuple, self.labels))}"
 
     def memory(self):
         size = self.nbytes
@@ -593,6 +560,15 @@ class LabeledArray(np.ndarray):
         self.labels += arr.labels[axis]
         new_array = concatenate_arrays([self, arr], axis).astype(self.dtype)
         return LabeledArray(new_array, self.labels)
+
+
+def array_idx(arr: np.ndarray[str], value: str) -> int:
+    """Get the index of the first instance of a value in a numpy array."""
+    idx = np.where(arr == value)[0]
+    if len(idx) == 0:
+        raise IndexError(f"{value} not found in {arr}")
+    else:
+        return int(idx[0])
 
 
 def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],

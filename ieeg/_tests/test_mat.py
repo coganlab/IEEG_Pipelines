@@ -90,6 +90,27 @@ def test_array_to_array():
     assert np.array_equal(ad, np_array, True)
 
 
+# Test index parsing
+@pytest.mark.parametrize('index, expected', [
+    (('a', 'b', 'c'), ((0,), (0,), (0,))),
+    ((slice(None), ('b', 'f')), (range(1), (0, 1), range(3))),
+    ((..., 'f', (1, 3)), (range(1), (1,), (1, 3))),
+    (('g'), "g not found in ['a']"),
+    ((slice(None), np.array([False, True])), (range(1), (False, True), range(3)))
+])
+def test_parse_index(index, expected):
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3},
+                  'f': {'c': 4, 'd': 5}}}
+    ad = LabeledArray.from_dict(data)
+    try:
+        parsed = ad._parse_index(index)
+        parsed = tuple(tuple(p) if isinstance(p, np.ndarray)
+                       else p for p in parsed)
+    except IndexError as e:
+        parsed = e.args[0]
+    assert parsed == expected
+
+
 # Test getting all keys
 def test_array_all_keys():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
