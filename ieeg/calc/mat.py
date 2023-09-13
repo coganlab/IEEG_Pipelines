@@ -91,7 +91,15 @@ class LabeledArray(np.ndarray):
     >>> la['a', 'c']
     LabeledArray([2, 1, 1, 1])
     labels=(('f', 'g', 'h', 'i'),)
-    ~16.00 B
+    >>> la[('a','b'), :]
+    LabeledArray([[[2, 1, 1, 1],
+                   [1, 1, 1, 1],
+                   [1, 1, 1, 1]],
+    <BLANKLINE>
+                  [[1, 1, 1, 1],
+                   [1, 1, 1, 1],
+                   [1, 1, 1, 1]]])
+    labels=(('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la[np.array([False, True])]
     LabeledArray([[[1, 1, 1, 1],
                    [1, 1, 1, 1],
@@ -284,49 +292,35 @@ class LabeledArray(np.ndarray):
                 case _:
                     yield i, key
 
-    def _parse_labels(self, keys: tuple) -> tuple:
-        labels = self.labels
+    def _parse_index(self, keys: tuple) -> tuple:
         ndim = self.ndim
-        new_keys = []
-        new_labels = []
+        new_keys = [slice(None) for _ in range(ndim)]
         dim = 0
         for key in keys:
             key_type = type(key)
-            if key_type is str:
-                i, key = next(self._str_parse(key))
-                new_keys.append(key)
-                while dim < i:
-                    new_labels.append(labels[dim])
-                    dim += 1
-                dim += 1
+            if np.issubdtype(key_type, str):
+                key = self.labels[dim].index(key)
             elif key is Ellipsis:
-                new_keys.append(key)
-                num_ellipsis_dims = ndim - len(keys) + 1
-                new_labels.extend(labels[dim:dim + num_ellipsis_dims])
-                dim += num_ellipsis_dims
-            elif key is None or np.issubdtype(key_type, np.integer):
-                new_keys.append(key)
-                if key is None:
-                    new_labels.append(labels[dim])
-                dim += 1
-            else:
-                new_keys.append(key)
-                if isinstance(key, (Sequence, np.ndarray, slice)):
-                    new = np.array(labels[dim])[key]
-                    new_labels.append(tuple(new.squeeze().tolist()))
-                else:
-                    new_labels.append(labels[dim])
-                dim += 1
-        while dim < ndim:
-            new_labels.append(labels[dim])
+                num_ellipsis_dims = ndim - len(keys) + 1 + dim
+                while dim < num_ellipsis_dims:
+                    dim += 1
+                continue
+            elif key_type in (list, tuple) or isinstance(key, np.ndarray):
+                key = np.array(key)
+                for i, k in enumerate(key):
+                    if isinstance(k, str):
+                        key[i] = self.labels[dim].index(k)
+            new_keys[dim] = key
             dim += 1
-        return new_labels, new_keys
+        return tuple(new_keys)
 
     def __getitem__(self, keys):
         if not isinstance(keys, tuple):
             keys = (keys,)
-        new_labels, new_keys = self._parse_labels(keys)
-        out = super().__getitem__(tuple(new_keys))
+        keys = self._parse_index(keys)
+        out = super().__getitem__(keys)
+        lab_gen = (np.array(self.labels[i])[key] for i, key in enumerate(keys))
+        new_labels = [tuple(lab) for lab in lab_gen if not np.isscalar(lab)]
         if isinstance(out, np.ndarray):
             setattr(out, 'labels', list(new_labels))
         return out
@@ -385,7 +379,7 @@ class LabeledArray(np.ndarray):
         for k, v in self.items():
             if isinstance(v, LabeledArray):
                 out[k] = v.to_dict()
-            elif np.isnan(v):
+            elif np.isnan(v).all():
                 continue
             else:
                 out[k] = v
@@ -993,20 +987,22 @@ if __name__ == "__main__":
     # power = LabeledArray.from_dict(combine(power, (0, 3)))
 
     power = dict()
-    for subj in tqdm(layout.get_subjects()):
-        file = os.path.join(layout.root, 'derivatives', 'stats',
-                                            subj + '_power-epo.fif')
-        if not os.path.exists(file):
-            continue
-        epoch = mne.read_epochs(file, preload=True)
-        power[subj] = dict()
-        for cond, times in conds.items():
-            power[subj][cond] = dict()
-            for stim in ['heat', 'hot', 'hoot', 'hut']:
-                power[subj][cond][stim] = epoch[stim].crop(*times).average().data
+    # for subj in tqdm(layout.get_subjects()):
+    #     file = os.path.join(layout.root, 'derivatives', 'stats',
+    #                                         subj + '_power-epo.fif')
+    #     if not os.path.exists(file):
+    #         continue
+    #     epoch = mne.read_epochs(file, preload=True)
+    #     power[subj] = dict()
+    #     for cond, times in conds.items():
+    #         power[subj][cond] = dict()
+    #         for stim in ['heat', 'hot', 'hoot', 'hut']:
+    #             power[subj][cond][stim] = epoch[stim].crop(*times).average().data
 
     ad2 = LabeledArray([[[1, 2], [3, 4]], [[4, 5], [6, 7]],
-                        [[np.nan, np.nan], [np.nan, np.nan]]])
+                        [[np.nan, np.nan], [np.nan, np.nan]]],
+                       [('a', 'b', 'c'), ('e', 'f'), ('g', 'h')])
+    print(ad2[0])
 
     # x = np.where(np.isnan(data)==False)
     # sp = LabeledCOO(x, data[x], data.shape, cache=True,
