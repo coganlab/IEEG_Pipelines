@@ -161,10 +161,12 @@ class LabeledArray(np.ndarray):
                 axis = (axis,)
             i = 0
             for ax in axis:
+                if ax > 0:
+                    ax -= i
                 if kwargs.get('keepdims', False):
                     labels[ax] = ("-".join(labels[ax]),)
                 else:
-                    labels.pop(ax - i)
+                    labels.pop(ax)
                     i += 1
 
         outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
@@ -175,6 +177,10 @@ class LabeledArray(np.ndarray):
         elif isinstance(outputs, np.ndarray):
             outputs = LabeledArray(outputs, labels)
         return outputs
+
+    @property
+    def T(self):
+        return LabeledArray(super().T, self.labels[::-1])
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
