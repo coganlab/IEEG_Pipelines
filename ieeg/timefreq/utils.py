@@ -4,7 +4,7 @@ import numpy as np
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
-from mne.time_frequency import EpochsTFR
+from mne.time_frequency import EpochsTFR, morlet
 from mne.utils import fill_doc, verbose
 
 from ieeg import Signal
@@ -176,6 +176,56 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
                 verbose=verbose)
 
     return EpochsTFR(inst.info, wave, inst.times[::decim], 1 / period)
+
+
+@verbose
+def cwt(inst: BaseEpochs, f_low: float = 2,
+                       f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
+                       decim: int = 1, verbose=10) -> EpochsTFR:
+    """Compute the wavelet scaleogram.
+
+
+
+    Parameters
+    ----------
+    inst : instance of Raw, Epochs, or Evoked
+        The instance to compute the wavelet scaleogram for.
+    f_low : float
+        The lowest frequency to compute the scaleogram for.
+    f_high : float
+        The highest frequency to compute the scaleogram for.
+    k0 : int
+        The wavelet parameter.
+    n_jobs : int
+        The number of jobs to run in parallel.
+    decim : int
+        The decimation factor.
+    verbose : int
+        The verbosity level.
+
+    Returns
+    -------
+    scaleogram : instance of EpochsTFR
+        The wavelet scaleogram.
+
+    Notes
+    -----
+    Similar to https://www.mathworks.com/help/wavelet/ref/cwt.html
+    """
+    data = inst.get_data()  # (trials X channels X timepoints)
+    dt = 1 / inst.info['sfreq']
+    s0 = 1 / (f_high + (0.1 * f_high))  # the smallest resolvable scale
+    n = data.shape[2]
+    J1 = (np.log2(n * dt / s0)) / 0.2  # (J1 determines the largest scale)
+
+    k = np.arange(np.fix(n / 2)) + 1
+    k = k * ((2 * np.pi) / (n * dt))
+    kr = (-k).tolist()
+    kr.reverse()
+    k = np.array([0] + k.tolist() + kr)
+    del kr
+
+    Ws = morlet(inst, frequencies=np.arange(f_low, f_high),)
 
 
 def _check_filterable(x: Union[Signal, np.ndarray],

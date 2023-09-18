@@ -247,7 +247,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None,
-                    background: str = 'white') -> Brain:
+                    background: str = 'white', units: str = 'm') -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -285,7 +285,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
     subj_dir = get_sub_dir(subj_dir)
     if fig is None:
         fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.6, background=background, surf=surface, hemi=hemi)
+                    alpha=0.6, background=background, surf=surface, hemi=hemi,
+                    units=units)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
@@ -387,14 +388,16 @@ def get_sub(inst: Signal | mne.Info | str) -> str:
         return out_str
     return out_str[0] + str(int(out_str[1:]))
 
+# TODO: figure out why elec positions are only correct in meters not mm
+
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'both', fig: Brain = None,
               trans=None, color: matplotlib.colors = (1, 1, 1),
-              size: float = 0.35, show: bool = True, background: str = 'white'
-              ) -> Brain:
+              size: float = 0.35, show: bool = True, background: str = 'white',
+              units: str = 'm') -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -451,7 +454,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5, background=background, surf=surface, hemi=hemi,
-                    show=show)
+                    show=show, units=units)
     if picks is None:
         picks = info.ch_names
     if no_wm:
@@ -466,7 +469,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     montage = info.get_montage()
     force2frame(montage, trans.from_str)
     montage.apply_trans(trans)
-    pos = {k: v * 1000 for k, v in montage.get_positions()['ch_pos'].items()}
+    pos = {k: v for k, v in montage.get_positions()['ch_pos'].items()}
 
     # Default montage positions are in m, whereas plotting functions assume mm
     left = {k: p for k, p in pos.items() if k.startswith('L')}
@@ -650,6 +653,6 @@ if __name__ == "__main__":
     sample_path = mne.datasets.sample.data_path()
     subjects_dir = sample_path / "subjects"
 
-    brain = plot_subj("D29")
+    brain = plot_subj("D73")
     # plot_on_average(filt)
     # plot_gamma(raw)
