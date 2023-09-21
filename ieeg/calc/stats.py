@@ -7,6 +7,18 @@ from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
 
 
+def weighted_avg_and_std(values, weights, axis=0):
+    """
+    Return the weighted average and standard deviation.
+
+    values, weights -- NumPy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights, axis=axis)
+    # Fast and numerically precise:
+    variance = np.average((values-average)**2, weights=weights, axis=axis)
+    return (average, np.sqrt(variance) / np.sqrt(sum(weights) - 1))
+
+
 def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     """ Calculate the mean and standard deviation of a matrix.
 

@@ -2,6 +2,7 @@ import logging
 from collections.abc import Iterable, Sequence
 import functools
 import itertools
+from copy import deepcopy
 
 import mne
 
@@ -146,7 +147,7 @@ class LabeledArray(np.ndarray):
 
     def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
         la_inputs = (i for i in inputs if isinstance(i, LabeledArray))
-        labels = next(la_inputs).labels.copy()
+        labels = deepcopy(next(la_inputs).labels)
         inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
                        else i for i in inputs)
         if out is not None:
@@ -163,11 +164,13 @@ class LabeledArray(np.ndarray):
             for ax in axis:
                 if ax > 0:
                     ax -= i
+                labels = list(labels)
                 if kwargs.get('keepdims', False):
                     labels[ax] = ("-".join(labels[ax]),)
                 else:
                     labels.pop(ax)
                     i += 1
+                labels = tuple(labels)
 
         outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
         if isinstance(outputs, tuple):
@@ -509,8 +512,8 @@ class LabeledArray(np.ndarray):
                       [4, 5, 6, 7]])
         Labels(['c', 'd']
                ['a-e', 'a-f', 'b-e', 'b-f'])
-        >>> np.mean(ad2.combine((0, 1)), axis=0) # doctest: +ELLIPSIS
-        >>> np.mean(ad2, axis=(0, 1)) # doctest: +ELLIPSIS
+        >>> np.mean(ad2.combine((0, 2)), axis=1)
+        >>> np.mean(ad2, axis=(0, 2)) # TODO: these two must be equal!
         """
 
         assert levels[0] >= 0, "first level must be >= 0"

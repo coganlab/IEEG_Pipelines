@@ -180,8 +180,10 @@ def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
     plt.Axes
         The axes containing the plot
         """
-    # mean, std = np.mean(mat, axis=0), np.std(mat, axis=0)
-    mean, std = stats.dist(mat, mask)
+    mean, std = np.mean(mat, axis=0), np.std(mat, axis=0, ddof=1) / np.sqrt(mat.shape[0])
+    # mean, std = stats.dist(mat, mask)
+    # mean = np.average(mat, weights=mask, axis=0)
+    # mean, std = stats.weighted_avg_and_std(mat, mask, axis=0)
     if times is None:
         tscale = range(len(mean))
     else:
@@ -236,7 +238,9 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray,
             w_sigs = data[label == i]
         else:
             w_sigs = np.multiply(data.T, label[:, i]).T
+            # w_sigs = np.average(data, weights=label[:, i], axis=0)
         ax = plot_dist(w_sigs, mask, times, label=stitle, color=color)
+
     return fig, ax
 
 
