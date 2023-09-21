@@ -76,49 +76,63 @@ class LabeledArray(np.ndarray):
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
-    >>> la # doctest: +ELLIPSIS
-    LabeledArray([[[1, 1, 1, 1],
-                   [1, 1, 1, 1],
-                   [1, 1, 1, 1]],
+    >>> la
+    array([[[1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1]],
     <BLANKLINE>
-                  [[1, 1, 1, 1],
-                   [1, 1, 1, 1],
-                   [1, 1, 1, 1]]])
-    Labels(['a', 'b']
-    	   ['c', 'd', 'e']
-    	   ['f', 'g', 'h', 'i'])
+           [[1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1]]])
+    labels(['a', 'b']
+           ['c', 'd', 'e']
+           ['f', 'g', 'h', 'i'])
     >>> la.to_dict() # doctest: +ELLIPSIS
     {'a': {'c': {'f': 1, 'g': 1, 'h': 1, 'i': 1}, 'd': {'f': 1, 'g': 1,...
     >>> la['a', 'c', 'f'] = 2
     >>> la['a', 'c', 'f']
     2
     >>> la['a', 'c']
-    LabeledArray([2, 1, 1, 1])
-    Labels(['f', 'g', 'h', 'i'])
+    array([2, 1, 1, 1])
+    labels(['f', 'g', 'h', 'i'])
     >>> la['a']
-    LabeledArray([[2, 1, 1, 1],
-                  [1, 1, 1, 1],
-                  [1, 1, 1, 1]])
-    Labels(['c', 'd', 'e']
+    array([[2, 1, 1, 1],
+           [1, 1, 1, 1],
+           [1, 1, 1, 1]])
+    labels(['c', 'd', 'e']
     	   ['f', 'g', 'h', 'i'])
     >>> la['a','d'] = np.array([3,3,3,3])
     >>> la[('a','b'), :] # doctest: +ELLIPSIS
-    LabeledArray([[[2, 1, 1, 1],
-                   [3, 3, 3, 3],
-                   [1, 1, 1, 1]],
+    array([[[2, 1, 1, 1],
+            [3, 3, 3, 3],
+            [1, 1, 1, 1]],
     <BLANKLINE>
-                  [[1, 1, 1, 1],
-                   [1, 1, 1, 1],
-                   [1, 1, 1, 1]]])
-    Labels(['a', 'b']
+           [[1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1]]])
+    labels(['a', 'b']
     	   ['c', 'd', 'e']
     	   ['f', 'g', 'h', 'i'])
     >>> la[np.array([False, True])]
-    LabeledArray([[1, 1, 1, 1],
-                  [1, 1, 1, 1],
-                  [1, 1, 1, 1]])
-    labels=[('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
+    array([[1, 1, 1, 1],
+           [1, 1, 1, 1],
+           [1, 1, 1, 1]])
+    labels(['b']
+           ['c', 'd', 'e']
+           ['f', 'g', 'h', 'i'])
     >>> np.nanmean(la, axis=(-2, -1))
+    array([1.75, 1.  ])
+    labels(['a', 'b'])
+    >>> arr = np.arange(24).reshape((2, 3, 4))
+    >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+    >>> ad = LabeledArray(arr, labels)
+    >>> ad[None, 'a']
+    array([[[ 0,  1,  2,  3],
+            [ 4,  5,  6,  7],
+            [ 8,  9, 10, 11]]])
+    labels(['1']
+           ['c', 'd', 'e']
+           ['f', 'g', 'h', 'i'])
 
     References
     ----------
@@ -183,7 +197,7 @@ class LabeledArray(np.ndarray):
 
     @property
     def T(self):
-        return LabeledArray(super().T, self.labels[::-1])
+        return LabeledArray(self.__array__().T, self.labels[::-1])
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
@@ -298,10 +312,11 @@ class LabeledArray(np.ndarray):
         ndim = self.ndim
         new_keys = [range(self.shape[i]) for i in range(ndim)]
         dim = 0
+        newaxis_count = 0
         for key in keys:
             key_type = type(key)
             if np.issubdtype(key_type, str):
-                key = array_idx(self.labels[dim], key)
+                key = array_idx(self.labels[dim - newaxis_count], key)
             elif key is Ellipsis:
                 num_ellipsis_dims = ndim - len(keys) + 1
                 while dim < num_ellipsis_dims:
@@ -311,6 +326,7 @@ class LabeledArray(np.ndarray):
                 key = new_keys[dim][key]
             elif key is np.newaxis or key is None:
                 new_keys.insert(dim, None)
+                newaxis_count += 1
                 dim += 1
                 continue
             elif key_type in (list, tuple) or np.issubdtype(key_type, np.ndarray):
@@ -322,10 +338,12 @@ class LabeledArray(np.ndarray):
                     continue
                 for i, k in enumerate(key):
                     if np.issubdtype(type(k), str):
-                        key[i] = array_idx(self.labels[dim], k)
+                        key[i] = array_idx(self.labels[dim - newaxis_count], k)
                 key = key.astype(np.intp)
 
-            if np.isscalar(key):
+            if np.isscalar(key):  # key should be an int
+                while key < 0:
+                    key += self.shape[dim - newaxis_count]
                 key = (key,)
             new_keys[dim] = key
             dim += 1
@@ -338,26 +356,29 @@ class LabeledArray(np.ndarray):
 
     def __getitem__(self, keys):
         keys = self._to_coords(keys)
+        new_labels = self.labels.copy()
 
         j = 0
-        new_labels = self.labels.copy()
-        # assert len(keys) == len(new_labels), \
-        #     f"keys must have the same length as the number of dimensions, " \
-        #     f"instead got {len(keys)} and {len(new_labels)}"
         for i, key in enumerate(keys):
             if key is None:
-                j += 1
-                new_labels.insert(i, np.array(['1']))
+                new_labels.insert(i+j, np.array(['1']))
             elif np.isscalar(new_labels[i+j][key]):
                 new_labels.pop(i+j)
                 j -= 1
             else:
                 new_labels[i+j] = new_labels[i+j][key]
 
-        out = np.squeeze(super().__getitem__(np.ix_(*keys)))
+        n_idx = [i for i, k in enumerate(keys) if k is None]
+        new_k = np.ix_(*(k for k in keys if k is not None))
+        out = np.expand_dims(np.squeeze(super().__getitem__(new_k)), n_idx)
+
         if out.ndim == 0:
             return out[()]
-        setattr(out, 'labels', list(new_labels))
+        assert out.ndim == len(new_labels), \
+            f"keys must have the same length as the number of dimensions, " \
+            f"instead got {out.ndim} and {len(new_labels)}"
+
+        setattr(out, 'labels', new_labels)
         return out
 
     def __setitem__(self, keys, value):
@@ -365,9 +386,14 @@ class LabeledArray(np.ndarray):
         super().__setitem__(np.ix_(*keys), value)
 
     def __repr__(self):
-        liststr = lambda x: f"\n\t   ".join(x)
-        lab = liststr([str(list(l)) for l in self.labels])
-        return f"{super().__repr__()}\nLabels({lab})"
+        return repr(self.__array__()) + f"\nlabels({self._label_formatter()})"
+
+    def __str__(self):
+        return str(self.__array__()) + f"\nlabels({self._label_formatter()})"
+
+    def _label_formatter(self):
+        liststr = lambda x: f"\n       ".join(x)
+        return liststr([str(list(l)) for l in self.labels])
 
     def memory(self):
         size = self.nbytes
@@ -428,12 +454,14 @@ class LabeledArray(np.ndarray):
         >>> data = {'a': {'b': {'c': 1}}}
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.reshape((1, 1, 1))
-        LabeledArray([[[1]]])
-        labels=(('a',), ('b',), ('c',))
+        array([[[1]]])
+        labels(['a']
+               ['b']
+               ['c'])
         >>> arr = np.arange(24).reshape((2, 3, 4))
-        >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+        >>> labels = [('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad.reshape((6, 4)).labels
+        >>> ad.reshape((6, 4))
         [('a-c', 'a-d', 'a-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i')]
         >>> ad.reshape((6, 4), 'F').labels
         [('a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'), ('f', 'g', 'h', 'i')]
@@ -489,8 +517,6 @@ class LabeledArray(np.ndarray):
             level of the array labels into one level at the 2nd level.
         delim : str, optional
             The delimiter to use when combining labels, by default '-'
-        drop_nan : bool, optional
-            Whether to drop all NaN columns, by default True
 
         Returns
         -------
@@ -501,25 +527,35 @@ class LabeledArray(np.ndarray):
         --------
         >>> data = {'a': {'b': {'c': 1}}}
         >>> ad = LabeledArray.from_dict(data, dtype=int)
-        >>> ad.combine((0, 2)) # doctest: +ELLIPSIS
-        LabeledArray([[1]])
-        Labels(['b']
+        >>> ad.combine((0, 2))
+        array([[1]])
+        labels(['b']
                ['a-c'])
-        >>> ad2 = LabeledArray([[[1,2],[3,4]],[[4,5],[6,7]]],
+        >>> ad2 = LabeledArray([[[1,2],[3,4]],[[5,6],[7,8]]],
         ... labels=[('a', 'b'), ('c', 'd'), ('e', 'f')])
-        >>> ad2.combine((0, 2)) # doctest: +ELLIPSIS
-        LabeledArray([[1, 2, 3, 4],
-                      [4, 5, 6, 7]])
-        Labels(['c', 'd']
+        >>> ad2['a', : , 'e']
+        array([1, 3])
+        labels(['c', 'd'])
+        >>> ad2.combine((0, 2))
+        array([[1, 2, 5, 6],
+               [3, 4, 7, 8]])
+        labels(['c', 'd']
                ['a-e', 'a-f', 'b-e', 'b-f'])
         >>> np.mean(ad2.combine((0, 2)), axis=1)
-        >>> np.mean(ad2, axis=(0, 2)) # TODO: these two must be equal!
+        array([3.5, 5.5])
+        labels(['c', 'd'])
+        >>> np.mean(ad2, axis=(0, 2))
+        array([3.5, 5.5])
+        labels(['c', 'd'])
         """
 
         assert levels[0] >= 0, "first level must be >= 0"
         assert levels[1] > levels[0], "second level must be > first level"
 
         new_labels = list(self.labels)
+        # labs = [new_labels.pop(l - i) for i, l in enumerate(levels)]
+        # new_labels.insert(levels[-1] - (len(levels) - 1), combine_arrays(
+        #     *labs, delim=delim))
 
         new_labels.pop(levels[0])
 
@@ -527,16 +563,12 @@ class LabeledArray(np.ndarray):
             f'{i}{delim}{j}' for i in
             self.labels[levels[0]] for j in self.labels[levels[1]])
 
-        new_shape = list(self.shape)
+        arrs = [np.take(self.__array__(), axis=levels[0], indices=i)
+                for i in range(self.shape[levels[0]])]
 
-        new_shape[levels[1]] = self.shape[levels[0]] * self.shape[
-            levels[1]]
+        new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
 
-        new_shape.pop(levels[0])
-
-        new_array = self.__array__().reshape(new_shape)
-
-        return LabeledArray(new_array, new_labels).dropna()
+        return LabeledArray(new_array, new_labels, dtype=self.dtype)
 
     def take(self, indices, axis=None, **kwargs):
         labels = self.labels.copy()
@@ -650,21 +682,21 @@ def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
 
     Examples
     --------
-    >>> labels = (('az', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
-    >>> label_reshape(list(labels), (6, 4))
+    >>> labels = [('az', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
+    >>> label_reshape(labels, (6, 4))
     [('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i')]
-    >>> label_reshape(list(labels), (6, 4), 'F')
+    >>> label_reshape(labels, (6, 4), 'F')
     [('az-c', 'b-c', 'az-d', 'b-d', 'az-e', 'b-e'), ('f', 'g', 'h', 'i')]
-    >>> label_reshape(list(labels), (2, 12)) # doctest: +ELLIPSIS
+    >>> label_reshape(labels, (2, 12)) # doctest: +ELLIPSIS
     [('az', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
-    >>> label_reshape(list(labels), (3, 2, 4))
+    >>> label_reshape(labels, (3, 2, 4))
     [('az', 'az-b', 'b'), ('c-d-e', 'c-d-e'), ('f', 'g', 'h', 'i')]
-    >>> labels = labels[:2] + ((1, 2, 3, 4),)
-    >>> label_reshape(list(labels), (6, 4))
+    >>> labels = labels[:2] + [(1, 2, 3, 4),]
+    >>> label_reshape(labels, (6, 4))
     [('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), (1, 2, 3, 4)]
-    >>> label_reshape(list(labels), (2, 12), 'F') # doctest: +ELLIPSIS
+    >>> label_reshape(labels, (2, 12), 'F') # doctest: +ELLIPSIS
     [('az', 'b'), ('c-1', 'd-1', 'e-1', 'c-2', 'd-2', 'e-2', 'c-3', 'd-3', ...
-    >>> label_reshape(list(labels), (1, 1, 2, 12))
+    >>> label_reshape(labels, (1, 1, 2, 12))
     [(1,), (1,), ('az-1', 'b-1'), ('c-1-1', 'c-2-1', 'c-3-1', 'c-4-1', ...
     """
     labels = labels.copy()
@@ -806,6 +838,18 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     else:
         raise TypeError(f"Unexpected data type: {type(data)}")
     return tuple(map(tuple, keys))
+
+
+def combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
+    # Create a meshgrid of indices
+    grids = np.meshgrid(*arrays, indexing='ij')
+
+    # Combine the grids into a single array with string concatenation
+    result = np.core.defchararray.add(grids[0], delim)
+    for grid in grids[1:]:
+        result = np.core.defchararray.add(result, grid)
+
+    return result
 
 
 def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
@@ -1032,6 +1076,12 @@ if __name__ == "__main__":
                         [[np.nan, np.nan], [np.nan, np.nan]]],
                        [('a', 'b', 'c'), ('e', 'f'), ('g', 'h')])
     print(ad2[0])
+
+    arr = np.arange(24).reshape((2, 3, 4))
+    labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+    ad = LabeledArray(arr, labels)
+    ad[None, 'a']
+    ad._parse_index((None, 'a'))
 
     # x = np.where(np.isnan(data)==False)
     # sp = LabeledCOO(x, data[x], data.shape, cache=True,
