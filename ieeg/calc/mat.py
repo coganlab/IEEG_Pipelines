@@ -114,10 +114,27 @@ class LabeledArray(np.ndarray):
     	   ['c', 'd', 'e']
     	   ['f', 'g', 'h', 'i'])
     >>> la[np.array([False, True])]
-    array([[1, 1, 1, 1],
-           [1, 1, 1, 1],
-           [1, 1, 1, 1]])
+    array([[[1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1]]])
     labels(['b']
+           ['c', 'd', 'e']
+           ['f', 'g', 'h', 'i'])
+    >>> la[(0, 1)]
+    array([3, 3, 3, 3])
+    labels(['f', 'g', 'h', 'i'])
+    >>> la[0, 1]
+    array([3, 3, 3, 3])
+    labels(['f', 'g', 'h', 'i'])
+    >>> la[(0, 1),]
+    array([[[2, 1, 1, 1],
+            [3, 3, 3, 3],
+            [1, 1, 1, 1]],
+    <BLANKLINE>
+           [[1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1]]])
+    labels(['a', 'b']
            ['c', 'd', 'e']
            ['f', 'g', 'h', 'i'])
     >>> np.nanmean(la, axis=(-2, -1))
@@ -198,6 +215,11 @@ class LabeledArray(np.ndarray):
     @property
     def T(self):
         return LabeledArray(self.__array__().T, self.labels[::-1])
+
+    def swapaxes(self, axis1, axis2):
+        new = list(self.labels)
+        new[axis1], new[axis2] = new[axis2], new[axis1]
+        return LabeledArray(super().swapaxes(axis1, axis2), new)
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
@@ -330,7 +352,7 @@ class LabeledArray(np.ndarray):
                 dim += 1
                 continue
             elif key_type in (list, tuple) or np.issubdtype(key_type, np.ndarray):
-                key = np.squeeze(np.array(key))
+                key = np.atleast_1d(np.squeeze(np.array(key)))
                 if np.issubdtype(key.dtype, bool):
                     for wh in np.where(key):
                         new_keys[dim] = wh.astype(np.intp)
@@ -349,28 +371,37 @@ class LabeledArray(np.ndarray):
             dim += 1
         return tuple(new_keys)
 
-    def _to_coords(self, keys):
-        if not isinstance(keys, tuple):
-            keys = (keys,)
-        return self._parse_index(keys)
+    def _to_coords(self, orig_keys):
+        if not isinstance(orig_keys, tuple):
+            orig_keys = (orig_keys,)
 
-    def __getitem__(self, keys):
-        keys = self._to_coords(keys)
-        new_labels = self.labels.copy()
+        keys = self._parse_index(orig_keys)
+        keep = [i for i, k in enumerate(orig_keys) if not np.isscalar(k)
+                and k is not None]
+        return keys, keep
+
+    def __getitem__(self, orig_keys):
+        keys, keep = self._to_coords(orig_keys)
+        new_labels = []
 
         j = 0
+        n_idx = []
         for i, key in enumerate(keys):
             if key is None:
-                new_labels.insert(i+j, np.array(['1']))
-            elif np.isscalar(new_labels[i+j][key]):
-                new_labels.pop(i+j)
-                j -= 1
-            else:
-                new_labels[i+j] = new_labels[i+j][key]
+                new_labels.append(np.array(['1']))
+                j += 1
+                n_idx.append(i)
+            elif not np.isscalar(self.labels[i - j][key]):
+                new_labels.append(self.labels[i - j][key])
+            elif len(key) != 1:
+                new_labels.append(self.labels[i - j][key])
 
         n_idx = [i for i, k in enumerate(keys) if k is None]
         new_k = np.ix_(*(k for k in keys if k is not None))
-        out = np.expand_dims(np.squeeze(super().__getitem__(new_k)), n_idx)
+
+        out = super().__getitem__(new_k)
+        sq = [i for i, ax in enumerate(out.shape) if ax == 1 and i not in keep]
+        out = np.expand_dims(np.squeeze(out, axis=tuple(sq)), n_idx)
 
         if out.ndim == 0:
             return out[()]
@@ -382,7 +413,7 @@ class LabeledArray(np.ndarray):
         return out
 
     def __setitem__(self, keys, value):
-        keys = self._to_coords(keys)
+        keys, _ = self._to_coords(keys)
         super().__setitem__(np.ix_(*keys), value)
 
     def __repr__(self):
@@ -552,6 +583,8 @@ class LabeledArray(np.ndarray):
         assert levels[0] >= 0, "first level must be >= 0"
         assert levels[1] > levels[0], "second level must be > first level"
 
+        # assert levels == list(set(levels)), ""
+
         new_labels = list(self.labels)
         # labs = [new_labels.pop(l - i) for i, l in enumerate(levels)]
         # new_labels.insert(levels[-1] - (len(levels) - 1), combine_arrays(
@@ -573,7 +606,15 @@ class LabeledArray(np.ndarray):
     def take(self, indices, axis=None, **kwargs):
         labels = self.labels.copy()
         arr = np.take(self.__array__(), indices, axis, **kwargs)
-        labels[axis] = np.array(labels[axis])[indices].tolist()
+        if axis is None:
+            labels = [np.array(l)[indices] for l in labels]
+        elif isinstance(axis, int):
+            labels = [l[indices] if i != axis else l
+                      for i, l in enumerate(labels)]
+        else:
+            for ax in axis:
+                labels = [l[indices] if i != ax else l
+                          for i, l in enumerate(labels)]
         return LabeledArray(arr.__array__(), labels)
 
     def dropna(self) -> 'LabeledArray':
@@ -1082,6 +1123,9 @@ if __name__ == "__main__":
     ad = LabeledArray(arr, labels)
     ad[None, 'a']
     ad._parse_index((None, 'a'))
+    ad[('a',),]
+    ad['a', 'c']
+    ad[(True, False),]
 
     # x = np.where(np.isnan(data)==False)
     # sp = LabeledCOO(x, data[x], data.shape, cache=True,
