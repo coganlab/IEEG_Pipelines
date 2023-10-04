@@ -354,3 +354,31 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
         out[tuple(sl_out)] = data_fix[tuple(sl_in)]
 
     return out
+
+
+def smote(arr: np.ndarray, obs_axis: int = -2,
+          copy: bool = True) -> np.ndarray:
+    """Oversampled using SMOTE
+
+    Assumes the last axis is features, and the first is observations"""
+
+    if copy:
+        arr = arr.copy()
+
+    nan = np.isnan(arr)
+    bad = np.any(nan, -1)
+    for idx in np.ndindex(arr.shape[:obs_axis]):
+        goods = np.where(bad[idx] == False)[0]
+        assert goods.tolist(), f"Completely empty data at {idx}"
+
+        for i in range(arr.shape[obs_axis]):
+            idxi = idx + (i,)
+            if not bad[idxi]:
+                continue
+            nn = [idx + (n,) for n in np.random.choice(
+                goods, (2,), replace=False)]
+            narr = np.random.random(arr.shape[-1])
+            diff = arr[nn[0]] - arr[nn[1]]
+            arr[idxi] = arr[nn[0]] + diff * narr
+
+    return arr
