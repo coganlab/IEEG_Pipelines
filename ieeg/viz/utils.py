@@ -132,7 +132,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
             if "colorbar" in plot_func.__code__.co_varnames:
                 kwargs["colorbar"] = bar
             ax = axs.flatten()[j]
-            plot_func(picks=[chan], axes=ax, show=False, **kwargs)
+            plot_func(picks=[chan], axis=ax, show=False, **kwargs)
             ax.set_title(chan, pad=0, **text_spec)
             ax.tick_params(axis='both', which='major', labelsize=7,
                            direction="in")
@@ -156,7 +156,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
 
 def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
               label: str | int | float = None,
-              color: str | list[int] = None) -> plt.Axes:
+              color: str | list[int] = None, ax: plt.Axes = None) -> plt.Axes:
     """Plot the distribution for a single signal
 
     A distribution is the mean of the signal over the last dimension, with
@@ -188,11 +188,14 @@ def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
         tscale = range(len(mean))
     else:
         tscale = np.linspace(times[0], times[1], len(mean))
-    p = plt.plot(tscale, mean, label=label, color=color)
+    if ax is None:
+        plt.figure()
+        ax = plt.gca()
+    p = ax.plot(tscale, mean, label=label, color=color)
     if color is None:
         color = p[-1].get_color()
-    plt.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
-    return plt.gca()
+    ax.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
+    return ax
 
 
 def plot_weight_dist(data: np.ndarray, label: np.ndarray,

@@ -382,3 +382,40 @@ def smote(arr: np.ndarray, obs_axis: int = -2,
             arr[idxi] = arr[nn[0]] + diff * narr
 
     return arr
+
+
+def smotev(arr: np.ndarray, obs_axis: int = -2,
+          copy: bool = True) -> np.ndarray:
+    """Oversampled using SMOTE
+
+    Assumes the last axis is features, and the first is observations"""
+
+    if copy:
+        arr = arr.copy()
+
+    nan = np.isnan(arr)
+    bad = np.any(nan, -1)
+    for idx in np.ndindex(arr.shape[:obs_axis]):
+        goods = np.where(bad[idx] == False)[0]
+        assert goods.tolist(), f"Completely empty data at {idx}"
+
+        # Generate random indices
+        rand_indices = np.array([np.random.choice(goods, (2,),
+                                        replace=False) for _ in range(arr.shape[obs_axis])])
+
+        # Generate random array
+        narr = np.random.random((arr.shape[obs_axis], arr.shape[-1]))
+
+        # Calculate differences
+        diff = arr[rand_indices[:, 0]] - arr[rand_indices[:, 1]]
+
+        # Calculate new values
+        new_values = arr[rand_indices[:, 0]] + diff * narr
+
+        # Create a mask for the 'bad' values
+        mask = np.array([not val for val in bad])
+
+        # Replace 'bad' values in the original array with the new values
+        np.putmask(arr, mask, new_values)
+
+    return arr
