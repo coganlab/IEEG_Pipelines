@@ -113,7 +113,7 @@ class LabeledArray(np.ndarray):
     labels(['a', 'b']
     	   ['c', 'd', 'e']
     	   ['f', 'g', 'h', 'i'])
-    >>> la[np.array([False, True])]
+    >>> la[np.array([False, True]),]
     array([[[1, 1, 1, 1],
             [1, 1, 1, 1],
             [1, 1, 1, 1]]])
@@ -150,6 +150,16 @@ class LabeledArray(np.ndarray):
     labels(['1']
            ['c', 'd', 'e']
            ['f', 'g', 'h', 'i'])
+    >>> ad['b', 0, np.array([[1,2], [0,3]])]
+    array([[13, 14],
+           [12, 15]])
+    labels(['g-h', 'f-i']
+           ['g-f', 'h-i'])
+
+    Notes
+    -----
+    Multiple array indices and string slice objects are not supported. If you
+    want to use array indices, you should use them one at a time.
 
     References
     ----------
@@ -189,8 +199,10 @@ class LabeledArray(np.ndarray):
             axis = kwargs.get('axis', None)
             if axis is None:
                 axis = range(inputs[0].ndim)
-            elif not isinstance(axis, tuple):
+            elif np.isscalar(axis):
                 axis = (axis,)
+            else:
+                axis = tuple(axis)
             i = 0
             for ax in axis:
                 if ax > 0:
@@ -239,14 +251,18 @@ class LabeledArray(np.ndarray):
         --------
         >>> data = {'a': {'b': {'c': 1}}}
         >>> LabeledArray.from_dict(data, dtype=int) # doctest: +ELLIPSIS
-        LabeledArray([[[1]]])
-        labels=(('a',), ('b',), ('c',))
+        array([[[1]]])
+        labels(['a']
+               ['b']
+               ['c'])
         >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
         >>> LabeledArray.from_dict(data) # doctest: +ELLIPSIS
-        LabeledArray([[[ 1., nan]],
+        array([[[ 1., nan]],
         <BLANKLINE>
-                      [[ 2.,  3.]]])
-        labels=(('a', 'd'), ('b',), ('c', 'e'))
+               [[ 2.,  3.]]])
+        labels(['a', 'd']
+               ['b']
+               ['c', 'e'])
         """
 
         arr = inner_array(data)
@@ -278,38 +294,40 @@ class LabeledArray(np.ndarray):
         ... extension=".vhdr", verbose=False)
         Reading 0 ... 269079  =      0.000 ...   269.079 secs...
         >>> LabeledArray.from_signal(raw, dtype=float) # doctest: +ELLIPSIS
-        LabeledArray([[-8.98329883e-06,  8.20419238e-06,  7.42294287e-06, ...,
-                        1.07177293e-09,  1.07177293e-09,  1.07177293e-09],
-                      [ 2.99222000e-04,  3.03518844e-04,  2.96878250e-04, ...,
-                        3.64667153e-09,  3.64667153e-09,  3.64667153e-09],
-                      [ 2.44140953e-04,  2.30078469e-04,  2.19140969e-04, ...,
-                        3.85053724e-10,  3.85053724e-10,  3.85053724e-10],
-                      ...,
-                      [ 1.81263844e-04,  1.74232594e-04,  1.56263875e-04, ...,
-                        1.41283798e-08,  1.41283798e-08,  1.41283798e-08],
-                      [ 2.25390219e-04,  2.16015219e-04,  1.91405859e-04, ...,
-                       -2.91418821e-10, -2.91418821e-10, -2.91418821e-10],
-                      [ 3.14092313e-04,  3.71123375e-04,  3.91826437e-04, ...,
-                        3.07457047e-08,  3.07457047e-08,  3.07457047e-08]])
-        labels=(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'...
-               2.69078e+02, 2.69079e+02]))
+        array([[-8.98329883e-06,  8.20419238e-06,  7.42294287e-06, ...,
+                 1.07177293e-09,  1.07177293e-09,  1.07177293e-09],
+               [ 2.99222000e-04,  3.03518844e-04,  2.96878250e-04, ...,
+                 3.64667153e-09,  3.64667153e-09,  3.64667153e-09],
+               [ 2.44140953e-04,  2.30078469e-04,  2.19140969e-04, ...,
+                 3.85053724e-10,  3.85053724e-10,  3.85053724e-10],
+               ...,
+               [ 1.81263844e-04,  1.74232594e-04,  1.56263875e-04, ...,
+                 1.41283798e-08,  1.41283798e-08,  1.41283798e-08],
+               [ 2.25390219e-04,  2.16015219e-04,  1.91405859e-04, ...,
+                -2.91418821e-10, -2.91418821e-10, -2.91418821e-10],
+               [ 3.14092313e-04,  3.71123375e-04,  3.91826437e-04, ...,
+                 3.07457047e-08,  3.07457047e-08,  3.07457047e-08]])
+        labels(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', ...
         >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
         ... verbose=False)
         >>> LabeledArray.from_signal(epochs, dtype=float) # doctest: +ELLIPSIS
-        LabeledArray([[[ 0.00021563,  0.00021563,  0.00020703, ...
-                        -0.00051445, -0.00050351],
-                       [-0.00030586, -0.00030625, -0.00031171, ...
-                        -0.00015976, -0.00015664],
-                       [-0.00010781, -0.00010469, -0.00010859, ...
-                         0.00027695,  0.00030156],
-                       ...,
-                       [-0.00021483, -0.00021131, -0.00023084, ...
-                        -0.00032381, -0.00031444],
-                       [-0.00052188, -0.00052852, -0.00053125, ...
-                        -0.00047148, -0.00047891],
-                       [-0.00033708, -0.00028005, -0.00020934, ...
-                        -0.00042341, -0.00040973]]])
-        labels=(['AD1-4, ATT1,2'], ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'...
+        array([[[ 0.00021563,  0.00021563,  0.00020703, ..., -0.00051211,
+                 -0.00051445, -0.00050351],
+                [-0.00030586, -0.00030625, -0.00031171, ..., -0.00016054,
+                 -0.00015976, -0.00015664],
+                [-0.00010781, -0.00010469, -0.00010859, ...,  0.00026719,
+                  0.00027695,  0.00030156],
+                ...,
+                [-0.00021483, -0.00021131, -0.00023084, ..., -0.00034295,
+                 -0.00032381, -0.00031444],
+                [-0.00052188, -0.00052852, -0.00053125, ..., -0.00046211,
+                 -0.00047148, -0.00047891],
+                [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
+                 -0.00042341, -0.00040973]]])
+        labels(['AD1-4, ATT1,2']
+               ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', ...
+               [-1.0, -0.999, -0.998, -0.997, -0.996, -0.995, -0.994, ...
+
         """
 
         arr = sig.get_data()
@@ -330,15 +348,16 @@ class LabeledArray(np.ndarray):
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
 
-    def _parse_index(self, keys: tuple) -> tuple[Sequence[int | bool, ...], ...]:
+    def _parse_index(self, keys: list):
         ndim = self.ndim
         new_keys = [range(self.shape[i]) for i in range(ndim)]
         dim = 0
         newaxis_count = 0
-        for key in keys:
+        for i, key in enumerate(keys):
             key_type = type(key)
             if np.issubdtype(key_type, str):
                 key = array_idx(self.labels[dim - newaxis_count], key)
+                keys[i] = key # set original keys as well
             elif key is Ellipsis:
                 num_ellipsis_dims = ndim - len(keys) + 1
                 while dim < num_ellipsis_dims:
@@ -352,56 +371,52 @@ class LabeledArray(np.ndarray):
                 dim += 1
                 continue
             elif key_type in (list, tuple) or np.issubdtype(key_type, np.ndarray):
-                key = np.atleast_1d(np.squeeze(np.array(key)))
-                if np.issubdtype(key.dtype, bool):
-                    for wh in np.where(key):
-                        new_keys[dim] = wh.astype(np.intp)
-                        dim += 1
-                    continue
-                for i, k in enumerate(key):
+                key = list(key)
+                for j, k in enumerate(key):
                     if np.issubdtype(type(k), str):
-                        key[i] = array_idx(self.labels[dim - newaxis_count], k)
-                key = key.astype(np.intp)
+                        key[j] = int(array_idx(
+                            self.labels[dim - newaxis_count], k))
+                if np.issubdtype(key_type, np.ndarray):
+                    keys[i] = np.array(key)
+                else:
+                    keys[i] = key_type(key)
 
             if np.isscalar(key):  # key should be an int
                 while key < 0:
                     key += self.shape[dim - newaxis_count]
-                key = (key,)
             new_keys[dim] = key
             dim += 1
         return tuple(new_keys)
 
     def _to_coords(self, orig_keys):
-        if not isinstance(orig_keys, tuple):
-            orig_keys = (orig_keys,)
-
-        keys = self._parse_index(orig_keys)
-        keep = [i for i, k in enumerate(orig_keys) if not np.isscalar(k)
-                and k is not None]
-        return keys, keep
+        if np.isscalar(orig_keys):
+            keys = [orig_keys]
+            l_keys = self._parse_index(keys)
+            return keys[0], l_keys
+        else:
+            keys = list(orig_keys)
+            l_keys = self._parse_index(keys)
+            return tuple(keys), l_keys
 
     def __getitem__(self, orig_keys):
-        keys, keep = self._to_coords(orig_keys)
+        keys, label_keys = self._to_coords(orig_keys)
         new_labels = []
 
         j = 0
         n_idx = []
-        for i, key in enumerate(keys):
-            if key is None:
+        for i, label_key in enumerate(label_keys):
+            if label_key is None:
                 new_labels.append(np.array(['1']))
                 j += 1
                 n_idx.append(i)
-            elif not np.isscalar(self.labels[i - j][key]):
-                new_labels.append(self.labels[i - j][key])
-            elif len(key) != 1:
-                new_labels.append(self.labels[i - j][key])
+            elif not np.isscalar(label_key):
+                new_labels.append(self.labels[i - j][label_key])
+                if new_labels[-1].ndim > 1:
+                    l = new_labels.pop(-1)
+                    label_sets = label_decompose(l, '-')
+                    new_labels.extend(list(map(np.array, label_sets)))
 
-        n_idx = [i for i, k in enumerate(keys) if k is None]
-        new_k = np.ix_(*(k for k in keys if k is not None))
-
-        out = super().__getitem__(new_k)
-        sq = [i for i, ax in enumerate(out.shape) if ax == 1 and i not in keep]
-        out = np.expand_dims(np.squeeze(out, axis=tuple(sq)), n_idx)
+        out = super().__getitem__(keys)
 
         if out.ndim == 0:
             return out[()]
@@ -414,7 +429,7 @@ class LabeledArray(np.ndarray):
 
     def __setitem__(self, keys, value):
         keys, _ = self._to_coords(keys)
-        super().__setitem__(np.ix_(*keys), value)
+        super().__setitem__(keys, value)
 
     def __repr__(self):
         return repr(self.__array__()) + f"\nlabels({self._label_formatter()})"
@@ -493,17 +508,26 @@ class LabeledArray(np.ndarray):
         >>> labels = [('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
         >>> ad = LabeledArray(arr, labels)
         >>> ad.reshape((6, 4))
-        [('a-c', 'a-d', 'a-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i')]
+        array([[ 0,  1,  2,  3],
+               [ 4,  5,  6,  7],
+               [ 8,  9, 10, 11],
+               [12, 13, 14, 15],
+               [16, 17, 18, 19],
+               [20, 21, 22, 23]])
+        labels(['a', 'b']
+               ['c', 'd', 'e']
+               ['f', 'g', 'h', 'i'])
         >>> ad.reshape((6, 4), 'F').labels
         [('a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'), ('f', 'g', 'h', 'i')]
         >>> ad.reshape((2, 12)).labels # doctest: +ELLIPSIS
-        [('a', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
+        [array(['a', 'b'], dtype='<U1'), array(['c', 'd', 'e'], dtype='<U1')...
         >>> arr = np.arange(10)
         >>> labels = [list(map(str, arr))]
         >>> ad = LabeledArray(arr, labels)
         >>> ad.reshape((2, 5)).labels
-        [('0-1-2-3-4', '5-6-7-8-9'), ('0-5', '1-6', '2-7', '3-8', '4-9')]
+        [array(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], ...
         >>> ad.reshape((1, 2, 5)).labels
+        [array(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], ...
         """
         new_array = super().reshape(*shape, order=order)
         new_labels = label_reshape(self.labels, shape, order)
@@ -529,8 +553,10 @@ class LabeledArray(np.ndarray):
         >>> data = {'a': {'b': {'c': 1}}}
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.prepend_labels('pre-', 1) # doctest: +ELLIPSIS
-        LabeledArray([[[1]]])
-        labels=(('a',), ('pre-b',), ('c',))
+        array([[[1]]])
+        labels(['a']
+               ['pre-b']
+               ['c'])
         """
         assert 0 <= level < self.ndim, "level must be >= 0 and < ndim"
         self.labels[level] = tuple(pre + lab for lab in self.labels[level])
@@ -604,18 +630,20 @@ class LabeledArray(np.ndarray):
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
 
     def take(self, indices, axis=None, **kwargs):
-        labels = self.labels.copy()
-        arr = np.take(self.__array__(), indices, axis, **kwargs)
+
+        idx = [slice(None)] * self.ndim
+
         if axis is None:
-            labels = [np.array(l)[indices] for l in labels]
+            return self.flat[indices]
         elif isinstance(axis, int):
-            labels = [l[indices] if i != axis else l
-                      for i, l in enumerate(labels)]
+            idx[axis] = indices
+        elif len(indices) == len(axis):
+            for i, ax in enumerate(axis):
+                idx[ax] = indices[i]
         else:
-            for ax in axis:
-                labels = [l[indices] if i != ax else l
-                          for i, l in enumerate(labels)]
-        return LabeledArray(arr.__array__(), labels)
+            raise ValueError("indices and axis must have the same length")
+
+        return self[tuple(idx)]
 
     def dropna(self) -> 'LabeledArray':
         """Remove all nan values from the array.
@@ -633,17 +661,21 @@ class LabeledArray(np.ndarray):
         >>> data = {'a': {'b': {'c': 1., 'd': np.nan}}}
         >>> ad = LabeledArray.from_dict(data)
         >>> ad.dropna()
-        LabeledArray([[[1.]]])
-        labels=(('a',), ('b',), ('c',))
+        array([[[1.]]])
+        labels(['a']
+               ['b']
+               ['c'])
         >>> ad2 = LabeledArray([[[1,2],[3,4]],[[4,5],[6,7]],
         ... [[np.nan, np.nan], [np.nan, np.nan]]])
         >>> ad2.dropna()
-        LabeledArray([[[1., 2.],
-                       [3., 4.]],
+        array([[[1., 2.],
+                [3., 4.]],
         <BLANKLINE>
-                      [[4., 5.],
-                       [6., 7.]]])
-        labels=((0, 1), (0, 1), (0, 1))
+               [[4., 5.],
+                [6., 7.]]])
+        labels([0, 1]
+               [0, 1]
+               [0, 1])
         """
         new_labels = list(self.labels)
         idx = []
@@ -784,6 +816,18 @@ def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
                 new_labels[i] = list(map(t, new_labels[i]))
             except ValueError:
                 pass
+    return list(map(tuple, new_labels))
+
+
+def label_decompose(label_matrix, delim):
+    new_labels = [[None for _ in range(s)] for s in label_matrix.shape]
+    for i, dim in enumerate(label_matrix.shape):
+        for j in range(dim):
+            row = np.take(label_matrix, j, axis=i).reshape(-1, label_matrix.ndim)
+            common = _longest_common_substring(tuple(map(tuple, row)))
+            if len(common) == 0:
+                common = list(set(d[i] for d in row))
+            new_labels[i][j] = delim.join(common)
     return list(map(tuple, new_labels))
 
 
