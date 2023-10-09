@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 import functools
 import itertools
 from copy import deepcopy
@@ -11,6 +11,7 @@ from ieeg import Signal
 
 import numpy as np
 from numpy.matlib import repmat
+from numpy.typing import ArrayLike
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -59,6 +60,8 @@ class LabeledArray(np.ndarray):
         The array to store in the LabeledArray.
     labels : tuple[tuple[str, ...], ...], optional
         The labels for each dimension of the array, by default ().
+    delimiter : str, optional
+        The delimiter to use when combining labels, by default '-'
     **kwargs
         Additional arguments to pass to np.asarray.
 
@@ -168,13 +171,13 @@ class LabeledArray(np.ndarray):
     __slots__ = ['labels', '__dict__']
 
     def __new__(cls, input_array, labels: list[tuple[str, ...], ...] = (),
-                **kwargs):
+                delimiter: str = '-', **kwargs):
         obj = np.asarray(input_array, **kwargs).view(cls)
         labels = list(labels)
         for i in range(obj.ndim):
             if len(labels) < i + 1:
                 labels.append(tuple(range(obj.shape[i])))
-        obj.labels = list(map(np.array, labels))
+        obj.labels = list(map(lambda l: Labels(l, delimiter), labels))
         assert tuple(map(len, obj.labels)) == obj.shape, \
             f"labels must have the same length as the shape of the array, " \
             f"instead got {tuple(map(len, obj.labels))} and {obj.shape}"
@@ -356,7 +359,7 @@ class LabeledArray(np.ndarray):
         for i, key in enumerate(keys):
             key_type = type(key)
             if np.issubdtype(key_type, str):
-                key = array_idx(self.labels[dim - newaxis_count], key)
+                key = self.labels[dim - newaxis_count].find(key)
                 keys[i] = key # set original keys as well
             elif key is Ellipsis:
                 num_ellipsis_dims = ndim - len(keys) + 1
@@ -374,8 +377,7 @@ class LabeledArray(np.ndarray):
                 key = list(key)
                 for j, k in enumerate(key):
                     if np.issubdtype(type(k), str):
-                        key[j] = int(array_idx(
-                            self.labels[dim - newaxis_count], k))
+                        key[j] = self.labels[dim - newaxis_count].find(k)
                 if np.issubdtype(key_type, np.ndarray):
                     keys[i] = np.array(key)
                 else:
@@ -413,8 +415,7 @@ class LabeledArray(np.ndarray):
                 new_labels.append(self.labels[i - j][label_key])
                 if new_labels[-1].ndim > 1:
                     l = new_labels.pop(-1)
-                    label_sets = label_decompose(l, '-')
-                    new_labels.extend(list(map(np.array, label_sets)))
+                    new_labels.extend(l.decompose())
 
         out = super().__getitem__(keys)
 
@@ -439,7 +440,7 @@ class LabeledArray(np.ndarray):
 
     def _label_formatter(self):
         liststr = lambda x: f"\n       ".join(x)
-        return liststr([str(list(l)) for l in self.labels])
+        return liststr([str(l) for l in self.labels])
 
     def memory(self):
         size = self.nbytes
@@ -562,7 +563,7 @@ class LabeledArray(np.ndarray):
         self.labels[level] = tuple(pre + lab for lab in self.labels[level])
         return LabeledArray(self.view(np.ndarray), self.labels)
 
-    def combine(self, levels: tuple[int, int], delim: str = '-') -> 'LabeledArray':
+    def combine(self, levels: tuple[int, int]) -> 'LabeledArray':
         """Combine any levels of a LabeledArray into the lower level
 
         Takes the input LabeledArray and rearranges its dimensions.
@@ -609,22 +610,14 @@ class LabeledArray(np.ndarray):
         assert levels[0] >= 0, "first level must be >= 0"
         assert levels[1] > levels[0], "second level must be > first level"
 
-        # assert levels == list(set(levels)), ""
-
         new_labels = list(self.labels)
-        # labs = [new_labels.pop(l - i) for i, l in enumerate(levels)]
-        # new_labels.insert(levels[-1] - (len(levels) - 1), combine_arrays(
-        #     *labs, delim=delim))
-
         new_labels.pop(levels[0])
 
-        new_labels[levels[1] - 1] = tuple(
-            f'{i}{delim}{j}' for i in
-            self.labels[levels[0]] for j in self.labels[levels[1]])
+        new_labels[levels[1] - 1] = (
+                self.labels[levels[0]] @ self.labels[levels[1]]).flatten()
 
         arrs = [np.take(self.__array__(), axis=levels[0], indices=i)
                 for i in range(self.shape[levels[0]])]
-
         new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
 
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
@@ -719,13 +712,71 @@ class LabeledArray(np.ndarray):
         return LabeledArray(new_array, self.labels)
 
 
-def array_idx(arr: np.ndarray[str], value: str) -> int:
-    """Get the index of the first instance of a value in a numpy array."""
-    idx = np.where(arr == value)[0]
-    if len(idx) == 0:
-        raise IndexError(f"{value} not found in {arr}")
-    else:
-        return int(idx[0])
+class Labels(np.ndarray):
+    """A class for storing labels for a LabeledArray."""
+    def __new__(cls, input_array: ArrayLike, delim: str = '-'):
+        arr = np.asarray(input_array)
+        # Determine the smallest data type that can represent the data
+        if np.issubdtype(arr.dtype, np.number):
+            if np.all(np.mod(arr, 1) == 0):
+                # All values are integers
+                dtype = 'int'
+            else:
+                # All values are numbers (integers or floats)
+                dtype = 'float'
+        else:
+            # Not all values are numbers, so use objects
+            dtype = f'U{np.max(np.char.str_len(arr))}'
+        # Input array is an already formed ndarray instance
+        # We first cast to be our class type
+        obj = np.asarray(input_array, dtype=dtype).view(cls)
+        setattr(obj, 'delimiter', delim)
+        arr = obj.__array__().flatten()
+        assert len(np.unique(arr)) == len(arr), f"Labels {arr} must be unique"
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.delimiter = getattr(obj, 'delimiter', '-')
+
+    def __str__(self):
+        return self.tolist().__str__()
+
+    def __repr__(self):
+        return self.tolist().__repr__()
+
+    def __matmul__(self, other):
+        if not isinstance(other, Labels):
+            raise NotImplementedError("Only Labels @ Labels is supported")
+        s_str, o_str = self.astype(str), other.astype(str)
+
+        # Convert the arrays to 2D
+        s_str_2d = s_str[..., None]
+        o_str_2d = np.char.add(self.delimiter, o_str[None])
+
+        # Use broadcasting to create a result array with combined strings
+        result = np.char.add(s_str_2d, o_str_2d)
+        return Labels(result)
+
+    def decompose(self) -> list['Labels', ...]:
+        """Decompose a Labels object into a list of 1d Labels objects."""
+        new_labels = [[None for _ in range(s)] for s in self.shape]
+        for i, dim in enumerate(self.shape):
+            for j in range(dim):
+                row = np.take(self, j, axis=i).reshape(-1, self.ndim)
+                common = _longest_common_substring(tuple(map(tuple, row)))
+                if len(common) == 0:
+                    common = list(set(d[i] for d in row))
+                new_labels[i][j] = self.delimiter.join(common)
+        return list(map(Labels, new_labels))
+
+    def find(self, value) -> int:
+        """Get the index of the first instance of a value in the Labels"""
+        idx = np.where(self == value)[0]
+        if len(idx) == 0:
+            raise IndexError(f"{value} not found in {arr}")
+        else:
+            return int(idx[0])
 
 
 def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
@@ -816,18 +867,6 @@ def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
                 new_labels[i] = list(map(t, new_labels[i]))
             except ValueError:
                 pass
-    return list(map(tuple, new_labels))
-
-
-def label_decompose(label_matrix, delim):
-    new_labels = [[None for _ in range(s)] for s in label_matrix.shape]
-    for i, dim in enumerate(label_matrix.shape):
-        for j in range(dim):
-            row = np.take(label_matrix, j, axis=i).reshape(-1, label_matrix.ndim)
-            common = _longest_common_substring(tuple(map(tuple, row)))
-            if len(common) == 0:
-                common = list(set(d[i] for d in row))
-            new_labels[i][j] = delim.join(common)
     return list(map(tuple, new_labels))
 
 
@@ -1128,62 +1167,22 @@ def events_in_order(inst: mne.BaseEpochs) -> list[str]:
 if __name__ == "__main__":
     import os
     from ieeg.io import get_data
-    from analysis.utils.mat_load import load_dict
     import mne
     conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5), "Audio/LS"),
              "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5), "Audio/JL"),
-             "go_ls": ((-0.5, 1.5),"Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
+             "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
              "go_jl": ((-0.5, 1.5), "Go/JL")}
     task = "SentenceRep"
     root = os.path.expanduser("~/Box/CoganLab")
     layout = get_data(task, root=root)
     folder = 'stats_old'
-
     mne.set_log_level("ERROR")
-
-    # power = load_dict(layout, conds, "power", False, folder)
-    # power = LabeledArray.from_dict(combine(power, (0, 3)))
-
-    power = dict()
-    # for subj in tqdm(layout.get_subjects()):
-    #     file = os.path.join(layout.root, 'derivatives', 'stats',
-    #                                         subj + '_power-epo.fif')
-    #     if not os.path.exists(file):
-    #         continue
-    #     epoch = mne.read_epochs(file, preload=True)
-    #     power[subj] = dict()
-    #     for cond, times in conds.items():
-    #         power[subj][cond] = dict()
-    #         for stim in ['heat', 'hot', 'hoot', 'hut']:
-    #             power[subj][cond][stim] = epoch[stim].crop(*times).average().data
-
-    ad2 = LabeledArray([[[1, 2], [3, 4]], [[4, 5], [6, 7]],
-                        [[np.nan, np.nan], [np.nan, np.nan]]],
-                       [('a', 'b', 'c'), ('e', 'f'), ('g', 'h')])
-    print(ad2[0])
 
     arr = np.arange(24).reshape((2, 3, 4))
     labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     ad = LabeledArray(arr, labels)
-    ad[None, 'a']
-    ad._parse_index((None, 'a'))
-    ad[('a',),]
-    ad['a', 'c']
-    ad[(True, False),]
+    Labels(['a', 'b', 'c']) @ Labels(['d', 'e', 'f'])
 
-    # x = np.where(np.isnan(data)==False)
-    # sp = LabeledCOO(x, data[x], data.shape, cache=True,
-    #                 fill_value=np.nan, labels=data.labels)
-
-    # dict_data = dict(
-    #     power=load_dict(layout, conds, "power", False))
-    # # zscore=load_dict(layout, conds, "zscore", False))
-    #
-    # keys = inner_all_keys(dict_data)
-    #
-    # data = LabeledArray.from_dict(dict_data)
-    # data.__repr__()
-
-    # data = SparseArray(dict_data)
-
-    # power = data["power"]
+    labels = Labels(np.arange(1000))
+    l2d = labels @ labels
+    x = l2d.reshape((10, -1)).decompose()
