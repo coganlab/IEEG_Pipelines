@@ -98,14 +98,10 @@ class LabeledArray(np.ndarray):
     >>> la['a', 'c']
     array([2, 1, 1, 1])
     labels(['f', 'g', 'h', 'i'])
-    >>> la['a']
-    array([[2, 1, 1, 1],
-           [1, 1, 1, 1],
-           [1, 1, 1, 1]])
-    labels(['c', 'd', 'e']
-    	   ['f', 'g', 'h', 'i'])
+    >>> la['a'].labels
+    [['c', 'd', 'e'], ['f', 'g', 'h', 'i']]
     >>> la['a','d'] = np.array([3,3,3,3])
-    >>> la[('a','b'), :] # doctest: +ELLIPSIS
+    >>> la[('a','b'), :]
     array([[[2, 1, 1, 1],
             [3, 3, 3, 3],
             [1, 1, 1, 1]],
@@ -129,44 +125,36 @@ class LabeledArray(np.ndarray):
     >>> la[0, 1]
     array([3, 3, 3, 3])
     labels(['f', 'g', 'h', 'i'])
-    >>> la[(0, 1),]
-    array([[[2, 1, 1, 1],
-            [3, 3, 3, 3],
-            [1, 1, 1, 1]],
-    <BLANKLINE>
-           [[1, 1, 1, 1],
-            [1, 1, 1, 1],
-            [1, 1, 1, 1]]])
-    labels(['a', 'b']
-           ['c', 'd', 'e']
-           ['f', 'g', 'h', 'i'])
+    >>> la[(0, 1),].labels
+    [['a', 'b'], ['c', 'd', 'e'], ['f', 'g', 'h', 'i']]
     >>> np.nanmean(la, axis=(-2, -1))
     array([1.75, 1.  ])
     labels(['a', 'b'])
     >>> arr = np.arange(24).reshape((2, 3, 4))
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> ad = LabeledArray(arr, labels)
-    >>> ad[None, 'a']
-    array([[[ 0,  1,  2,  3],
-            [ 4,  5,  6,  7],
-            [ 8,  9, 10, 11]]])
-    labels(['1']
-           ['c', 'd', 'e']
-           ['f', 'g', 'h', 'i'])
+    >>> ad[None, 'a'].labels
+    [['1'], ['c', 'd', 'e'], ['f', 'g', 'h', 'i']]
     >>> ad['b', 0, np.array([[1,2], [0,3]])]
     array([[13, 14],
            [12, 15]])
     labels(['g-h', 'f-i']
            ['g-f', 'h-i'])
+    >>> ad[:, ('d','e'),][..., ('g', 'h'),].labels
+    [['a', 'b'], ['d', 'e'], ['g', 'h']]
+    >>> ad['a', 'd', ('g', 'i', 'f'),]
+    array([5, 7, 4])
+    labels(['g', 'i', 'f'])
 
     Notes
     -----
-    Multiple array indices and string slice objects are not supported. If you
-    want to use array indices, you should use them one at a time.
+    Multiple sequence indices objects are not supported. If you want to use
+    multiple sequence indices, you should use them one at a time.
 
     References
     ----------
     [1] https://numpy.org/doc/stable/user/basics.subclassing.html
+    [2] https://numpy.org/doc/stable/user/basics.indexing.html
     """
     __slots__ = ['labels', '__dict__']
 
@@ -360,7 +348,7 @@ class LabeledArray(np.ndarray):
             key_type = type(key)
             if np.issubdtype(key_type, str):
                 key = self.labels[dim - newaxis_count].find(key)
-                keys[i] = key # set original keys as well
+                keys[i] = key  # set original keys as well
             elif key is Ellipsis:
                 num_ellipsis_dims = ndim - len(keys) + 1
                 while dim < num_ellipsis_dims:
@@ -382,10 +370,12 @@ class LabeledArray(np.ndarray):
                     keys[i] = np.array(key)
                 else:
                     keys[i] = key_type(key)
-
-            if np.isscalar(key):  # key should be an int
+            elif np.isscalar(key):  # key should be an int
                 while key < 0:
                     key += self.shape[dim - newaxis_count]
+            else:
+                raise TypeError(f"Unexpected key type: {key_type}")
+
             new_keys[dim] = key
             dim += 1
         return tuple(new_keys)
@@ -408,14 +398,15 @@ class LabeledArray(np.ndarray):
         n_idx = []
         for i, label_key in enumerate(label_keys):
             if label_key is None:
-                new_labels.append(np.array(['1']))
+                new_labels.append(Labels(['1']))
                 j += 1
                 n_idx.append(i)
-            elif not np.isscalar(label_key):
+            elif np.isscalar(label_key):  # basic indexing triggered
+                continue
+            elif self.labels[i - j][label_key].ndim > 1:
+                new_labels.extend(self.labels[i - j][label_key].decompose())
+            else:
                 new_labels.append(self.labels[i - j][label_key])
-                if new_labels[-1].ndim > 1:
-                    l = new_labels.pop(-1)
-                    new_labels.extend(l.decompose())
 
         out = super().__getitem__(keys)
 
@@ -636,7 +627,7 @@ class LabeledArray(np.ndarray):
         else:
             raise ValueError("indices and axis must have the same length")
 
-        return self[tuple(idx)]
+        return self[*tuple(idx)]
 
     def dropna(self) -> 'LabeledArray':
         """Remove all nan values from the array.
@@ -763,10 +754,10 @@ class Labels(np.ndarray):
         new_labels = [[None for _ in range(s)] for s in self.shape]
         for i, dim in enumerate(self.shape):
             for j in range(dim):
-                row = np.take(self, j, axis=i).reshape(-1, self.ndim)
+                row = np.take(self, j, axis=i)[:, None]
                 common = _longest_common_substring(tuple(map(tuple, row)))
                 if len(common) == 0:
-                    common = list(set(d[i] for d in row))
+                    common = list(set(d[0] for d in row))
                 new_labels[i][j] = self.delimiter.join(common)
         return list(map(Labels, new_labels))
 
