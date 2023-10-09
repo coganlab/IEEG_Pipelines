@@ -720,7 +720,7 @@ class Labels(np.ndarray):
             dtype = f'U{np.max(np.char.str_len(arr))}'
         # Input array is an already formed ndarray instance
         # We first cast to be our class type
-        obj = np.asarray(input_array, dtype=dtype).view(cls)
+        obj = np.squeeze(np.asarray(input_array, dtype=dtype)).view(cls)
         setattr(obj, 'delimiter', delim)
         arr = obj.__array__().flatten()
         assert len(np.unique(arr)) == len(arr), f"Labels {arr} must be unique"
@@ -750,14 +750,27 @@ class Labels(np.ndarray):
         return Labels(result)
 
     def decompose(self) -> list['Labels', ...]:
-        """Decompose a Labels object into a list of 1d Labels objects."""
+        """Decompose a Labels object into a list of 1d Labels objects.
+
+        Examples
+        --------
+        >>> Labels(['a-d', 'a-c', 'b-d', 'b-c']).reshape(2,2).decompose()
+        [['a', 'b'], ['d', 'c']]
+        >>> Labels(['a-c-e', 'a-c-f', 'a-d-e', 'a-d-f', 'b-c-e', 'b-c-f',
+        ... 'b-d-e', 'b-d-f']).reshape(2,2,2).decompose()
+        [['a', 'b'], ['c', 'd'], ['e', 'f']]
+        >>> (Labels(['a','b','c']) @ Labels(['d','e','f','g'])).reshape(
+        ... 2,6).decompose() # doctest: +ELLIPSIS
+        [['b-d-a-f-a-g-a-d-a-e-b-e', 'c-e-c-d-c-f-b-g-b-f-c-g'], ['b-f-a ...
+        """
         new_labels = [[None for _ in range(s)] for s in self.shape]
         for i, dim in enumerate(self.shape):
             for j in range(dim):
-                row = np.take(self, j, axis=i)[:, None]
-                common = _longest_common_substring(tuple(map(tuple, row)))
+                row = np.take(self, j, axis=i).flatten()
+                common = _longest_common_substring(tuple(map(
+                    lambda x: tuple(x.split(self.delimiter)), row)))
                 if len(common) == 0:
-                    common = list(set(d[0] for d in row))
+                    common = list(set(d for d in row))
                 new_labels[i][j] = self.delimiter.join(common)
         return list(map(Labels, new_labels))
 
