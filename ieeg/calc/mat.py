@@ -403,10 +403,12 @@ class LabeledArray(np.ndarray):
                 n_idx.append(i)
             elif np.isscalar(label_key):  # basic indexing triggered
                 continue
-            elif self.labels[i - j][label_key].ndim > 1:
-                new_labels.extend(self.labels[i - j][label_key].decompose())
             else:
-                new_labels.append(self.labels[i - j][label_key])
+                labels = np.atleast_1d(np.squeeze(self.labels[i - j][label_key]))
+                if labels.ndim > 1:
+                    new_labels.extend(labels.decompose())
+                else:
+                    new_labels.append(labels)
 
         out = super().__getitem__(keys)
 
@@ -614,6 +616,45 @@ class LabeledArray(np.ndarray):
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
 
     def take(self, indices, axis=None, **kwargs):
+        """Take elements from an array along an axis.
+
+        This function does not support the out argument.
+
+        Parameters
+        ----------
+        indices : array_like
+            The indices of the values to extract.
+        axis : int, optional
+            The axis over which to select values, by default None.
+        kwargs : dict
+            Additional keyword arguments to pass to np.take.
+
+        Examples
+        --------
+        >>> arr = np.arange(24).reshape((2, 3, 4))
+        >>> labels = [('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
+        >>> ad = LabeledArray(arr, labels)
+        >>> ad.take([0, 2], axis=1)
+        array([[[ 0,  1,  2,  3],
+                [ 8,  9, 10, 11]],
+        <BLANKLINE>
+               [[12, 13, 14, 15],
+                [20, 21, 22, 23]]])
+        labels(['a', 'b']
+               ['c', 'e']
+               ['f', 'g', 'h', 'i'])
+        >>> np.take_along_axis(ad, np.array([[[0, 1]]]), axis=2)
+        array([[[ 0,  1],
+                [ 4,  5],
+                [ 8,  9]],
+        <BLANKLINE>
+               [[12, 13],
+                [16, 17],
+                [20, 21]]])
+        labels(['a', 'b']
+               ['c', 'd', 'e']
+               ['f', 'g'])
+        """
 
         idx = [slice(None)] * self.ndim
 
@@ -720,7 +761,7 @@ class Labels(np.ndarray):
             dtype = f'U{np.max(np.char.str_len(arr))}'
         # Input array is an already formed ndarray instance
         # We first cast to be our class type
-        obj = np.squeeze(np.asarray(input_array, dtype=dtype)).view(cls)
+        obj = np.asarray(input_array, dtype=dtype).view(cls)
         setattr(obj, 'delimiter', delim)
         arr = obj.__array__().flatten()
         assert len(np.unique(arr)) == len(arr), f"Labels {arr} must be unique"
@@ -772,6 +813,8 @@ class Labels(np.ndarray):
                 if len(common) == 0:
                     common = list(set(d for d in row))
                 new_labels[i][j] = self.delimiter.join(common)
+            new_labels[i] = _make_array_unique(np.array(new_labels[i]),
+                                               self.delimiter)
         return list(map(Labels, new_labels))
 
     def find(self, value) -> int:
@@ -781,6 +824,29 @@ class Labels(np.ndarray):
             raise IndexError(f"{value} not found in {arr}")
         else:
             return int(idx[0])
+
+
+def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
+    """Make an array unique by appending a number to duplicate values."""
+    if len(arr) == len(np.unique(arr)):
+        return arr
+
+    # Get the unique values and their counts
+    unique, counts = np.unique(arr, return_counts=True)
+    arr = arr.astype('U' + str(int(str(arr.dtype)[2]) + 4))
+
+    # Get the indices of the duplicate values
+    dup_idx = np.where(counts > 1)[0]
+
+    # Loop through the duplicates and append a number to them
+    for idx in dup_idx:
+        # Get the indices of the duplicate values
+        idxs = np.where(arr == unique[idx])[0]
+        # Loop through the indices and append a number to the values
+        for i, j in enumerate(idxs):
+            arr[i] = f"{arr[i]}{delimiter}{i}"
+
+    return arr
 
 
 def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
