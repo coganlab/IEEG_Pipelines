@@ -426,8 +426,9 @@ class LabeledArray(np.ndarray):
             else:
                 labels = np.atleast_1d(np.squeeze(self.labels[i - j][label_key]))
                 if labels.ndim > 1:
-                    new_labels[i - k:i - k + len(labels)] = labels.decompose()
-                    k += len(labels) - 1
+                    lab_list = labels.decompose()
+                    new_labels[i - k:i - k + len(labels)] = lab_list
+                    k += len(lab_list) - 1
                 else:
                     new_labels[i - k] = labels
 
