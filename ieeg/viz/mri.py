@@ -393,7 +393,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'both', fig: Brain = None,
               trans=None, color: matplotlib.colors = (1, 1, 1),
-              size: float = 0.35, show: bool = True, background: str = 'white'
+              size: float = 0.35, show: bool = True, background: str = 'white', title: str = None
               ) -> Brain:
     """Plots the electrodes on the subject's brain
 
@@ -425,6 +425,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         Whether to show the figure, by default True
     background: str, optional
         Background color
+    title : string, optional
+        Title the plot
 
     Returns
     -------
@@ -452,6 +454,11 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5, background=background, surf=surface, hemi=hemi,
                     show=show)
+        
+    # Set the title if provided
+    if title is not None:
+        mne.viz.set_3d_title(fig, title, size=40)
+
     if picks is None:
         picks = info.ch_names
     if no_wm:
