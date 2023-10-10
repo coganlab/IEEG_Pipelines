@@ -139,7 +139,7 @@ class LabeledArray(np.ndarray):
     array([[13, 14],
            [12, 15]])
     labels(['g-h', 'f-i']
-           ['g-f', 'h-i'])
+           ['f-g', 'h-i'])
     >>> ad[:, ('d','e'),][..., ('g', 'h'),].labels
     [['a', 'b'], ['d', 'e'], ['g', 'h']]
     >>> ad['a', 'd', ('g', 'i', 'f'),]
@@ -175,11 +175,24 @@ class LabeledArray(np.ndarray):
         if obj is None:
             return
         self.labels = getattr(obj, 'labels', kwargs.pop('labels', ()))
-        super().__array_finalize__(obj, *args, **kwargs)
+        super(LabeledArray, self).__array_finalize__(obj, *args, **kwargs)
+
+    def __reduce__(self):
+        # Get the parent's __reduce__ tuple
+        pickled_state = super(LabeledArray, self).__reduce__()
+        # Create our own tuple to pass to __setstate__
+        new_state = pickled_state[2] + (self.labels,)
+        # Return a tuple that replaces the parent's __setstate__ tuple with our own
+        return (pickled_state[0], pickled_state[1], new_state)
+
+    def __setstate__(self, state):
+        self.labels = state[-1]  # Set the info attribute
+        # Call the parent's __setstate__ with the other tuple elements.
+        super(LabeledArray, self).__setstate__(state[0:-1])
 
     def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
         la_inputs = (i for i in inputs if isinstance(i, LabeledArray))
-        labels = deepcopy(next(la_inputs).labels)
+        labels = next(la_inputs).labels.copy()
         inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
                        else i for i in inputs)
         if out is not None:
@@ -206,7 +219,8 @@ class LabeledArray(np.ndarray):
                     i += 1
                 labels = tuple(labels)
 
-        outputs = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
+        outputs = super(LabeledArray, self).__array_ufunc__(
+            ufunc, method, *inputs, **kwargs)
         if isinstance(outputs, tuple):
             outputs = tuple(LabeledArray(o, labels)
                             if isinstance(o, np.ndarray)
@@ -222,7 +236,8 @@ class LabeledArray(np.ndarray):
     def swapaxes(self, axis1, axis2):
         new = list(self.labels)
         new[axis1], new[axis2] = new[axis2], new[axis1]
-        return LabeledArray(super().swapaxes(axis1, axis2), new)
+        return LabeledArray(super(LabeledArray, self).swapaxes(axis1, axis2),
+                            new)
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
@@ -392,38 +407,45 @@ class LabeledArray(np.ndarray):
 
     def __getitem__(self, orig_keys):
         keys, label_keys = self._to_coords(orig_keys)
-        new_labels = []
+        out = super(LabeledArray, self).__getitem__(keys)
+        if out.ndim == 0:
+            return out[()]
 
+        # determine the new labels
+        new_labels = [None] * out.ndim
         j = 0
-        n_idx = []
+        k = 0
         for i, label_key in enumerate(label_keys):
+
             if label_key is None:
-                new_labels.append(Labels(['1']))
+                new_labels[i - k] = Labels(['1'])
                 j += 1
-                n_idx.append(i)
             elif np.isscalar(label_key):  # basic indexing triggered
-                continue
+                k += 1
+            elif i - k >= out.ndim:
+                raise IndexError(f"Too many indices for array: "
+                                 f"array is {out.ndim}-dimensional, "
+                                 f"but {i + 1} were indexed")
             else:
                 labels = np.atleast_1d(np.squeeze(self.labels[i - j][label_key]))
                 if labels.ndim > 1:
-                    new_labels.extend(labels.decompose())
+                    new_labels[i - k:i - k + len(labels)] = labels.decompose()
+                    k += len(labels) - 1
                 else:
-                    new_labels.append(labels)
+                    new_labels[i - k] = labels
 
-        out = super().__getitem__(keys)
-
-        if out.ndim == 0:
-            return out[()]
-        assert out.ndim == len(new_labels), \
-            f"keys must have the same length as the number of dimensions, " \
-            f"instead got {out.ndim} and {len(new_labels)}"
+        if any(l is None for l in new_labels):
+            raise IndexError(f"Too few indices for array: array is {out.ndim}"
+                             f"-dimensional, but "
+                             f"{len([l for l in new_labels if l is not None])}"
+                             f" were indexed")
 
         setattr(out, 'labels', new_labels)
         return out
 
     def __setitem__(self, keys, value):
         keys, _ = self._to_coords(keys)
-        super().__setitem__(keys, value)
+        super(LabeledArray, self).__setitem__(keys, value)
 
     def __repr__(self):
         return repr(self.__array__()) + f"\nlabels({self._label_formatter()})"
@@ -523,7 +545,7 @@ class LabeledArray(np.ndarray):
         >>> ad.reshape((1, 2, 5)).labels
         [array(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], ...
         """
-        new_array = super().reshape(*shape, order=order)
+        new_array = super(LabeledArray, self).reshape(*shape, order=order)
         new_labels = label_reshape(self.labels, shape, order)
         return LabeledArray(new_array, new_labels)
 
@@ -634,26 +656,12 @@ class LabeledArray(np.ndarray):
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = [('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad.take([0, 2], axis=1)
-        array([[[ 0,  1,  2,  3],
-                [ 8,  9, 10, 11]],
-        <BLANKLINE>
-               [[12, 13, 14, 15],
-                [20, 21, 22, 23]]])
-        labels(['a', 'b']
-               ['c', 'e']
-               ['f', 'g', 'h', 'i'])
-        >>> np.take_along_axis(ad, np.array([[[0, 1]]]), axis=2)
-        array([[[ 0,  1],
-                [ 4,  5],
-                [ 8,  9]],
-        <BLANKLINE>
-               [[12, 13],
-                [16, 17],
-                [20, 21]]])
-        labels(['a', 'b']
-               ['c', 'd', 'e']
-               ['f', 'g'])
+        >>> ad.take([0, 2], axis=1).labels
+        [['a', 'b'], ['c', 'e'], ['f', 'g', 'h', 'i']]
+        >>> np.take_along_axis(ad, np.array([[[0, 1]]]), axis=2).labels
+        [['a', 'b'], ['c', 'd', 'e'], ['f', 'g']]
+        >>> np.take(ad, np.array([[0,2], [1,3]]), axis=2).labels
+        [['a', 'b'], ['c', 'd', 'e'], ['f-h', 'g-i'], ['f-g', 'h-i']]
         """
 
         idx = [slice(None)] * self.ndim
@@ -668,7 +676,13 @@ class LabeledArray(np.ndarray):
         else:
             raise ValueError("indices and axis must have the same length")
 
-        return self[*tuple(idx)]
+        out = super(LabeledArray, self).take(indices, axis, **kwargs)
+        labels = [l[i] for i, l in zip(idx, self.labels)
+                  if not np.isscalar(l[i])]
+        for i, l in enumerate(labels):
+            if l.ndim > 1:
+                labels = labels[:i] + l.decompose()
+        return LabeledArray(out, labels, dtype=self.dtype)
 
     def dropna(self) -> 'LabeledArray':
         """Remove all nan values from the array.
@@ -711,8 +725,7 @@ class LabeledArray(np.ndarray):
                 new_labels[i] = tuple(np.array(new_labels[i])[~mask])
             idx.append(~mask)
         index = np.ix_(*idx)
-        new_array = LabeledArray(np.array(self)[index], new_labels)
-        return new_array
+        return self[index]
 
     def appended(self, arr: 'LabeledArray', axis: int = 0) -> 'LabeledArray':
         """Append a LabeledArray to the end of this LabeledArray.
@@ -741,35 +754,42 @@ class LabeledArray(np.ndarray):
         """
         self.labels += arr.labels[axis]
         new_array = concatenate_arrays([self, arr], axis).astype(self.dtype)
-        return LabeledArray(new_array, self.labels)
+        return LabeledArray(new_array, self.labels, dtype=self.dtype)
 
 
 class Labels(np.ndarray):
     """A class for storing labels for a LabeledArray."""
+    __slots__ = ['delimiter', '__dict__']
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
-        arr = np.asarray(input_array)
-        # Determine the smallest data type that can represent the data
-        if np.issubdtype(arr.dtype, np.number):
-            if np.all(np.mod(arr, 1) == 0):
-                # All values are integers
-                dtype = 'int'
-            else:
-                # All values are numbers (integers or floats)
-                dtype = 'float'
-        else:
-            # Not all values are numbers, so use objects
-            dtype = f'U{np.max(np.char.str_len(arr))}'
-        # Input array is an already formed ndarray instance
-        # We first cast to be our class type
-        obj = np.asarray(input_array, dtype=dtype).view(cls)
+        obj = np.asarray(input_array).view(cls)
         setattr(obj, 'delimiter', delim)
-        arr = obj.__array__().flatten()
-        assert len(np.unique(arr)) == len(arr), f"Labels {arr} must be unique"
+        # cls.check_uniqueness(obj)
         return obj
+
+    def __reduce__(self):
+        # Get the parent's __reduce__ tuple
+        pickled_state = super(Labels, self).__reduce__()
+        # Create our own tuple to pass to __setstate__
+        new_state = pickled_state[2] + (self.delimiter,)
+        # Return a tuple that replaces the parent's __setstate__ tuple with our own
+        return (pickled_state[0], pickled_state[1], new_state)
+
+    def __setstate__(self, state):
+        self.delimiter = state[-1]  # Set the info attribute
+        # Call the parent's __setstate__ with the other tuple elements.
+        super(Labels, self).__setstate__(state[0:-1])
 
     def __array_finalize__(self, obj):
         if obj is None: return
         self.delimiter = getattr(obj, 'delimiter', '-')
+
+    @staticmethod
+    def check_uniqueness(arr):
+        if arr.ndim == 1:
+            assert len(set(arr)) == len(arr), f"Labels {arr} must be unique"
+        else:
+            for sub_arr in arr:
+                Labels.check_uniqueness(sub_arr)
 
     def __str__(self):
         return self.tolist().__str__()
@@ -802,16 +822,16 @@ class Labels(np.ndarray):
         [['a', 'b'], ['c', 'd'], ['e', 'f']]
         >>> (Labels(['a','b','c']) @ Labels(['d','e','f','g'])).reshape(
         ... 2,6).decompose() # doctest: +ELLIPSIS
-        [['b-d-a-f-a-g-a-d-a-e-b-e', 'c-e-c-d-c-f-b-g-b-f-c-g'], ['b-f-a ...
+        [['a-d-a-e-a-f-a-g-b-d-b-e', 'b-f-b-g-c-d-c-e-c-f-c-g'], ['a-d-b-f'...
         """
         new_labels = [[None for _ in range(s)] for s in self.shape]
         for i, dim in enumerate(self.shape):
             for j in range(dim):
-                row = np.take(self, j, axis=i).flatten()
+                row = np.take(self, j, axis=i).flatten().astype(str)
                 common = _longest_common_substring(tuple(map(
                     lambda x: tuple(x.split(self.delimiter)), row)))
                 if len(common) == 0:
-                    common = list(set(d for d in row))
+                    common = np.unique(row).tolist()
                 new_labels[i][j] = self.delimiter.join(common)
             new_labels[i] = _make_array_unique(np.array(new_labels[i]),
                                                self.delimiter)
