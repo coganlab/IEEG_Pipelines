@@ -1,8 +1,5 @@
-import logging
 from collections.abc import Iterable
 import functools
-import itertools
-from copy import deepcopy
 
 import mne
 
@@ -515,7 +512,9 @@ class LabeledArray(np.ndarray):
         --------
         >>> data = {'a': {'b': {'c': 1}}}
         >>> ad = LabeledArray.from_dict(data, dtype=int)
-        >>> ad.reshape((1, 1, 1))
+        >>> ad.labels
+        [['a'], ['b'], ['c']]
+        >>> ad._reshape((1, 1, 1))
         array([[[1]]])
         labels(['a']
                ['b']
@@ -523,30 +522,30 @@ class LabeledArray(np.ndarray):
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = [('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad.reshape((6, 4))
+        >>> ad._reshape((6, 4))
         array([[ 0,  1,  2,  3],
                [ 4,  5,  6,  7],
                [ 8,  9, 10, 11],
                [12, 13, 14, 15],
                [16, 17, 18, 19],
                [20, 21, 22, 23]])
-        labels(['a', 'b']
-               ['c', 'd', 'e']
+        labels(['a-c', 'a-d', 'a-e', 'b-c', 'b-d', 'b-e']
                ['f', 'g', 'h', 'i'])
-        >>> ad.reshape((6, 4), 'F').labels
-        [('a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'), ('f', 'g', 'h', 'i')]
-        >>> ad.reshape((2, 12)).labels # doctest: +ELLIPSIS
-        [array(['a', 'b'], dtype='<U1'), array(['c', 'd', 'e'], dtype='<U1')...
+        >>> ad._reshape((6, 4), 'F').labels
+        [['a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'], ['f', 'g', 'h', 'i']]
+        >>> ad._reshape((2, 12)).labels # doctest: +ELLIPSIS
+        [['a', 'b'], ['c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
         >>> arr = np.arange(10)
         >>> labels = [list(map(str, arr))]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad.reshape((2, 5)).labels
-        [array(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], ...
-        >>> ad.reshape((1, 2, 5)).labels
-        [array(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], ...
+        >>> ad._reshape((2, 5)).labels
+        [['0-1-2-3-4', '5-6-7-8-9'], ['0-5', '1-6', '2-7', '3-8', '4-9']]
+        >>> ad._reshape((1, 2, 5)).labels # doctest: +ELLIPSIS
+        [['0-1-2-3-4-5-6-7-8-9'], ['0-1-2-3-4', '5-6-7-8-9'], ['0-5', '1-6',...
         """
         new_array = super(LabeledArray, self).reshape(*shape, order=order)
-        new_labels = label_reshape(self.labels, shape, order)
+        lab_mat = functools.reduce(lambda x, y: x @ y, self.labels)
+        new_labels = lab_mat.reshape(*shape, order=order).decompose()
         return LabeledArray(new_array, new_labels)
 
     def prepend_labels(self, pre: str, level: int) -> 'LabeledArray':
@@ -625,14 +624,16 @@ class LabeledArray(np.ndarray):
         assert levels[0] >= 0, "first level must be >= 0"
         assert levels[1] > levels[0], "second level must be > first level"
 
-        new_labels = list(self.labels)
+        new_labels = list(self.labels).copy()
         new_labels.pop(levels[0])
 
         new_labels[levels[1] - 1] = (
                 self.labels[levels[0]] @ self.labels[levels[1]]).flatten()
 
-        arrs = [np.take(self.__array__(), axis=levels[0], indices=i)
-                for i in range(self.shape[levels[0]])]
+        all_idx = ([slice(None) if i != levels[0] else sl for i in
+                    range(self.ndim)] for sl in range(self.shape[levels[0]]))
+
+        arrs = [self.__array__()[*idx] for idx in all_idx]
         new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
 
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
@@ -727,39 +728,11 @@ class LabeledArray(np.ndarray):
         index = np.ix_(*idx)
         return self[index]
 
-    def appended(self, arr: 'LabeledArray', axis: int = 0) -> 'LabeledArray':
-        """Append a LabeledArray to the end of this LabeledArray.
-
-        Parameters
-        ----------
-        arr : LabeledArray
-            The LabeledArray to append to the end of this LabeledArray.
-        axis : int, optional
-            The axis to append the array along, by default 0
-
-        Returns
-        -------
-        LabeledArray
-            The LabeledArray with the appended array.
-
-        Examples
-        --------
-        >>> data1 = {'a': {'b': 1}}
-        >>> data2 = {'a': {'c': 2}}
-        >>> ad1 = LabeledArray.from_dict(data1, dtype=int)
-        >>> ad2 = LabeledArray.from_dict(data2, dtype=int)
-        >>> ad1.appended(ad2, 1)
-        LabeledArray([[1, 2]])
-        labels=(('a',), ('b', 'c'))
-        """
-        self.labels += arr.labels[axis]
-        new_array = concatenate_arrays([self, arr], axis).astype(self.dtype)
-        return LabeledArray(new_array, self.labels, dtype=self.dtype)
-
 
 class Labels(np.ndarray):
     """A class for storing labels for a LabeledArray."""
     __slots__ = ['delimiter', '__dict__']
+
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
         obj = np.asarray(input_array).view(cls)
         setattr(obj, 'delimiter', delim)
@@ -867,97 +840,6 @@ def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
             arr[i] = f"{arr[i]}{delimiter}{i}"
 
     return arr
-
-
-def label_reshape(labels: list[tuple[str, ...], ...], shape: tuple[int, ...],
-                  order: str = 'C', delim: str = '-'
-                  ) -> list[tuple[str, ...], ...]:
-    """Reshape the labels of a LabeledArray.
-
-    Takes the labels corresponding to the shape of an array and reshapes them
-    into the new shape. This is accomplished by 'flattening' the labels and
-    then reassigning and reducing them in the new shape.
-
-    Parameters
-    ----------
-    labels : tuple[tuple[str, ...], ...]
-        The labels to reshape.
-    shape : tuple[int, ...]
-        The new shape of the labels.
-    order : str, optional
-        The order to reshape the labels in, by default 'C'
-    delim : str, optional
-        The delimiter to use when combining labels, by default '-'
-
-    Returns
-    -------
-    tuple[tuple[str, ...], ...]
-        The reshaped labels.
-
-    Examples
-    --------
-    >>> labels = [('az', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
-    >>> label_reshape(labels, (6, 4))
-    [('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), ('f', 'g', 'h', 'i')]
-    >>> label_reshape(labels, (6, 4), 'F')
-    [('az-c', 'b-c', 'az-d', 'b-d', 'az-e', 'b-e'), ('f', 'g', 'h', 'i')]
-    >>> label_reshape(labels, (2, 12)) # doctest: +ELLIPSIS
-    [('az', 'b'), ('c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
-    >>> label_reshape(labels, (3, 2, 4))
-    [('az', 'az-b', 'b'), ('c-d-e', 'c-d-e'), ('f', 'g', 'h', 'i')]
-    >>> labels = labels[:2] + [(1, 2, 3, 4),]
-    >>> label_reshape(labels, (6, 4))
-    [('az-c', 'az-d', 'az-e', 'b-c', 'b-d', 'b-e'), (1, 2, 3, 4)]
-    >>> label_reshape(labels, (2, 12), 'F') # doctest: +ELLIPSIS
-    [('az', 'b'), ('c-1', 'd-1', 'e-1', 'c-2', 'd-2', 'e-2', 'c-3', 'd-3', ...
-    >>> label_reshape(labels, (1, 1, 2, 12))
-    [(1,), (1,), ('az-1', 'b-1'), ('c-1-1', 'c-2-1', 'c-3-1', 'c-4-1', ...
-    """
-    labels = labels.copy()
-    types = list(map(lambda x: type(x[0]), labels))
-    m = 0
-    for i, l in enumerate(labels):
-        labels[i] = tuple(map(str, l))
-        m = max((max(map(len, labels[i])), m))
-    count = int(np.multiply.reduce(shape))
-
-    if order == 'F':
-        prod = ((*reversed(x),) for x in itertools.product(*reversed(labels)))
-    else:
-        prod = itertools.product(*labels)
-
-    # Pre-allocate the output array
-    out = np.empty(count, dtype=np.dtype((f'U{m}', len(labels))))
-
-    # Fill the output array using a loop
-    for i, x in enumerate(prod):
-        if len(x) == 1:
-            x = x[0]
-        out[i] = x
-    out = out.reshape(*shape, len(labels), order=order)
-
-    # now that temp is a char array of corresponding labels, we can factor the
-    # matrix into the new labels
-    new_labels = [[None for _ in range(s)] for s in shape]
-    for i, dim in enumerate(shape):
-        if len(labels[i]) == dim == 1:
-            new_labels[i] = labels[i]
-            continue
-        for j in range(dim):
-            row = np.take(out, j, axis=i).reshape(-1, len(labels))
-            common = _longest_common_substring(tuple(map(tuple, row.tolist())))
-            if len(common) == 0:
-                logging.warn(f"Could not find common substring for "
-                             f"labels dimension {i} index {j}")
-                common = sorted(list(set(d[i] for d in row)),
-                                key=labels[i].index)
-            new_labels[i][j] = delim.join(common)
-        for t in (t for t in set(types) if t is not str):
-            try:
-                new_labels[i] = list(map(t, new_labels[i]))
-            except ValueError:
-                pass
-    return list(map(tuple, new_labels))
 
 
 def _longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
