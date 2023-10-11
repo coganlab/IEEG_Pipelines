@@ -356,7 +356,7 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
     return out
 
 
-def smote(arr: np.ndarray, obs_axis: int = -2,
+def smote2(arr: np.ndarray, obs_axis: int = -2,
           copy: bool = True) -> np.ndarray:
     """Oversampled using SMOTE
 
@@ -384,38 +384,76 @@ def smote(arr: np.ndarray, obs_axis: int = -2,
     return arr
 
 
-def smotev(arr: np.ndarray, obs_axis: int = -2,
-          copy: bool = True) -> np.ndarray:
+def smote(arr: np.ndarray, copy: bool = True) -> np.ndarray:
     """Oversampled using SMOTE
 
-    Assumes the last axis is features, and the first is observations"""
+    Parameters
+    ----------
+    arr : array
+        The data to oversample.
+    copy : bool
+        Whether to copy the data before oversampling.
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+    ... [float("nan"), float("nan")]])
+    >>> smote(arr)
+    array([[1.       , 2.       ],
+           [4.       , 5.       ],
+           [7.       , 8.       ],
+           [2.1455681, 2.1455681]])
+    >>> arr3 = np.stack([arr] * 3)
+    >>> arr3[0, 2, :] = [float("nan")] * 2
+    >>> smote(arr3)[0]
+    array([[ 1.        ,  2.        ],
+           [ 4.        ,  5.        ],
+           [-1.63464955, -1.63464955],
+           [-1.2709644 , -1.2709644 ]])
+    """
 
     if copy:
         arr = arr.copy()
 
-    nan = np.isnan(arr)
-    bad = np.any(nan, -1)
-    for idx in np.ndindex(arr.shape[:obs_axis]):
-        goods = np.where(bad[idx] == False)[0]
-        assert goods.tolist(), f"Completely empty data at {idx}"
+    if arr.ndim == 1:
+        raise ValueError("Cannot apply SMOTE to a 1-dimensional array")
+    elif arr.ndim > 2:
+        for i in range(arr.shape[0]):
+            smote(arr[i], copy=False)
+        return arr
+    else:
+        return smote_2d(arr)
 
-        # Generate random indices
-        rand_indices = np.array([np.random.choice(goods, (2,),
-                                        replace=False) for _ in range(arr.shape[obs_axis])])
 
-        # Generate random array
-        narr = np.random.random((arr.shape[obs_axis], arr.shape[-1]))
+def smote_2d(arr: np.ndarray):
+    # Get indices of rows with NaN values
+    nan = np.isnan(arr).any(axis=1)
+    nan_rows = np.where(nan)[0]
 
-        # Calculate differences
-        diff = arr[rand_indices[:, 0]] - arr[rand_indices[:, 1]]
+    # Get indices of rows without NaN values
+    non_nan_rows = np.where(~nan)[0]
 
-        # Calculate new values
-        new_values = arr[rand_indices[:, 0]] + diff * narr
+    # Check if there are at least two non-NaN rows
+    if len(non_nan_rows) < 2:
+        raise ValueError("Not enough non-NaN rows to apply SMOTE algorithm")
 
-        # Create a mask for the 'bad' values
-        mask = np.array([not val for val in bad])
+    # Construct an array of 3-length vectors for each NaN row
+    vectors = np.empty((len(nan_rows), 3))
 
-        # Replace 'bad' values in the original array with the new values
-        np.putmask(arr, mask, new_values)
+    # First two elements of each vector are different indices of non-NaN rows
+    for i in range(len(nan_rows)):
+        vectors[i, :2] = np.random.choice(non_nan_rows, 2, replace=False)
 
-    return arr
+    # The last element of each vector is a random float between 0 and 1
+    vectors[:, 2] = np.random.random(len(nan_rows))
+
+    # Compute the differences between the selected non-NaN rows
+    diffs = arr[vectors[:, 0].astype(int)] - arr[vectors[:, 1].astype(int)]
+
+    # Multiply the differences by the random multipliers
+    new_values = diffs * vectors[:, 2, None]
+
+    # Fill in the NaN values in the original array with the new values
+    arr[np.isnan(arr)] = new_values.ravel()
+
