@@ -494,9 +494,21 @@ def mixup(arr: np.ndarray, alpha: float = 1.):
     if len(non_nan_rows) < 2:
         raise ValueError("Not enough non-NaN rows to apply mixup algorithm")
 
+    # Construct an array of 3-length vectors for each NaN row
+    vectors = np.empty((len(nan_rows), 2))
+
+    # First two elements of each vector are different indices of non-NaN rows
+    for i in range(len(nan_rows)):
+        vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
+
     # get beta distribution parameters
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
         lam = 1
 
+    x1 = arr[vectors[:, 0].astype(int)]
+    x2 = arr[vectors[:, 1].astype(int)]
+    x_mixed = lam * x1 + (1 - lam) * x2
+
+    arr[np.isnan(arr)] = x_mixed.ravel()
