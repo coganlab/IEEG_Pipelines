@@ -384,13 +384,15 @@ def smote2(arr: np.ndarray, obs_axis: int = -2,
     return arr
 
 
-def smote(arr: np.ndarray, copy: bool = True) -> np.ndarray:
-    """Oversampled using SMOTE
+def oversample_nan(arr: np.ndarray, func: callable, copy: bool = True) -> np.ndarray:
+    """Oversample nan rows using func
 
     Parameters
     ----------
     arr : array
         The data to oversample.
+    func : callable
+        The function to use to oversample the data.
     copy : bool
         Whether to copy the data before oversampling.
 
@@ -420,13 +422,13 @@ def smote(arr: np.ndarray, copy: bool = True) -> np.ndarray:
         raise ValueError("Cannot apply SMOTE to a 1-dimensional array")
     elif arr.ndim > 2:
         for i in range(arr.shape[0]):
-            smote(arr[i], copy=False)
+            oversample_nan(arr[i], func, copy=False)
         return arr
     else:
-        return smote_2d(arr)
+        return func(arr)
 
 
-def smote_2d(arr: np.ndarray):
+def smote(arr: np.ndarray):
     # Get indices of rows with NaN values
     nan = np.isnan(arr).any(axis=1)
     nan_rows = np.where(nan)[0]
@@ -456,4 +458,45 @@ def smote_2d(arr: np.ndarray):
 
     # Fill in the NaN values in the original array with the new values
     arr[np.isnan(arr)] = new_values.ravel()
+
+
+def norm(arr: np.ndarray):
+    """Oversample by obtaining the distribution and randomly selecting"""
+    # Get indices of rows with NaN values
+    nan = np.isnan(arr).any(axis=1)
+    nan_rows = np.where(nan)[0]
+
+    # Get indices of rows without NaN values
+    non_nan_rows = np.where(~nan)[0]
+
+    # Check if there are at least two non-NaN rows
+    if len(non_nan_rows) < 1:
+        raise ValueError("No test data to fit distribution")
+
+    # get the normal distribution of each timepoint
+    dist = np.empty((len(nan_rows), arr.shape[-1]))
+    for i in range(len(nan_rows)):
+        dist[i] = np.random.normal(np.nanmean(arr, axis=0), np.nanstd(arr, axis=0))
+
+    # Fill in the NaN values in the original array with the new values
+    arr[np.isnan(arr)] = dist.ravel()
+
+
+def mixup(arr: np.ndarray, alpha: float = 1.):
+    # Get indices of rows with NaN values
+    nan = np.isnan(arr).any(axis=1)
+    nan_rows = np.where(nan)[0]
+
+    # Get indices of rows without NaN values
+    non_nan_rows = np.where(~nan)[0]
+
+    # Check if there are at least two non-NaN rows
+    if len(non_nan_rows) < 2:
+        raise ValueError("Not enough non-NaN rows to apply mixup algorithm")
+
+    # get beta distribution parameters
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
 

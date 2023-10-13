@@ -803,7 +803,7 @@ class Labels(np.ndarray):
             for j in range(dim):
                 row = np.take(self, j, axis=i).flatten().astype(str)
                 common = _longest_common_substring(tuple(map(
-                    lambda x: tuple(x.split(self.delimiter)), row)))
+                    lambda x: tuple(x.split(self.delimiter, )), row)))
                 if len(common) == 0:
                     common = np.unique(row).tolist()
                 new_labels[i][j] = self.delimiter.join(common)
