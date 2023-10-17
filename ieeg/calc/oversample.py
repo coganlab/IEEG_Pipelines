@@ -95,7 +95,7 @@ def oversample_nan(arr: np.ndarray, func: callable, copy: bool = True) -> np.nda
     return arr
 
 
-@njit()
+@njit(cache=True)
 def find_nan_indices(arr: Array2D) -> tuple:
     """Find the indices of rows with and without NaN values
 
@@ -132,7 +132,7 @@ def find_nan_indices(arr: Array2D) -> tuple:
     return nan_rows, non_nan_rows
 
 
-@njit()
+@njit(cache=True)
 def smote(arr: Array2D) -> None:
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr)
@@ -160,7 +160,7 @@ def smote(arr: Array2D) -> None:
     arr[nan_rows] = diffs * vectors[:, 2, None]
 
 
-@njit()
+@njit(cache=True)
 def norm(arr: Array2D) -> None:
     """Oversample by obtaining the distribution and randomly selecting"""
     # Get indices of rows with NaN values
@@ -185,7 +185,7 @@ def norm(arr: Array2D) -> None:
             arr[row, j] = np.random.normal(mean[j], std[j])
 
 
-@njit()
+@njit(cache=True)
 def mixup(arr: Array2D, alpha: float = 1.) -> None:
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr)
