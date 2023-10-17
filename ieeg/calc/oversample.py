@@ -2,6 +2,7 @@ import numpy as np
 from typing import Literal, Tuple
 from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
+from numba import njit
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -94,6 +95,7 @@ def oversample_nan(arr: np.ndarray, func: callable, copy: bool = True) -> np.nda
     return arr
 
 
+@njit()
 def find_nan_indices(arr: Array2D) -> tuple:
     """Find the indices of rows with and without NaN values
 
@@ -116,8 +118,12 @@ def find_nan_indices(arr: Array2D) -> tuple:
 
     """
 
-    # Get boolean mask of rows with NaN values
-    nan = np.isnan(arr).any(axis=1)
+    # Initialize boolean mask of rows with NaN values
+    nan = np.zeros(arr.shape[0], dtype=np.bool_)
+
+    # Check each row individually
+    for i in range(arr.shape[0]):
+        nan[i] = np.any(np.isnan(arr[i]))
 
     # Get indices of rows with and without NaN values using boolean indexing
     nan_rows = np.nonzero(nan)[0]
@@ -126,27 +132,8 @@ def find_nan_indices(arr: Array2D) -> tuple:
     return nan_rows, non_nan_rows
 
 
-def fast_choose_n(values: Vector, n: int, length: int) -> Array2D:
-
-    # Generate all pairs at once
-    arr = np.random.choice(values, size=(length, n))
-
-    # Find rows where both values are the same
-    same_value_rows = arr[:, 0] == arr[:, 1]
-
-    # While there are any rows with the same value
-    while np.any(same_value_rows):
-        # Replace the second value in those rows
-        arr[same_value_rows, 1] = np.random.choice(values, size=np.sum(
-            same_value_rows))
-
-        # Recalculate which rows have the same value
-        same_value_rows = arr[:, 0] == arr[:, 1]
-    else:
-        return arr
-
-
-def smote(arr: Array2D):
+@njit()
+def smote(arr: Array2D) -> None:
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr)
     n_nan = len(nan_rows)
@@ -166,13 +153,15 @@ def smote(arr: Array2D):
     vectors[:, 2] = np.random.random(n_nan)
 
     # Compute the differences between the selected non-NaN rows
-    diffs = arr[vectors[:, 0].astype(int)] - arr[vectors[:, 1].astype(int)]
+    diffs = (arr[vectors[:, 0].astype(np.intp)] -
+             arr[vectors[:, 1].astype(np.intp)])
 
     # Multiply the differences by the random multipliers
     arr[nan_rows] = diffs * vectors[:, 2, None]
 
 
-def norm(arr: Array2D):
+@njit()
+def norm(arr: Array2D) -> None:
     """Oversample by obtaining the distribution and randomly selecting"""
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr)
@@ -181,28 +170,36 @@ def norm(arr: Array2D):
     if len(non_nan_rows) < 1:
         raise ValueError("No test data to fit distribution")
 
-    # Calculate mean and standard deviation once on non-NaN rows
-    mean = np.mean(arr[non_nan_rows], axis=0)
-    std = np.std(arr[non_nan_rows], axis=0)
+    # Initialize mean and standard deviation arrays
+    mean = np.zeros(arr.shape[1])
+    std = np.zeros(arr.shape[1])
+
+    # Calculate mean and standard deviation for each column
+    for i in range(arr.shape[1]):
+        mean[i] = np.mean(arr[non_nan_rows, i])
+        std[i] = np.std(arr[non_nan_rows, i])
 
     # Get the normal distribution of each timepoint
-    arr[nan_rows] = np.random.normal(mean, std,
-                                     size=(len(nan_rows), arr.shape[1]))
+    for row in nan_rows:
+        for j in range(arr.shape[1]):
+            arr[row, j] = np.random.normal(mean[j], std[j])
 
 
-def mixup(arr: Array2D, alpha: float = 1.):
+@njit()
+def mixup(arr: Array2D, alpha: float = 1.) -> None:
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr)
+    n_nan = len(nan_rows)
 
     # Check if there are at least two non-NaN rows
     if len(non_nan_rows) < 2:
         raise ValueError("Not enough non-NaN rows to apply mixup algorithm")
 
     # Construct an array of 2-length vectors for each NaN row
-    vectors = np.empty((len(nan_rows), 2))
+    vectors = np.empty((n_nan, 2))
 
     # The two elements of each vector are different indices of non-NaN rows
-    for i in range(len(nan_rows)):
+    for i in range(n_nan):
         vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
 
     # get beta distribution parameters
@@ -211,7 +208,7 @@ def mixup(arr: Array2D, alpha: float = 1.):
     else:
         lam = 1
 
-    x1 = arr[vectors[:, 0].astype(int)]
-    x2 = arr[vectors[:, 1].astype(int)]
+    x1 = arr[vectors[:, 0].astype(np.intp)]
+    x2 = arr[vectors[:, 1].astype(np.intp)]
 
     arr[nan_rows] = lam * x1 + (1 - lam) * x2

@@ -5,6 +5,7 @@ from skimage import measure
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
+from numba import njit
 
 
 def weighted_avg_and_std(values, weights, axis=0):
@@ -675,6 +676,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         return p
 
 
+@njit()
 def sum_squared(x: np.ndarray) -> np.ndarray | float:
     """Compute norm of an array.
 
@@ -691,9 +693,7 @@ def sum_squared(x: np.ndarray) -> np.ndarray | float:
     return np.dot(x_flat, x_flat)
 
 
-# @njit([t.Tuple((float64[:, ::1], complex128[:, ::1]))(
-#     float64[:, :], complex128[:, :, ::1])], nogil=True, boundscheck=True,
-#     fastmath=True, cache=True)
+@njit()
 def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
                 ) -> (np.ndarray, np.ndarray):
     """computes the F-statistic for sine wave in locally-white noise.
