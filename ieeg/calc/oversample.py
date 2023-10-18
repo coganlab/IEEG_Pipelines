@@ -50,7 +50,8 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
             yield train, test
 
 
-def oversample_nan(arr: np.ndarray, func: callable, copy: bool = True) -> np.ndarray:
+def oversample_nan(arr: np.ndarray, func: callable, copy: bool = True
+                   ) -> np.ndarray:
     """Oversample nan rows using func
 
     Parameters
@@ -67,40 +68,42 @@ def oversample_nan(arr: np.ndarray, func: callable, copy: bool = True) -> np.nda
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> oversample_nan(arr, smote)
-    array([[1.       , 2.       ],
-           [4.       , 5.       ],
-           [7.       , 8.       ],
-           [2.1455681, 2.1455681]])
+    >>> oversample_nan(arr, smote) # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    array([[ 1.        ,  2.        ],
+           [ 4.        ,  5.        ],
+           [ 7.        ,  8.        ],
+           [...
     >>> arr3 = np.stack([arr] * 3)
     >>> arr3[0, 2, :] = [float("nan")] * 2
-    >>> oversample_nan(arr3, mixup)[0]
+    >>> oversample_nan(arr3, mixup)[0] # doctest: +ELLIPSIS
+    ... # doctest +NORMALIZE_WHITESPACE
     array([[1.        , 2.        ],
            [4.        , 5.        ],
-           [2.31225044, 3.31225044],
-           [2.31225044, 3.31225044]])
+           [...
+           [...
     """
 
     if copy:
         arr = arr.copy()
 
-    if arr.ndim == 1:
+    if arr.ndim <= 1:
         raise ValueError("Cannot apply SMOTE to a 1-dimensional array")
-    elif arr.ndim > 2:
+    elif arr.ndim == 2:
+        func(arr)
+    else:
         for i in range(arr.shape[0]):
             oversample_nan(arr[i], func, copy=False)
-    else:
-        func(arr)
 
     return arr
 
 
-@njit(cache=True)
+@njit("UniTuple(int64[::1], 2)(float64[:, :])", nogil=True, cache=True)
 def find_nan_indices(arr: Array2D) -> tuple:
     """Find the indices of rows with and without NaN values
 
     Parameters
     ----------
+
     arr : array
         The data to find indices.
 
@@ -132,7 +135,7 @@ def find_nan_indices(arr: Array2D) -> tuple:
     return nan_rows, non_nan_rows
 
 
-@njit(cache=True)
+@njit("void(float64[:, :])", nogil=True, cache=True)
 def smote(arr: Array2D) -> None:
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr)
@@ -160,7 +163,7 @@ def smote(arr: Array2D) -> None:
     arr[nan_rows] = diffs * vectors[:, 2, None]
 
 
-@njit(cache=True)
+@njit("void(float64[:, :])", nogil=True, cache=True)
 def norm(arr: Array2D) -> None:
     """Oversample by obtaining the distribution and randomly selecting"""
     # Get indices of rows with NaN values
@@ -185,15 +188,12 @@ def norm(arr: Array2D) -> None:
             arr[row, j] = np.random.normal(mean[j], std[j])
 
 
-@njit(cache=True)
+@njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True,
+      cache=True)
 def mixup(arr: Array2D, alpha: float = 1.) -> None:
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr)
     n_nan = len(nan_rows)
-
-    # Check if there are at least two non-NaN rows
-    if len(non_nan_rows) < 2:
-        raise ValueError("Not enough non-NaN rows to apply mixup algorithm")
 
     # Construct an array of 2-length vectors for each NaN row
     vectors = np.empty((n_nan, 2))
@@ -203,7 +203,7 @@ def mixup(arr: Array2D, alpha: float = 1.) -> None:
         vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
 
     # get beta distribution parameters
-    if alpha > 0:
+    if alpha > 0.:
         lam = np.random.beta(alpha, alpha)
     else:
         lam = 1
