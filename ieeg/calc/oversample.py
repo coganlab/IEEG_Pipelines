@@ -70,21 +70,22 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
     # >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> oversample_nan(arr, norm, 0) # doctest: +ELLIPSIS
+    >>> oversample_nan(arr, normnd, 0)
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
            [..., ...]])
-    >>> arr3 = np.stack([arr] * 3)
-    >>> arr3[0, 2, :] = [float("nan")] * 2
-    >>> oversample_nan(arr3, mixup, 1)[...,0]
+    >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
+    >>> arr3[0, 2, :] = [float("nan")] * 4
+    >>> oversample_nan(arr3, mixupnd, 1)
     array([[1.        , 4.        , ..., ...],
            [1.        , 4.        , ..., ...],
            [1.        , 4.        , ..., ...]])
-    >>> oversample_nan(arr3, norm, 1)[...,0] # doctest: +ELLIPSIS
+    >>> oversample_nan(arr3, normnd, 1)
     array([[1.        , 4.        , ..., ...],
            [1.        , 4.        , ..., ...],
            [1.        , 4.        , ..., ...]])
+    >>> oversample_nan(arr3, normnd, 0)
     """
 
     if copy:
@@ -157,7 +158,8 @@ def norm(arr: np.ndarray, obs_axis: int) -> None:
     arr[tuple(nan_idx)] = np.random.normal(mean, std, out_shape)
 
 
-def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
+@njit(nogil=True, cache=True)
+def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     """Oversample by mixing two random non-NaN observations
 
     Parameters
@@ -178,48 +180,57 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> mixup(arr, 0)
+    >>> mixupnd(arr, 0)
     >>> arr
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
            [4.30524841, 2.07112157]])
     """
-    # Get indices of rows with NaN values
-    nan_rows, non_nan_rows = find_nan_indices(arr, obs_axis)
 
-    # Check if there are at least two non-NaN rows
-    if (n := len(non_nan_rows)) < 2:
-        raise ValueError(f"Not enough non-NaN observations ({n}) to apply "
-                         f"mixup algorithm")
+    # create a view of the array with the observation axis in the second to last position
+    arr_in = np.swapaxes(arr, obs_axis, -2)
 
-    # get shape and size of inplace edits (nan_rows)
-    nan_shape = tuple(arr.shape[i] if i != obs_axis else len(nan_rows)
-                      for i in range(arr.ndim))
-    nan_size = np.prod(nan_shape, dtype=np.int64)
-
-    # The two elements of each vector are different indices of non-NaN observations
-    idx_r = sortbased_rand(n, nan_size, 2)
-    vectors = non_nan_rows[idx_r.reshape(nan_shape + (2,))]
-
-    # get beta distribution parameters
-    if alpha > 0.:
-        lam = np.random.beta(alpha, alpha, nan_shape)
+    if arr.ndim == 2:
+        mixup2d(arr_in, alpha)
+    elif arr.ndim > 2:
+        for ijk in np.ndindex(arr.shape[:-2]):
+            mixup2d(arr_in[ijk], alpha)
     else:
-        lam = 1
+        raise ValueError("Cannot apply mixup to a 1-dimensional array")
 
-    # pick two random non-nan observations
-    idx_shape = [np.arange(s) if i != obs_axis else np.arange(1)
-                 for i, s in enumerate(arr.shape)]
-    idx = np.meshgrid(*idx_shape, indexing='ij')
-    idx2 = (idx1 := [np.broadcast_to(ix, nan_shape) for ix in idx]).copy()
-    idx1[obs_axis], idx2[obs_axis] = vectors[..., 0], vectors[..., 1]
-    x1, x2 = arr[tuple(idx1)], arr[tuple(idx2)]
 
-    # mixup at nan indices
-    nan_idx = [slice(None)] * arr.ndim
-    nan_idx[obs_axis] = nan_rows
-    arr[tuple(nan_idx)] = x1 * lam + x2 * (1 - lam)
+@njit(nogil=True, cache=True)
+def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
+    """Oversample by obtaining the distribution and randomly selecting
+
+    Parameters
+    ----------
+    arr : array
+        The data to oversample.
+    obs_axis : int
+        The axis along which to apply func.
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> arr = np.array([1, 2, 4, 5, 7, 8,
+    ... float("nan"), float("nan")])
+    >>> normnd(arr)
+    >>> arr
+    array([1.        , 2.        , 4.        , 5.        , 7.        ,
+           8.        , 7.80305575, 6.2762294 ])
+    """
+
+    # create a view of the array with the observation axis in the last position
+    arr_in = np.swapaxes(arr, obs_axis, -1)
+    if arr.ndim == 1:
+        norm1d(arr_in)
+    elif arr.ndim > 1:
+        for ijk in np.ndindex(arr_in.shape[:-1]):
+            norm1d(arr_in[ijk])
+    else:
+        raise ValueError("Cannot apply norm to a 0-dimensional array")
 
 
 def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
@@ -246,6 +257,54 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
     """
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]
+
+
+@njit("void(float64[:])", nogil=True)
+def norm1d(arr: Vector) -> None:
+    """Oversample by obtaining the distribution and randomly selecting"""
+    # Get indices of rows with NaN values
+    wh = np.isnan(arr)
+    non_nan_rows = np.flatnonzero(~wh)
+
+    # Check if there are at least two non-NaN rows
+    if len(non_nan_rows) < 1:
+        raise ValueError("No test data to fit distribution")
+
+    # Calculate mean and standard deviation for each column
+    mean = np.mean(arr[non_nan_rows])
+    std = np.std(arr[non_nan_rows])
+
+    # Get the normal distribution of each timepoint
+    for i in np.flatnonzero(wh):
+        arr[i] = np.random.normal(mean, std)
+
+
+@njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
+def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
+    # Get indices of rows with NaN values
+    wh = np.zeros(arr.shape[0], dtype=np.bool_)
+    for i in range(arr.shape[0]):
+        wh[i] = np.any(np.isnan(arr[i]))
+    non_nan_rows = np.flatnonzero(~wh)
+    n_nan = np.sum(wh)
+
+    # Construct an array of 2-length vectors for each NaN row
+    vectors = np.empty((n_nan, 2))
+
+    # The two elements of each vector are different indices of non-NaN rows
+    for i in range(n_nan):
+        vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
+
+    # get beta distribution parameters
+    if alpha > 0.:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+
+    x1 = arr[vectors[:, 0].astype(np.intp)]
+    x2 = arr[vectors[:, 1].astype(np.intp)]
+
+    arr[wh] = lam * x1 + (1 - lam) * x2
 
 
 def smote(arr: np.ndarray) -> None:
