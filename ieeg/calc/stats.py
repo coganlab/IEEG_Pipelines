@@ -571,6 +571,7 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
         return cluster_p_values
 
 
+@njit(nogil=True, cache=True)
 def tail_compare(diff: np.ndarray | float | int,
                  obs_diff: np.ndarray | float | int, tails: int = 1
                  ) -> np.ndarray | bool:

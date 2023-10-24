@@ -9,6 +9,7 @@ from ieeg import Signal
 import numpy as np
 from numpy.matlib import repmat
 from numpy.typing import ArrayLike
+from numba import njit, extending, typed
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -153,7 +154,6 @@ class LabeledArray(np.ndarray):
     [1] https://numpy.org/doc/stable/user/basics.subclassing.html
     [2] https://numpy.org/doc/stable/user/basics.indexing.html
     """
-    __slots__ = ['labels', '__dict__']
 
     def __new__(cls, input_array, labels: list[tuple[str, ...], ...] = (),
                 delimiter: str = '-', **kwargs):
@@ -351,7 +351,7 @@ class LabeledArray(np.ndarray):
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
 
-    def _parse_index(self, keys: list):
+    def _parse_index(self, keys: list) -> list:
         ndim = self.ndim
         new_keys = [range(self.shape[i]) for i in range(ndim)]
         dim = 0
@@ -390,17 +390,17 @@ class LabeledArray(np.ndarray):
 
             new_keys[dim] = key
             dim += 1
-        return tuple(new_keys)
+        return new_keys
 
     def _to_coords(self, orig_keys):
         if np.isscalar(orig_keys):
             keys = [orig_keys]
             l_keys = self._parse_index(keys)
-            return keys[0], l_keys
+            return keys[0], tuple(l_keys)
         else:
             keys = list(orig_keys)
             l_keys = self._parse_index(keys)
-            return tuple(keys), l_keys
+            return tuple(keys), tuple(l_keys)
 
     def __getitem__(self, orig_keys):
         keys, label_keys = self._to_coords(orig_keys)
@@ -432,11 +432,9 @@ class LabeledArray(np.ndarray):
                 else:
                     new_labels[i - k] = labels
 
-        if any(l is None for l in new_labels):
+        if any(l_none := l is None for l in new_labels):
             raise IndexError(f"Too few indices for array: array is {out.ndim}"
-                             f"-dimensional, but "
-                             f"{len([l for l in new_labels if l is not None])}"
-                             f" were indexed")
+                             f"-dimensional, but {sum(~l_none)} were indexed")
 
         setattr(out, 'labels', new_labels)
         return out
@@ -737,7 +735,6 @@ class Labels(np.ndarray):
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
         obj = np.asarray(input_array).view(cls)
         setattr(obj, 'delimiter', delim)
-        # cls.check_uniqueness(obj)
         return obj
 
     def __reduce__(self):
@@ -756,14 +753,6 @@ class Labels(np.ndarray):
     def __array_finalize__(self, obj):
         if obj is None: return
         self.delimiter = getattr(obj, 'delimiter', '-')
-
-    @staticmethod
-    def check_uniqueness(arr):
-        if arr.ndim == 1:
-            assert len(set(arr)) == len(arr), f"Labels {arr} must be unique"
-        else:
-            for sub_arr in arr:
-                Labels.check_uniqueness(sub_arr)
 
     def __str__(self):
         return self.tolist().__str__()
@@ -820,6 +809,7 @@ class Labels(np.ndarray):
             return int(idx[0])
 
 
+@njit
 def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     """Make an array unique by appending a number to duplicate values."""
     if len(arr) == len(np.unique(arr)):
@@ -886,6 +876,14 @@ def add_to_list_if_not_present(lst: list, element: Iterable):
     lst.extend(x for x in element if not (x in seen or seen.add(x)))
 
 
+@extending.overload(add_to_list_if_not_present)
+def add_jit(lst: list, element: list):
+    seen = set(lst)
+    for x in element:
+        if not (x in seen or seen.add(x)):
+            lst.append(x)
+
+
 def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     """Get all keys of a nested dictionary.
 
@@ -914,14 +912,14 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     """
     if keys is None:
         keys = []
-    if np.isscalar(data):
-        return
-    elif isinstance(data, dict):
+    if isinstance(data, dict):
         if len(keys) < lvl + 1:
             keys.append(list(data.keys()))
         else:
             add_to_list_if_not_present(keys[lvl], data.keys())
         for d in data.values():
+            if np.isscalar(d):
+                continue
             inner_all_keys(d, keys, lvl+1)
     elif isinstance(data, np.ndarray):
         data = np.atleast_1d(data)
@@ -931,7 +929,8 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         else:
             add_to_list_if_not_present(keys[lvl], rows)
         if len(data.shape) > 1:
-            inner_all_keys(data[0], keys, lvl+1)
+            if not np.isscalar(data[0]):
+                inner_all_keys(data[0], keys, lvl+1)
     else:
         raise TypeError(f"Unexpected data type: {type(data)}")
     return tuple(map(tuple, keys))
@@ -995,7 +994,8 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         return np.array(data)
 
 
-def inner_dict(data: np.ndarray) -> dict | None:
+@njit(nogil=True, cache=True)
+def inner_dict(data: np.ndarray | dict) -> dict:
     """Convert a nested array to a nested dictionary.
 
     Parameters
@@ -1018,14 +1018,20 @@ def inner_dict(data: np.ndarray) -> dict | None:
     >>> inner_dict(data)
     {0: {0: {0: 1.0, 1: nan}}, 1: {0: {0: 2.0, 1: 3.0}}}
     """
-    if np.isscalar(data):
+    if isinstance(data, dict):
         return data
-    elif len(data) == 0:
-        return
-    elif isinstance(data, np.ndarray):
-        return {i: inner_dict(d) for i, d in enumerate(data)}
+    elif hasattr(data, 'ndim'):
+        result = {}
+        for i, d in enumerate(data):
+            if data.ndim == 1:
+                result[i] = d
+            elif len(d) > 0:
+                result[i] = inner_dict(d)
+            else:
+                continue
+        return result
     else:
-        return data
+        raise TypeError(f"Unexpected data type: {type(data)}")
 
 
 def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
