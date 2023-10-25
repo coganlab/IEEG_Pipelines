@@ -24,6 +24,11 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
         not_where = np.where(~where)[0]
         where = np.where(where)[0]
 
+        # if there are no nans, then just split the data
+        if len(where) == 0:
+            yield from super(TwoSplitNaN, self).split(X, y, groups)
+            return
+
         # split the data
         nan = X[where, ...]
         not_nan = X[not_where, ...]
@@ -47,6 +52,8 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
 
             train = np.concatenate((where[nan_train], not_where[not_nan_train]))
             test = np.concatenate((where[nan_test], not_where[not_nan_test]))
+            train.sort()
+            test.sort()
             yield train, test
 
 
