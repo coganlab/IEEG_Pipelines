@@ -146,7 +146,7 @@ class LabeledArray(np.ndarray):
 
     Notes
     -----
-    Multiple sequence indices objects are not supported. If you want to use
+    Multiple sequence advanced indices objects are not supported. If you want to use
     multiple sequence indices, you should use them one at a time.
 
     References
@@ -154,6 +154,8 @@ class LabeledArray(np.ndarray):
     [1] https://numpy.org/doc/stable/user/basics.subclassing.html
     [2] https://numpy.org/doc/stable/user/basics.indexing.html
     """
+
+    labels: list
 
     def __new__(cls, input_array, labels: list[tuple[str, ...], ...] = (),
                 delimiter: str = '-', **kwargs):
@@ -424,6 +426,8 @@ class LabeledArray(np.ndarray):
                                  f"array is {out.ndim}-dimensional, "
                                  f"but {i + 1} were indexed")
             else:
+                if isinstance(label_key, tuple):
+                    label_key = np.asarray(label_key)
                 labels = np.atleast_1d(np.squeeze(self.labels[i - j][label_key]))
                 if labels.ndim > 1:
                     lab_list = labels.decompose()
@@ -800,16 +804,24 @@ class Labels(np.ndarray):
                                                self.delimiter)
         return list(map(Labels, new_labels))
 
-    def find(self, value) -> int:
+    def find(self, value) -> int | tuple[int]:
         """Get the index of the first instance of a value in the Labels"""
         idx = np.where(self == value)[0]
-        if len(idx) == 0:
-            raise IndexError(f"{value} not found in {arr}")
-        else:
+        if (n := len(idx)) == 0:
+            if self.delimiter in self[0]:
+                splitlist = np.char.split(self, self.delimiter)
+                for i in range(len(splitlist[0])):
+                    try:
+                        return Labels([s[i] for s in splitlist]).find(value)
+                    except IndexError:
+                        continue
+            raise IndexError(f"{value} not found in {self}")
+        elif n == 1:
             return int(idx[0])
+        else:
+            return tuple(map(int, idx))
 
 
-@njit
 def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     """Make an array unique by appending a number to duplicate values."""
     if len(arr) == len(np.unique(arr)):
