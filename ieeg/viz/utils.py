@@ -154,8 +154,8 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     return figs
 
 
-def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
-              label: str | int | float = None,
+def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem', mask: np.ndarray = None,
+              times: Doubles = None, label: str | int | float = None,
               color: str | list[int] = None, ax: plt.Axes = None) -> plt.Axes:
     """Plot the distribution for a single signal
 
@@ -180,10 +180,7 @@ def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
     plt.Axes
         The axes containing the plot
         """
-    mean, std = np.mean(mat, axis=0), np.std(mat, axis=0, ddof=1) / np.sqrt(mat.shape[0])
-    # mean, std = stats.dist(mat, mask)
-    # mean = np.average(mat, weights=mask, axis=0)
-    # mean, std = stats.weighted_avg_and_std(mat, mask, axis=0)
+    mean, std = stats.dist(mat, axis=axis, where=mask, mode=mode)
     if times is None:
         tscale = range(len(mean))
     else:

@@ -5,6 +5,7 @@ from skimage import measure
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
+from scipy import stats as st
 from numba import njit
 
 
@@ -20,7 +21,8 @@ def weighted_avg_and_std(values, weights, axis=0):
     return (average, np.sqrt(variance) / np.sqrt(sum(weights) - 1))
 
 
-def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
+def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
+         where: np.ndarray = None) -> Doubles:
     """ Calculate the mean and standard deviation of a matrix.
 
     This function calculates the mean and standard deviation of a matrix along
@@ -31,10 +33,13 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     ----------
     mat : np.ndarray
         Matrix to calculate mean and standard deviation of.
-    mask : np.ndarray
-        Mask to apply to matrix before calculating mean and standard deviation.
     axis : int
         Axis of matrix to calculate mean and standard deviation along.
+    mode : str
+        Mode of standard deviation to calculate. Can be 'sem' for standard
+        error of the mean or 'std' for standard deviation.
+    where : np.ndarray
+        Mask of elements to include in mean and standard deviation calculation.
 
     Returns
     -------
@@ -44,27 +49,29 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     Examples
     --------
     >>> import numpy as np
-    >>> mat = np.array([[1, 2, 3], [4, 5, 6]])
-    >>> dist(mat)
-    (array([2.5, 3.5, 4.5]), array([1.06066017, 1.06066017, 1.06066017]))
-
+    >>> mat = np.arange(24).reshape(4,6)
+    >>> dist(mat)[1] # doctest: +NORMALIZE_WHITESPACE
+    array([3.87298335, 3.87298335, 3.87298335, 3.87298335, 3.87298335,
+           3.87298335])
+    >>> dist(mat, mode='std')[1]
+    array([6.70820393, 6.70820393, 6.70820393, 6.70820393, 6.70820393,
+           6.70820393])
     """
 
-    if mask is None:
-        mask = np.ones(mat.shape)
-    elif mat.shape != mask.shape:
-        raise ValueError(f"matrix shape {mat.shape} not same as mask shape "
-                         f"{mask.shape}")
-    mask[np.isnan(mat)] = 0
-    mat[np.isnan(mat)] = 0
+    assert mode in ('sem', 'std'), "mode must be 'sem' or 'std'"
 
-    weighted = np.multiply(mat, mask)
-    weights = np.sum(mask, axis, keepdims=True)
-    avg = np.divide(np.sum(weighted, axis, keepdims=True), weights)
-    # avg = np.reshape(avg, [np.shape(avg)[axis]])
-    stdev = np.sqrt(np.sum(np.abs(weighted - avg)**2. / weights**2., axis))
-    # stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
-    return np.squeeze(avg), stdev
+    if where is None:
+        where = np.ones(mat.shape, dtype=bool)
+
+    where = np.logical_and(where, ~np.isnan(mat))
+
+    mean = np.mean(mat, axis=axis, where=where)
+    if mode == 'sem':
+        std = st.sem(mat, axis=axis, nan_policy='omit')
+    else:
+        std = np.std(mat, axis=axis, where=where)
+
+    return mean, std
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
