@@ -195,7 +195,7 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem', mask: np.ndarray = No
     return ax
 
 
-def plot_weight_dist(data: np.ndarray, label: np.ndarray,
+def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
                      mask: np.ndarray = None, times: Doubles = None,
                      sig_titles: list[str] = None,
                      colors: list[str | list[int]] = None
@@ -239,7 +239,8 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray,
         else:
             w_sigs = np.multiply(data.T, label[:, i]).T
             # w_sigs = np.average(data, weights=label[:, i], axis=0)
-        ax = plot_dist(w_sigs, mask, times, label=stitle, color=color)
+        ax = plot_dist(w_sigs, 0, mode, mask, times, label=stitle,
+                       ax=ax, color=color)
 
     return fig, ax
 
