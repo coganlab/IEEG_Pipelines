@@ -342,7 +342,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
     return fig
 
 
-def pick_no_wm(picks: list[str], labels: OrderedDict[str: str]):
+def pick_no_wm(picks: list[str], labels: OrderedDict[str: list[str]]) -> list:
     """Picks the channels that are not in the white matter
 
     Parameters
@@ -604,22 +604,26 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
     montage = info.get_montage()
     force2frame(montage, 'mri')
     # aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
-    labels = get_elec_volume_labels(sub, subj_dir)
+    labels = get_elec_volume_labels(sub, subj_dir, 10)
 
     new_labels = OrderedDict()
     if picks is None:
         picks = info.ch_names
 
-    bad_words = ('Unknown', 'unknown', 'hypointensities')
+    bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
     for p in picks:
         i = 2
         label = labels.T[p].T
-        while (("White-Matter" in label[i] and label[i + 1] < 0.8)
-               or (any(w in label[i] for w in bad_words) and label[
-                    i + 1] < 1)):
-            if (i + 2) <= len(label.T):
+        if label[0] not in bad_words:
+            new_labels[p] = label[0]
+            continue
+
+        while not (not any(w in label[i] for w in bad_words) and label[i + 1] > 0.05):
+            if (i + 2) <= len(label.T):  # end of labels
+                i = 0
                 break
-            elif label[i + 2].isspace():
+            elif label[i + 2].isspace():  # empty label
+                i = 0
                 break
             i += 2
         new_labels[p] = label[i]
@@ -627,7 +631,7 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
 
 
 if __name__ == "__main__":
-    from ieeg.io import get_data
+    from ieeg.io import get_data, raw_from_layout
     from os import path
 
     HOME = path.expanduser("~")
@@ -646,13 +650,13 @@ if __name__ == "__main__":
     sub_pad = "D" + str(sub_num).zfill(4)
     # sub = "D{}".format(sub_num)
 
-    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-    #                        extension='.edf', desc='clean', preload=False)
+    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+                           extension='.edf', desc='clean', preload=False)
 
     ##
     sample_path = mne.datasets.sample.data_path()
     subjects_dir = sample_path / "subjects"
 
-    brain = plot_subj("D73")
-    # plot_on_average(filt)
+    # brain = plot_subj("D73")
+    plot_on_average(filt)
     # plot_gamma(raw)
