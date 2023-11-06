@@ -132,7 +132,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
             if "colorbar" in plot_func.__code__.co_varnames:
                 kwargs["colorbar"] = bar
             ax = axs.flatten()[j]
-            plot_func(picks=[chan], axis=ax, show=False, **kwargs)
+            plot_func(picks=[chan], axes=ax, show=False, **kwargs)
             ax.set_title(chan, pad=0, **text_spec)
             ax.tick_params(axis='both', which='major', labelsize=7,
                            direction="in")

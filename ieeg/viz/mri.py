@@ -618,14 +618,16 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
             new_labels[p] = label[0]
             continue
 
-        while not (not any(w in label[i] for w in bad_words) and label[i + 1] > 0.05):
+        while not ((not any(w in label[i] for w in bad_words)) and
+                   label[i + 1] > 0.05):
             if (i + 2) <= len(label.T):  # end of labels
                 i = 0
                 break
             elif label[i + 2].isspace():  # empty label
                 i = 0
                 break
-            i += 2
+            else:
+                i += 2
         new_labels[p] = label[i]
     return new_labels
 
@@ -650,13 +652,13 @@ if __name__ == "__main__":
     sub_pad = "D" + str(sub_num).zfill(4)
     # sub = "D{}".format(sub_num)
 
-    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-                           extension='.edf', desc='clean', preload=False)
+    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+    #                        extension='.edf', desc='clean', preload=False)
 
     ##
-    sample_path = mne.datasets.sample.data_path()
-    subjects_dir = sample_path / "subjects"
+    # sample_path = mne.datasets.sample.data_path()
+    # subjects_dir = sample_path / "subjects"
 
-    # brain = plot_subj("D73")
-    plot_on_average(filt)
+    brain = plot_subj("D81")
+    # plot_on_average(filt)
     # plot_gamma(raw)
