@@ -154,9 +154,10 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     return figs
 
 
-def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
-              label: str | int | float = None,
-              color: str | list[int] = None) -> plt.Axes:
+def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
+              mask: np.ndarray = None, times: Doubles = None,
+              label: str | int | float = None, color: str | list[int] = None,
+              ax: plt.Axes = None) -> plt.Axes:
     """Plot the distribution for a single signal
 
     A distribution is the mean of the signal over the last dimension, with
@@ -166,6 +167,10 @@ def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
     ----------
     mat : iter
         The signal to plot
+    axis : int, optional
+        The axis to use for the distribution, by default 0
+    mode : str, optional
+        The mode to use for the distribution, by default 'sem'
     mask : np.ndarray, optional
         The mask to use for the distribution, by default None
     times : Doubles, optional
@@ -174,27 +179,32 @@ def plot_dist(mat: iter, mask: np.ndarray = None, times: Doubles = None,
         The label for the signal, by default None
     color : Union[str, list[int]], optional
         The color to use for the signal, by default None
+    ax : plt.Axes, optional
+        The axes to plot on, by default None
 
     Returns
     -------
     plt.Axes
         The axes containing the plot
         """
-    # mean, std = np.mean(mat, axis=0), np.std(mat, axis=0)
-    mean, std = stats.dist(mat, mask)
+    mean, std = stats.dist(mat, axis=axis, where=mask, mode=mode)
     if times is None:
         tscale = range(len(mean))
     else:
         tscale = np.linspace(times[0], times[1], len(mean))
-    p = plt.plot(tscale, mean, label=label, color=color)
+    if ax is None:
+        plt.figure()
+        ax = plt.gca()
+    p = ax.plot(tscale, mean, label=label, color=color)
     if color is None:
         color = p[-1].get_color()
-    plt.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
-    return plt.gca()
+    ax.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
+    return ax
 
 
-def plot_weight_dist(data: np.ndarray, label: np.ndarray,
-                     mask: np.ndarray = None, sig_titles: list[str] = None,
+def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
+                     mask: np.ndarray = None, times: Doubles = None,
+                     sig_titles: list[str] = None,
                      colors: list[str | list[int]] = None
                      ) -> (plt.Figure, plt.Axes):
     """Basic distribution plot for weighted signals
@@ -235,7 +245,10 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray,
             w_sigs = data[label == i]
         else:
             w_sigs = np.multiply(data.T, label[:, i]).T
-        ax = plot_dist(w_sigs, mask, label=stitle, color=color)
+            # w_sigs = np.average(data, weights=label[:, i], axis=0)
+        ax = plot_dist(w_sigs, 0, mode, mask, times, label=stitle,
+                       ax=ax, color=color)
+
     return fig, ax
 
 

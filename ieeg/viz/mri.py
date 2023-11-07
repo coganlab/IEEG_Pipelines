@@ -242,12 +242,13 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
-def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
+def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None,
-                    background: str = 'white') -> Brain:
+                    label_every: int = None, background: str = 'white',
+                    units: str = 'm') -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -273,8 +274,12 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
         The size of the markers, by default 0.35
     fig : Brain, optional
         The figure to plot on, by default None
+    label_every : int, optional
+        How often to label the channels, by default None
     background: str, optional
         Background color
+    units: str, optional
+        Units of the electrodes
 
     Returns
     -------
@@ -285,7 +290,8 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
     subj_dir = get_sub_dir(subj_dir)
     if fig is None:
         fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.6, background=background, surf=surface, hemi=hemi)
+                    alpha=0.6, background=background, surf=surface, hemi=hemi,
+                    units=units)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
@@ -336,12 +342,12 @@ def plot_on_average(sigs: Signal | str | list[Signal | str, ...],
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
                   trans=to_fsaverage, color=color, size=size,
-                  labels_every=None, hemi=hemi, background=background)
+                  labels_every=label_every, hemi=hemi, background=background)
 
     return fig
 
 
-def pick_no_wm(picks: list[str], labels: OrderedDict[str: str]):
+def pick_no_wm(picks: list[str], labels: OrderedDict[str: list[str]]) -> list:
     """Picks the channels that are not in the white matter
 
     Parameters
@@ -387,14 +393,16 @@ def get_sub(inst: Signal | mne.Info | str) -> str:
         return out_str
     return out_str[0] + str(int(out_str[1:]))
 
+# TODO: figure out why elec positions are only correct in meters not mm
+
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'both', fig: Brain = None,
               trans=None, color: matplotlib.colors = (1, 1, 1),
-              size: float = 0.35, show: bool = True, background: str = 'white', title: str = None
-              ) -> Brain:
+              size: float = 0.35, show: bool = True, background: str = 'white',
+              title: str = None, units: str = 'm') -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -427,6 +435,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         Background color
     title : string, optional
         Title the plot
+    units: str, optional
+        Units of the electrodes
 
     Returns
     -------
@@ -453,12 +463,11 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5, background=background, surf=surface, hemi=hemi,
-                    show=show)
-        
+                    show=show, units=units)
+
     # Set the title if provided
     if title is not None:
         mne.viz.set_3d_title(fig, title, size=40)
-
     if picks is None:
         picks = info.ch_names
     if no_wm:
@@ -473,7 +482,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     montage = info.get_montage()
     force2frame(montage, trans.from_str)
     montage.apply_trans(trans)
-    pos = {k: v * 1000 for k, v in montage.get_positions()['ch_pos'].items()}
+    pos = {k: v for k, v in montage.get_positions()['ch_pos'].items()}
 
     # Default montage positions are in m, whereas plotting functions assume mm
     left = {k: p for k, p in pos.items() if k.startswith('L')}
@@ -608,30 +617,36 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
     montage = info.get_montage()
     force2frame(montage, 'mri')
     # aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
-    labels = get_elec_volume_labels(sub, subj_dir)
+    labels = get_elec_volume_labels(sub, subj_dir, 10)
 
     new_labels = OrderedDict()
     if picks is None:
         picks = info.ch_names
 
-    bad_words = ('Unknown', 'unknown', 'hypointensities')
+    bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
     for p in picks:
         i = 2
         label = labels.T[p].T
-        while (("White-Matter" in label[i] and label[i + 1] < 0.8)
-               or (any(w in label[i] for w in bad_words) and label[
-                    i + 1] < 1)):
-            if (i + 2) <= len(label.T):
+        if label[0] not in bad_words:
+            new_labels[p] = label[0]
+            continue
+
+        while not ((not any(w in label[i] for w in bad_words)) and
+                   label[i + 1] > 0.05):
+            if (i + 2) <= len(label.T):  # end of labels
+                i = 0
                 break
-            elif label[i + 2].isspace():
+            elif label[i + 2].isspace():  # empty label
+                i = 0
                 break
-            i += 2
+            else:
+                i += 2
         new_labels[p] = label[i]
     return new_labels
 
 
 if __name__ == "__main__":
-    from ieeg.io import get_data
+    from ieeg.io import get_data, raw_from_layout
     from os import path
 
     HOME = path.expanduser("~")
@@ -654,9 +669,9 @@ if __name__ == "__main__":
     #                        extension='.edf', desc='clean', preload=False)
 
     ##
-    sample_path = mne.datasets.sample.data_path()
-    subjects_dir = sample_path / "subjects"
+    # sample_path = mne.datasets.sample.data_path()
+    # subjects_dir = sample_path / "subjects"
 
-    brain = plot_subj("D29")
+    brain = plot_subj("D81")
     # plot_on_average(filt)
     # plot_gamma(raw)

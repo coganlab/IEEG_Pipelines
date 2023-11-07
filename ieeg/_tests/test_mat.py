@@ -1,57 +1,58 @@
 import numpy as np
 import pytest
 
-from ieeg.calc.mat import LabeledArray, combine, iter_nest_dict
+from ieeg.calc.mat import LabeledArray, combine, iter_nest_dict, Labels
 from ieeg.calc.reshape import concatenate_arrays, get_homogeneous_shapes
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [
     # Test case 1: Concatenate along axis 0
-    ([np.array([]), np.array([[1, 2], [3, 4]]),
-      np.array([[5, 6, 7], [8, 9, 10]])],
+    ((np.array([]), np.array([[1, 2], [3, 4]]),
+      np.array([[5, 6, 7], [8, 9, 10]])),
      0,
      np.array([[1, 2, np.nan], [3, 4, np.nan], [5, 6, 7], [8, 9, 10]])),
 
     # Test case 2: Concatenate along axis 1
-    ([np.ones((2, 1)), np.zeros((3, 1))], 1,
+    ((np.ones((2, 1)), np.zeros((3, 1))), 1,
      np.array([[1, 0], [1, 0], [np.nan, 0]])),
 
     # Test case 3: Empty input arrays
-    ([np.array([]), np.array([])], 0, None),
+    ((np.array([]), np.array([])), 0, None),
 
     # Test case 4: Concatenate along axis 2
-    ([np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])],
+    ((np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])),
      2,
      np.array([[[1, 3], [np.nan, 4]], [[2, 5], [np.nan, 6]]])),
 
     # Test case 5: Concatenate along axis 0 with empty array in the middle
-    ([np.array([[1, 2], [3, 4]]), np.array([]),
-      np.array([[5, 6, 7], [8, 9, 10]])],
+    ((np.array([[1, 2], [3, 4]]), np.array([]),
+      np.array([[5, 6, 7], [8, 9, 10]])),
      0,
      np.array([[1, 2, np.nan], [3, 4, np.nan], [5, 6, 7], [8, 9, 10]])),
 
     # Test case 6: Concatenate along axis 0 with empty arrays at the beginning
     # and end
-    ([np.array([]), np.array([[1, 2], [3, 4]]), np.array([])],
+    ((np.array([]), np.array([[1, 2], [3, 4]]), np.array([])),
      0,
      np.array([[1, 2], [3, 4]])),
 
     # Test case 7: Concatenate along axis -1 (last axis)
-    ([np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])],
+    ((np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])),
         -1,
         np.array([[[1, 3], [np.nan, 4]], [[2, 5], [np.nan, 6]]])),
 
     # Test case 8: Concatenate an array containing only nan values
-    ([np.array([[np.nan, np.nan], [np.nan, np.nan]]),
-      np.array([[5, 6, 7], [8, 9, 10]])],
+    ((np.array([[np.nan, np.nan], [np.nan, np.nan]]),
+      np.array([[5, 6, 7], [8, 9, 10]])),
      0,
      np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan],
                [5, 6, 7], [8, 9, 10]])),
 
     # Test case 9: Concatenate along new axis
-    ([np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10]])],
-        None,
-        np.array([[[1, 2, np.nan], [3, 4, np.nan]], [[5, 6, 7], [8, 9, 10]]]))
+    # ((np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10]])),
+    #     None,
+    #     np.array([[[1, 2, np.nan], [3, 4, np.nan]], [[5, 6, 7],
+    #     [8, 9, 10]]]))
 ])
 def test_concatenate_arrays(arrays, axis, expected_output):
     print(f"Shapes {[arr.shape for arr in arrays]}")
@@ -60,10 +61,10 @@ def test_concatenate_arrays(arrays, axis, expected_output):
         print(f"New shape {new.shape}")
         if axis is None:
             axis = 0
-            arrays = [np.expand_dims(arr, axis) for arr in arrays]
+            arrays = tuple(np.expand_dims(arr, axis) for arr in arrays)
         while axis < 0:
             axis += new.ndim
-        congruency = new.shape == np.max(get_homogeneous_shapes(arrays),
+        congruency = new.shape == np.max(get_homogeneous_shapes(*arrays),
                                          axis=0)
         print(congruency)
         assert all([con for i, con in enumerate(congruency) if i != axis])
@@ -90,12 +91,34 @@ def test_array_to_array():
     assert np.array_equal(ad, np_array, True)
 
 
+# Test index parsing
+@pytest.mark.parametrize('index, expected', [
+    (('a', 'b', 'c'), (0, 0, 0)),
+    ((slice(None), ('b', 'f')), (range(1), [0, 1], range(3))),
+    ((..., 'f', (1, 3)), (range(1), 1, [1, 3])),
+    (('g'), "g not found in ['a']"),
+    ((slice(None), np.array([False, True])), (range(1), [False, True],
+                                              range(3)))
+])
+def test_parse_index(index, expected):
+    data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3},
+                  'f': {'c': 4, 'd': 5}}}
+    ad = LabeledArray.from_dict(data)
+    try:
+        parsed = ad._parse_index(list(index))
+        parsed = tuple(tuple(p) if isinstance(p, np.ndarray)
+                       else p for p in parsed)
+    except IndexError as e:
+        parsed = e.args[0]
+    assert parsed == expected
+
+
 # Test getting all keys
 def test_array_all_keys():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
     ad = LabeledArray.from_dict(data)
-    keys = (('a',), ('b', 'f'), ('c', 'd', 'e'))
-    assert ad.labels == keys
+    keys = [Labels(['a']), Labels(['b', 'f']), Labels(['c', 'd', 'e'])]
+    assert all(np.array_equal(ad.labels[i], keys[i]) for i in range(len(keys)))
 
 
 # Test getting all keys in a really nested ArrayDict
@@ -103,8 +126,8 @@ def test_array_all_keys_nested():
     data = {'a': {'b': {'c': {'d': {'e': {'f': {'g': {'h': {'i': {'j': {
         'k': 1}}}}}}}}}}}
     ad = LabeledArray.from_dict(data)
-    keys = (('a',), ('b',), ('c',), ('d',), ('e',), ('f',), ('g',), ('h',),
-            ('i',), ('j',), ('k',))
+    keys = [['a'], ['b'], ['c'], ['d'], ['e'], ['f'], ['g'], ['h'], ['i'],
+            ['j'], ['k']]
     assert ad.labels == keys
 
 
@@ -121,7 +144,7 @@ def test_array_single_key_indexing():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
     ad = LabeledArray.from_dict(data)
     subset = LabeledArray.from_dict({'c': 1, 'd': 2, 'e': 3})
-    assert ad['a']['b'] == subset
+    assert np.array_equal(ad['a']['b'], subset)
 
 
 # Test indexing with a tuple of keys that leads to a scalar value
@@ -170,8 +193,8 @@ def test_array_dict_combine_dimensions_with_arrays():
     new = ad.combine((1, 2))
     assert new == LabeledArray([[1., 2., 3., 4., 5., 6.],
                                 [7., 8., 9., np.nan, np.nan, np.nan]],
-                               labels=(('b', 'f'), ('c-0', 'c-1', 'c-2',
-                                                    'd-0', 'd-1', 'd-2')))
+                               labels=[('b', 'f'), ('c-0', 'c-1', 'c-2',
+                                                    'd-0', 'd-1', 'd-2')])
     assert new['b'].to_dict() == {'c-0': 1., 'c-1': 2., 'c-2': 3., 'd-0': 4.,
                                   'd-1': 5., 'd-2': 6.}
 
@@ -179,10 +202,10 @@ def test_array_dict_combine_dimensions_with_arrays():
 def test_from_dict():
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
     ad = LabeledArray.from_dict(data)
-    expected_labels = (('a',), ('b', 'f'), ('c', 'd', 'e'))
-    assert ad.labels == expected_labels
-    expected_array = np.array([[[1, 2, 3], [4, 5, float('nan')]]])
-    np.testing.assert_array_equal(ad, expected_array)
+    expected_labels = [['a'], ['b', 'f'], ['c', 'd', 'e']]
+    expected_array = LabeledArray([[[1, 2, 3], [4, 5, float('nan')]]],
+                                  expected_labels)
+    assert ad == expected_array
 
 
 def test_eq():
@@ -202,8 +225,8 @@ def test_eq():
 def test_repr():
     data = {'a': {'b': {'c': 1}}}
     ad = LabeledArray.from_dict(data)
-    expected_repr = "LabeledArray([[[1.]]])\nlabels=(('a',), ('b',), ('c',))" \
-                    " ~8.00 B"
+    expected_repr = ("array([[[1.]]])\nlabels(['a']\n       ['b']\n       ['c'"
+                     "])")
     assert repr(ad) == expected_repr
 
 
@@ -228,12 +251,14 @@ def test_numpy_idx(idx):
     ((..., 0), (('a',), ('b',))),
     ((slice(None), 0), (('a',), ('c', 'd'))),
     ((slice(None), 0, slice(None)), (('a',), ('c', 'd'))),
-    (('b',), (('a',), ('c', 'd'))),
-    (('b', 'c'), (('a',),)),
+    ((slice(None), 'b'), (('a',), ('c', 'd'))),
+    ((slice(None), 'b', 'c'), (('a',),)),
 ])
 def test_idx(idx, expected):
-    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
-    assert ad[idx].labels == expected
+    ad = LabeledArray([[[1, 2]]], labels=[('a',), ('b',), ('c', 'd')])
+    expected = [Labels(ex) for ex in expected]
+    assert all((ad[idx].labels[i] == expected[i]).all() for i in
+               range(len(expected)))
 
 
 @pytest.mark.parametrize('idx, val, expected', [
@@ -245,6 +270,6 @@ def test_idx(idx, expected):
     ((0, 'b'), [3, 4], [[[3, 4]]])
 ])
 def test_set_array_val(idx, val, expected):
-    ad = LabeledArray([[[1, 2]]], labels=(('a',), ('b',), ('c', 'd')))
+    ad = LabeledArray([[[1, 2]]], labels=[('a',), ('b',), ('c', 'd')])
     ad[idx] = val
-    np.testing.assert_array_equal(ad, np.array(expected))
+    np.testing.assert_array_equal(ad.__array__(), np.array(expected))

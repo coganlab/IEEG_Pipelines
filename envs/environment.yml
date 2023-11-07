@@ -9,7 +9,7 @@ dependencies:
   - scipy
   - scikit-image
   - pandas
-  - joblib
+  - joblib>=1.3
   - tqdm
   - notebook
   - pip:

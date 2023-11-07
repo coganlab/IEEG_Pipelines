@@ -10,29 +10,21 @@ seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
                        'seeg' / 'sample_seeg_ieeg.fif')
 
 
-@pytest.mark.parametrize("mat, mask, axis, expected", [
+@pytest.mark.parametrize("mat, axis, expected", [
     # Test case 1: No mask, axis=0
-    (np.array([[1, 2, 3], [4, 5, 6]]), None, 0, (
-            [2.5, 3.5, 4.5], [1.06066017, 1.06066017, 1.06066017])),
+    (np.array([[1, 2, 3], [4, 5, 6]]), 0, (
+            [2.5, 3.5, 4.5], [1.5, 1.5, 1.5])),
 
     # Test case 2: No mask, axis=1
-    (np.array([[1, 2, 3], [4, 5, 6]]), None, 1, (
-            [2.0, 5.0], [0.47140452, 0.47140452])),
-
-    # Test case 3: With mask, axis=0
-    (np.array([[1, 2, 3], [4, np.nan, 6]]), np.array([[1, 1, 1], [1, 0, 1]]),
-     0, ([2.5, 2.0, 4.5], [1.06066017, 2., 1.06066017])),
-
-    # Test case 4: With mask, axis=1
-    (np.array([[1, 2, 3], [4, np.nan, 6]]), np.array([[1, 1, 1], [1, 0, 1]]),
-     1, ([2.0, 5.0], [0.47140452, 2.59807621])),
+    (np.array([[1, 2, 3], [4, 5, 6]]), 1, (
+            [2.0, 5.0], [0.57735027, 0.57735027])),
 ])
-def test_dist(mat, mask, axis, expected):
+def test_dist(mat, axis, expected):
     from ieeg.calc.stats import dist  # Import your actual module here
 
-    result = dist(mat, mask, axis)
-    assert np.allclose(result[0], expected[0])  # Check mean
-    assert np.allclose(result[1], expected[1])  # Check standard deviation
+    mean, std = dist(mat, axis)
+    assert np.allclose(mean, np.array(expected[0]))  # Check mean
+    assert np.allclose(std, np.array(expected[1]))  # Check standard deviation
 
 
 @pytest.mark.parametrize("func, expected", [

@@ -5,9 +5,24 @@ from skimage import measure
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
+from scipy import stats as st
+from numba import njit
 
 
-def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
+def weighted_avg_and_std(values, weights, axis=0):
+    """
+    Return the weighted average and standard deviation.
+
+    values, weights -- NumPy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights, axis=axis)
+    # Fast and numerically precise:
+    variance = np.average((values-average)**2, weights=weights, axis=axis)
+    return (average, np.sqrt(variance) / np.sqrt(sum(weights) - 1))
+
+
+def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
+         where: np.ndarray = None) -> Doubles:
     """ Calculate the mean and standard deviation of a matrix.
 
     This function calculates the mean and standard deviation of a matrix along
@@ -18,10 +33,13 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     ----------
     mat : np.ndarray
         Matrix to calculate mean and standard deviation of.
-    mask : np.ndarray
-        Mask to apply to matrix before calculating mean and standard deviation.
     axis : int
         Axis of matrix to calculate mean and standard deviation along.
+    mode : str
+        Mode of standard deviation to calculate. Can be 'sem' for standard
+        error of the mean or 'std' for standard deviation.
+    where : np.ndarray
+        Mask of elements to include in mean and standard deviation calculation.
 
     Returns
     -------
@@ -31,27 +49,29 @@ def dist(mat: np.ndarray, mask: np.ndarray = None, axis: int = 0) -> Doubles:
     Examples
     --------
     >>> import numpy as np
-    >>> mat = np.array([[1, 2, 3], [4, 5, 6]])
-    >>> dist(mat)
-    (array([2.5, 3.5, 4.5]), array([1.06066017, 1.06066017, 1.06066017]))
-
+    >>> mat = np.arange(24).reshape(4,6)
+    >>> dist(mat)[1] # doctest: +NORMALIZE_WHITESPACE
+    array([3.87298335, 3.87298335, 3.87298335, 3.87298335, 3.87298335,
+           3.87298335])
+    >>> dist(mat, mode='std')[1]
+    array([6.70820393, 6.70820393, 6.70820393, 6.70820393, 6.70820393,
+           6.70820393])
     """
 
-    if mask is None:
-        mask = np.ones(mat.shape)
-    elif mat.shape != mask.shape:
-        raise ValueError(f"matrix shape {mat.shape} not same as mask shape "
-                         f"{mask.shape}")
-    mask[np.isnan(mat)] = 0
-    mat[np.isnan(mat)] = 0
+    assert mode in ('sem', 'std'), "mode must be 'sem' or 'std'"
 
-    weighted = np.multiply(mat, mask)
-    weights = np.sum(mask, axis, keepdims=True)
-    avg = np.divide(np.sum(weighted, axis, keepdims=True), weights)
-    # avg = np.reshape(avg, [np.shape(avg)[axis]])
-    stdev = np.sqrt(np.sum(np.abs(weighted - avg)**2. / weights**2., axis))
-    # stdev = np.reshape(stdev, [np.shape(stdev)[axis]])
-    return np.squeeze(avg), stdev
+    if where is None:
+        where = np.ones(mat.shape, dtype=bool)
+
+    where = np.logical_and(where, ~np.isnan(mat))
+
+    mean = np.mean(mat, axis=axis, where=where)
+    if mode == 'sem':
+        std = st.sem(mat, axis=axis, nan_policy='omit')
+    else:
+        std = np.std(mat, axis=axis, where=where)
+
+    return mean, std
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
@@ -324,15 +344,15 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     0.0...
     """
 
-    sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
+    # sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
 
     # Average across time, shape is now (obs, ...)
-    sig1 = np.nanmean(sig1, axis=window_axis)
-    sig2 = np.nanmean(sig2, axis=window_axis)
+    sig1_avg = np.nanmean(sig1, axis=window_axis)
+    sig2_avg = np.nanmean(sig2, axis=window_axis)
 
     # Calculate the shuffle distribution, shape is now (...)
-    p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
-                              stat_func)
+    p_act = time_perm_shuffle(sig1_avg, sig2_avg, n_perm, tails, obs_axis,
+                              False, stat_func)
     return p_act
     # if tails == -1:
     #     method = 'negcorr'
@@ -558,6 +578,7 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
         return cluster_p_values
 
 
+@njit(nogil=True, cache=True)
 def tail_compare(diff: np.ndarray | float | int,
                  obs_diff: np.ndarray | float | int, tails: int = 1
                  ) -> np.ndarray | bool:
@@ -663,6 +684,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         return p
 
 
+@njit()
 def sum_squared(x: np.ndarray) -> np.ndarray | float:
     """Compute norm of an array.
 
@@ -679,9 +701,7 @@ def sum_squared(x: np.ndarray) -> np.ndarray | float:
     return np.dot(x_flat, x_flat)
 
 
-# @njit([t.Tuple((float64[:, ::1], complex128[:, ::1]))(
-#     float64[:, :], complex128[:, :, ::1])], nogil=True, boundscheck=True,
-#     fastmath=True, cache=True)
+@njit()
 def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
                 ) -> (np.ndarray, np.ndarray):
     """computes the F-statistic for sine wave in locally-white noise.
