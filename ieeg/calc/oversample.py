@@ -150,7 +150,7 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> find_nan_indices(arr, 0)
-    (array([3], dtype=int64), array([0, 1, 2], dtype=int64))
+    (array([3]), array([0, 1, 2]))
 
     """
 
