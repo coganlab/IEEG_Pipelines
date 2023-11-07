@@ -77,7 +77,7 @@ def crop_empty_data(raw: mne.io.Raw, bound: str = 'boundary',
         if no_bound is None:
             continue
         # get start and stop time from raw.annotations onset attribute
-        t_min = no_bound.onset[0] - start_pad
+        t_min = max(0, no_bound.onset[0] - start_pad)
         t_max = no_bound.onset[-1] + end_pad
 
         # create new cropped raw file
