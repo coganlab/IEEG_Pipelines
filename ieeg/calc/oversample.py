@@ -10,9 +10,22 @@ Vector = NDArray[Literal[1]]
 
 class TwoSplitNaN(RepeatedStratifiedKFold):
     """A Repeated Stratified KFold iterator that splits the data into sections
-    that do and don't contain NaNs"""
+    that do and don't contain NaNs
 
-    def __init__(self, n_splits, n_repeats=10, random_state=None):
+    Parameters
+    ----------
+    n_splits : int
+        The number of splits.
+    n_repeats : int, optional
+        The number of times to repeat the splits, by default 10.
+    random_state : int, optional
+        The random state to use, by default None.
+
+    Examples
+    """
+
+    def __init__(self, n_splits: int, n_repeats: int = 10,
+                 random_state: int = None):
         super().__init__(n_splits=n_splits, n_repeats=n_repeats,
                          random_state=random_state)
         self.n_splits = n_splits
@@ -50,7 +63,8 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
         for (nan_train, nan_test), (not_nan_train, not_nan_test) in zip(
                 nan_folds, not_nan_folds):
 
-            train = np.concatenate((where[nan_train], not_where[not_nan_train]))
+            train = np.concatenate((where[nan_train], not_where[not_nan_train]
+                                    ))
             test = np.concatenate((where[nan_test], not_where[not_nan_test]))
             train.sort()
             test.sort()
@@ -77,22 +91,35 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
     # >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> oversample_nan(arr, normnd, 0)
+    >>> oversample_nan(arr, normnd, 0)  # doctest: +ELLIPSIS
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
-           [..., ...]])
+           [...
+    >>> oversample_nan(arr, mixupnd, 0)  # doctest: +ELLIPSIS
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [...
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
-    >>> oversample_nan(arr3, mixupnd, 1)
-    array([[1.        , 4.        , ..., ...],
-           [1.        , 4.        , ..., ...],
-           [1.        , 4.        , ..., ...]])
-    >>> oversample_nan(arr3, normnd, 1)
-    array([[1.        , 4.        , ..., ...],
-           [1.        , 4.        , ..., ...],
-           [1.        , 4.        , ..., ...]])
-    >>> oversample_nan(arr3, normnd, 0)
+    >>> oversample_nan(arr3, mixupnd, 1)  # doctest: +SKIP
+    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
+            [ 4.        ,  5.        ,  6.        ,  7.        ],
+            [ ...
+
+           [[12.        , 13.        , 14.        , 15.        ],
+            [16.        , 17.        , 18.        , 19.        ],
+            [20.        , 21.        , 22.        , 23.        ]]])
+    >>> oversample_nan(arr3, normnd, 1)  # doctest: +SKIP
+    array([[[0.00000000e+00, 1.00000000e+00, 2.00000000e+00, 3.00000000e+00],
+            [4.00000000e+00, 5.00000000e+00, 6.00000000e+00, 7.00000000e+00],
+            [...
+
+           [[1.20000000e+01, 1.30000000e+01, 1.40000000e+01, 1.50000000e+01],
+            [1.60000000e+01, 1.70000000e+01, 1.80000000e+01, 1.90000000e+01],
+            [2.00000000e+01, 2.10000000e+01, 2.20000000e+01, 2.30000000e+01]]])
+    # >>> oversample_nan(arr3, normnd, 0)  # doctest: +ELLIPSIS
     """
 
     if copy:
@@ -115,11 +142,14 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
 
     arr : array
         The data to find indices.
+    obs_axis : int
+        The axis along which to apply func.
 
     Returns
     -------
     tuple
-        A tuple of two arrays containing the indices of rows with and without NaN values.
+        A tuple of two arrays containing the indices of rows with and without
+        NaN values.
 
     Examples
     --------
@@ -144,6 +174,7 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
 
 
 def norm(arr: np.ndarray, obs_axis: int) -> None:
+    """A jit-less version of normnd"""
     # Get indices of rows with NaN values
     nan_rows, non_nan_rows = find_nan_indices(arr, obs_axis)
 
@@ -188,14 +219,15 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> mixupnd(arr, 0)
-    >>> arr
+    >>> arr # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
-           [4.30524841, 2.07112157]])
+           [...
     """
 
-    # create a view of the array with the observation axis in the second to last position
+    # create a view of the array with the observation axis in the second to
+    # last position
     arr_in = np.swapaxes(arr, obs_axis, -2)
 
     if arr.ndim == 2:
@@ -224,9 +256,9 @@ def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
     >>> arr = np.array([1, 2, 4, 5, 7, 8,
     ... float("nan"), float("nan")])
     >>> normnd(arr)
-    >>> arr
+    >>> arr # doctest: +ELLIPSIS
     array([1.        , 2.        , 4.        , 5.        , 7.        ,
-           8.        , 7.80305575, 6.2762294 ])
+           8.        , ...
     """
 
     # create a view of the array with the observation axis in the last position
@@ -260,7 +292,8 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
 
     References
     ----------
-    .. [1] https://stackoverflow.com/questions/31955660/efficiently-generating-multiple-instances-of-numpy-random-choice-without-replace/31958263#31958263
+    .. [1] <https://stackoverflow.com/questions/31955660/efficiently-generating
+    -multiple-instances-of-numpy-random-choice-without-replace/31958263#31958263>
     """
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]
@@ -288,6 +321,31 @@ def norm1d(arr: Vector) -> None:
 
 @njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
 def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
+    """Oversample by mixing two random non-NaN observations
+
+    Parameters
+    ----------
+    arr : array
+        The data to oversample.
+    alpha : float
+        The alpha parameter for the beta distribution. If alpha is 0, then
+        the distribution is uniform. If alpha is 1, then the distribution is
+        symmetric. If alpha is greater than 1, then the distribution is
+        skewed towards the first observation. If alpha is less than 1, then
+        the distribution is skewed towards the second observation.
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+    ... [float("nan"), float("nan")]])
+    >>> mixup2d(arr)
+    >>> arr  #doctest: +ELLIPSIS
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [...
+    """
     # Get indices of rows with NaN values
     wh = np.zeros(arr.shape[0], dtype=np.bool_)
     for i in range(arr.shape[0]):

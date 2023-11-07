@@ -344,15 +344,15 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     0.0...
     """
 
-    sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
+    # sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
 
     # Average across time, shape is now (obs, ...)
-    sig1 = np.nanmean(sig1, axis=window_axis)
-    sig2 = np.nanmean(sig2, axis=window_axis)
+    sig1_avg = np.nanmean(sig1, axis=window_axis)
+    sig2_avg = np.nanmean(sig2, axis=window_axis)
 
     # Calculate the shuffle distribution, shape is now (...)
-    p_act = time_perm_shuffle(sig1, sig2, n_perm, tails, obs_axis, False,
-                              stat_func)
+    p_act = time_perm_shuffle(sig1_avg, sig2_avg, n_perm, tails, obs_axis,
+                              False, stat_func)
     return p_act
     # if tails == -1:
     #     method = 'negcorr'

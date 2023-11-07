@@ -154,9 +154,10 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     return figs
 
 
-def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem', mask: np.ndarray = None,
-              times: Doubles = None, label: str | int | float = None,
-              color: str | list[int] = None, ax: plt.Axes = None) -> plt.Axes:
+def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
+              mask: np.ndarray = None, times: Doubles = None,
+              label: str | int | float = None, color: str | list[int] = None,
+              ax: plt.Axes = None) -> plt.Axes:
     """Plot the distribution for a single signal
 
     A distribution is the mean of the signal over the last dimension, with
@@ -166,6 +167,10 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem', mask: np.ndarray = No
     ----------
     mat : iter
         The signal to plot
+    axis : int, optional
+        The axis to use for the distribution, by default 0
+    mode : str, optional
+        The mode to use for the distribution, by default 'sem'
     mask : np.ndarray, optional
         The mask to use for the distribution, by default None
     times : Doubles, optional
@@ -174,6 +179,8 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem', mask: np.ndarray = No
         The label for the signal, by default None
     color : Union[str, list[int]], optional
         The color to use for the signal, by default None
+    ax : plt.Axes, optional
+        The axes to plot on, by default None
 
     Returns
     -------

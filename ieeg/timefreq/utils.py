@@ -180,8 +180,8 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
 
 @verbose
 def cwt(inst: BaseEpochs, f_low: float = 2,
-                       f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
-                       decim: int = 1, verbose=10) -> EpochsTFR:
+        f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
+        decim: int = 1, verbose=10) -> EpochsTFR:
     """Compute the wavelet scaleogram.
 
 

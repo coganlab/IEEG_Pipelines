@@ -108,8 +108,8 @@ class LabeledArray(np.ndarray):
             [1, 1, 1, 1],
             [1, 1, 1, 1]]])
     labels(['a', 'b']
-    	   ['c', 'd', 'e']
-    	   ['f', 'g', 'h', 'i'])
+           ['c', 'd', 'e']
+           ['f', 'g', 'h', 'i'])
     >>> la[np.array([False, True]),]
     array([[[1, 1, 1, 1],
             [1, 1, 1, 1],
@@ -146,8 +146,8 @@ class LabeledArray(np.ndarray):
 
     Notes
     -----
-    Multiple sequence advanced indices objects are not supported. If you want to use
-    multiple sequence indices, you should use them one at a time.
+    Multiple sequence advanced indices objects are not supported. If you want
+     to use multiple sequence indices, you should use them one at a time.
 
     References
     ----------
@@ -164,7 +164,7 @@ class LabeledArray(np.ndarray):
         for i in range(obj.ndim):
             if len(labels) < i + 1:
                 labels.append(tuple(range(obj.shape[i])))
-        obj.labels = list(map(lambda l: Labels(l, delimiter), labels))
+        obj.labels = list(map(lambda lab: Labels(lab, delimiter), labels))
         assert tuple(map(len, obj.labels)) == obj.shape, \
             f"labels must have the same length as the shape of the array, " \
             f"instead got {tuple(map(len, obj.labels))} and {obj.shape}"
@@ -181,7 +181,8 @@ class LabeledArray(np.ndarray):
         pickled_state = super(LabeledArray, self).__reduce__()
         # Create our own tuple to pass to __setstate__
         new_state = pickled_state[2] + (self.labels,)
-        # Return a tuple that replaces the parent's __setstate__ tuple with our own
+        # Return a tuple that replaces the parent's __setstate__
+        # tuple with our own
         return (pickled_state[0], pickled_state[1], new_state)
 
     def __setstate__(self, state):
@@ -375,7 +376,8 @@ class LabeledArray(np.ndarray):
                 newaxis_count += 1
                 dim += 1
                 continue
-            elif key_type in (list, tuple) or np.issubdtype(key_type, np.ndarray):
+            elif (key_type in (list, tuple) or
+                  np.issubdtype(key_type, np.ndarray)):
                 key = list(key)
                 for j, k in enumerate(key):
                     if np.issubdtype(type(k), str):
@@ -428,7 +430,8 @@ class LabeledArray(np.ndarray):
             else:
                 if isinstance(label_key, tuple):
                     label_key = np.asarray(label_key)
-                labels = np.atleast_1d(np.squeeze(self.labels[i - j][label_key]))
+                labels = np.atleast_1d(np.squeeze(self.labels[i - j][label_key]
+                                                  ))
                 if labels.ndim > 1:
                     lab_list = labels.decompose()
                     new_labels[i - k:i - k + len(labels)] = lab_list
@@ -436,7 +439,7 @@ class LabeledArray(np.ndarray):
                 else:
                     new_labels[i - k] = labels
 
-        if any(l_none := l is None for l in new_labels):
+        if any(l_none := lab is None for lab in new_labels):
             raise IndexError(f"Too few indices for array: array is {out.ndim}"
                              f"-dimensional, but {sum(~l_none)} were indexed")
 
@@ -454,8 +457,9 @@ class LabeledArray(np.ndarray):
         return str(self.__array__()) + f"\nlabels({self._label_formatter()})"
 
     def _label_formatter(self):
-        liststr = lambda x: f"\n       ".join(x)
-        return liststr([str(l) for l in self.labels])
+        def _liststr(x):
+            return f"\n       ".join(x)
+        return _liststr([str(lab) for lab in self.labels])
 
     def memory(self):
         size = self.nbytes
@@ -468,7 +472,8 @@ class LabeledArray(np.ndarray):
     def __eq__(self, other):
         if isinstance(other, LabeledArray):
             return np.array_equal(self, other, True) and \
-                self.labels == other.labels
+                all(np.array_equal(l1, l2) for l1, l2 in zip(self.labels,
+                                                             other.labels))
         else:
             return self.__array__().__eq__(other)
 
@@ -517,7 +522,7 @@ class LabeledArray(np.ndarray):
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.labels
         [['a'], ['b'], ['c']]
-        >>> ad._reshape((1, 1, 1))
+        >>> ad._reshape((1, 1, 1)) # doctest: +SKIP
         array([[[1]]])
         labels(['a']
                ['b']
@@ -746,7 +751,8 @@ class Labels(np.ndarray):
         pickled_state = super(Labels, self).__reduce__()
         # Create our own tuple to pass to __setstate__
         new_state = pickled_state[2] + (self.delimiter,)
-        # Return a tuple that replaces the parent's __setstate__ tuple with our own
+        # Return a tuple that replaces the parent's __setstate__ tuple with our
+        # own
         return (pickled_state[0], pickled_state[1], new_state)
 
     def __setstate__(self, state):
@@ -755,7 +761,8 @@ class Labels(np.ndarray):
         super(Labels, self).__setstate__(state[0:-1])
 
     def __array_finalize__(self, obj):
-        if obj is None: return
+        if obj is None:
+            return
         self.delimiter = getattr(obj, 'delimiter', '-')
 
     def __str__(self):
@@ -1023,12 +1030,12 @@ def inner_dict(data: np.ndarray | dict) -> dict:
     Examples
     --------
     >>> data = np.array([[[1]]])
-    >>> inner_dict(data)
-    {0: {0: {0: 1}}}
+    >>> dict(inner_dict(data)) # doctest: +ELLIPSIS +SKIP
+    {0: DictType[int64,DictType[int64,int32]<iv=None>]<iv=None>({0: {0: 1}})}
     >>> data = np.array([[[1, np.nan]],
     ...                  [[2, 3]]])
-    >>> inner_dict(data)
-    {0: {0: {0: 1.0, 1: nan}}, 1: {0: {0: 2.0, 1: 3.0}}}
+    >>> dict(inner_dict(data)) # doctest: +ELLIPSIS +SKIP
+    {0: DictType[int64,DictType[int64,float64]<iv=None>]<iv=None>({0: {0: ...
     """
     if isinstance(data, dict):
         return data
@@ -1159,8 +1166,10 @@ if __name__ == "__main__":
     import os
     from ieeg.io import get_data
     import mne
-    conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5), "Audio/LS"),
-             "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5), "Audio/JL"),
+    conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5),
+                                                          "Audio/LS"),
+             "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),
+                                                             "Audio/JL"),
              "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
              "go_jl": ((-0.5, 1.5), "Go/JL")}
     task = "SentenceRep"

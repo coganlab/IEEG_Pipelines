@@ -246,8 +246,9 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
-                    size: float = 0.35, fig: Brain = None, label_every: int = None,
-                    background: str = 'white', units: str = 'm') -> Brain:
+                    size: float = 0.35, fig: Brain = None,
+                    label_every: int = None, background: str = 'white',
+                    units: str = 'm') -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -273,8 +274,12 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         The size of the markers, by default 0.35
     fig : Brain, optional
         The figure to plot on, by default None
+    label_every : int, optional
+        How often to label the channels, by default None
     background: str, optional
         Background color
+    units: str, optional
+        Units of the electrodes
 
     Returns
     -------
