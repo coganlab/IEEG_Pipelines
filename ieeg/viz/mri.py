@@ -246,7 +246,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     subj_dir: PathLike = None, rm_wm: bool = True,
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
-                    size: float = 0.35, fig: Brain = None,
+                    size: float = 0.35, fig: Brain = None, label_every: int = None,
                     background: str = 'white', units: str = 'm') -> Brain:
     """Plots the signal on the average brain
 
@@ -337,7 +337,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
                   trans=to_fsaverage, color=color, size=size,
-                  labels_every=None, hemi=hemi, background=background)
+                  labels_every=label_every, hemi=hemi, background=background)
 
     return fig
 
