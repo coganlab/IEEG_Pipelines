@@ -294,11 +294,12 @@ class LabeledArray(np.ndarray):
         >>> from bids import BIDSLayout
         >>> from ieeg.io import raw_from_layout
         >>> from ieeg.navigate import trial_ieeg
+        >>> import sys
         >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
         >>> layout = BIDSLayout(bids_root)
-        >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
-        ... extension=".vhdr", verbose=False)
-        Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+        >>> with mne.use_log_level(0):
+        ...     raw = raw_from_layout(layout, subject="pt1", preload=True,
+        ...     extension=".vhdr", verbose=False)
         >>> LabeledArray.from_signal(raw, dtype=float) # doctest: +ELLIPSIS
         array([[-8.98329883e-06,  8.20419238e-06,  7.42294287e-06, ...,
                  1.07177293e-09,  1.07177293e-09,  1.07177293e-09],
