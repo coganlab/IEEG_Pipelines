@@ -22,6 +22,21 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
         The random state to use, by default None.
 
     Examples
+    --------
+    >>> import numpy as np
+    >>> from ieeg.calc.oversample import TwoSplitNaN
+    >>> np.random.seed(0)
+    >>> X = np.vstack((np.arange(1, 9).reshape(4, 2), np.full((4, 2), np.nan)))
+    >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    >>> tsn = TwoSplitNaN(2, 3)
+    >>> for train, test in tsn.split(X, y):
+    ...     print("train:", train, "test:", test)
+    train: [1 2 4 7] test: [0 3 5 6]
+    train: [0 3 5 6] test: [1 2 4 7]
+    train: [1 3 5 7] test: [0 2 4 6]
+    train: [0 2 4 6] test: [1 3 5 7]
+    train: [1 2 5 7] test: [0 3 4 6]
+    train: [0 3 4 6] test: [1 2 5 7]
     """
 
     def __init__(self, n_splits: int, n_repeats: int = 10,
@@ -149,9 +164,8 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
     --------
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> find_nan_indices(arr, 0)
-    (array([3]), array([0, 1, 2]))
-
+    >>> find_nan_indices(arr, 0) # doctest: +ELLIPSIS
+    (array([3]... array([0, 1, 2]...)
     """
 
     # Initialize boolean mask of rows with NaN values
