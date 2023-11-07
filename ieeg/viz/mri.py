@@ -435,6 +435,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         Background color
     title : string, optional
         Title the plot
+    units: str, optional
+        Units of the electrodes
 
     Returns
     -------
@@ -462,7 +464,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=0.5, background=background, surf=surface, hemi=hemi,
                     show=show, units=units)
-        
+
     # Set the title if provided
     if title is not None:
         mne.viz.set_3d_title(fig, title, size=40)

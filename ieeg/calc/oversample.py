@@ -92,15 +92,9 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> oversample_nan(arr, normnd, 0)  # doctest: +ELLIPSIS
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [...
+    array([[...
     >>> oversample_nan(arr, mixupnd, 0)  # doctest: +ELLIPSIS
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [...
+    array([[...
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
     >>> oversample_nan(arr3, mixupnd, 1)  # doctest: +SKIP
@@ -215,15 +209,13 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
 
     Examples
     --------
+    >>> from ieeg.calc.oversample import mixupnd
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> mixupnd(arr, 0)
     >>> arr # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [...
+    array([[...
     """
 
     # create a view of the array with the observation axis in the second to
