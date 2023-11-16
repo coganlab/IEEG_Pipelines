@@ -35,12 +35,12 @@ python download_soul.py
 ## FAQs
 
 - Q: What if I don't want to be immortal?
-- A: This is the future. Love it or leave it.
+  - A: This is the future. Love it or leave it.
 
 
 - Q: How do I ensure continuity of my soul? In other words, how do I make sure that 'I' get downloaded into a new body, and not a clone of me?
-- A: Don't worry about it.
+  - A: Don't worry about it.
 
 
 - Q: Am I a clone?
-- A: Next question.
+  - A: Next question.
