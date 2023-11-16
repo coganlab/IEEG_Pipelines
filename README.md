@@ -1,87 +1,46 @@
-# IEEG_Pipelines
+# IEEG_Pipelines: The Existential Nightmare Update
 
-A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganlab.org/)
+The latest update to our Python IEEG signal preprocessing pipeline. Changes include:
+- Immortality
 
-## Documentation
+Future updates will include:
+- Mind reading
+- Mind control
+- Telepathy
 
-[![Documentation Status](https://readthedocs.org/projects/ieeg-pipelines/badge/?version=latest)](https://ieeg-pipelines.readthedocs.io/en/latest/?badge=latest)
+## Immortality
+We have added a new feature to the pipeline that allows the user to become immortal. This is done by first making a pact with the devil (self-explanatory), then uploading your soul to the cloud. This is done by running the following command:
+```bash
+python upload_soul.py -f my_soul.pptx
+```
+#### WARNING: The cloud is not responsible for any unauthorized use of your soul, nor are we responsible for the actions of your clones. Please read the terms and conditions before uploading your soul.
 
-[Lab Wiki](https://coganlab.pages.oit.duke.edu/wiki//)
+Congratulations, you will now live forever. This will upload your soul to the cloud. To download your soul, run the following command:
 
-## Pipeline Functionality
+```bash
+python download_soul.py
+```
 
-[![Python (3.10) on Windows/Linux](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Python-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Python-CI.yml)
+## External Resources
 
-[![MATLAB latest](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml)
+- [The Devil](https://en.wikipedia.org/wiki/Devil)
 
-[![codecov](https://codecov.io/gh/coganlab/IEEG_Pipelines/branch/main/graph/badge.svg?token=X4IAFGOBGN)](https://codecov.io/gh/coganlab/IEEG_Pipelines)
+## Other Implementations
 
-## Installation
+- [SOMA](https://store.steampowered.com/app/282140/SOMA/)
+- [The Matrix](https://www.imdb.com/title/tt0133093/)
+- [Upload](https://www.imdb.com/title/tt7826376/)
+- [Doctor Who: Silence in the Library](https://en.wikipedia.org/wiki/Silence_in_the_Library#Plot)
 
-### MATLAB
+## FAQs
 
-1. Install MATLAB
-2. Clone this repository into your userpath (`Documents/MATLAB` by default)
-3. Run commands:
+- Q: What if I don't want to be immortal?
+- A: This is the future. Love it or leave it.
 
-    ```(MATLAB)
-    path = fullfile(userpath, 'IEEG_Pipelines', 'MATLAB');
-    addpath(genpath(path));
-    ```
 
-### Python
+- Q: How do I ensure continuity of my soul? In other words, how do I make sure that 'I' get downloaded into a new body, and not a clone of me?
+- A: Don't worry about it.
 
-Version 3.10 supported
 
-#### Conda
-
-1. Install Anaconda
-2. Clone this repository
-3. Open a terminal and `cd` into this repo's `Python` directory
-4. Run this command:
-
-    ```(bash)
-    conda env create -f envs/environment.yml
-    ```
-
-5. When it is finished installing run `conda activate preprocess` to activate the environment
-
-#### Pip
-
-1. Install Python
-2. Clone this repository
-3. Open a terminal and `cd` into this repo's `Python` directory
-4. Run:
-
-    ```(bash)
-    python -m venv <PATH TO VENV>/preprocess
-    python -m pip install -r envs/requirements.txt -e <PATH TO VENV>/preprocess
-    ```
-
-5. When it is finished installing run `source activate <PATH TO VENV>/preprocess` to activate the environment
-
-## Usage
-
-### MATLAB (INCOMPLETE)
-
-1. Load `.dat` file using [convert_OpenE_rec2mat.m](MATLAB/ieeg%20file%20reading/convert_OpenE_rec2mat.m)
-2. Create the ieeg data structure from the [ieegStructClass.m](MATLAB/ieegClassDefinition/ieegStructClass.m)
-3. `TBD`
-
-### Python ([INCOMPLETE](https://github.com/orgs/coganlab/projects/7))
-
-1. Load BIDS files from BIDS directory using `pybids`
-    
-    ```(python)
-    from bids import BIDSLayout
-    import ieeg
-    layout = BIDSLayout(BIDS_root)
-    data = ieeg.io.raw_from_layout(layout)
-    ```
-2. [Perform line noise filtering](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_clean.html)
-
-3. [Check Spectrograms](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_spectrograms.html)
-
-4. [Plot the high gamma responses](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_HG.html)
-
-5. [Run the cluster correction and permutation test](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_stats.html)
+- Q: Am I a clone?
+- A: Next question.
