@@ -3,6 +3,7 @@ from typing import Literal, Tuple
 from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 from numba import njit
+import itertools
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -84,6 +85,218 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
             train.sort()
             test.sort()
             yield train, test
+
+
+@njit(nogil=True, cache=True)
+def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
+    """Oversample by mixing two random non-NaN observations
+
+    Parameters
+    ----------
+    arr : array
+        The data to oversample.
+    obs_axis : int
+        The axis along which to apply func.
+    alpha : float
+        The alpha parameter for the beta distribution. If alpha is 0, then
+        the distribution is uniform. If alpha is 1, then the distribution is
+        symmetric. If alpha is greater than 1, then the distribution is
+        skewed towards the first observation. If alpha is less than 1, then
+        the distribution is skewed towards the second observation.
+
+    Examples
+    --------
+    >>> from ieeg.calc.oversample import mixupnd
+    >>> np.random.seed(0)
+    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+    ... [float("nan"), float("nan")]])
+    >>> mixupnd(arr, 0)
+    >>> arr # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    array([[...
+    """
+
+    # create a view of the array with the observation axis in the second to
+    # last position
+    arr_in = np.swapaxes(arr, obs_axis, -2)
+
+    if arr.ndim == 2:
+        mixup2d(arr_in, alpha)
+    elif arr.ndim > 2:
+        for ijk in np.ndindex(arr.shape[:-2]):
+            mixup2d(arr_in[ijk], alpha)
+    else:
+        raise ValueError("Cannot apply mixup to a 1-dimensional array")
+
+
+@njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
+def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
+    """Oversample by mixing two random non-NaN observations
+
+    Parameters
+    ----------
+    arr : array
+        The data to oversample.
+    alpha : float
+        The alpha parameter for the beta distribution. If alpha is 0, then
+        the distribution is uniform. If alpha is 1, then the distribution is
+        symmetric. If alpha is greater than 1, then the distribution is
+        skewed towards the first observation. If alpha is less than 1, then
+        the distribution is skewed towards the second observation.
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+    ... [float("nan"), float("nan")]])
+    >>> mixup2d(arr)
+    >>> arr  #doctest: +ELLIPSIS
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [...
+    """
+    # Get indices of rows with NaN values
+    wh = np.zeros(arr.shape[0], dtype=np.bool_)
+    for i in range(arr.shape[0]):
+        wh[i] = np.any(np.isnan(arr[i]))
+    non_nan_rows = np.flatnonzero(~wh)
+    n_nan = np.sum(wh)
+
+    # Construct an array of 2-length vectors for each NaN row
+    vectors = np.empty((n_nan, 2))
+
+    # The two elements of each vector are different indices of non-NaN rows
+    for i in range(n_nan):
+        vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
+
+    # get beta distribution parameters
+    if alpha > 0.:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+
+    x1 = arr[vectors[:, 0].astype(np.intp)]
+    x2 = arr[vectors[:, 1].astype(np.intp)]
+
+    arr[wh] = lam * x1 + (1 - lam) * x2
+
+
+class MinimumNaNSplit(RepeatedStratifiedKFold):
+    """A Repeated Stratified KFold iterator that splits the data into sections
+
+    This class splits the data into sections, checking that the training set
+    never has fewer than the specified number of non-NaN values.
+    Parameters
+    ----------
+    n_splits : int
+        The number of splits.
+    n_repeats : int, optional
+        The number of times to repeat the splits, by default 10.
+    random_state : int, optional
+        The random state to use, by default None.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from ieeg.calc.oversample import TwoSplitNaN
+    >>> np.random.seed(0)
+    >>> X = np.vstack((np.arange(1, 9).reshape(4, 2), np.full((4, 2), np.nan)))
+    >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    >>> msn = MinimumNaNSplit(2, 3)
+    >>> for train, test in msn.split(X, y):
+    ...     print("train:", train, "test:", test)
+    train: [1 3 4 6] test: [0 2 5 7]
+    train: [0 2 5 7] test: [1 3 4 6]
+    train: [1 3 4 7] test: [0 2 5 6]
+    train: [0 2 5 6] test: [1 3 4 7]
+    train: [0 3 5 7] test: [1 2 4 6]
+    train: [1 2 4 6] test: [0 3 5 7]
+    """
+
+    def __init__(self, n_splits: int, n_repeats: int = 10,
+                 random_state: int = None, min_non_nan: int = 2):
+        super().__init__(n_splits=n_splits, n_repeats=n_repeats,
+                         random_state=random_state)
+        self.n_splits = n_splits
+        self.min_non_nan = min_non_nan
+
+    def split(self, X, y=None, groups=None):
+
+        # find where the nans are
+        where = np.isnan(X).any(axis=tuple(range(X.ndim))[1:])
+        not_where = np.where(~where)[0]
+        where = np.where(where)[0]
+
+        # if there are no nans, then just split the data
+        if len(where) == 0:
+            yield from super(MinimumNaNSplit, self).split(X, y, groups)
+            return
+        elif (n_non_nan := len(not_where)) < (n_min := self.min_non_nan + 1):
+            raise ValueError(f"Need at least {n_min} non-nan values, but only"
+                             f" have {n_non_nan}")
+
+        splits = super().split(X, y, groups)
+
+        # check that all training sets for each kfold within each repetition
+        # have at least min_non_nan non-nan values
+        while element := next(splits, False):
+            kfold_set = []
+            for i in range(self.n_splits):
+                if i == 0:
+                    train, test = element
+                else:
+                    train, test = next(splits)
+
+                # if any test set has more non-nan values than the total number
+                # of non-nan values minus the minimum number of non-nan values,
+                # then throw out the split and append an extra repetition
+                if sum(ix not in test for ix in not_where) < self.min_non_nan:
+                    for _ in range(i + 1, self.n_splits):
+                        next(splits)
+                    extra = super().split(X, y, groups)
+                    one_rep = itertools.islice(extra, self.n_splits)
+                    splits = itertools.chain(splits, one_rep)
+                    break
+                kfold_set.append((train, test))
+            else:
+                yield from kfold_set
+
+    @staticmethod
+    def oversample(arr: np.ndarray, func: callable = mixupnd,
+                   axis: int = 1, copy: bool = True) -> np.ndarray:
+        """Oversample nan rows using func
+
+        Parameters
+        ----------
+        arr : array
+            The data to oversample.
+        func : callable
+            The function to use to oversample the data.
+        axis : int
+            The axis along which to apply func.
+        copy : bool
+            Whether to copy the data before oversampling.
+
+        Examples
+        --------
+        # >>> np.random.seed(0)
+        >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+        ... [float("nan"), float("nan")]])
+        >>> MinimumNaNSplit.oversample(arr, normnd, 0)  # doctest: +ELLIPSIS
+        array([[...
+        >>> MinimumNaNSplit.oversample(arr, mixupnd, 0)  # doctest: +ELLIPSIS
+        array([[...
+        """
+        if copy:
+            arr = arr.copy()
+
+        axis = arr.ndim + axis if axis < 0 else axis
+
+        if arr.ndim <= 0:
+            raise ValueError("Cannot apply func to a 0-dimensional array")
+        else:
+            func(arr, axis)
+        return arr
 
 
 def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
@@ -205,47 +418,6 @@ def norm(arr: np.ndarray, obs_axis: int) -> None:
 
 
 @njit(nogil=True, cache=True)
-def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
-    """Oversample by mixing two random non-NaN observations
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    obs_axis : int
-        The axis along which to apply func.
-    alpha : float
-        The alpha parameter for the beta distribution. If alpha is 0, then
-        the distribution is uniform. If alpha is 1, then the distribution is
-        symmetric. If alpha is greater than 1, then the distribution is
-        skewed towards the first observation. If alpha is less than 1, then
-        the distribution is skewed towards the second observation.
-
-    Examples
-    --------
-    >>> from ieeg.calc.oversample import mixupnd
-    >>> np.random.seed(0)
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
-    >>> mixupnd(arr, 0)
-    >>> arr # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    array([[...
-    """
-
-    # create a view of the array with the observation axis in the second to
-    # last position
-    arr_in = np.swapaxes(arr, obs_axis, -2)
-
-    if arr.ndim == 2:
-        mixup2d(arr_in, alpha)
-    elif arr.ndim > 2:
-        for ijk in np.ndindex(arr.shape[:-2]):
-            mixup2d(arr_in[ijk], alpha)
-    else:
-        raise ValueError("Cannot apply mixup to a 1-dimensional array")
-
-
-@njit(nogil=True, cache=True)
 def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
     """Oversample by obtaining the distribution and randomly selecting
 
@@ -323,59 +495,6 @@ def norm1d(arr: Vector) -> None:
     # Get the normal distribution of each timepoint
     for i in np.flatnonzero(wh):
         arr[i] = np.random.normal(mean, std)
-
-
-@njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
-def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
-    """Oversample by mixing two random non-NaN observations
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    alpha : float
-        The alpha parameter for the beta distribution. If alpha is 0, then
-        the distribution is uniform. If alpha is 1, then the distribution is
-        symmetric. If alpha is greater than 1, then the distribution is
-        skewed towards the first observation. If alpha is less than 1, then
-        the distribution is skewed towards the second observation.
-
-    Examples
-    --------
-    >>> np.random.seed(0)
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
-    >>> mixup2d(arr)
-    >>> arr  #doctest: +ELLIPSIS
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [...
-    """
-    # Get indices of rows with NaN values
-    wh = np.zeros(arr.shape[0], dtype=np.bool_)
-    for i in range(arr.shape[0]):
-        wh[i] = np.any(np.isnan(arr[i]))
-    non_nan_rows = np.flatnonzero(~wh)
-    n_nan = np.sum(wh)
-
-    # Construct an array of 2-length vectors for each NaN row
-    vectors = np.empty((n_nan, 2))
-
-    # The two elements of each vector are different indices of non-NaN rows
-    for i in range(n_nan):
-        vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
-
-    # get beta distribution parameters
-    if alpha > 0.:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    x1 = arr[vectors[:, 0].astype(np.intp)]
-    x2 = arr[vectors[:, 1].astype(np.intp)]
-
-    arr[wh] = lam * x1 + (1 - lam) * x2
 
 
 def smote(arr: np.ndarray) -> None:
