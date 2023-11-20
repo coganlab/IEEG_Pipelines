@@ -8,13 +8,15 @@ try:
     import statsmodels.api as sm
 except ImportError:
     print(
-        "\nWARNING: statsmodels is not installed. You will be unable to use the Naive Bayes Decoder")
+        "\nWARNING: statsmodels is not installed. You will be unable to use "
+        "the Naive Bayes Decoder")
     pass
 try:
     import math
 except ImportError:
     print(
-        "\nWARNING: math is not installed. You will be unable to use the Naive Bayes Decoder")
+        "\nWARNING: math is not installed. You will be unable to use the Naive"
+        " Bayes Decoder")
     pass
 try:
     from scipy.spatial.distance import pdist
@@ -23,7 +25,8 @@ try:
     from scipy.spatial.distance import cdist
 except ImportError:
     print(
-        "\nWARNING: scipy is not installed. You will be unable to use the Naive Bayes Decoder")
+        "\nWARNING: scipy is not installed. You will be unable to use the "
+        "Naive Bayes Decoder")
     pass
 
 # Import scikit-learn (sklearn) if it is installed
@@ -83,8 +86,7 @@ except ImportError:
 ##################### WIENER FILTER ##########################
 
 class WienerFilterRegression(object):
-    """
-    Class for the Wiener Filter Decoder
+    """Class for the Wiener Filter Decoder
 
     There are no parameters to set.
 
@@ -95,8 +97,7 @@ class WienerFilterRegression(object):
         return
 
     def fit(self, X_flat_train, y_train):
-        """
-        Train Wiener Filter Decoder
+        """Train Wiener Filter Decoder
 
         Parameters
         ----------
@@ -115,8 +116,7 @@ class WienerFilterRegression(object):
         self.model.fit(X_flat_train, y_train)
 
     def predict(self, X_flat_test):
-        """
-        Predict outcomes using trained Wiener Cascade Decoder
+        """Predict outcomes using trained Wiener Cascade Decoder
 
         Parameters
         ----------
@@ -136,8 +136,7 @@ class WienerFilterRegression(object):
 ##################### WIENER CASCADE ##########################
 
 class WienerCascadeRegression(object):
-    """
-    Class for the Wiener Cascade Decoder
+    """Class for the Wiener Cascade Decoder
 
     Parameters
     ----------
@@ -150,8 +149,7 @@ class WienerCascadeRegression(object):
 
     def fit(self, X_flat_train, y_train):
 
-        """
-        Train Wiener Cascade Decoder
+        """Train Wiener Cascade Decoder
 
         Parameters
         ----------
@@ -184,8 +182,7 @@ class WienerCascadeRegression(object):
 
     def predict(self, X_flat_test):
 
-        """
-        Predict outcomes using trained Wiener Cascade Decoder
+        """Predict outcomes using trained Wiener Cascade Decoder
 
         Parameters
         ----------
@@ -243,20 +240,23 @@ class KalmanFilterRegression(object):
         self.C = C
 
     def fit(self, X_kf_train, y_train):
-        """
-        Train Kalman Filter Decoder
+        """Train Kalman Filter Decoder
 
         Parameters
         ----------
-        X_kf_train: numpy 2d array of shape [n_samples(i.e. timebins) , n_neurons]
+        X_kf_train: numpy 2d array of shape [n_samples(i.e. timebins) ,
+        n_neurons]
             This is the neural data in Kalman filter format.
-            See example file for an example of how to format the neural data correctly
+            See example file for an example of how to format the neural data
+            correctly
 
         y_train: numpy 2d array of shape [n_samples(i.e. timebins), n_outputs]
             This is the outputs that are being predicted
         """
 
-        # First we'll rename and reformat the variables to be in a more standard kalman filter nomenclature (specifically that from Wu et al, 2003):
+        # First we'll rename and reformat the variables to be in a more
+        # standard kalman filter nomenclature (specifically that from Wu et
+        # al, 2003):
         # xs are the state (here, the variable we're predicting, i.e. y_train)
         # zs are the observed variable (neural data here, i.e. X_kf_train)
         X = np.matrix(y_train.T)
@@ -265,15 +265,21 @@ class KalmanFilterRegression(object):
         # number of time bins
         nt = X.shape[1]
 
-        # Calculate the transition matrix (from x_t to x_t+1) using least-squares, and compute its covariance
-        # In our case, this is the transition from one kinematic state to the next
+        # Calculate the transition matrix (from x_t to x_t+1) using
+        # least-squares, and compute its covariance
+        # In our case, this is the transition from one kinematic state to
+        # the next
         X2 = X[:, 1:]
         X1 = X[:, 0:nt - 1]
         A = X2 * X1.T * inv(X1 * X1.T)  # Transition matrix
         W = (X2 - A * X1) * (X2 - A * X1).T / (
-                nt - 1) / self.C  # Covariance of transition matrix. Note we divide by nt-1 since only nt-1 points were used in the computation (that's the length of X1 and X2). We also introduce the extra parameter C here.
+                nt - 1) / self.C  # Covariance of transition matrix. Note we
+        # divide by nt-1 since only nt-1 points were used in the computation
+        # (that's the length of X1 and X2). We also introduce the extra
+        # parameter C here.
 
-        # Calculate the measurement matrix (from x_t to z_t) using least-squares, and compute its covariance
+        # Calculate the measurement matrix (from x_t to z_t) using
+        # least-squares, and compute its covariance
         # In our case, this is the transformation from kinematics to spikes
         H = Z * X.T * (inv(X * X.T))  # Measurement matrix
         Q = ((Z - H * X) * (
@@ -282,29 +288,33 @@ class KalmanFilterRegression(object):
         self.model = params
 
     def predict(self, X_kf_test, y_test):
-        """
-        Predict outcomes using trained Kalman Filter Decoder
+        """Predict outcomes using trained Kalman Filter Decoder
 
         Parameters
         ----------
-        X_kf_test: numpy 2d array of shape [n_samples(i.e. timebins) , n_neurons]
+        X_kf_test: numpy 2d array of shape [n_samples(i.e. timebins) ,
+        n_neurons]
             This is the neural data in Kalman filter format.
 
         y_test: numpy 2d array of shape [n_samples(i.e. timebins),n_outputs]
             The actual outputs
-            This parameter is necesary for the Kalman filter (unlike other decoders)
+            This parameter is necesary for the Kalman filter (unlike other
+            decoders)
             because the first value is nececessary for initialization
 
         Returns
         -------
-        y_test_predicted: numpy 2d array of shape [n_samples(i.e. timebins),n_outputs]
+        y_test_predicted: numpy 2d array of shape [n_samples(i.e. timebins),
+        n_outputs]
             The predicted outputs
         """
 
         # Extract parameters
         A, W, H, Q = self.model
 
-        # First we'll rename and reformat the variables to be in a more standard kalman filter nomenclature (specifically that from Wu et al):
+        # First we'll rename and reformat the variables to be in a more
+        # standard kalman filter nomenclature (specifically that from Wu et
+        # al):
         # xs are the state (here, the variable we're predicting, i.e. y_train)
         # zs are the observed variable (neural data here, i.e. X_kf_train)
         X = np.matrix(y_test.T)
@@ -313,7 +323,8 @@ class KalmanFilterRegression(object):
         # Initializations
         num_states = X.shape[0]  # Dimensionality of the state
         states = np.empty(
-            X.shape)  # Keep track of states over time (states is what will be returned as y_test_predicted)
+            X.shape)  # Keep track of states over time (states is what will
+        # be returned as y_test_predicted)
         P_m = np.matrix(np.zeros([num_states, num_states]))
         P = np.matrix(np.zeros([num_states, num_states]))
         state = X[:, 0]  # Initial state
@@ -335,11 +346,11 @@ class KalmanFilterRegression(object):
         return y_test_predicted
 
 
-##################### DENSE (FULLY-CONNECTED) NEURAL NETWORK ##########################
+##################### DENSE (FULLY-CONNECTED) NEURAL NETWORK
+# ##########################
 
 class DenseNNRegression(object):
-    """
-    Class for the dense (fully-connected) neural network decoder
+    """Class for the dense (fully-connected) neural network decoder
 
     Parameters
     ----------
@@ -370,17 +381,18 @@ class DenseNNRegression(object):
         # If "units" is an integer, put it in the form of a vector
         try:  # Check if it's a vector
             units[0]
-        except:  # If it's not a vector, create a vector of the number of units for each layer
+        except:  # If it's not a vector, create a vector of the number of
+            # units for each layer
             units = [units]
         self.units = units
 
-        # Determine the number of hidden layers (based on "units" that the user entered)
+        # Determine the number of hidden layers (based on "units" that the
+        # user entered)
         self.num_layers = len(units)
 
     def fit(self, X_flat_train, y_train):
 
-        """
-        Train DenseNN Decoder
+        """Train DenseNN Decoder
 
         Parameters
         ----------
@@ -428,8 +440,7 @@ class DenseNNRegression(object):
 
     def predict(self, X_flat_test):
 
-        """
-        Predict outcomes using trained DenseNN Decoder
+        """Predict outcomes using trained DenseNN Decoder
 
         Parameters
         ----------
@@ -449,8 +460,7 @@ class DenseNNRegression(object):
 ##################### SIMPLE RECURRENT NEURAL NETWORK #########################
 
 class SimpleRNNRegression(object):
-    """
-    Class for the simple recurrent neural network decoder
+    """Class for the simple recurrent neural network decoder
 
     Parameters
     ----------
@@ -475,8 +485,7 @@ class SimpleRNNRegression(object):
 
     def fit(self, X_train, y_train):
 
-        """
-        Train SimpleRNN Decoder
+        """Train SimpleRNN Decoder
 
         Parameters
         ----------
@@ -522,8 +531,7 @@ class SimpleRNNRegression(object):
 
     def predict(self, X_test):
 
-        """
-        Predict outcomes using trained SimpleRNN Decoder
+        """Predict outcomes using trained SimpleRNN Decoder
 
         Parameters
         ----------
@@ -543,8 +551,7 @@ class SimpleRNNRegression(object):
 ##################### GATED RECURRENT UNIT (GRU) DECODER ######################
 
 class GRURegression(object):
-    """
-    Class for the gated recurrent unit (GRU) decoder
+    """Class for the gated recurrent unit (GRU) decoder
 
     Parameters
     ----------
@@ -569,14 +576,14 @@ class GRURegression(object):
 
     def fit(self, X_train, y_train):
 
-        """
-        Train GRU Decoder
+        """Train GRU Decoder
 
         Parameters
         ----------
         X_train: numpy 3d array of shape [n_samples,n_time_bins,n_neurons]
             This is the neural data.
-            See example file for an example of how to format the neural data correctly
+            See example file for an example of how to format the neural data
+            correctly
 
         y_train: numpy 2d array of shape [n_samples, n_outputs]
             This is the outputs that are being predicted
@@ -614,8 +621,7 @@ class GRURegression(object):
 
     def predict(self, X_test):
 
-        """
-        Predict outcomes using trained GRU Decoder
+        """Predict outcomes using trained GRU Decoder
 
         Parameters
         ----------
@@ -635,8 +641,7 @@ class GRURegression(object):
 #################### LONG SHORT TERM MEMORY (LSTM) DECODER ####################
 
 class LSTMRegression(object):
-    """
-    Class for the gated recurrent unit (GRU) decoder
+    """Class for the gated recurrent unit (GRU) decoder
 
     Parameters
     ----------
@@ -661,8 +666,7 @@ class LSTMRegression(object):
 
     def fit(self, X_train, y_train):
 
-        """
-        Train LSTM Decoder
+        """Train LSTM Decoder
 
         Parameters
         ----------
@@ -708,8 +712,7 @@ class LSTMRegression(object):
 
     def predict(self, X_test):
 
-        """
-        Predict outcomes using trained LSTM Decoder
+        """Predict outcomes using trained LSTM Decoder
 
         Parameters
         ----------
@@ -729,8 +732,7 @@ class LSTMRegression(object):
 ##################### EXTREME GRADIENT BOOSTING (XGBOOST) #####################
 
 class XGBoostRegression(object):
-    """
-    Class for the XGBoost Decoder
+    """Class for the XGBoost Decoder
 
     Parameters
     ----------
@@ -757,8 +759,7 @@ class XGBoostRegression(object):
 
     def fit(self, X_flat_train, y_train):
 
-        """
-        Train XGBoost Decoder
+        """Train XGBoost Decoder
 
         Parameters
         ----------
@@ -801,8 +802,7 @@ class XGBoostRegression(object):
 
     def predict(self, X_flat_test):
 
-        """
-        Predict outcomes using trained XGBoost Decoder
+        """Predict outcomes using trained XGBoost Decoder
 
         Parameters
         ----------
@@ -829,8 +829,7 @@ class XGBoostRegression(object):
 ##################### SUPPORT VECTOR REGRESSION ##########################
 
 class SVRegression(object):
-    """
-    Class for the Support Vector Regression (SVR) Decoder
+    """Class for the Support Vector Regression (SVR) Decoder
     This simply leverages the scikit-learn SVR
 
     Parameters
@@ -851,8 +850,7 @@ class SVRegression(object):
 
     def fit(self, X_flat_train, y_train):
 
-        """
-        Train SVR Decoder
+        """Train SVR Decoder
 
         Parameters
         ----------
@@ -877,8 +875,7 @@ class SVRegression(object):
 
     def predict(self, X_flat_test):
 
-        """
-        Predict outcomes using trained SVR Decoder
+        """Predict outcomes using trained SVR Decoder
 
         Parameters
         ----------
@@ -918,8 +915,7 @@ def glm_run(Xr, Yr, X_range):
 
 
 class NaiveBayesRegression(object):
-    """
-    Class for the Naive Bayes Decoder
+    """Class for the Naive Bayes Decoder
 
     Parameters
     ----------
@@ -939,8 +935,7 @@ class NaiveBayesRegression(object):
 
     def fit(self, X_b_train, y_train):
 
-        """
-        Train Naive Bayes Decoder
+        """Train Naive Bayes Decoder
 
         Parameters
         ----------
@@ -1039,8 +1034,7 @@ class NaiveBayesRegression(object):
 
     def predict(self, X_b_test, y_test):
 
-        """
-        Predict outcomes using trained tuning curves
+        """Predict outcomes using trained tuning curves
 
         Parameters
         ----------
@@ -1137,8 +1131,7 @@ NaiveBayesDecoder = NaiveBayesRegression
 
 
 class WienerFilterClassification(object):
-    """
-    Class for the Wiener Filter Decoder
+    """Class for the Wiener Filter Decoder
 
     There are no parameters to set.
 
@@ -1150,8 +1143,7 @@ class WienerFilterClassification(object):
         return
 
     def fit(self, X_flat_train, y_train):
-        """
-        Train Wiener Filter Decoder
+        """Train Wiener Filter Decoder
 
         Parameters
         ----------
@@ -1174,8 +1166,7 @@ class WienerFilterClassification(object):
         self.model.fit(X_flat_train, y_train)  # Train the model
 
     def predict(self, X_flat_test):
-        """
-        Predict outcomes using trained Wiener Cascade Decoder
+        """Predict outcomes using trained Wiener Cascade Decoder
 
         Parameters
         ----------
@@ -1195,8 +1186,7 @@ class WienerFilterClassification(object):
 ##################### SUPPORT VECTOR REGRESSION ##########################
 
 class SVClassification(object):
-    """
-    Class for the Support Vector Classification Decoder
+    """Class for the Support Vector Classification Decoder
     This simply leverages the scikit-learn SVM
 
     Parameters
@@ -1216,14 +1206,14 @@ class SVClassification(object):
         return
 
     def fit(self, X_flat_train, y_train):
-        """
-        Train SVR Decoder
+        """Train SVR Decoder
 
         Parameters
         ----------
         X_flat_train: numpy 2d array of shape [n_samples,n_features]
             This is the neural data.
-            See example file for an example of how to format the neural data correctly
+            See example file for an example of how to format the neural data
+            correctly
 
         y_train: numpy 2d array of shape [n_samples, n_outputs]
             This is the outputs that are being predicted
@@ -1234,8 +1224,7 @@ class SVClassification(object):
         self.model = model
 
     def predict(self, X_flat_test):
-        """
-        Predict outcomes using trained SV Decoder
+        """Predict outcomes using trained SV Decoder
 
         Parameters
         ----------
@@ -1287,17 +1276,18 @@ class DenseNNClassification(object):
         # If "units" is an integer, put it in the form of a vector
         try:  # Check if it's a vector
             units[0]
-        except:  # If it's not a vector, create a vector of the number of units for each layer
+        except:  # If it's not a vector, create a vector of the number of
+            # units for each layer
             units = [units]
         self.units = units
 
-        # Determine the number of hidden layers (based on "units" that the user entered)
+        # Determine the number of hidden layers (based on "units" that the
+        # user entered)
         self.num_layers = len(units)
 
     def fit(self, X_flat_train, y_train):
 
-        """
-        Train DenseNN Decoder
+        """Train DenseNN Decoder
 
         Parameters
         ----------
@@ -1330,9 +1320,11 @@ class DenseNNClassification(object):
                 self.num_layers - 1):  # Loop through additional layers
             model.add(Dense(self.units[layer + 1]))  # Add dense layer
             model.add(Activation(
-                'tanh'))  # Add nonlinear (tanh) activation - can also make relu
+                'tanh'))  # Add nonlinear (tanh) activation - can also make
+            # relu
             if self.dropout != 0: model.add(Dropout(
-                self.dropout))  # Dropout some units if proportion of dropout != 0
+                self.dropout))  # Dropout some units if proportion of
+            # dropout != 0
 
         # Add dense connections to all outputs
         model.add(Dense(
@@ -1352,8 +1344,7 @@ class DenseNNClassification(object):
 
     def predict(self, X_flat_test):
 
-        """
-        Predict outcomes using trained DenseNN Decoder
+        """Predict outcomes using trained DenseNN Decoder
 
         Parameters
         ----------
@@ -1377,8 +1368,7 @@ class DenseNNClassification(object):
 ##################### SIMPLE RNN DECODER ##########################
 
 class SimpleRNNClassification(object):
-    """
-    Class for the RNN decoder
+    """Class for the RNN decoder
 
     Parameters
     ----------
@@ -1403,14 +1393,14 @@ class SimpleRNNClassification(object):
 
     def fit(self, X_train, y_train):
 
-        """
-        Train GRU Decoder
+        """Train GRU Decoder
 
         Parameters
         ----------
         X_train: numpy 3d array of shape [n_samples,n_time_bins,n_neurons]
             This is the neural data.
-            See example file for an example of how to format the neural data correctly
+            See example file for an example of how to format the neural data
+            correctly
 
         y_train: numpy 2d array of shape [n_samples, n_outputs]
             This is the outputs that are being predicted
@@ -1456,8 +1446,7 @@ class SimpleRNNClassification(object):
 
     def predict(self, X_test):
 
-        """
-        Predict outcomes using trained LSTM Decoder
+        """Predict outcomes using trained LSTM Decoder
 
         Parameters
         ----------
@@ -1479,8 +1468,7 @@ class SimpleRNNClassification(object):
 ##################### GATED RECURRENT UNIT (GRU) DECODER ######################
 
 class GRUClassification(object):
-    """
-    Class for the gated recurrent unit (GRU) decoder
+    """Class for the gated recurrent unit (GRU) decoder
 
     Parameters
     ----------
@@ -1505,8 +1493,7 @@ class GRUClassification(object):
 
     def fit(self, X_train, y_train):
 
-        """
-        Train GRU Decoder
+        """Train GRU Decoder
 
         Parameters
         ----------
@@ -1559,8 +1546,7 @@ class GRUClassification(object):
 
     def predict(self, X_test):
 
-        """
-        Predict outcomes using trained LSTM Decoder
+        """Predict outcomes using trained LSTM Decoder
 
         Parameters
         ----------
@@ -1582,8 +1568,7 @@ class GRUClassification(object):
 #################### LONG SHORT TERM MEMORY (LSTM) DECODER ####################
 
 class LSTMClassification(object):
-    """
-    Class for the LSTM decoder
+    """Class for the LSTM decoder
 
     Parameters
     ----------
@@ -1608,8 +1593,7 @@ class LSTMClassification(object):
 
     def fit(self, X_train, y_train):
 
-        """
-        Train LSTM Decoder
+        """Train LSTM Decoder
 
         Parameters
         ----------
@@ -1662,8 +1646,7 @@ class LSTMClassification(object):
 
     def predict(self, X_test):
 
-        """
-        Predict outcomes using trained LSTM Decoder
+        """Predict outcomes using trained LSTM Decoder
 
         Parameters
         ----------
@@ -1685,8 +1668,7 @@ class LSTMClassification(object):
 ##################### EXTREME GRADIENT BOOSTING (XGBOOST) #####################
 
 class XGBoostClassification(object):
-    """
-    Class for the XGBoost Decoder
+    """Class for the XGBoost Decoder
 
     Parameters
     ----------
@@ -1713,8 +1695,7 @@ class XGBoostClassification(object):
 
     def fit(self, X_flat_train, y_train):
 
-        """
-        Train XGBoost Decoder
+        """Train XGBoost Decoder
 
         Parameters
         ----------
@@ -1763,8 +1744,7 @@ class XGBoostClassification(object):
 
     def predict(self, X_flat_test):
 
-        """
-        Predict outcomes using trained XGBoost Decoder
+        """Predict outcomes using trained XGBoost Decoder
 
         Parameters
         ----------
@@ -1807,8 +1787,7 @@ class PcaLdaClassification(BaseEstimator):
 
     def fit(self, X_flat_train, y_train):
 
-        """
-        Train PCA - LDA classifier
+        """Train PCA - LDA classifier
 
         Parameters
         ----------
@@ -1842,8 +1821,7 @@ class PcaLdaClassification(BaseEstimator):
 
     def predict(self, X_flat_test):
 
-        """
-        Predict outcomes using trained PCA LDA Decoder
+        """Predict outcomes using trained PCA LDA Decoder
 
         Parameters
         ----------
@@ -1861,8 +1839,7 @@ class PcaLdaClassification(BaseEstimator):
         return y_test_predicted
 
     def get_scores(self, deep=True):
-        """
-        Get scores of pca and lda model
+        """Get scores of pca and lda model
 
         Args:
             deep (bool, optional): Defaults to True.
@@ -1916,8 +1893,7 @@ from sklearn.metrics import accuracy_score
 
 
 class PcaEstimateDecoder(BaseEstimator):
-    """
-    Class for the PCA - SVM Classifier
+    """Class for the PCA - SVM Classifier
 
     Parameters
     ----------
@@ -1951,8 +1927,7 @@ class PcaEstimateDecoder(BaseEstimator):
                 steps=[('pca', self.pca), ('model', self.clf)])
 
     def fit(self, X_flat_train, y_train):
-        """
-        Train PCA - SVM classifier
+        """Train PCA - SVM classifier
 
         Parameters
         ----------
@@ -1969,8 +1944,7 @@ class PcaEstimateDecoder(BaseEstimator):
         self.model.fit(X_flat_train, y_train)
 
     def predict(self, X_flat_test):
-        """
-        Predict outcomes using trained PCA - SVM Decoder
+        """Predict outcomes using trained PCA - SVM Decoder
 
         Parameters
         ----------
@@ -1985,8 +1959,7 @@ class PcaEstimateDecoder(BaseEstimator):
         return self.model.predict(X_flat_test)
 
     def score(self, X, y, sample_weight=None):
-        """
-        Returns the mean accuracy on the given test data and labels.
+        """Returns the mean accuracy on the given test data and labels.
 
         Parameters
         ----------
