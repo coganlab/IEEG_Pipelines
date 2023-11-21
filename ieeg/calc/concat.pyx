@@ -1,25 +1,28 @@
 import numpy as np
-cimport numpy as np
+cimport numpy as cnp
 cimport cython
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def concatenate_arrays(arrays, axis=0):
+cpdef cnp.ndarray concatenate_arrays(list[cnp.ndarray] arrays, axis=0):
     cdef list out_shape, index_slice
+    cdef int i, max_dims
+    cdef Py_ssize_t start = 0
 
     if axis is None:
         axis = 0
         arrays = [np.expand_dims(ar, axis) for ar in arrays]
 
     out_shape = list(np.max([arr.shape for arr in arrays], axis=0))
-    out_shape[axis] = sum(arr.shape[axis] for arr in arrays)
+    out_shape[axis] = sum([arr.shape[axis] for arr in arrays])
+    max_dims = max([arr.ndim for arr in arrays])
 
     # Create an empty array to hold the result
-    new_arr = np.full(tuple(out_shape), float('nan'), dtype=float)
+    cdef cnp.ndarray new_arr = np.full(tuple(out_shape),
+                                       float('nan'), dtype=float)
 
     # Create a list of slices that will be used to insert each array
     index_slice = [slice(None)] * new_arr.ndim
-    start = 0
     for arr in arrays:
         # Insert the array into the result array
         for i in range(arr.ndim):

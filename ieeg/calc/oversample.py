@@ -2,9 +2,8 @@ import numpy as np
 from typing import Literal, Tuple
 from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
-from numba import njit
 import itertools
-from mixup import mixup2d
+from mixup import mixupnd, normnd
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -89,48 +88,48 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
 
 
 # @njit(nogil=True, cache=True)
-def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
-    """Oversample by mixing two random non-NaN observations
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    obs_axis : int
-        The axis along which to apply func.
-    alpha : float
-        The alpha parameter for the beta distribution. If alpha is 0, then
-        the distribution is uniform. If alpha is 1, then the distribution is
-        symmetric. If alpha is greater than 1, then the distribution is
-        skewed towards the first observation. If alpha is less than 1, then
-        the distribution is skewed towards the second observation.
-
-    Examples
-    --------
-    >>> from ieeg.calc.oversample import mixupnd
-    >>> np.random.seed(0)
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")], [float("nan"), float("nan")]])
-    >>> mixupnd(arr, 0)
-    >>> arr # doctest: +NORMALIZE_WHITESPACE
-        array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [5.34737579, 6.34737579],
-           [1.14224313, 2.14224313]])
-    """
-
-    # create a view of the array with the observation axis in the second to
-    # last position
-    arr_in = np.swapaxes(arr, obs_axis, -2)
-
-    if arr.ndim == 2:
-        mixup2d(arr_in, alpha)
-    elif arr.ndim > 2:
-        for ijk in np.ndindex(arr.shape[:-2]):
-            mixup2d(arr_in[ijk], alpha)
-    else:
-        raise ValueError("Cannot apply mixup to a 1-dimensional array")
+# def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
+#     """Oversample by mixing two random non-NaN observations
+#
+#     Parameters
+#     ----------
+#     arr : array
+#         The data to oversample.
+#     obs_axis : int
+#         The axis along which to apply func.
+#     alpha : float
+#         The alpha parameter for the beta distribution. If alpha is 0, then
+#         the distribution is uniform. If alpha is 1, then the distribution is
+#         symmetric. If alpha is greater than 1, then the distribution is
+#         skewed towards the first observation. If alpha is less than 1, then
+#         the distribution is skewed towards the second observation.
+#
+#     Examples
+#     --------
+#     >>> from ieeg.calc.oversample import mixupnd
+#     >>> np.random.seed(0)
+#     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+#     ... [float("nan"), float("nan")], [float("nan"), float("nan")]])
+#     >>> mixupnd(arr, 0)
+#     >>> arr # doctest: +NORMALIZE_WHITESPACE
+#         array([[1.        , 2.        ],
+#            [4.        , 5.        ],
+#            [7.        , 8.        ],
+#            [5.34737579, 6.34737579],
+#            [1.14224313, 2.14224313]])
+#     """
+#
+#     # create a view of the array with the observation axis in the second to
+#     # last position
+#     arr_in = np.swapaxes(arr, obs_axis, -2)
+#
+#     if arr.ndim == 2:
+#         mixup2d(arr_in, alpha)
+#     elif arr.ndim > 2:
+#         for ijk in np.ndindex(arr.shape[:-2]):
+#             mixup2d(arr_in[ijk], alpha)
+#     else:
+#         raise ValueError("Cannot apply mixup to a 1-dimensional array")
 
 
 # @njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
@@ -321,20 +320,23 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
 
     Examples
     --------
-    # >>> np.random.seed(0)
+    >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> oversample_nan(arr, normnd, 0)  # doctest: +ELLIPSIS
     array([[...
-    >>> oversample_nan(arr, mixupnd, 0)  # doctest: +ELLIPSIS
-    array([[...
+    >>> oversample_nan(arr, mixupnd, 0)
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [5.34737579, 6.34737579]])
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
-    >>> oversample_nan(arr3, mixupnd, 1)  # doctest: +SKIP
+    >>> oversample_nan(arr3, mixupnd, 1)
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ ...
-
+            [ 3.90517124,  4.90517124,  5.90517124,  6.90517124]],
+    <BLANKLINE>
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
@@ -422,37 +424,37 @@ def norm(arr: np.ndarray, obs_axis: int) -> None:
     arr[tuple(nan_idx)] = np.random.normal(mean, std, out_shape)
 
 
-@njit(nogil=True, cache=True)
-def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
-    """Oversample by obtaining the distribution and randomly selecting
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    obs_axis : int
-        The axis along which to apply func.
-
-    Examples
-    --------
-    >>> np.random.seed(0)
-    >>> arr = np.array([1, 2, 4, 5, 7, 8,
-    ... float("nan"), float("nan")])
-    >>> normnd(arr)
-    >>> arr # doctest: +ELLIPSIS
-    array([1.        , 2.        , 4.        , 5.        , 7.        ,
-           8.        , ...
-    """
-
-    # create a view of the array with the observation axis in the last position
-    arr_in = np.swapaxes(arr, obs_axis, -1)
-    if arr.ndim == 1:
-        norm1d(arr_in)
-    elif arr.ndim > 1:
-        for ijk in np.ndindex(arr_in.shape[:-1]):
-            norm1d(arr_in[ijk])
-    else:
-        raise ValueError("Cannot apply norm to a 0-dimensional array")
+# @njit(nogil=True, cache=True)
+# def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
+#     """Oversample by obtaining the distribution and randomly selecting
+#
+#     Parameters
+#     ----------
+#     arr : array
+#         The data to oversample.
+#     obs_axis : int
+#         The axis along which to apply func.
+#
+#     Examples
+#     --------
+#     >>> np.random.seed(0)
+#     >>> arr = np.array([1, 2, 4, 5, 7, 8,
+#     ... float("nan"), float("nan")])
+#     >>> normnd(arr)
+#     >>> arr # doctest: +ELLIPSIS
+#     array([1.        , 2.        , 4.        , 5.        , 7.        ,
+#            8.        , ...
+#     """
+#
+#     # create a view of the array with the observation axis in the last position
+#     arr_in = np.swapaxes(arr, obs_axis, -1)
+#     if arr.ndim == 1:
+#         norm1d(arr_in)
+#     elif arr.ndim > 1:
+#         for ijk in np.ndindex(arr_in.shape[:-1]):
+#             norm1d(arr_in[ijk])
+#     else:
+#         raise ValueError("Cannot apply norm to a 0-dimensional array")
 
 
 def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
@@ -482,24 +484,24 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
                       )[:, :n_picks]
 
 
-@njit("void(float64[:])", nogil=True)
-def norm1d(arr: Vector) -> None:
-    """Oversample by obtaining the distribution and randomly selecting"""
-    # Get indices of rows with NaN values
-    wh = np.isnan(arr)
-    non_nan_rows = np.flatnonzero(~wh)
-
-    # Check if there are at least two non-NaN rows
-    if len(non_nan_rows) < 1:
-        raise ValueError("No test data to fit distribution")
-
-    # Calculate mean and standard deviation for each column
-    mean = np.mean(arr[non_nan_rows])
-    std = np.std(arr[non_nan_rows])
-
-    # Get the normal distribution of each timepoint
-    for i in np.flatnonzero(wh):
-        arr[i] = np.random.normal(mean, std)
+# @njit("void(float64[:])", nogil=True)
+# def norm1d(arr: Vector) -> None:
+#     """Oversample by obtaining the distribution and randomly selecting"""
+#     # Get indices of rows with NaN values
+#     wh = np.isnan(arr)
+#     non_nan_rows = np.flatnonzero(~wh)
+#
+#     # Check if there are at least two non-NaN rows
+#     if len(non_nan_rows) < 1:
+#         raise ValueError("No test data to fit distribution")
+#
+#     # Calculate mean and standard deviation for each column
+#     mean = np.mean(arr[non_nan_rows])
+#     std = np.std(arr[non_nan_rows])
+#
+#     # Get the normal distribution of each timepoint
+#     for i in np.flatnonzero(wh):
+#         arr[i] = np.random.normal(mean, std)
 
 
 def smote(arr: np.ndarray) -> None:

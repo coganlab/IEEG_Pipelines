@@ -15,7 +15,6 @@ scipy
 scikit-image
 pandas
 joblib>=1.3
-numba
 psutil
 pyvistaqt
 pytz

@@ -1,40 +1,107 @@
 import numpy as np
-cimport numpy as np
-from libc.stdlib cimport rand
+cimport numpy as cnp
 cimport cython
+from libc.stdlib cimport rand, RAND_MAX
 
 DTYPE = np.float64
-ctypedef np.float64_t DTYPE_t
+ctypedef cnp.float64_t DTYPE_t
+ctypedef cnp.uint8_t BOOL_t
+ctypedef cnp.intp_t INTP_t
+cnp.import_array()
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def mixup2d(np.ndarray[DTYPE_t, ndim=2] arr, float alpha=1.0):
-    cdef Py_ssize_t i, n_nan
-    cdef np.ndarray[DTYPE_t, ndim=1] lam
-    cdef np.ndarray[DTYPE_t, ndim=2] x1, x2
-    cdef np.intp_t [::1] non_nan_rows
-    cdef np.intp_t [:, ::1] vectors
-    cdef np.ndarray[np.uint8_t, ndim = 1, cast=True] wh
+@cython.cdivision(True)
+cdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
+    cdef Py_ssize_t i, n_nan, row, j
+    cdef cnp.ndarray[BOOL_t, ndim=1, cast=True] wh
+    cdef INTP_t [::1] non_nan_rows, nan_rows
+    cdef DTYPE_t [::1] lam
+    cdef INTP_t x1, x2
 
     # Get indices of rows with NaN values
     wh = np.isnan(arr).any(axis=1)
-    non_nan_rows = np.flatnonzero(~wh)
+    non_nan_rows = np.nonzero(~wh)[0]
+    nan_rows = np.nonzero(wh)[0]
     n_nan = arr.shape[0] - non_nan_rows.shape[0]
 
-    # Construct an array of 2-length vectors for each NaN row
-    vectors = np.empty((n_nan, 2), dtype=np.intp)
-
-    # The two elements of each vector are different indices of non-NaN rows
-    for i in range(n_nan):
-        (vectors[i, 0], vectors[i, 1]) = np.random.choice(non_nan_rows, 2, replace=False)
-
     # get beta distribution parameters
-    if alpha > 0.:
+    if alpha >= 1. :
+        lam = np.array([rand() / float(RAND_MAX) for _ in range(n_nan)]).astype(DTYPE)
+    elif 1. > alpha > 0.:
         lam = np.random.beta(alpha, alpha, size=n_nan).astype(DTYPE)
     else:
         lam = np.ones(n_nan, dtype=DTYPE)
 
-    x1 = arr[vectors[:, 0]]
-    x2 = arr[vectors[:, 1]]
+    with nogil:
+        for i in range(n_nan):
+            row = nan_rows[i]
+            x1 = non_nan_rows[rand() % non_nan_rows.shape[0]]
+            x2 = non_nan_rows[rand() % non_nan_rows.shape[0]]
+            while x1 == x2:
+                x2 = non_nan_rows[rand() % non_nan_rows.shape[0]]
+            for j in range(arr.shape[1]):
+                arr[row, j] = lam[i] * arr[x1, j] + (1 - lam[i]) * arr[x2, j]
 
-    arr[wh] = lam[:, None] * x1 + (np.ones(n_nan, dtype=DTYPE) - lam)[:, None] * x2
+
+@cython.boundscheck(False)
+cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0):
+    cdef cnp.ndarray arr_in
+
+    # create a view of the array with the observation axis in the second to
+    # last position
+    if obs_axis != -2:
+        arr_in = np.swapaxes(arr, obs_axis, -2)
+    else:
+        arr_in = arr
+
+    if arr.ndim == 2:
+        mixup2d(arr_in, alpha)
+    elif arr.ndim > 2:
+        for i in range(arr_in.shape[0]):
+            # Ensure that the last two dimensions are free
+            mixupnd(arr_in[i], -2, alpha)
+    else:
+        raise ValueError("Cannot apply mixup to a 1-dimensional array")
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef inline void norm1d(DTYPE_t [:] arr):
+    cdef Py_ssize_t i
+    cdef cnp.ndarray[cnp.uint8_t, ndim = 1, cast=True] wh
+    cdef DTYPE_t mean, std
+
+    # Get indices of rows with NaN values
+    wh = np.isnan(arr)
+
+    # Check if there are at least two non-NaN rows
+    if np.sum(~wh) < 1:
+        raise ValueError("No test data to fit distribution")
+
+    # Calculate mean and standard deviation for each column
+    mean = np.mean(arr[~wh])
+    std = np.std(arr[~wh])
+
+    # Get the normal distribution of each timepoint
+    for i in np.flatnonzero(wh):
+        arr[i] = np.random.normal(mean, std)
+
+@cython.boundscheck(False)
+cpdef void normnd(cnp.ndarray arr, int obs_axis=-1):
+    cdef cnp.ndarray arr_in
+
+    # create a view of the array with the observation axis in the last position
+    if obs_axis != -1:
+        arr_in = np.swapaxes(arr, obs_axis, -1)
+    else:
+        arr_in = arr
+
+    if arr.ndim == 1:
+        norm1d(arr_in)
+    elif arr.ndim > 1:
+        for i in range(arr_in.shape[0]):
+            # Ensure that the last two dimensions are free
+            normnd(arr_in[i], -1)
+    else:
+        raise ValueError("Cannot apply norm to a 0-dimensional array")
