@@ -4,6 +4,7 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 from numba import njit
 import itertools
+from mixup import mixup2d
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -87,7 +88,7 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
             yield train, test
 
 
-@njit(nogil=True, cache=True)
+# @njit(nogil=True, cache=True)
 def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     """Oversample by mixing two random non-NaN observations
 
@@ -128,57 +129,57 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
         raise ValueError("Cannot apply mixup to a 1-dimensional array")
 
 
-@njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
-def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
-    """Oversample by mixing two random non-NaN observations
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    alpha : float
-        The alpha parameter for the beta distribution. If alpha is 0, then
-        the distribution is uniform. If alpha is 1, then the distribution is
-        symmetric. If alpha is greater than 1, then the distribution is
-        skewed towards the first observation. If alpha is less than 1, then
-        the distribution is skewed towards the second observation.
-
-    Examples
-    --------
-    >>> np.random.seed(0)
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
-    >>> mixup2d(arr)
-    >>> arr  #doctest: +ELLIPSIS
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [...
-    """
-    # Get indices of rows with NaN values
-    wh = np.zeros(arr.shape[0], dtype=np.bool_)
-    for i in range(arr.shape[0]):
-        wh[i] = np.any(np.isnan(arr[i]))
-    non_nan_rows = np.flatnonzero(~wh)
-    n_nan = np.sum(wh)
-
-    # Construct an array of 2-length vectors for each NaN row
-    vectors = np.empty((n_nan, 2))
-
-    # The two elements of each vector are different indices of non-NaN rows
-    for i in range(n_nan):
-        vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
-
-    # get beta distribution parameters
-    if alpha > 0.:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    x1 = arr[vectors[:, 0].astype(np.intp)]
-    x2 = arr[vectors[:, 1].astype(np.intp)]
-
-    arr[wh] = lam * x1 + (1 - lam) * x2
+# @njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
+# def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
+#     """Oversample by mixing two random non-NaN observations
+#
+#     Parameters
+#     ----------
+#     arr : array
+#         The data to oversample.
+#     alpha : float
+#         The alpha parameter for the beta distribution. If alpha is 0, then
+#         the distribution is uniform. If alpha is 1, then the distribution is
+#         symmetric. If alpha is greater than 1, then the distribution is
+#         skewed towards the first observation. If alpha is less than 1, then
+#         the distribution is skewed towards the second observation.
+#
+#     Examples
+#     --------
+#     >>> np.random.seed(0)
+#     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+#     ... [float("nan"), float("nan")]])
+#     >>> mixup2d(arr)
+#     >>> arr  #doctest: +ELLIPSIS
+#     array([[1.        , 2.        ],
+#            [4.        , 5.        ],
+#            [7.        , 8.        ],
+#            [...
+#     """
+#     # Get indices of rows with NaN values
+#     wh = np.zeros(arr.shape[0], dtype=np.bool_)
+#     for i in range(arr.shape[0]):
+#         wh[i] = np.any(np.isnan(arr[i]))
+#     non_nan_rows = np.flatnonzero(~wh)
+#     n_nan = np.sum(wh)
+#
+#     # Construct an array of 2-length vectors for each NaN row
+#     vectors = np.empty((n_nan, 2))
+#
+#     # The two elements of each vector are different indices of non-NaN rows
+#     for i in range(n_nan):
+#         vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
+#
+#     # get beta distribution parameters
+#     if alpha > 0.:
+#         lam = np.random.beta(alpha, alpha)
+#     else:
+#         lam = 1
+#
+#     x1 = arr[vectors[:, 0].astype(np.intp)]
+#     x2 = arr[vectors[:, 1].astype(np.intp)]
+#
+#     arr[wh] = lam * x1 + (1 - lam) * x2
 
 
 class MinimumNaNSplit(RepeatedStratifiedKFold):
