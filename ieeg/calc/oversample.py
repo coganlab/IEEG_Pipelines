@@ -110,10 +110,14 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     >>> from ieeg.calc.oversample import mixupnd
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
+    ... [float("nan"), float("nan")], [float("nan"), float("nan")]])
     >>> mixupnd(arr, 0)
-    >>> arr # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    array([[...
+    >>> arr # doctest: +NORMALIZE_WHITESPACE
+        array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [5.34737579, 6.34737579],
+           [1.14224313, 2.14224313]])
     """
 
     # create a view of the array with the observation axis in the second to
