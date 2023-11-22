@@ -254,7 +254,7 @@ import mne    >>> import numpy as np
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
               axis: int | tuple[int] = None) -> np.ndarray | float:
-    """ Calculate the mean difference between two groups.
+    """Calculate the mean difference between two groups.
 
     This function is the default statistic function for time_perm_cluster. It
     calculates the mean difference between two groups along the specified axis.
@@ -287,16 +287,17 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     array([ 0., 30.,  0.,  5.,  0.])
     """
 
-    avg1 = np.nanmean(group1, axis=axis)
-    avg2 = np.nanmean(group2, axis=axis)
+    wh1 = ~np.isnan(group1)
+    wh2 = ~np.isnan(group2)
+    avg1 = np.sum(group1, axis=axis, where=wh1) / np.sum(wh1, axis=axis)
+    avg2 = np.sum(group2, axis=axis, where=wh2) / np.sum(wh2, axis=axis)
 
     return avg1 - avg2
 
 
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
-                            p_thresh: float, n_perm: int = 1000,
-                            tails: int = 1, obs_axis: int = 0,
-                            window_axis: int = -1,
+                            n_perm: int = 1000, tails: int = 1,
+                            obs_axis: int = 0, window_axis: int = -1,
                             stat_func: callable = mean_diff
                             ) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
@@ -314,8 +315,6 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
         The first group of observations.
     sig2 : array, shape (trials, ..., time)
         The second group of observations.
-    p_thresh : float
-        The p-value threshold for the shuffle distribution.
     n_perm : int, optional
         The number of permutations to perform. Default is 1000.
     tails : int, optional
@@ -339,20 +338,41 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
     ... for _ in range(50)]) - rng.random((50, 15)) * 3.323
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    >>> window_averaged_shuffle(sig1, sig2, 0.05, n_perm=1000
-    ... ) # doctest: +ELLIPSIS
-    0.0...
+    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000) #< 0.1
+    True
     """
 
     # sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
 
-    # Average across time, shape is now (obs, ...)
-    sig1_avg = np.nanmean(sig1, axis=window_axis)
-    sig2_avg = np.nanmean(sig2, axis=window_axis)
+    # Concatenate the two signals for trial shuffling
+    all_trial = np.concatenate((sig1, sig2), axis=obs_axis)
+    labels = np.concatenate((np.full(sig1.shape[obs_axis], False, dtype=bool),
+                             np.full(sig2.shape[obs_axis], True, dtype=bool)))
 
-    # Calculate the shuffle distribution, shape is now (...)
-    p_act = time_perm_shuffle(sig1_avg, sig2_avg, n_perm, tails, obs_axis,
-                              False, stat_func)
+    # Calculate the observed difference
+    obs_diff = stat_func(sig1, sig2, axis=(obs_axis, window_axis))
+    if isinstance(obs_diff, tuple):
+        logger.warn('Given stats function has more than one output. Accepting '
+                    'only the first output')
+        obs_diff = obs_diff[0]
+        orig_func = stat_func
+
+        def stat_func(s1, s2, axis):
+            return orig_func(s1, s2, axis=axis)[0]
+
+    # Calculate the difference between the two groups averaged across
+    # trials and time
+    diff = np.zeros((n_perm, *obs_diff.shape))
+    for i in range(n_perm):
+        perm_labels = np.random.permutation(labels)
+        fake_sig1 = np.take(all_trial, np.where(np.invert(perm_labels))[0],
+                            axis=obs_axis)
+        fake_sig2 = np.take(all_trial, np.where(perm_labels)[0], axis=obs_axis)
+        diff[i] = stat_func(fake_sig1, fake_sig2, axis=(obs_axis, window_axis))
+
+    # Calculate the p-value
+    p_act = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
+
     return p_act
     # if tails == -1:
     #     method = 'negcorr'
