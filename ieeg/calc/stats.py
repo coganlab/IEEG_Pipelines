@@ -5,8 +5,9 @@ from skimage import measure
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
+from ieeg.process import get_mem
 from scipy import stats as st
-from numba import njit
+from numba import njit, vectorize, prange
 
 
 def weighted_avg_and_std(values, weights, axis=0):
@@ -277,10 +278,8 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
-    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]).T
-    >>> mean_diff(group1, group2)
-    7.0
+    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]], order='F').T
+    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]], order='F').T
     >>> mean_diff(group1, group2, axis=0)
     array([ 0., 14.])
     >>> mean_diff(group1, group2, axis=1)
@@ -289,9 +288,8 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
 
     wh1 = ~np.isnan(group1)
     wh2 = ~np.isnan(group2)
-    avg1 = np.sum(group1, axis=axis, where=wh1) / np.sum(wh1, axis=axis)
-    avg2 = np.sum(group2, axis=axis, where=wh2) / np.sum(wh2, axis=axis)
-
+    avg1 = np.mean(group1, axis=axis, where=wh1)
+    avg2 = np.mean(group2, axis=axis, where=wh2)
     return avg1 - avg2
 
 
@@ -374,16 +372,6 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     p_act = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
 
     return p_act
-    # if tails == -1:
-    #     method = 'negcorr'
-    # else:
-    #     method = 'indep'
-
-    # reject, p_corr = mne.stats.fdr_correction(p_act, 0.05, method)
-    #
-    # if np.isscalar(reject):
-    #     return np.array([reject])
-    # return reject
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
@@ -451,10 +439,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
     ... for _ in range(50)]) - rng.random((50, 15)) * 4
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=3000)
+    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000)
     array([False, False, False,  True,  True,  True,  True,  True,  True,
             True,  True,  True, False, False, False])
-    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=3000)
+    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000)
     array([False, False, False,  True,  True,  True,  True,  True,  True,
             True,  True, False, False, False, False])
     """
@@ -496,7 +484,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of the permutation distribution
     # logger.info('Calculating permutation distribution')
-    # p_perm = np.zeros(diff.shape, dtype=np.float16)
+    #
     # for i in range(diff.shape[0]):
     #     # p_perm is the probability of observing a difference as large as the
     #     # other permutations, or larger, by chance
@@ -506,7 +494,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # The line below accomplishes the same as above twice as fast, but could
     # run into memory errors if n_perm is greater than 1000
-    p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=axis+1)
+    p_perm = np.zeros(diff.shape, dtype=np.float32)
+    chunksize = int(get_mem() // (np.prod(diff.shape) * diff.dtype.itemsize)) * 2
+    for chunk in range(0, diff.shape[0], chunksize):
+        temp = tail_compare(diff[chunk:chunk + chunksize], diff[:, np.newaxis], tails)
+        p_perm[chunk:chunk + chunksize] = np.mean(temp, axis=0)
+    # p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis], tails), axis=axis+1)
+    # p_perm = _calculate_p_perm(diff, tails)
 
     # Create binary clusters using the p value threshold
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
@@ -514,23 +508,16 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # logger.info('Finding clusters')
     if ignore_adjacency is None:
-        return time_cluster(b_act, b_perm, 1 - p_cluster)
+        return time_cluster(b_act, b_perm, 1 - p_cluster, tails)
 
     # If there are axes to ignore, we need to loop over them
     clusters = np.zeros(b_act.shape, dtype=int)
     for i in np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency)):
         index = tuple(j for j in i) + (slice(None),)
         clusters[index] = time_cluster(
-            b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster)
+            b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster, tails)
 
     return clusters
-
-
-def _perm_iter(array: np.ndarray, perm: int, axis: int = 0, tails: int = 0
-               ) -> np.ndarray:
-    larger = tail_compare(array[perm],
-                          array[np.arange(len(array)) != perm], tails)
-    return np.mean(larger, axis=axis)
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
@@ -598,7 +585,6 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
         return cluster_p_values
 
 
-@njit(nogil=True, cache=True)
 def tail_compare(diff: np.ndarray | float | int,
                  obs_diff: np.ndarray | float | int, tails: int = 1
                  ) -> np.ndarray | bool:
@@ -685,7 +671,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         def func(s1, s2, axis):
             return orig_func(s1, s2, axis=axis)[0]
 
-    # Calculate the difference between the two groups averaged across
+    # Calculate the average difference between the two groups averaged across
     # trials at each time point
     diff = np.zeros((n_perm, *obs_diff.shape))
     for i in range(n_perm):
