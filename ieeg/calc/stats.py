@@ -6,6 +6,7 @@ from skimage import measure
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
 from ieeg.process import get_mem
+import os
 from scipy import stats as st
 from numba import njit, vectorize, prange
 
@@ -439,7 +440,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
     ... for _ in range(50)]) - rng.random((50, 15)) * 4
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000)
+    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=100000)
     array([False, False, False,  True,  True,  True,  True,  True,  True,
             True,  True,  True, False, False, False])
     >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000)
@@ -494,11 +495,17 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # The line below accomplishes the same as above twice as fast, but could
     # run into memory errors if n_perm is greater than 1000
-    p_perm = np.zeros(diff.shape, dtype=np.float32)
-    chunksize = int(get_mem() // (np.prod(diff.shape) * diff.dtype.itemsize)) * 2
-    for chunk in range(0, diff.shape[0], chunksize):
-        temp = tail_compare(diff[chunk:chunk + chunksize], diff[:, np.newaxis], tails)
-        p_perm[chunk:chunk + chunksize] = np.mean(temp, axis=0)
+    # p_perm = np.zeros(diff.shape, dtype=np.float32)
+    # chunksize = int(get_mem() / (np.prod(diff.shape) * diff.dtype.itemsize))
+    # for chunk in range(0, diff.shape[0], chunksize):
+    #     temp = tail_compare(diff[chunk:chunk + chunksize], diff[:, np.newaxis], tails)
+    #     p_perm[chunk:chunk + chunksize] = np.mean(temp[idx[:, chunk:chunk + chunksize]], axis=0)
+    # mmapped_diff = np.memmap('temp.npy', dtype='bool', mode='w+',
+    #                          shape=(diff.shape[0],) + diff.shape)
+    mmapped_diff = np.zeros((diff.shape[0],) + diff.shape, dtype=bool)
+    tail_compare(diff, diff[:, np.newaxis], tails, mmapped_diff)
+    p_perm = np.sum(mmapped_diff, axis=0) / (diff.shape[0] - 1)
+    os.remove('temp.npy')
     # p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis], tails), axis=axis+1)
     # p_perm = _calculate_p_perm(diff, tails)
 
@@ -586,8 +593,8 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
 
 
 def tail_compare(diff: np.ndarray | float | int,
-                 obs_diff: np.ndarray | float | int, tails: int = 1
-                 ) -> np.ndarray | bool:
+                 obs_diff: np.ndarray | float | int, tails: int = 1,
+                 out: np.ndarray = None) -> np.ndarray | bool:
     """Compare the difference between two groups to the observed difference.
 
     This function applies the appropriate comparison based on the number of
@@ -601,6 +608,8 @@ def tail_compare(diff: np.ndarray | float | int,
         The observed difference between the two groups.
     tails : int, optional
         The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+    out : array, shape (..., time), optional
+        The array to place the output in.
 
     Returns
     -------
@@ -608,16 +617,22 @@ def tail_compare(diff: np.ndarray | float | int,
         The boolean array indicating whether the difference between the two
         groups is larger than the observed difference.
     """
+
+    if out is None:
+        out = np.zeros((diff.shape[0],) + diff.shape, dtype=bool)
+
     # Account for one or two tailed test
     match tails:
         case 1:
-            return diff > obs_diff
+            np.greater(diff, obs_diff, out=out)
         case 2:
-            return np.abs(diff) > np.abs(obs_diff)
+            np.greater(np.abs(diff), np.abs(obs_diff), out=out)
         case -1:
-            return diff < obs_diff
+            np.less(diff, obs_diff, out=out)
         case _:
             raise ValueError('tails must be 1, 2, or -1')
+
+    return out
 
 
 def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
