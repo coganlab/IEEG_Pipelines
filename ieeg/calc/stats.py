@@ -505,7 +505,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     mmapped_diff = np.zeros((diff.shape[0],) + diff.shape, dtype=bool)
     tail_compare(diff, diff[:, np.newaxis], tails, mmapped_diff)
     p_perm = np.sum(mmapped_diff, axis=0) / (diff.shape[0] - 1)
-    os.remove('temp.npy')
+    del mmapped_diff
     # p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis], tails), axis=axis+1)
     # p_perm = _calculate_p_perm(diff, tails)
 
