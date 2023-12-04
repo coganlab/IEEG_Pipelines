@@ -478,18 +478,30 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')
-    p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True,
-                                    stat_func)
+    diff = time_perm_shuffle(sig1, sig2, n_perm, axis, stat_func)
+
+    # contatenate the actual group statistic and concatenate with the null
+    # distribution along the observations axis
+    act = stat_func(sig1, sig2, axis)
+    if isinstance(act, tuple):
+        act = act[0]
+    act = np.expand_dims(act, axis=axis)
+    p_act = np.mean(tail_compare(diff, act, tails), axis=0)
+
+    # all_diff = np.concatenate((act, diff), axis=axis)
 
     # Calculate the p value of the permutation distribution
     if tails == 1:
-        p_perm = _perm_gt(diff)
+        p_perm = _perm_gt_2d(diff.T).T
     elif tails == 2:
-        p_perm = _perm_gt(np.abs(diff))
+        p_perm = _perm_gt_2d(np.abs(diff.T))
     elif tails == -1:
         p_perm = _perm_lt(diff)
     else:
         raise ValueError('tails must be 1, 2, or -1')
+
+    # p_act = np.take(p, 0, axis=axis)
+    # p_perm = np.take(p, range(1, p.shape[axis]), axis=axis)
 
     # Create binary clusters using the p value threshold
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
@@ -509,26 +521,225 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     return clusters
 
 
-@guvectorize([(float64[:], float64[:])], '(n)->(n)', nopython=True)
-def _perm_gt(diff, result):
-    n = diff.shape[0]
-    denom = n - 1
-    for i in range(n):
-        for j in range(n):
+def proportion(obs: np.ndarray, diff: np.ndarray = None, axis: int = 0,
+               tails: int = 1) -> np.ndarray:
+    """Calculate the proportion of permutations that are greater than the
+    observed statistic
+
+    Parameters
+    ----------
+    obs : array, shape (n, ...)
+        The observed statistic.
+    diff : array, shape (m, ...)
+        The permutation distribution.
+    tails : int, optional
+        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> proportion(np.array([3., 2, 5]),
+    ... np.array([0.5, 1.5, 2.5, 3.5, 4.5, 5, 4, 3, 2, 1]))
+    array([0.5, 0.3, 0.9])
+    >>> proportion(np.array([1., 2, 5]), np.array([[0.5, 1.5, 2.5],
+    ... [0.25, 0.75, 1.25]]))
+    array([0.5, 0.5, 1. ])
+    >>> proportion(np.array([[3., 2, 5], [1, 2, 3]]))
+    array([[1., 0., 1.],
+           [0., 0., 1.]])
+
+    """
+    obs = obs.T
+    if diff is None:
+        diff = obs[..., None, :]
+        max_prop = obs.shape[-1] / (obs.shape[-1] - 1)
+    else:
+        max_prop = 1.
+        diff = diff.T
+
+    if tails == 1:
+        out = _perm_gt(diff, obs)
+    elif tails == 2:
+        out = _perm_gt(np.abs(diff), np.abs(obs))
+    elif tails == -1:
+        out = _perm_lt(diff, obs)
+    else:
+        raise ValueError('tails must be 1, 2, or -1')
+
+    return out.T * max_prop
+
+
+@guvectorize(['(f8[::1], f8, f8[::1])'], '(m), ()->()', nopython=True)
+def _perm_gt(diff, obs, result):
+    """
+
+    Parameters
+    ----------
+    diff
+    obs
+    result
+
+    Examples
+    -------
+    >>> import numpy as np
+    >>> rand = np.random.default_rng(seed=42)
+    >>> _perm_gt(rand.random(10), 0.5)
+    0.4
+    >>> _perm_gt(rand.random((5, 10)), np.full(5, 0.5))
+    array([0.4, 0.5, 0.7, 0.5, 0.5])
+    >>> diff1 = rand.random((5, 4))
+    >>> diff1
+    array([[0.66840296, 0.47109621, 0.56523611, 0.76499886],
+           [0.63471832, 0.5535794 , 0.55920716, 0.3039501 ],
+           [0.03081783, 0.43671739, 0.21458467, 0.40852864],
+           [0.85340307, 0.23393949, 0.05830274, 0.28138389],
+           [0.29359376, 0.66191651, 0.55703215, 0.78389821]])
+    >>> np.sum(diff1 > diff1[:, None], axis=0) / (diff1.shape[0] - 1)
+    array([[0.75, 0.5 , 1.  , 0.75],
+           [0.5 , 0.75, 0.75, 0.25],
+           [0.  , 0.25, 0.25, 0.5 ],
+           [1.  , 0.  , 0.  , 0.  ],
+           [0.25, 1.  , 0.5 , 1.  ]])
+    >>> diff1[0,0]
+    0.6684029617904717
+    >>> diff1[1:, 0]
+    array([0.63471832, 0.03081783, 0.85340307, 0.29359376])
+    >>> diff1[0,0] > diff1[1:, 0]
+    array([ True,  True, False,  True])
+    >>> _perm_gt(diff1[1:, 0], diff1[0, 0])
+    0.75
+    >>> _perm_gt(diff1[..., None, :].T, diff1.T).T
+    array([[0.75, 0.5 , 1.  , 0.75],
+           [0.5 , 0.75, 0.75, 0.25],
+           [0.  , 0.25, 0.25, 0.5 ],
+           [1.  , 0.  , 0.  , 0.  ],
+           [0.25, 1.  , 0.5 , 1.  ]])
+    """
+
+    m = diff.shape[0]
+    count = 0
+    for j in range(m):
+        if obs > diff[j]:
+            count += 1
+    result[0] = count / m
+
+
+@guvectorize(['(f8[::1], f8[::1])'], '(n)->(n)', nopython=True)
+def _perm_gt_2d(diff, result):
+    """
+
+    Parameters
+    ----------
+    diff
+    obs
+    result
+
+    Examples
+    -------
+    >>> import numpy as np
+    >>> rand = np.random.default_rng(seed=42)
+    >>> diff = rand.random((5, 4))
+    >>> np.array_equal(_perm_gt_2d(diff.T).T, np.sum(diff > diff[:, None], axis=0)
+    ... / (diff.shape[0] - 1))
+    True
+    >>> diff = rand.random((5, 4, 3))
+    >>> diff
+        array([[[0.75808774, 0.35452597, 0.97069802],
+            [0.89312112, 0.7783835 , 0.19463871],
+            [0.466721  , 0.04380377, 0.15428949],
+            [0.68304895, 0.74476216, 0.96750973]],
+    <BLANKLINE>
+           [[0.32582536, 0.37045971, 0.46955581],
+            [0.18947136, 0.12992151, 0.47570493],
+            [0.22690935, 0.66981399, 0.43715192],
+            [0.8326782 , 0.7002651 , 0.31236664]],
+    <BLANKLINE>
+           [[0.8322598 , 0.80476436, 0.38747838],
+            [0.2883281 , 0.6824955 , 0.13975248],
+            [0.1999082 , 0.00736227, 0.78692438],
+            [0.66485086, 0.70516538, 0.78072903]],
+    <BLANKLINE>
+           [[0.45891578, 0.5687412 , 0.139797  ],
+            [0.11453007, 0.66840296, 0.47109621],
+            [0.56523611, 0.76499886, 0.63471832],
+            [0.5535794 , 0.55920716, 0.3039501 ]],
+    <BLANKLINE>
+           [[0.03081783, 0.43671739, 0.21458467],
+            [0.40852864, 0.85340307, 0.23393949],
+            [0.05830274, 0.28138389, 0.29359376],
+            [0.66191651, 0.55703215, 0.78389821]]])
+    >>> _perm_gt_2d(diff.T).T
+    array([[[0.75, 0.  , 1.  ],
+            [1.  , 0.75, 0.25],
+            [0.75, 0.25, 0.  ],
+            [0.75, 1.  , 1.  ]],
+    <BLANKLINE>
+           [[0.25, 0.25, 0.75],
+            [0.25, 0.  , 1.  ],
+            [0.5 , 0.75, 0.5 ],
+            [1.  , 0.5 , 0.25]],
+    <BLANKLINE>
+           [[1.  , 1.  , 0.5 ],
+            [0.5 , 0.5 , 0.  ],
+            [0.25, 0.  , 1.  ],
+            [0.5 , 0.75, 0.5 ]],
+    <BLANKLINE>
+           [[0.5 , 0.75, 0.  ],
+            [0.  , 0.25, 0.75],
+            [1.  , 1.  , 0.75],
+            [0.  , 0.25, 0.  ]],
+    <BLANKLINE>
+           [[0.  , 0.5 , 0.25],
+            [0.75, 1.  , 0.5 ],
+            [0.  , 0.5 , 0.25],
+            [0.25, 0.  , 0.75]]])
+    >>> np.sum(diff > diff[:, None], axis=0) / (diff.shape[0] - 1)
+    array([[[0.75, 0.  , 1.  ],
+            [1.  , 0.75, 0.25],
+            [0.75, 0.25, 0.  ],
+            [0.75, 1.  , 1.  ]],
+    <BLANKLINE>
+           [[0.25, 0.25, 0.75],
+            [0.25, 0.  , 1.  ],
+            [0.5 , 0.75, 0.5 ],
+            [1.  , 0.5 , 0.25]],
+    <BLANKLINE>
+           [[1.  , 1.  , 0.5 ],
+            [0.5 , 0.5 , 0.  ],
+            [0.25, 0.  , 1.  ],
+            [0.5 , 0.75, 0.5 ]],
+    <BLANKLINE>
+           [[0.5 , 0.75, 0.  ],
+            [0.  , 0.25, 0.75],
+            [1.  , 1.  , 0.75],
+            [0.  , 0.25, 0.  ]],
+    <BLANKLINE>
+           [[0.  , 0.5 , 0.25],
+            [0.75, 1.  , 0.5 ],
+            [0.  , 0.5 , 0.25],
+            [0.25, 0.  , 0.75]]])
+    >>> np.array_equal(_perm_gt_2d(diff), np.sum(diff > diff[:, None], axis=0)
+    ... / (diff.shape[0] - 1))
+    True
+    """
+    m = diff.shape[0]
+    for i in range(m):
+        count = 0
+        for j in range(m):
             if i != j and diff[i] > diff[j]:
-                result[i] += 1
-        result[i] /= denom
+                count += 1
+        result[i] = count / (m - 1)
 
 
-@guvectorize([(float64[:], float64[:])], '(n)->(n)', nopython=True)
-def _perm_lt(diff, result):
-    n = diff.shape[0]
-    denom = n - 1
-    for i in range(n):
-        for j in range(n):
-            if i != j and diff[i] < diff[j]:
-                result[i] += 1
-        result[i] /= denom
+@guvectorize(['(f8, f8[::1], f8[::1])'], '(), (m)->()', nopython=True)
+def _perm_lt(obs, diff, result):
+
+    m = diff.shape[0]
+    count = 0
+    for j in range(m):
+        if obs < diff[j]:
+            count += 1
+    result[0] = count / m
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
@@ -635,9 +846,7 @@ def tail_compare(diff: np.ndarray | float | int,
 
 
 def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                      tails: int = 1, axis: int = 0, return_perm: bool = False,
-                      func: callable = mean_diff
-                      ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+                      axis: int = 0, func: callable = mean_diff) -> np.ndarray:
     """Time permutation cluster test between two time series.
 
     The test is performed by shuffling the trials of the two time series and
@@ -654,12 +863,8 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         Passive signal. The first dimension is assumed to be the trials
     n_perm : int, optional
         The number of permutations to perform.
-    tails : int, optional
-        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
     axis : int, optional
         The axis to perform the permutation test across.
-    return_perm : bool, optional
-        If True, return the permutation distribution.
     func :
         The statistical function to use to compare populations. Requires an
         axis keyword input to denote observations (trials, for example).
@@ -695,13 +900,14 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         fake_sig2 = np.take(all_trial, np.where(perm_labels)[0], axis=axis)
         diff[i] = func(fake_sig1, fake_sig2, axis=axis)
 
-    # Calculate the p-value
-    p = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
-
-    if return_perm:
-        return p, diff
-    else:
-        return p
+    return diff
+    # # Calculate the p-value
+    # p = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
+    #
+    # if return_perm:
+    #     return p, diff
+    # else:
+    #     return p
 
 
 @njit()
@@ -811,20 +1017,25 @@ if __name__ == '__main__':
     import numpy as np
     from timeit import timeit
     rng = np.random.default_rng(seed=42)
-    sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0] for _ in range(50)]) - rng.random((50, 15)) * 4
-    sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    p_act, diff = time_perm_shuffle(sig1, sig2, 10000, 1, 0, True)
+    sig1 = np.array([[0,1,2,3,3] for _ in range(50)]) - rng.random((50, 5)) * 5
+    sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
+    diff = time_perm_shuffle(sig1, sig2, 3,0)
+    act = mean_diff(sig1, sig2, axis=0)
 
     # Calculate the p value of the permutation distribution and compare
     # execution times
 
-    p_perm1 = _perm_gt(diff)
-    p_perm2 = np.sum(diff > diff[:, np.newaxis], axis=0) / (diff.shape[0] - 1)
+    p_perm1 = proportion(diff)
+    p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
+    p_perm3 = _perm_gt_2d(diff)
 
     # Time the functions
-    time2 = timeit('_perm_gt(diff)', globals=globals(), number=10)
-    time1 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
-                   '(diff.shape[0] - 1)', globals=globals(), number=10)
+    runs = 20
+    time1 = timeit('proportion(diff)', globals=globals(), number=runs)
+    time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
+                   '(diff.shape[0] - 1)', globals=globals(), number=runs)
+    # time3 = timeit('perm_gt(diff)', globals=globals(), number=runs)
 
-    print(f'Time for calculate_p_perm: {time1:.6f} seconds')
-    print(f'Time for _calculate_p_perm: {time2:.6f} seconds')
+    print(f'Time for _perm_gt: {time1/runs:.6f} seconds per run')
+    print(f'Time for sum method: {time2/runs:.6f} seconds per run')
+    # print(f'Time for perm_gt: {time3/runs:.6f} seconds per run')
