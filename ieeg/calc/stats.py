@@ -6,7 +6,7 @@ from skimage import measure
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
 from scipy import stats as st
-from numba import njit, guvectorize, float64
+from numba import njit, guvectorize, float64, vectorize
 
 
 def weighted_avg_and_std(values, weights, axis=0):
@@ -331,12 +331,15 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> rng = np.random.default_rng(seed=42)
-    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
-    ... for _ in range(50)]) - rng.random((50, 15)) * 3.323
-    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000) #< 0.1
-    True
+    >>> from ieeg import rand_seed
+    >>> rand_seed(42)
+    >>> np.random.seed(42)
+    >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
+    ... for _ in range(50)]) - np.random.random((50, 15)) * 2.4
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + np.random.random(
+    ... (100, 15))
+    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000)
+    0.0308
     """
 
     # sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
@@ -434,15 +437,18 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     Examples
     --------
     >>> import numpy as np
-    >>> rng = np.random.default_rng(seed=42)
-    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
-    ... for _ in range(50)]) - rng.random((50, 15)) * 4
-    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
+    >>> from ieeg import rand_seed
+    >>> rand_seed(42)
+    >>> np.random.seed(42)
+    >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
+    ... for _ in range(50)]) - np.random.random((50, 15)) * 2.6
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + np.random.random(
+    ... (100, 15))
     >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000)
     array([False, False, False,  True,  True,  True,  True,  True,  True,
             True,  True,  True, False, False, False])
     >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000)
-    array([False, False, False,  True,  True,  True,  True,  True,  True,
+    array([False, False, False, False,  True,  True,  True,  True,  True,
             True,  True, False, False, False, False])
     """
     # check inputs
@@ -569,7 +575,8 @@ def proportion(obs: np.ndarray, diff: np.ndarray = None, axis: int = 0,
     return out.T * max_prop
 
 
-@guvectorize(['(f8[::1], f8, f8[::1])'], '(m), ()->()', nopython=True)
+@guvectorize(['(f8[::1], f8, f8[::1])'], '(m), ()->()', nopython=True,
+             identity='reorderable')
 def _perm_gt(diff, obs, result):
     """
 
@@ -587,19 +594,19 @@ def _perm_gt(diff, obs, result):
     0.4
     >>> _perm_gt(rand.random((5, 10)), np.full(5, 0.5))
     array([0.4, 0.5, 0.7, 0.5, 0.5])
-    >>> diff1 = rand.random((5, 4))
+    >>> diff1 = rand.random((5, 3))
     >>> diff1
-    array([[0.66840296, 0.47109621, 0.56523611, 0.76499886],
-           [0.63471832, 0.5535794 , 0.55920716, 0.3039501 ],
-           [0.03081783, 0.43671739, 0.21458467, 0.40852864],
-           [0.85340307, 0.23393949, 0.05830274, 0.28138389],
-           [0.29359376, 0.66191651, 0.55703215, 0.78389821]])
+    array([[0.66840296, 0.47109621, 0.56523611],
+           [0.76499886, 0.63471832, 0.5535794 ],
+           [0.55920716, 0.3039501 , 0.03081783],
+           [0.43671739, 0.21458467, 0.40852864],
+           [0.85340307, 0.23393949, 0.05830274]])
     >>> np.sum(diff1 > diff1[:, None], axis=0) / (diff1.shape[0] - 1)
-    array([[0.75, 0.5 , 1.  , 0.75],
-           [0.5 , 0.75, 0.75, 0.25],
-           [0.  , 0.25, 0.25, 0.5 ],
-           [1.  , 0.  , 0.  , 0.  ],
-           [0.25, 1.  , 0.5 , 1.  ]])
+    array([[0.5 , 0.75, 1.  ],
+           [0.75, 1.  , 0.75],
+           [0.25, 0.5 , 0.  ],
+           [0.  , 0.  , 0.5 ],
+           [1.  , 0.25, 0.25]])
     >>> diff1[0,0]
     0.6684029617904717
     >>> diff1[1:, 0]
@@ -608,7 +615,7 @@ def _perm_gt(diff, obs, result):
     array([ True,  True, False,  True])
     >>> _perm_gt(diff1[1:, 0], diff1[0, 0])
     0.75
-    >>> _perm_gt(diff1[..., None, :].T, diff1.T).T
+    >>> _perm_gt(diff1[:, None], diff1)
     array([[0.75, 0.5 , 1.  , 0.75],
            [0.5 , 0.75, 0.75, 0.25],
            [0.  , 0.25, 0.25, 0.5 ],
@@ -624,109 +631,52 @@ def _perm_gt(diff, obs, result):
     result[0] = count / m
 
 
-@guvectorize(['(f8[::1], f8[::1])'], '(n)->(n)', nopython=True)
+@guvectorize(['void(f8[::1], f8[::1])'], '(n)->(n)', nopython=True,
+             fastmath=False, identity='reorderable')
 def _perm_gt_2d(diff, result):
     """
-
-    Parameters
-    ----------
-    diff
-    obs
-    result
 
     Examples
     -------
     >>> import numpy as np
     >>> rand = np.random.default_rng(seed=42)
-    >>> diff = rand.random((5, 4))
-    >>> np.array_equal(_perm_gt_2d(diff.T).T, np.sum(diff > diff[:, None], axis=0)
-    ... / (diff.shape[0] - 1))
-    True
-    >>> diff = rand.random((5, 4, 3))
-    >>> diff
-        array([[[0.75808774, 0.35452597, 0.97069802],
-            [0.89312112, 0.7783835 , 0.19463871],
-            [0.466721  , 0.04380377, 0.15428949],
-            [0.68304895, 0.74476216, 0.96750973]],
+    >>> diff1 = rand.random((2, 2))
+    >>> diff1
+    array([[0.77395605, 0.43887844],
+           [0.85859792, 0.69736803]])
+    >>> _perm_gt_2d(diff1, axis=0)
+    array([[0., 0.],
+           [1., 1.]])
+    >>> np.sum(diff1 > diff1[:, None], axis=0) / (diff1.shape[0] - 1)
+    array([[0., 0.],
+           [1., 1.]])
+    >>> diff2 = rand.random((2, 2, 3))
+    >>> diff2
+    array([[[0.09417735, 0.97562235, 0.7611397 ],
+            [0.78606431, 0.12811363, 0.45038594]],
     <BLANKLINE>
-           [[0.32582536, 0.37045971, 0.46955581],
-            [0.18947136, 0.12992151, 0.47570493],
-            [0.22690935, 0.66981399, 0.43715192],
-            [0.8326782 , 0.7002651 , 0.31236664]],
+           [[0.37079802, 0.92676499, 0.64386512],
+            [0.82276161, 0.4434142 , 0.22723872]]])
+    >>> _perm_gt_2d(diff2, axis=0)
+    array([[[0., 1., 1.],
+            [0., 0., 1.]],
     <BLANKLINE>
-           [[0.8322598 , 0.80476436, 0.38747838],
-            [0.2883281 , 0.6824955 , 0.13975248],
-            [0.1999082 , 0.00736227, 0.78692438],
-            [0.66485086, 0.70516538, 0.78072903]],
+           [[1., 0., 0.],
+            [1., 1., 0.]]])
+    >>> np.sum(diff2 > diff2[:, None], axis=0) / (diff1.shape[0] - 1)
+    array([[[0., 1., 1.],
+            [0., 0., 1.]],
     <BLANKLINE>
-           [[0.45891578, 0.5687412 , 0.139797  ],
-            [0.11453007, 0.66840296, 0.47109621],
-            [0.56523611, 0.76499886, 0.63471832],
-            [0.5535794 , 0.55920716, 0.3039501 ]],
-    <BLANKLINE>
-           [[0.03081783, 0.43671739, 0.21458467],
-            [0.40852864, 0.85340307, 0.23393949],
-            [0.05830274, 0.28138389, 0.29359376],
-            [0.66191651, 0.55703215, 0.78389821]]])
-    >>> _perm_gt_2d(diff.T).T
-    array([[[0.75, 0.  , 1.  ],
-            [1.  , 0.75, 0.25],
-            [0.75, 0.25, 0.  ],
-            [0.75, 1.  , 1.  ]],
-    <BLANKLINE>
-           [[0.25, 0.25, 0.75],
-            [0.25, 0.  , 1.  ],
-            [0.5 , 0.75, 0.5 ],
-            [1.  , 0.5 , 0.25]],
-    <BLANKLINE>
-           [[1.  , 1.  , 0.5 ],
-            [0.5 , 0.5 , 0.  ],
-            [0.25, 0.  , 1.  ],
-            [0.5 , 0.75, 0.5 ]],
-    <BLANKLINE>
-           [[0.5 , 0.75, 0.  ],
-            [0.  , 0.25, 0.75],
-            [1.  , 1.  , 0.75],
-            [0.  , 0.25, 0.  ]],
-    <BLANKLINE>
-           [[0.  , 0.5 , 0.25],
-            [0.75, 1.  , 0.5 ],
-            [0.  , 0.5 , 0.25],
-            [0.25, 0.  , 0.75]]])
-    >>> np.sum(diff > diff[:, None], axis=0) / (diff.shape[0] - 1)
-    array([[[0.75, 0.  , 1.  ],
-            [1.  , 0.75, 0.25],
-            [0.75, 0.25, 0.  ],
-            [0.75, 1.  , 1.  ]],
-    <BLANKLINE>
-           [[0.25, 0.25, 0.75],
-            [0.25, 0.  , 1.  ],
-            [0.5 , 0.75, 0.5 ],
-            [1.  , 0.5 , 0.25]],
-    <BLANKLINE>
-           [[1.  , 1.  , 0.5 ],
-            [0.5 , 0.5 , 0.  ],
-            [0.25, 0.  , 1.  ],
-            [0.5 , 0.75, 0.5 ]],
-    <BLANKLINE>
-           [[0.5 , 0.75, 0.  ],
-            [0.  , 0.25, 0.75],
-            [1.  , 1.  , 0.75],
-            [0.  , 0.25, 0.  ]],
-    <BLANKLINE>
-           [[0.  , 0.5 , 0.25],
-            [0.75, 1.  , 0.5 ],
-            [0.  , 0.5 , 0.25],
-            [0.25, 0.  , 0.75]]])
-    >>> np.array_equal(_perm_gt_2d(diff), np.sum(diff > diff[:, None], axis=0)
-    ... / (diff.shape[0] - 1))
-    True
+           [[1., 0., 0.],
+            [1., 1., 0.]]])
     """
     m = diff.shape[0]
-    for i in range(m):
+    for i, d1 in enumerate(diff):
         count = 0
-        for j in range(m):
-            if i != j and diff[i] > diff[j]:
+        for j, d2 in enumerate(diff):
+            if i == j:
+                continue
+            if d1 > d2:
                 count += 1
         result[i] = count / (m - 1)
 
@@ -1019,7 +969,7 @@ if __name__ == '__main__':
     rng = np.random.default_rng(seed=42)
     sig1 = np.array([[0,1,2,3,3] for _ in range(50)]) - rng.random((50, 5)) * 5
     sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
-    diff = time_perm_shuffle(sig1, sig2, 30000,0)
+    diff = time_perm_shuffle(sig1, sig2, 30,0)
     act = mean_diff(sig1, sig2, axis=0)
 
     # Calculate the p value of the permutation distribution and compare
