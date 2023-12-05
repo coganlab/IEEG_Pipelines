@@ -11,7 +11,8 @@ from ieeg.navigate import channel_outlier_marker, trial_ieeg
 from ieeg.io import raw_from_layout
 from ieeg.timefreq.utils import crop_pad
 from ieeg.timefreq import gamma
-from ieeg.zac_joint_pca_decoding.alignment_methods import JointPCADecomp
+from ieeg.decoding.joint_pca.alignment_methods import JointPCADecomp
+from ieeg.calc.mat import Labels
 from bids import BIDSLayout
 import mne
 import numpy as np
@@ -57,7 +58,7 @@ del good
 
 data1 = ev1.get_data(slice(0, 40)).swapaxes(1, 2)
 data2 = ev1.get_data(slice(41, 81)).swapaxes(1, 2)
-phon_labels = np.array([["AD1-4, ATT1,2", "PD", "G16"]]).swapaxes(0, 1)
+phon_labels = Labels([["AD1-4, ATT1,2", "PD", "G16"]]).T
 
 # %% Decoding
 n_iter = 5

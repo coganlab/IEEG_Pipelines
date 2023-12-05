@@ -9,7 +9,7 @@ from ieeg import Signal
 import numpy as np
 from numpy.matlib import repmat
 from numpy.typing import ArrayLike
-from numba import njit, extending, typed
+from numba import njit, extending, types, vectorize
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -760,12 +760,12 @@ class LabeledArray(np.ndarray):
         >>> arr1 = LabeledArray([[1,2],[3,4]], labels=[('a', 'b'), ('c', 'd')])
         >>> arr2 = LabeledArray([[5,6],[7,8]], labels=[('a', 'b'), ('c', 'd')])
         >>> arr1.concatenate(arr2, axis=0)
-    array([[1, 2],
-           [3, 4],
-           [5, 6],
-           [7, 8]])
-    labels(['a-0', 'b-0', 'a-1', 'b-1']
-           ['c', 'd'])
+        array([[1, 2],
+               [3, 4],
+               [5, 6],
+               [7, 8]])
+        labels(['a-0', 'b-0', 'a-1', 'b-1']
+               ['c', 'd'])
         """
         new_labels = list(self.labels)
         new = np.hstack((self.labels[axis], other.labels[axis]))
@@ -775,9 +775,129 @@ class LabeledArray(np.ndarray):
             new_labels, dtype=self.dtype)
 
 
-class Labels(np.ndarray):
+# @jitclass(spec=[("array", types.unicode_type[::1])])
+# class Labels:
+#     array: np.ndarray[str]
+#     delimiter: str
+#
+#     def __init__(self, input_array: ArrayLike, delim: str = '-'):
+#         self.array = np.char.asarray(input_array)
+#         self.delimiter = delim
+#
+#     @property
+#     def __array__(self):
+#         return self.array
+#
+#     def __str__(self):
+#         return self.array.tolist().__str__()
+#
+#     def __repr__(self):
+#         return self.array.tolist().__repr__()
+#
+#     def __reduce__(self):
+#         # Get the parent's __reduce__ tuple
+#         pickled_state = super(Labels, self).__reduce__()
+#         # Create our own tuple to pass to __setstate__
+#         new_state = pickled_state[2] + (self.delimiter,)
+#         # Return a tuple that replaces the parent's __setstate__ tuple with our
+#         # own
+#         return (pickled_state[0], pickled_state[1], new_state)
+#
+#     def __setstate__(self, state):
+#         self.delimiter = state[-1]  # Set the info attribute
+#         # Call the parent's __setstate__ with the other tuple elements.
+#         super(Labels, self).__setstate__(state[0:-1])
+#
+#     def __matmul__(self, other):
+#         if not isinstance(other, Labels):
+#             raise NotImplementedError("Only Labels @ Labels is supported")
+#         s_str, o_str = self.__array__().astype(str), other.__array__().astype(str)
+#
+#         # Convert the arrays to 2D
+#         s_str_2d = s_str[..., None]
+#         o_str_2d = np.char.add(self.delimiter, o_str[None])
+#
+#         # Use broadcasting to create a result array with combined strings
+#         result = np.char.add(s_str_2d, o_str_2d)
+#         return Labels(result)
+#
+#     def decompose(self) -> list['MyLabels', ...]:
+#         """Decompose a Labels object into a list of 1d Labels objects.
+#
+#         Examples
+#         --------
+#         >>> Labels(np.array(['a-d', 'a-c', 'b-d', 'b-c'])).reshape(2,2).decompose()
+#         [['a', 'b'], ['d', 'c']]
+#         >>> Labels(['a-c-e', 'a-c-f', 'a-d-e', 'a-d-f', 'b-c-e', 'b-c-f',
+#         ... 'b-d-e', 'b-d-f']).reshape(2,2,2).decompose()
+#         [['a', 'b'], ['c', 'd'], ['e', 'f']]
+#         >>> (Labels(['a','b','c']) @ Labels(['d','e','f','g'])).reshape(
+#         ... 2,6).decompose() # doctest: +ELLIPSIS
+#         [['a-d-a-e-a-f-a-g-b-d-b-e', 'b-f-b-g-c-d-c-e-c-f-c-g'], ['a-d-b-f'...
+#         """
+#         arr = self.__array__()
+#         new_labels = [[None for _ in range(s)] for s in arr.shape]
+#         for i, dim in enumerate(arr.shape):
+#             for j in range(dim):
+#                 row = np.take(arr, j, axis=i).flatten().astype(str)
+#                 common = _longest_common_substring(tuple(map(
+#                     lambda x: tuple(x.split(self.delimiter, )), row)))
+#                 if len(common) == 0:
+#                     common = np.unique(row).tolist()
+#                 new_labels[i][j] = self.delimiter.join(common)
+#             new_labels[i] = _make_array_unique(np.array(new_labels[i]),
+#                                                self.delimiter)
+#         return list(map(Labels, new_labels))
+#
+#     def find(self, value) -> int | tuple[int]:
+#         """Get the index of the first instance of a value in the Labels"""
+#         idx = np.where(self == value)[0]
+#         if (n := len(idx)) == 0:
+#             if self.delimiter in self.__array__[0]:
+#                 splitlist = np.char.split(self, self.delimiter)
+#                 for i in range(len(splitlist[0])):
+#                     try:
+#                         return Labels([s[i] for s in splitlist]).find(value)
+#                     except IndexError:
+#                         continue
+#             raise IndexError(f"{value} not found in {self}")
+#         elif n == 1:
+#             return int(idx[0])
+#         else:
+#             return tuple(map(int, idx))
+#
+#     def join(self, axis: int = None):
+#         """Join the labels into a single string using the delimiter
+#
+#         Parameters
+#         ----------
+#         axis : int, optional
+#             The axis to join along, by default None
+#
+#         Examples
+#         --------
+#         >>> Labels(['a', 'b', 'c']).join()
+#         'a-b-c'
+#         >>> Labels(['a', 'b', 'c']).reshape(1,3).join()
+#         'a-b-c'
+#         >>> Labels([['a','b'],['c','d']]).join()
+#         'a-b-c-d'
+#         >>> Labels([['a','b'],['c','d']]).join(0)
+#         ['a-b', 'c-d']
+#         >>> Labels([['a','b'],['c','d']], '').join(1)
+#         ['ac', 'bd']
+#         """
+#         if axis is None:
+#             return self.delimiter.join(self.flat)
+#         else:
+#             labs = self.swapaxes(0, axis)
+#             return Labels([lab.join() for lab in labs], self.delimiter)
+
+
+class Labels(np.core.defchararray.chararray):
     """A class for storing labels for a LabeledArray."""
-    __slots__ = ['delimiter', '__dict__']
+    delimiter: str
+    # __slots__ = ['delimiter', '__dict__']
 
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
         obj = np.asarray(input_array).view(cls)
@@ -865,6 +985,34 @@ class Labels(np.ndarray):
             return int(idx[0])
         else:
             return tuple(map(int, idx))
+
+
+    def join(self, axis: int = None):
+        """Join the labels into a single string using the delimiter
+
+        Parameters
+        ----------
+        axis : int, optional
+            The axis to join along, by default None
+
+        Examples
+        --------
+        >>> Labels(['a', 'b', 'c']).join()
+        'a-b-c'
+        >>> Labels(['a', 'b', 'c']).reshape(1,3).join()
+        'a-b-c'
+        >>> Labels([['a','b'],['c','d']]).join()
+        'a-b-c-d'
+        >>> Labels([['a','b'],['c','d']]).join(axis=0)
+        ['a-b', 'c-d']
+        >>> Labels([['a','b'],['c','d']], '').join(axis=1)
+        ['ac', 'bd']
+        """
+        if axis is None:
+            return self.delimiter.join(self.flat)
+        else:
+            labs = self.swapaxes(0, axis)
+            return Labels([lab.join() for lab in labs], self.delimiter)
 
 
 def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:

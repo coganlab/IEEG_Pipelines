@@ -6,6 +6,7 @@ Cogan & Viventi Labs, Duke University
 
 import numpy as np
 import pickle
+from ieeg.calc.mat import Labels
 
 
 def cnd_avg(data, labels):
@@ -31,30 +32,13 @@ def cnd_avg(data, labels):
 
 
 def label2str(labels):
+    if not isinstance(labels, Labels):
+        labels = Labels(labels, delim='')
+
+    # Converts a 2D array of label sequences into a 1D array of label strings.
     if len(labels.shape) > 1:
-        labels = label_seq2str(labels)
-    else:
-        labels = labels.astype(str)
-    return labels
-
-
-def label_seq2str(labels):
-    """Converts a 2D array of label sequences into a 1D array of label strings.
-
-    For example, if a trial has multiple labels, such as [1, 2, 3], this
-    function will convert it to a string '123'. Used to convert sequences of
-    phonemes into strings of phoneme sequence labels.
-
-    Args:
-        labels (ndarray): Labels with shape (n_trials, n_labels_per_trial).
-
-    Returns:
-        ndarray: Labels with shape (n_trials,) where each label is a string.
-    """
-    labels_str = []
-    for i in range(labels.shape[0]):
-        labels_str.append(''.join(str(x) for x in labels[i, :]))
-    return np.array(labels_str)
+        labels = labels.join(0)
+    return labels.astype(str)
 
 
 def save_pkl(data, filename):

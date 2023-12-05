@@ -482,7 +482,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # contatenate the actual group statistic and concatenate with the null
     # distribution along the observations axis
-    act = stat_func(sig1, sig2, axis)
+    act = stat_func(sig1, sig2, axis=axis)
     if isinstance(act, tuple):
         act = act[0]
     act = np.expand_dims(act, axis=axis)
@@ -1019,7 +1019,7 @@ if __name__ == '__main__':
     rng = np.random.default_rng(seed=42)
     sig1 = np.array([[0,1,2,3,3] for _ in range(50)]) - rng.random((50, 5)) * 5
     sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
-    diff = time_perm_shuffle(sig1, sig2, 3,0)
+    diff = time_perm_shuffle(sig1, sig2, 30000,0)
     act = mean_diff(sig1, sig2, axis=0)
 
     # Calculate the p value of the permutation distribution and compare
@@ -1031,7 +1031,7 @@ if __name__ == '__main__':
 
     # Time the functions
     runs = 20
-    time1 = timeit('proportion(diff)', globals=globals(), number=runs)
+    time1 = timeit('_perm_gt_2d(diff)', globals=globals(), number=runs)
     time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
                    '(diff.shape[0] - 1)', globals=globals(), number=runs)
     # time3 = timeit('perm_gt(diff)', globals=globals(), number=runs)

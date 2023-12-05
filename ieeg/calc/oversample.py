@@ -145,15 +145,16 @@ def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
 
     Examples
     --------
-    >>> np.random.seed(0)
+    >>> from ieeg import rand_seed
+    >>> rand_seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> mixup2d(arr)
-    >>> arr  #doctest: +ELLIPSIS
+    >>> arr
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
-           [...
+           [5.72901614, 6.72901614]])
     """
     # Get indices of rows with NaN values
     wh = np.zeros(arr.shape[0], dtype=np.bool_)
@@ -199,6 +200,8 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     --------
     >>> import numpy as np
     >>> from ieeg.calc.oversample import TwoSplitNaN
+    >>> from ieeg import rand_seed
+    >>> rand_seed(0)
     >>> np.random.seed(0)
     >>> X = np.vstack((np.arange(1, 9).reshape(4, 2), np.full((4, 2), np.nan)))
     >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1])
@@ -279,13 +282,21 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         Examples
         --------
-        # >>> np.random.seed(0)
+        >>> from ieeg import rand_seed
+        >>> rand_seed(0)
+        >>> np.random.seed(0)
         >>> arr = np.array([[1, 2], [4, 5], [7, 8],
         ... [float("nan"), float("nan")]])
-        >>> MinimumNaNSplit.oversample(arr, normnd, 0)  # doctest: +ELLIPSIS
-        array([[...
-        >>> MinimumNaNSplit.oversample(arr, mixupnd, 0)  # doctest: +ELLIPSIS
-        array([[...
+        >>> MinimumNaNSplit.oversample(arr, normnd, 0)
+        array([[1.        , 2.        ],
+               [4.        , 5.        ],
+               [7.        , 8.        ],
+               [8.32102813, 5.98018098]])
+        >>> MinimumNaNSplit.oversample(arr, mixupnd, 0)
+        array([[1.        , 2.        ],
+               [4.        , 5.        ],
+               [7.        , 8.        ],
+               [3.13990284, 4.13990284]])
         """
         if copy:
             arr = arr.copy()
@@ -316,32 +327,39 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
 
     Examples
     --------
-    # >>> np.random.seed(0)
+    >>> from ieeg import rand_seed
+    >>> rand_seed(0)
+    >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> oversample_nan(arr, normnd, 0)  # doctest: +ELLIPSIS
-    array([[...
-    >>> oversample_nan(arr, mixupnd, 0)  # doctest: +ELLIPSIS
-    array([[...
+    >>> oversample_nan(arr, normnd, 0)
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [8.32102813, 5.98018098]])
+    >>> oversample_nan(arr, mixupnd, 0)
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [3.13990284, 4.13990284]])
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
-    >>> oversample_nan(arr3, mixupnd, 1)  # doctest: +SKIP
+    >>> oversample_nan(arr3, mixupnd, 1)
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ ...
-
+            [ 0.61989218,  1.61989218,  2.61989218,  3.61989218]],
+    <BLANKLINE>
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
-    >>> oversample_nan(arr3, normnd, 1)  # doctest: +SKIP
-    array([[[0.00000000e+00, 1.00000000e+00, 2.00000000e+00, 3.00000000e+00],
-            [4.00000000e+00, 5.00000000e+00, 6.00000000e+00, 7.00000000e+00],
-            [...
-
-           [[1.20000000e+01, 1.30000000e+01, 1.40000000e+01, 1.50000000e+01],
-            [1.60000000e+01, 1.70000000e+01, 1.80000000e+01, 1.90000000e+01],
-            [2.00000000e+01, 2.10000000e+01, 2.20000000e+01, 2.30000000e+01]]])
-    # >>> oversample_nan(arr3, normnd, 0)  # doctest: +ELLIPSIS
+    >>> oversample_nan(arr3, normnd, 1)
+    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
+            [ 4.        ,  5.        ,  6.        ,  7.        ],
+            [-2.85190914,  2.0938884 ,  3.05845799,  6.94603199]],
+    <BLANKLINE>
+           [[12.        , 13.        , 14.        , 15.        ],
+            [16.        , 17.        , 18.        , 19.        ],
+            [20.        , 21.        , 22.        , 23.        ]]])
     """
 
     if copy:
@@ -430,13 +448,15 @@ def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
 
     Examples
     --------
+    >>> from ieeg import rand_seed
+    >>> rand_seed(0)
     >>> np.random.seed(0)
     >>> arr = np.array([1, 2, 4, 5, 7, 8,
     ... float("nan"), float("nan")])
     >>> normnd(arr)
-    >>> arr # doctest: +ELLIPSIS
+    >>> arr
     array([1.        , 2.        , 4.        , 5.        , 7.        ,
-           8.        , ...
+           8.        , 8.91013086, 5.50039302])
     """
 
     # create a view of the array with the observation axis in the last position

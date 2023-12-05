@@ -7,68 +7,82 @@ Cogan & Viventi Labs, Duke University
 import numpy as np
 from sklearn.decomposition import PCA
 from functools import reduce
-from ieeg.zac_joint_pca_decoding.utils import cnd_avg, label2str
+from ieeg.decoding.joint_pca.utils import cnd_avg, label2str
+from numba import njit
 
 
 class JointPCADecomp:
-
     def __init__(self, n_components=40, dim_red=PCA):
-        """Initializes JointPCADecomp class with the number of latent
+        """
+        Initializes JointPCADecomp class with the number of latent
         components and the method for dimensionality reduction.
 
-        Args:
-            n_components (int, optional): Number of components for
-                dimensionality reduction i.e. dimensionality of latent space.
-                Defaults to 40.
-            dim_red (Callable, optional): Dimensionality reduction function.
-                Must implement sklearn-style fit_transform() function. Defaults
-                to PCA.
+        Parameters
+        ----------
+        n_components : int, optional
+            Number of components for dimensionality reduction i.e.
+            dimensionality of latent space. Defaults to 40.
+        dim_red : Callable, optional
+            Dimensionality reduction function. Must implement
+            sklearn-style fit_transform() function. Defaults to PCA.
         """
+
         self.n_components = n_components
         self.dim_red = dim_red
 
     def fit(self, X, y):
-        """Learns source-specific (e.g. patient-specific) transformations to
+        """
+        Learns source-specific (e.g. patient-specific) transformations to
         the shared latent space and stores transformations in self.transforms.
 
-        Args:
-            X (list of ndarray): List of features from multiple sources to
-            compute shared latent space.
-            y (list of ndarray): List of labels corresponding to feature
-            sources. Must be the same length as features.
+        Parameters
+        ----------
+        X : list of ndarray
+            List of features from multiple sources to compute shared latent
+            space.
+        y : list of ndarray
+            List of labels corresponding to feature sources. Must be the same
+            length as features.
         """
+
         transforms = get_joint_PCA_transforms(X, y,
                                               n_components=self.n_components,
                                               dim_red=self.dim_red)
         self.transforms = transforms
 
     def transform(self, X, idx=-1):
-        """Applies learned transformations to input data. Supports transforming
+        """
+        Applies learned transformations to input data. Supports transforming
         a single, specified dataset or all-source datasets at once.
 
-        Args:
-            X (ndarray or list of ndarray): Features to transform. If a list,
-                the length must be equal to the number of learned transforms
-                (i.e. transforming all sources). If an ndarray, a
-                source-specific transformation is applied to the data, with the
-                source specified by the idx input.
-            idx (int, optional): Index of saved transform list to apply to
-                single source data, or -1 if applying to all sources. Defaults
-                to -1.
+        Parameters
+        ----------
+        X : ndarray or list of ndarray
+            Features to transform. If a list, the length must be equal to the
+            number of learned transforms (i.e. transforming all sources).
+            If an ndarray, a source-specific transformation is applied to the
+            data, with the source specified by the idx input.
+        idx : int, optional
+            Index of saved transform list to apply to single source data,
+            or -1 if applying to all sources. Defaults to -1.
 
-        Raises:
-            IndexError: Error if idx is too large to select a learned transform
-                from the saved list.
-            RuntimeError: Error if fit() has not been called before calling
-                transform().
+        Raises
+        ------
+        IndexError
+            Error if idx is too large to select a learned transform from the
+            saved list.
+        RuntimeError
+            Error if fit() has not been called before calling transform().
 
-        Returns:
-            ndarray or tuple: Transformed data from single session if idx is
-                not -1, or a tuple of containing:
-                    Transformed data from all sources input to the fit()
-                    method. Length will be equal to the number of learned
-                    transformations.
+        Returns
+        -------
+        ndarray or tuple
+            Transformed data from single session if idx is not -1, or a tuple
+            of containing:
+                Transformed data from all sources input to the fit() method.
+                Length will be equal to the number of learned transformations.
         """
+
         if not self._check_fit():
             raise RuntimeError('Must call fit() before transforming data.')
         if idx == -1:
@@ -86,35 +100,45 @@ class JointPCADecomp:
         """Fits the model with X and y and applies the learned transformations
         to X.
 
-        Args:
-            X (list of ndarray): List of features from multiple sources to
-            compute shared latent space.
-            y (list of ndarray): List of labels corresponding to feature
-            sources. Must be the same length as features.
+        Parameters
+        ----------
+        X : list of ndarray
+            List of features from multiple sources to compute shared latent
+            space.
+        y : list of ndarray
+            List of labels corresponding to feature sources. Must be the same
+            length as features.
 
-        Returns:
-            tuple: tuple of containing:
-                    Transformed ndarray data from all sources input to the
-                    fit() method. Length will be equal to the number of learned
-                    transformations.
+        Returns
+        -------
+        tuple
+            Tuple containing transformed ndarray data from all sources input to
+            the fit() method. Length will be equal to the number of learned
+            transformations.
         """
+
         self.fit(X, y)
         return self.transform(X)
 
     def _transform_multiple(self, X):
-        """Uses learned latent space transformations to transform data from all
+        """
+        Uses learned latent space transformations to transform data from all
         sources used to fit the decomposition.
 
-        Args:
-            X (list of ndarray): List of features from multiple sources to
-            compute shared latent space.
+        Parameters
+        ----------
+        X : list of ndarray
+            List of features from multiple sources to compute shared latent
+            space.
 
-        Returns:
-            tuple of ndarray: tuple of containing:
-                    Transformed ndarray data from all sources input to the
-                    fit() method. Length will be equal to the number of learned
-                    transformations.
+        Returns
+        -------
+        tuple of ndarray
+            Tuple containing transformed ndarray data from all sources input to
+             the fit() method. Length will be equal to the number of learned
+             transformations.
         """
+
         transformed_lst = [0]*len(X)
         for i, (feats, transform) in enumerate(zip(X, self.transforms)):
             transform_feats = feats.reshape(-1, feats.shape[-1]) @ transform
@@ -123,16 +147,23 @@ class JointPCADecomp:
         return (*transformed_lst,)
 
     def _transform_single(self, X, idx):
-        """Applies learned latent space transformations to data from a single
-        a single source specified by idx.
-
-        Args:
-            X (ndarray): Features to transform.
-            idx (int): Index of learned transforms to apply to X.
-
-        Returns:
-            ndarray: Features transformed to shared latent space.
         """
+        Applies learned latent space transformations to data from a single
+        source specified by idx.
+
+        Parameters
+        ----------
+        X : ndarray
+            Features to transform.
+        idx : int
+            Index of learned transforms to apply to X.
+
+        Returns
+        -------
+        ndarray
+            Features transformed to shared latent space.
+        """
+
         transform = self.transforms[idx]
         transform_feats = X.reshape(-1, X.shape[-1]) @ transform
         return transform_feats.reshape(X.shape[:-1] + (-1,))
@@ -140,9 +171,12 @@ class JointPCADecomp:
     def _check_fit(self):
         """Checks if the joint PCA decomposition has been fit to data.
 
-        Returns:
-            boolean: True if fit() has been called, False otherwise.
+        Returns
+        -------
+        boolean
+            True if fit() has been called, False otherwise.
         """
+
         try:
             self.transforms
         except AttributeError:
@@ -178,10 +212,12 @@ class CCAAlign():
         return X[0] @ self.M_a, X[1] @ self.M_b
 
     def _check_fit(self):
-        """Checks if CCA Aligner has been fit to data.
+        """Checks if the joint PCA decomposition has been fit to data.
 
-        Returns:
-            boolean: True if fit() has been called, False otherwise.
+        Returns
+        -------
+        boolean
+            True if fit() has been called, False otherwise.
         """
         try:
             self.M_a
@@ -192,7 +228,8 @@ class CCAAlign():
 
 
 def get_joint_PCA_transforms(features, labels, n_components=40, dim_red=PCA):
-    """Calculates a shared latent space across features from multiple patients
+    """
+    Calculates a shared latent space across features from multiple patients
     or recording sessions.
 
     Uses the method described by Pandarinath et al. in
@@ -200,21 +237,26 @@ def get_joint_PCA_transforms(features, labels, n_components=40, dim_red=PCA):
     session specific read-in matrices (see Methods: Modifications to the LFADS
     algorithm for stitching together data from multiple recording sessions)
 
-    Args:
-        features (list): List of features from multiple sources to compute
-            shared latent space.
-        labels (list): List of labels corresponding to feature sources. Must
-            be the same length as features.
-        n_components (int, optional): Number of components for dimensionality
-            reduction i.e. dimensionality of latent space. Defaults to 40.
-        dim_red (Callable, optional): Dimensionality reduction function. Must
-            implement sklearn-style fit_transform() function. Defaults to PCA.
+    Parameters
+    ----------
+    features : list
+        List of features from multiple sources to compute shared latent space.
+    labels : list
+        List of labels corresponding to feature sources. Must be the same
+        length as features.
+    n_components : int, optional
+        Number of components for dimensionality reduction i.e. dimensionality
+        of latent space. Defaults to 40.
+    dim_red : Callable, optional
+        Dimensionality reduction function. Must implement sklearn-style
+        fit_transform() function. Defaults to PCA.
 
-    Returns:
-        tuple: tuple containing:
-            Transformation matrices to shared latent space for each input
-            source. Length will be equal to the length of the input feature
-            list.
+    Returns
+    -------
+    tuple
+        Tuple containing transformation matrices to shared latent space for
+        each input source. Length will be equal to the length of the input
+        feature list.
     """
     # process labels for easy comparison of label sequences
     labels = [label2str(labs) for labs in labels]
@@ -303,36 +345,42 @@ def shared_trial_subselect(X_a, X_b, y_a, y_b):
 
 
 def CCA_align_by_class(X_a, X_b, y_a, y_b, return_space='b_to_a'):
-    """CCA Alignment between 2 datasets with correspondence by averaging within
+    """
+    CCA Alignment between 2 datasets with correspondence by averaging within
     class conditions.
 
     The number of features must be the same for datasets A and B. For example,
     if the datasets have different feature sizes, you can use PCA to reduce
     both datasets to the same number of PCs first.
 
-    Args:
-        X_a (ndarray): Data matrix for dataset A of shape (n_trials_a,
-            n_timepoints, n_features)
-        X_b (ndarray): Data matrix for dataset B of shape (n_trials_b,
-            n_timepoints, n_features)
-        y_a (ndarray): Label matrix for dataset A of shape (n_trials_a, ...)
-            The first dimension must be the trial dimension. This can be a
-            1D array, or a 2D array if each trial has multiple labels (e.g. a
-            sequence of phonemes). Label sequences are converted to a single
-            string so that only the same label sequences have correspondence
-            between the datasets.
-        y_b (ndarray): Label matrix for dataset B of shape (n_trials_a, ...).
-            See y_a for more details.
-        return_space (str, optional): How to perform alignment. Dataset B can
-            be aligned to A, and vice versa ('b_to_a' and 'a_to_b',
-            respectively), or both datasets can be aligned to a shared space
-            ('shared'). Defaults to 'b_to_a'.
+    Parameters
+    ----------
+    X_a : ndarray
+        Data matrix for dataset A of shape (n_trials_a, n_timepoints,
+        n_features)
+    X_b : ndarray
+        Data matrix for dataset B of shape (n_trials_b, n_timepoints,
+        n_features)
+    y_a : ndarray
+        Label matrix for dataset A of shape (n_trials_a, ...). The first
+        dimension must be the trial dimension. This can be a 1D array, or a 2D
+        array if each trial has multiple labels (e.g. a sequence of phonemes).
+        Label sequences are converted to a single string so that only the same
+        label sequences have correspondence between the datasets.
+    y_b : ndarray
+        Label matrix for dataset B of shape (n_trials_a, ...). See y_a for more
+        details.
+    return_space : str, optional
+        How to perform alignment. Dataset B can be aligned to A, and vice versa
+        ('b_to_a' and 'a_to_b', respectively), or both datasets can be aligned
+        to a shared space ('shared'). Defaults to 'b_to_a'.
 
-    Returns:
-        tuple: tuple containing:
-            X_a (ndarray): Aligned data matrix for dataset A
-            X_b (ndarray): Aligned data matrix for dataset B
+    Returns
+    -------
+    tuple
+        Tuple containing aligned data matrix for dataset A and dataset B.
     """
+
     parse_return_type(return_space)
 
     # convert labels to strings for seqeunce comparison
@@ -366,36 +414,42 @@ def CCA_align_by_class(X_a, X_b, y_a, y_b, return_space='b_to_a'):
 
 
 def CCA_align_by_trial_subselect(X_a, X_b, y_a, y_b, return_space='b_to_a'):
-    """CCA Alignment between 2 datasets with correspondence via subselection of
+    """
+    CCA Alignment between 2 datasets with correspondence via subselection of
     trials within shared clases.
 
     The number of features must be the same for datasets A and B. For example,
     if the datasets have different feature sizes, you can use PCA to reduce
     both datasets to the same number of PCs first.
 
-    Args:
-        X_a (ndarray): Data matrix for dataset A of shape (n_trials_a,
-            n_timepoints, n_features)
-        X_b (ndarray): Data matrix for dataset B of shape (n_trials_b,
-            n_timepoints, n_features)
-        y_a (ndarray): Label matrix for dataset A of shape (n_trials_a, ...)
-            The first dimension must be the trial dimension. This can be a
-            1D array, or a 2D array if each trial has multiple labels (e.g. a
-            sequence of phonemes). Label sequences are converted to a single
-            string so that only the same label sequences have correspondence
-            between the datasets.
-        y_b (ndarray): Label matrix for dataset B of shape (n_trials_a, ...).
-            See y_a for more details.
-        return_space (str, optional): How to perform alignment. Dataset B can
-            be aligned to A, and vice versa ('b_to_a' and 'a_to_b',
-            respectively), or both datasets can be aligned to a shared space
-            ('shared'). Defaults to 'b_to_a'.
+    Parameters
+    ----------
+    X_a : ndarray
+        Data matrix for dataset A of shape (n_trials_a, n_timepoints,
+        n_features)
+    X_b : ndarray
+        Data matrix for dataset B of shape (n_trials_b, n_timepoints,
+        n_features)
+    y_a : ndarray
+        Label matrix for dataset A of shape (n_trials_a, ...). The first
+        dimension must be the trial dimension. This can be a 1D array, or a 2D
+        array if each trial has multiple labels (e.g. a sequence of phonemes).
+        Label sequences are converted to a single string so that only the same
+        label sequences have correspondence between the datasets.
+    y_b : ndarray
+        Label matrix for dataset B of shape (n_trials_a, ...). See y_a for more
+        details.
+    return_space : str, optional
+        How to perform alignment. Dataset B can be aligned to A, and vice versa
+        ('b_to_a' and 'a_to_b', respectively), or both datasets can be aligned
+        to a shared space ('shared'). Defaults to 'b_to_a'.
 
-    Returns:
-        tuple: tuple containing:
-            X_a (ndarray): Aligned data matrix for dataset A
-            X_b (ndarray): Aligned data matrix for dataset B
+    Returns
+    -------
+    tuple
+        Tuple containing aligned data matrix for dataset A and dataset B.
     """
+
     parse_return_type(return_space)
 
     y_a = label2str(y_a)
@@ -432,20 +486,26 @@ def CCA_align_by_trial_subselect(X_a, X_b, y_a, y_b, return_space='b_to_a'):
 
 
 def parse_return_type(return_space):
-    """Checks the CCA alignment return type is valid.
-
-    Args:
-        return_space (str): String detailing how to perform alignment.
-
-    Raises:
-        ValueError: Error if return_space is not 'b_to_a', 'a_to_b', or
-            'shared'
     """
+    Checks the CCA alignment return type is valid.
+
+    Parameters
+    ----------
+    return_space : str
+        String detailing how to perform alignment.
+
+    Raises
+    ------
+    ValueError
+        Error if return_space is not 'b_to_a', 'a_to_b', or 'shared'
+    """
+
     if return_space not in ['b_to_a', 'a_to_b', 'shared']:
         raise ValueError('return_space must be "b_to_a" or "a_to_b" or'
                          '"shared".')
 
 
+@njit
 def CCA_align(L_a, L_b):
     """Canonical Correlation Analysis (CCA) alignment between 2 datasets.
 
@@ -456,16 +516,35 @@ def CCA_align(L_a, L_b):
     in patient A's space, use L_(b->a).T = L_b.T @ M_b @ (M_a)^-1, where L_a
     and L_(b->a) will be aligned in the same space.
 
-    Args:
-        L_a (ndarray): Latent dynamics array for dataset A of shape (m, T),
-            where m is the number of latent dimensions and T is the number of
-            timepoints.
-        L_b (ndarray): Latent dynamics array for dataset B of shape (m, T)
+    Parameters
+    ----------
+    L_a : ndarray
+        Latent dynamics array for dataset A of shape (m, T),
+        where m is the number of latent dimensions and T is the number of
+        timepoints.
+    L_b : ndarray
+        Latent dynamics array for dataset B of shape (m, T)
 
-    Returns:
-        tuple: tuple containing:
-            M_a (ndarray): Manifold directions for dataset A of shape (m, m)
-            M_b (ndarray): Manifold directions for dataset B of shape (m, m)
+    Returns
+    -------
+    tuple
+        Tuple containing:
+        M_a : ndarray
+            Manifold directions for dataset A of shape (m, m)
+        M_b : ndarray
+            Manifold directions for dataset B of shape (m, m)
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> rand = np.random.RandomState(seed=0)
+    >>> L_a = np.random.randn(5, 10)
+    >>> L_b = np.random.randn(5, 10)
+    >>> M_a, M_b = CCA_align(L_a, L_b)
+    >>> M_a.shape
+    (5, 5)
+    >>> (L_b.T @ M_b).shape
+    (10, 5)
     """
     # QR decomposition
     Q_a, R_a = np.linalg.qr(L_a.T)
@@ -479,3 +558,11 @@ def CCA_align(L_a, L_b):
     M_b = np.linalg.pinv(R_b) @ Vt.T
 
     return M_a, M_b
+
+
+if __name__ == '__main__':
+    from timeit import timeit
+    L_a = np.random.randn(50, 1000)
+    L_b = np.random.randn(50, 1000)
+    M_a, M_b = CCA_align(L_a, L_b)
+    print(timeit('CCA_align(L_a, L_b)', globals=globals(), number=1000))
