@@ -631,8 +631,7 @@ def _perm_gt(diff, obs, result):
     result[0] = count / m
 
 
-@guvectorize(['void(f8[::1], f8[::1])'], '(n)->(n)', nopython=True,
-             fastmath=False, identity='reorderable')
+@guvectorize(['void(f8[::1], f8[::1])'], '(n)->(n)', nopython=True)
 def _perm_gt_2d(diff, result):
     """
 
@@ -673,9 +672,7 @@ def _perm_gt_2d(diff, result):
     m = diff.shape[0]
     for i, d1 in enumerate(diff):
         count = 0
-        for j, d2 in enumerate(diff):
-            if i == j:
-                continue
+        for d2 in diff:
             if d1 > d2:
                 count += 1
         result[i] = count / (m - 1)
@@ -969,7 +966,7 @@ if __name__ == '__main__':
     rng = np.random.default_rng(seed=42)
     sig1 = np.array([[0,1,2,3,3] for _ in range(50)]) - rng.random((50, 5)) * 5
     sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
-    diff = time_perm_shuffle(sig1, sig2, 30,0)
+    diff = time_perm_shuffle(sig1, sig2, 3000,0)
     act = mean_diff(sig1, sig2, axis=0)
 
     # Calculate the p value of the permutation distribution and compare
