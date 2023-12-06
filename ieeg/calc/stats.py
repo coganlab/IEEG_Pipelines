@@ -669,13 +669,13 @@ def _perm_gt_2d(diff, result):
            [[1., 0., 0.],
             [1., 1., 0.]]])
     """
-    m = diff.shape[0]
+    m = diff.shape[0] - 1
     for i, d1 in enumerate(diff):
         count = 0
         for d2 in diff:
             if d1 > d2:
                 count += 1
-        result[i] = count / (m - 1)
+        result[i] = count / m
 
 
 @guvectorize(['(f8[::1], f8[:,::1], f8[::1])'], '(n), (m, n)->(n)', nopython=True)
