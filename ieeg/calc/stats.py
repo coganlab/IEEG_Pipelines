@@ -498,7 +498,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of the permutation distribution
     if tails == 1:
-        p_perm = _perm_gt_2d(diff.T).T
+        p_perm = _perm_gt_2d(diff, axis=0)
     elif tails == 2:
         p_perm = _perm_gt_2d(np.abs(diff.T))
     elif tails == -1:
@@ -678,7 +678,7 @@ def _perm_gt_2d(diff, result):
         result[i] = count / (m - 1)
 
 
-@guvectorize(['(f8, f8[::1], f8[::1])'], '(), (m)->()', nopython=True)
+@guvectorize(['(f8[::1], f8[:,::1], f8[::1])'], '(n), (m, n)->(n)', nopython=True)
 def _perm_lt(obs, diff, result):
 
     m = diff.shape[0]
