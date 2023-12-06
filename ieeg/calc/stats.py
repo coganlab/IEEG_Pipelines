@@ -575,7 +575,7 @@ def proportion(obs: np.ndarray, diff: np.ndarray = None, axis: int = 0,
     return out.T * max_prop
 
 
-@guvectorize(['(f8[::1], f8, f8[::1])'], '(m), ()->()', nopython=True,
+@guvectorize(['(f8[:], f8, f8[:])'], '(m), ()->()', nopython=True,
              identity='reorderable')
 def _perm_gt(diff, obs, result):
     """
@@ -594,39 +594,34 @@ def _perm_gt(diff, obs, result):
     0.4
     >>> _perm_gt(rand.random((5, 10)), np.full(5, 0.5))
     array([0.4, 0.5, 0.7, 0.5, 0.5])
-    >>> diff1 = rand.random((5, 3))
+    >>> diff1 = rand.random((3, 4))
     >>> diff1
-    array([[0.66840296, 0.47109621, 0.56523611],
-           [0.76499886, 0.63471832, 0.5535794 ],
-           [0.55920716, 0.3039501 , 0.03081783],
-           [0.43671739, 0.21458467, 0.40852864],
-           [0.85340307, 0.23393949, 0.05830274]])
+    array([[0.66840296, 0.47109621, 0.56523611, 0.76499886],
+           [0.63471832, 0.5535794 , 0.55920716, 0.3039501 ],
+           [0.03081783, 0.43671739, 0.21458467, 0.40852864]])
     >>> np.sum(diff1 > diff1[:, None], axis=0) / (diff1.shape[0] - 1)
-    array([[0.5 , 0.75, 1.  ],
-           [0.75, 1.  , 0.75],
-           [0.25, 0.5 , 0.  ],
-           [0.  , 0.  , 0.5 ],
-           [1.  , 0.25, 0.25]])
-    >>> diff1[0,0]
+    array([[1. , 0.5, 1. , 1. ],
+           [0.5, 1. , 0.5, 0. ],
+           [0. , 0. , 0. , 0.5]])
+    >>> diff1[0, 0]
     0.6684029617904717
     >>> diff1[1:, 0]
-    array([0.63471832, 0.03081783, 0.85340307, 0.29359376])
+    array([0.63471832, 0.03081783])
     >>> diff1[0,0] > diff1[1:, 0]
-    array([ True,  True, False,  True])
-    >>> _perm_gt(diff1[1:, 0], diff1[0, 0])
-    0.75
-    >>> _perm_gt(diff1[:, None], diff1)
-    array([[0.75, 0.5 , 1.  , 0.75],
-           [0.5 , 0.75, 0.75, 0.25],
-           [0.  , 0.25, 0.25, 0.5 ],
-           [1.  , 0.  , 0.  , 0.  ],
-           [0.25, 1.  , 0.5 , 1.  ]])
+    array([ True,  True])
+    >>> _perm_gt(diff1[:, 1:], diff1[:, 0])
+    array([0.66666667, 1.        , 0.        ])
+    >>> _perm_gt(diff1[:, None], diff1, axis=0
+    ... ) * diff1.shape[0] / (diff1.shape[0] - 1)
+    array([[1. , 0.5, 1. , 1. ],
+           [0.5, 1. , 0.5, 0. ],
+           [0. , 0. , 0. , 0.5]])
     """
 
     m = diff.shape[0]
     count = 0
-    for j in range(m):
-        if obs > diff[j]:
+    for d in diff:
+        if obs > d:
             count += 1
     result[0] = count / m
 
@@ -972,17 +967,19 @@ if __name__ == '__main__':
     # Calculate the p value of the permutation distribution and compare
     # execution times
 
-    p_perm1 = proportion(diff)
+    p_perm1 = _perm_gt_2d(diff, axis=0)
     p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
-    p_perm3 = _perm_gt_2d(diff)
+    p_perm3 = _perm_gt(diff[:, None], diff, axis=0) * diff.shape[0] / (diff.shape[0] - 1)
+
 
     # Time the functions
     runs = 20
-    time1 = timeit('_perm_gt_2d(diff)', globals=globals(), number=runs)
+    time1 = timeit('_perm_gt_2d(diff, axis=0)', globals=globals(), number=runs)
     time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
                    '(diff.shape[0] - 1)', globals=globals(), number=runs)
-    # time3 = timeit('perm_gt(diff)', globals=globals(), number=runs)
+    time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
+                   '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
 
-    print(f'Time for _perm_gt: {time1/runs:.6f} seconds per run')
+    print(f'Time for _perm_gt_2d: {time1/runs:.6f} seconds per run')
     print(f'Time for sum method: {time2/runs:.6f} seconds per run')
-    # print(f'Time for perm_gt: {time3/runs:.6f} seconds per run')
+    print(f'Time for _perm_gt: {time3/runs:.6f} seconds per run')
