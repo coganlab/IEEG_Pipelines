@@ -1,3 +1,4 @@
+
 ############### IMPORT PACKAGES ##################
 
 import numpy as np
@@ -39,6 +40,7 @@ try:
     from sklearn import \
         discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
     from sklearn.base import BaseEstimator
+    from sklearn.metrics import accuracy_score
 except ImportError:
     print(
         "\nWARNING: scikit-learn is not installed. You will be unable to use"
@@ -1884,12 +1886,6 @@ class PcaLdaClassification(BaseEstimator):
 
     #### PRINCIPAL COMPONENT ANALYSIS Wrapper for classification function  ####
 
-
-from sklearn.base import BaseEstimator
-from sklearn.decomposition import PCA
-from sklearn.pipeline import Pipeline
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score
 
 
 class PcaEstimateDecoder(BaseEstimator):
