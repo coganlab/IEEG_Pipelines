@@ -505,7 +505,7 @@ def parse_return_type(return_space):
                          '"shared".')
 
 
-@njit
+@njit('UniTuple(float64[:, ::1],2)(float64[:,::1], float64[:,::1])')
 def CCA_align(L_a, L_b):
     """Canonical Correlation Analysis (CCA) alignment between 2 datasets.
 

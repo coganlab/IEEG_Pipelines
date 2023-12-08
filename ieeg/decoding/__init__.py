@@ -1,4 +1,4 @@
-## Orginal code found here:
+# Orginal code found here:
 # https://github.com/KordingLab/Neural_Decoding
 
 from .decoders import (WienerFilterDecoder, WienerCascadeDecoder,
