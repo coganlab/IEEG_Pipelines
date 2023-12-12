@@ -135,8 +135,6 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     >>> from bids import BIDSLayout
     >>> with mne.use_log_level(0):
     ...     bids_root = mne.datasets.epilepsy_ecog.data_path()
-    ...     seeg = mne.io.read_raw(mne.datasets.misc.data_path() / 'seeg' /
-    ...     'sample_seeg_ieeg.fif')
     ...     layout = BIDSLayout(bids_root)
     ...     raw = raw_from_layout(layout, subject="pt1", preload=True,
     ...     extension=".vhdr", verbose=False)
