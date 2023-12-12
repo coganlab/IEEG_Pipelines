@@ -2,7 +2,7 @@ name: ieeg
 channels:
   - defaults
 dependencies:
-  - python<3.12
+  - python<3.13
   - pip
   - numpy
   - matplotlib
@@ -11,5 +11,6 @@ dependencies:
   - pandas
   - tqdm
   - notebook
+  - mne::conda-forge
   - pip:
     - -r requirements.txt

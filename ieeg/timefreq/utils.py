@@ -5,7 +5,6 @@ from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
 from mne.time_frequency import EpochsTFR, tfr
-from scipy.signal import morlet2, cwt as sci_cwt
 from mne.utils import fill_doc, verbose
 
 from ieeg import Signal
@@ -135,6 +134,9 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     >>> from ieeg.navigate import trial_ieeg
     >>> from bids import BIDSLayout
     >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
+    ...                    'seeg' / 'sample_seeg_ieeg.fif')
+    Range : 1310640 ... 1370605 =   1311.411 ...  1371.411 secs
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
