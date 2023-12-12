@@ -349,7 +349,7 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
     ----------
     line : Epochs
         The data to be processed
-     %(freqs_tfr)s
+    %(freqs_tfr)s
     baseline : Epochs
         The baseline to be used for correction
     %(n_cycles_tfr)s
@@ -362,7 +362,6 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
     Notes
     -----
     %(time_bandwidth_tfr_notes)s
-    %(temporal-window_tfr_notes)s
 
     Returns
     -------

@@ -9,13 +9,18 @@ import mne.io
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
-from mne.time_frequency import _BaseTFR
-from numpy import ndarray
+from numpy import ndarray, random
+from numba import njit
 
 
 PathLike = str | PL
 RunDict = dict[int, mne.io.Raw]
 SubDict = dict[str, RunDict]
 Doubles = tuple[float, float] | list[float, float] | ndarray[(2,), float]
-Signal = base.BaseRaw | BaseEpochs | Evoked | _BaseTFR
+Signal = base.BaseRaw | BaseEpochs | Evoked
 ListNum = int | float | ndarray | list | tuple
+
+
+@njit(cache=True)
+def rand_seed(seed: int = 42):
+    random.seed(seed)

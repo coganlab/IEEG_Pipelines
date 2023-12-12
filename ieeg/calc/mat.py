@@ -9,7 +9,7 @@ from ieeg import Signal
 import numpy as np
 from numpy.matlib import repmat
 from numpy.typing import ArrayLike
-from numba import njit, extending, typed
+from numba import njit, extending, types, vectorize
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -737,10 +737,48 @@ class LabeledArray(np.ndarray):
         index = np.ix_(*idx)
         return self[index]
 
+    def concatenate(self, other: 'LabeledArray', axis: int = 0,
+                    **kwargs) -> 'LabeledArray':
+        """Concatenate two LabeledArrays along an axis.
+
+        Parameters
+        ----------
+        other : LabeledArray
+            The LabeledArray to concatenate with.
+        axis : int, optional
+            The axis to concatenate along, by default 0.
+        kwargs : dict
+            Additional keyword arguments to pass to np.concatenate.
+
+        Returns
+        -------
+        LabeledArray
+            The concatenated LabeledArray.
+
+        Examples
+        --------
+        >>> arr1 = LabeledArray([[1,2],[3,4]], labels=[('a', 'b'), ('c', 'd')])
+        >>> arr2 = LabeledArray([[5,6],[7,8]], labels=[('a', 'b'), ('c', 'd')])
+        >>> arr1.concatenate(arr2, axis=0)
+        array([[1, 2],
+               [3, 4],
+               [5, 6],
+               [7, 8]])
+        labels(['a-0', 'b-0', 'a-1', 'b-1']
+               ['c', 'd'])
+        """
+        new_labels = list(self.labels)
+        new = np.hstack((self.labels[axis], other.labels[axis]))
+        new_labels[axis] = _make_array_unique(new, self.labels[axis].delimiter)
+        return LabeledArray(np.concatenate(
+            (self.__array__(), other.__array__()), axis, **kwargs),
+            new_labels, dtype=self.dtype)
+
 
 class Labels(np.ndarray):
     """A class for storing labels for a LabeledArray."""
-    __slots__ = ['delimiter', '__dict__']
+    delimiter: str
+    # __slots__ = ['delimiter', '__dict__']
 
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
         obj = np.asarray(input_array).view(cls)
@@ -829,28 +867,72 @@ class Labels(np.ndarray):
         else:
             return tuple(map(int, idx))
 
+    def join(self, axis: int = None):
+        """Join the labels into a single string using the delimiter
+
+        Parameters
+        ----------
+        axis : int, optional
+            The axis to join along, by default None
+
+        Examples
+        --------
+        >>> Labels(['a', 'b', 'c']).join()
+        'a-b-c'
+        >>> Labels(['a', 'b', 'c']).reshape(1,3).join()
+        'a-b-c'
+        >>> Labels([['a','b'],['c','d']]).join()
+        'a-b-c-d'
+        >>> Labels([['a','b'],['c','d']]).join(axis=0)
+        ['a-b', 'c-d']
+        >>> Labels([['a','b'],['c','d']], '').join(axis=1)
+        ['ac', 'bd']
+        """
+        if axis is None:
+            return self.delimiter.join(self.flat)
+        else:
+            labs = self.swapaxes(0, axis)
+            return Labels([lab.join() for lab in labs], self.delimiter)
+
 
 def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
-    """Make an array unique by appending a number to duplicate values."""
-    if len(arr) == len(np.unique(arr)):
+    """Make an array unique by appending a number to duplicate values.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        The array to make unique.
+    delimiter : str
+        The delimiter to use when appending a number to duplicate values.
+
+    Returns
+    -------
+    np.ndarray
+        The unique array.
+
+    Examples
+    --------
+    >>> arr = np.array(['a', 'b', 'c', 'a', 'b', 'c'])
+    >>> _make_array_unique(arr, '-')
+    array(['a-0', 'b-0', 'c-0', 'a-1', 'b-1', 'c-1'], dtype='<U3')
+    >>> arr = np.array(['a', 'b', 'c', 'd', 'e', 'f'])
+    >>> _make_array_unique(arr, '-')
+    array(['a', 'b', 'c', 'd', 'e', 'f'], dtype='<U1')
+    """
+    unique, inverse = np.unique(arr, return_inverse=True)
+    if len(unique) == len(arr):
         return arr
-
-    # Get the unique values and their counts
-    unique, counts = np.unique(arr, return_counts=True)
-    arr = arr.astype('U' + str(int(str(arr.dtype)[2]) + 4))
-
-    # Get the indices of the duplicate values
-    dup_idx = np.where(counts > 1)[0]
-
-    # Loop through the duplicates and append a number to them
-    for idx in dup_idx:
-        # Get the indices of the duplicate values
-        idxs = np.where(arr == unique[idx])[0]
-        # Loop through the indices and append a number to the values
-        for i, j in enumerate(idxs):
-            arr[i] = f"{arr[i]}{delimiter}{i}"
-
-    return arr
+    counts = np.bincount(inverse)
+    max_dtype = np.max([len(u) for u in unique]) + 1 + len(str(max(counts)))
+    out = np.empty_like(arr, dtype=f'<U{max_dtype}')
+    for i, (u, c) in enumerate(zip(unique, counts)):
+        if c == 1:
+            out[inverse == i] = u
+        else:
+            indices = np.where(arr == u)[0]
+            for j, index in enumerate(indices):
+                out[index] = f"{u}{delimiter}{j}"
+    return out
 
 
 def _longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
