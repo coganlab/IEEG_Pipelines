@@ -2,6 +2,8 @@
 
 A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganlab.org/)
 
+[![Brain](./docs/images/brain_rot.gif)](https://www.coganlab.org/)
+
 ## Documentation
 
 [![Documentation Status](https://readthedocs.org/projects/ieeg-pipelines/badge/?version=latest)](https://ieeg-pipelines.readthedocs.io/en/latest/?badge=latest)

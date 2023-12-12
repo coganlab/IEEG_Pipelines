@@ -12,13 +12,13 @@
 #
 import os
 import sys
-import sphinx_rtd_theme
+import sphinx_rtd_theme, sphinx_gallery
 sys.path.insert(0, os.path.abspath('..'))
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'Pipelines'
+project = 'IEEG_Pipelines'
 copyright = '2023, Aaron Earle-Richardson'
 author = 'Aaron Earle-Richardson'
 
@@ -41,12 +41,28 @@ extensions = ['myst_nb',
               'sphinx.ext.napoleon',
               'sphinx.ext.intersphinx',
               'sphinx.ext.linkcode',
-              'sphinx.ext.viewcode']
+              'sphinx.ext.viewcode',
+              'sphinx.ext.mathjax',
+              'sphinx.ext.ifconfig',
+              'sphinx.ext.githubpages',
+              'sphinx.ext.todo']
 sphinx_gallery_conf = {
-    'examples_dirs': ['../examples'],
-    'gallery_dirs': ['auto_examples', 'tutorials'],
+    'examples_dirs': '../examples',
+    'gallery_dirs': 'auto_examples',
+    'reference_url': {
+        'ieeg': None,
+    },
+    'ignore_pattern': r'noinclude\.py',
+    # Add ability to link to mini-gallery under each function/class
+    # directory where function/class granular galleries are stored
+    'backreferences_dir': 'gen_modules/backreferences',
+    # Modules for which function/class level galleries are created. In
+    # this case sphinx_gallery and ieeg in a tuple of strings.
+    'doc_module': ('sphinx_gallery', 'ieeg'),
     'filename_pattern': '/plot_'
 }
+
+autosummary_generate = True
 notebook_images = True
 myst_enable_extensions = [
     "amsmath",
@@ -78,6 +94,7 @@ autodoc_typehints = 'both'
 matlab_src_dir = os.path.abspath('../MATLAB')
 matlab_auto_link = True
 
+
 # nb_execution_mode = 'off'
 
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
@@ -90,6 +107,8 @@ intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
                        'matplotlib': ('https://matplotlib.org/', None),
                        'bids': ('https://bids-standard.github.io/pybids/',
                                 None),
+                       'joblib': ('https://joblib.readthedocs.io/en/latest/',
+                                  None),
                        "sklearn": ("http://scikit-learn.org/dev", None),
                        }
 
@@ -101,6 +120,11 @@ def linkcode_resolve(domain, info):
         return None
     filename = info['module'].replace('.', '/')
     return "https://github.com/coganlab/IEEG_Pipelines/%s.py" % filename
+
+
+def setup(app):
+    # to hide/show the prompt in code examples:
+    app.add_js_file("js/copybutton.js")
 
 
 # List of patterns, relative to source directory, that match files and
@@ -124,16 +148,17 @@ html_theme_options = {
     # 'includehidden': False,
     "collapse_navigation": False,
     "navigation_depth": 3,
-    "logo_only": True,
+    "logo_only": False,
 }
-html_logo = "./images/brain_rot.gif"
+html_logo = "./images/favicon.ico"
 html_favicon = "./images/favicon.ico"
 
 html_context = {
     # Enable the "Edit in GitHub link within the header of each page.
     "display_github": True,
     # Set the following variables to generate the resulting github URL for each page.
-    # Format Template: https://{{ github_host|default("github.com") }}/{{ github_user }}/{{ github_repo }}/blob/{{ github_version }}{{ conf_py_path }}{{ pagename }}{{ suffix }}
+    # Format Template: https://{{ github_host|default("github.com") }}/{{ github_user }}/{{ github_repo }}/blob/
+    # {{ github_version }}{{ conf_py_path }}{{ pagename }}{{ suffix }}
     "github_user": "coganlab",
     "github_repo": "IEEG_Pipelines",
     "github_version": "main/docs/",

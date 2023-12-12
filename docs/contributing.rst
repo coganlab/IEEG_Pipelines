@@ -1,4 +1,4 @@
-Contributing to naplib-python
+Contributing to IEEG_Pipelines
 =============================
 
 (adopted from scikit-learn)
@@ -12,15 +12,15 @@ implemented.
 
 In case you experience issues using this package, do not hesitate to
 submit a ticket to the
-`Bug Tracker <https://github.com/naplab/naplib-python/issues>`_. You
+`Bug Tracker <https://github.com/coganlab/IEEG_Pipelines/issues>`_. You
 are also welcome to post feature requests or pull requests.
 
 It is recommended to check that your issue complies with the following
 rules before submitting:
 
 -  Verify that your issue is not being currently addressed by other
-   `issues <https://github.com/naplab/naplib-python/issues?q=>`_ or
-   `pull requests <https://github.com/naplab/naplib-python/pulls?q=>`_.
+   `issues <https://github.com/coganlab/IEEG_Pipelines/issues?q=>`_ or
+   `pull requests <https://github.com/coganlab/IEEG_Pipelines/pulls?q=>`_.
 
 -  If you are submitting a bug report, we strongly encourage you to
    follow the guidelines in :ref:`filing_bugs`.
@@ -33,7 +33,7 @@ How to make a good bug report
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When you submit an issue to
-`Github <https://github.com/naplab/naplib-python/issues>`_, please
+`Github <https://github.com/coganlab/IEEG_Pipelines/issues>`_, please
 do your best to follow these guidelines! This will make it a lot easier
 to provide you with good feedback:
 
@@ -57,7 +57,7 @@ to provide you with good feedback:
 
       import platform; print(platform.platform());
       import sys; print("Python", sys.version);
-      import ieeg; print("naplib", ieeg.version)
+      import ieeg; print("ieeg", ieeg.version)
 
 
 -  Please ensure all **code snippets and error messages are formatted in
@@ -72,7 +72,7 @@ The preferred workflow for contributing to naplib is to fork the main
 repository on GitHub, clone, and develop on a branch. Steps:
 
 1. Fork the
-   `project repository <https://github.com/naplab/naplib-python>`_
+   `project repository <https://github.com/coganlab/IEEG_Pipelines>`_
    by clicking on the ‘Fork’ button near the top right of the page. This
    creates a copy of the code under your GitHub user account. For more
    details on how to fork a repository see

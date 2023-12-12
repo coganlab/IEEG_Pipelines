@@ -182,7 +182,7 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
 
 def avg_no_outlier(data: np.ndarray, outliers: float = None,
                    keep: np.ndarray[bool] = None) -> np.ndarray:
-    """ Calculate the average of data without trial outliers.
+    """Calculate the average of data without trial outliers.
 
     This function calculates the average of data without trial outliers.
     Outliers are defined as any trial with a maximum value greater than the
@@ -206,7 +206,6 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
 
     Examples
     --------
-import mne    >>> import numpy as np
     >>> import mne
     >>> mne.set_log_file(None)
     >>> data = np.array([[[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]]).T
@@ -331,8 +330,8 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> from ieeg import rand_seed
-    >>> rand_seed(42)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(42)
     >>> np.random.seed(42)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)]) - np.random.random((50, 15)) * 2.4
@@ -438,8 +437,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     Examples
     --------
     >>> import numpy as np
-    >>> from ieeg import rand_seed
-    >>> rand_seed(42)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(42)
     >>> np.random.seed(42)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)]) - np.random.random((50, 15)) * 2.6
@@ -520,8 +519,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
 
 def proportion(val: np.ndarray[float, ...] | float,
-               comp: np.ndarray[float, ...] = None,
-               tail: int = 1, axis: int = None):
+               comp: np.ndarray[float, ...] = None, tail: int = 1,
+               axis: int = None) -> np.ndarray[float, ...] | float:
     """takes a value and a comparison and returns the proportion of the
     comparison that is greater than the value
 
@@ -539,6 +538,8 @@ def proportion(val: np.ndarray[float, ...] | float,
 
     Returns
     -------
+    proportion : array, shape (..., time)
+        The proportion of the comparison that is greater than the value.
 
     Examples
     ________
@@ -855,6 +856,7 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
            [1., 1.],
            [1., 1.],
            [1., 1.]]))
+
     """
     # drop the even tapers
     n_tapers = len(window_fun)

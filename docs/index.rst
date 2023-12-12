@@ -11,9 +11,10 @@ This is the main page of the IEEG_Pipelines documentation. Here you will find th
    :maxdepth: 2
    :caption: API Reference:
 
-   reference/ieeg
-   reference/modules
+   ieeg
    matlab
+
+.. minigallery:: ieeg
 
 .. toctree::
    :maxdepth: 2
@@ -22,11 +23,17 @@ This is the main page of the IEEG_Pipelines documentation. Here you will find th
    auto_examples/index
 
 .. toctree::
+   :maxdepth: 2
+   :caption: External tools:
+
+   external
+
+.. toctree::
    :maxdepth: 1
    :caption: Developer Information
 
    contributing
-   ../license.txt
+   LICENSE
 
 .. toctree::
    :maxdepth: 1
