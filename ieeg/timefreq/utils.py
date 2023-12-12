@@ -134,9 +134,11 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     >>> from ieeg.navigate import trial_ieeg
     >>> from bids import BIDSLayout
     >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
-    >>> seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
-    ...                    'seeg' / 'sample_seeg_ieeg.fif')
-    Range : 1310640 ... 1370605 =   1311.411 ...  1371.411 secs
+    >>> seeg = mne.io.read_raw(mne.datasets.misc.data_path() / 'seeg' /
+    ... 'sample_seeg_ieeg.fif')  # doctest: +ELLIPSIS
+    Opening raw data file ...
+        Range : 1310640 ... 1370605 =   1311.411 ...  1371.411 secs
+    Ready.
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
@@ -156,8 +158,9 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     Data is self data: False
     Not setting metadata
     <EpochsTFR | time : [-1.000000, 2.000000], freq : [2.079716, 1064.814640...
+
     """
-    data = inst.get_data()
+    data = inst.get_data(copy=False)
 
     f = np.fft.fft(data - np.mean(data, axis=-1, keepdims=True))
 
