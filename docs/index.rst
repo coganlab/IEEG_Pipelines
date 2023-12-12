@@ -7,15 +7,12 @@ Welcome to the IEEG_Pipelines Documentation
 
 This is the main page of the IEEG_Pipelines documentation. Here you will find the table of contents and links to other important resources.
 
-.. include:: ../README.md
-   :parser: myst_parser.sphinx_
-   :caption: Instructions
-
 .. toctree::
    :maxdepth: 2
    :caption: API Reference:
 
    reference/ieeg
+   reference/modules
    matlab
 
 .. toctree::
@@ -29,15 +26,17 @@ This is the main page of the IEEG_Pipelines documentation. Here you will find th
    :caption: Developer Information
 
    contributing
-   license
-
+   ../license.txt
 
 .. toctree::
    :maxdepth: 1
    :caption: Useful Links
 
-   naplib-python @ GitHub <https://github.com/naplab/naplib-python>
-   Issue Tracker <https://github.com/naplab/naplib-python/issues>
+   IEEG_Pipelines @ GitHub <https://github.com/coganlab/IEEG_Pipelines>
+   Issue Tracker <https://github.com/coganlab/IEEG_Pipelines/issues>
+
+.. include:: ../README.md
+   :parser: myst_parser.sphinx_
 
 Indices and Tables
 ------------------

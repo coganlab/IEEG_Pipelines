@@ -9,3 +9,4 @@ docs/auto_examples/*
 *.ipynb_checkpoints*
 docs/reference/*.rst
 !docs/reference/index.rst
+docs/sg_execution_times.rst

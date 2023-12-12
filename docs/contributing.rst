@@ -57,7 +57,7 @@ to provide you with good feedback:
 
       import platform; print(platform.platform());
       import sys; print("Python", sys.version);
-      import naplib; print("naplib", naplib.version)
+      import ieeg; print("naplib", ieeg.version)
 
 
 -  Please ensure all **code snippets and error messages are formatted in
