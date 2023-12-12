@@ -337,7 +337,7 @@ class LabeledArray(np.ndarray):
 
         """
 
-        arr = sig.get_data(copy=False)
+        arr = sig.get_data()
         match sig:
             case mne.io.base.BaseRaw():
                 labels = [sig.ch_names, sig.times]

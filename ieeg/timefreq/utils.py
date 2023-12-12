@@ -140,9 +140,9 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
         Range : 1310640 ... 1370605 =   1311.411 ...  1371.411 secs
     Ready.
     >>> layout = BIDSLayout(bids_root)
-    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
-    ... extension=".vhdr", verbose=False)
-    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> with mne.use_log_level(0):
+    ...     raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ...     extension=".vhdr", verbose=False)
     >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=True
     ... ) # doctest: +ELLIPSIS
     Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD', ...
