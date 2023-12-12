@@ -672,6 +672,6 @@ if __name__ == "__main__":
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
 
-    brain = plot_subj("D81")
+    brain = plot_subj("D29")
     # plot_on_average(filt)
     # plot_gamma(raw)

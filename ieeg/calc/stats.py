@@ -519,9 +519,11 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     return clusters
 
 
-def proportion(val: np.ndarray[float, ...] | float, comp: np.ndarray[float, ...] = None,
+def proportion(val: np.ndarray[float, ...] | float,
+               comp: np.ndarray[float, ...] = None,
                tail: int = 1, axis: int = None):
-    """
+    """takes a value and a comparison and returns the proportion of the
+    comparison that is greater than the value
 
     Parameters
     ----------
@@ -563,15 +565,16 @@ def proportion(val: np.ndarray[float, ...] | float, comp: np.ndarray[float, ...]
     >>> compare = np.array([0.2, 0.4, 0.5, 0.7, 0.9])
     >>> proportion(val, compare)
     0.4
-    >>> proportion(compare, compare) * compare.shape[0] / (compare.shape[0] - 1)
+    >>> proportion(compare, compare) * compare.shape[0] / (
+    ... compare.shape[0] - 1)
     array([0.  , 0.25, 0.5 , 0.75, 1.  ])
     >>> val = np.full(5, 0.5)
     >>> compare = np.array([[0.2, 0.4, 0.4, 0.7, 0.9],
     ...                     [0.1, 0.3, 0.6, 0.5, 0.9]])
     >>> proportion(val, compare, axis=0)
     array([1. , 1. , 0.5, 0. , 0. ])
-    >>> proportion(compare, compare[:, None], axis=0) * compare.shape[0] / (
-    ... compare.shape[0] - 1)
+    >>> proportion(compare, compare[:, None], axis=0
+    ... ) * compare.shape[0] / (compare.shape[0] - 1)
     array([[1., 1., 0., 1., 0.],
            [0., 0., 1., 0., 0.]])
     """
@@ -678,8 +681,8 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
         act_cluster_size = np.sum(act_cluster)
         # Determine the proportion of permutations that have a cluster of the
         # same size or larger
-        larger = tail_compare(act_cluster_size, max_cluster_len, tails)
-        cluster_p_values[act_cluster] = np.mean(larger, axis=0)
+        cluster_p_values[act_cluster] = np.mean(act_cluster_size >
+                                                max_cluster_len, axis=0)
 
     # If p_val is not None, return the boolean array indicating whether the
     # cluster is significant
