@@ -133,23 +133,14 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     >>> from ieeg.io import raw_from_layout
     >>> from ieeg.navigate import trial_ieeg
     >>> from bids import BIDSLayout
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
-    >>> seeg = mne.io.read_raw(mne.datasets.misc.data_path() / 'seeg' /
-    ... 'sample_seeg_ieeg.fif')  # doctest: +ELLIPSIS
-    Opening raw data file ...
-        Range : 1310640 ... 1370605 =   1311.411 ...  1371.411 secs
-    Ready.
-    >>> layout = BIDSLayout(bids_root)
     >>> with mne.use_log_level(0):
+    ...     bids_root = mne.datasets.epilepsy_ecog.data_path()
+    ...     seeg = mne.io.read_raw(mne.datasets.misc.data_path() / 'seeg' /
+    ...     'sample_seeg_ieeg.fif')
+    ...     layout = BIDSLayout(bids_root)
     ...     raw = raw_from_layout(layout, subject="pt1", preload=True,
     ...     extension=".vhdr", verbose=False)
-    >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=True
-    ... ) # doctest: +ELLIPSIS
-    Used Annotations descriptions: ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD', ...
-    Not setting metadata
-    2 matching events found
-    No baseline correction applied
-    0 projection items activated
+    ...     epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=False)
     >>> wavelet_scaleogram(epochs, n_jobs=-2, decim=10) # doctest: +ELLIPSIS
     Using data from preloaded Raw for 2 events and 3001 original time points...
         Getting epoch for 85800-88801
