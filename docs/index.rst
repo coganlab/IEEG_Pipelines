@@ -14,8 +14,6 @@ This is the main page of the IEEG_Pipelines documentation. Here you will find th
    ieeg
    matlab
 
-.. minigallery:: ieeg
-
 .. toctree::
    :maxdepth: 2
    :caption: User Guide:
@@ -33,7 +31,7 @@ This is the main page of the IEEG_Pipelines documentation. Here you will find th
    :caption: Developer Information
 
    contributing
-   LICENSE
+   license
 
 .. toctree::
    :maxdepth: 1
