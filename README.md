@@ -26,7 +26,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 2. Clone this repository into your userpath (`Documents/MATLAB` by default)
 3. Run commands:
 
-    ```(MATLAB)
+    ```MATLAB
     path = fullfile(userpath, 'IEEG_Pipelines', 'MATLAB');
     addpath(genpath(path));
     ```
@@ -42,7 +42,7 @@ Version 3.10 supported
 3. Open a terminal and `cd` into this repo's `Python` directory
 4. Run this command:
 
-    ```(bash)
+    ```bash
     conda env create -f envs/environment.yml
     ```
 
@@ -55,7 +55,7 @@ Version 3.10 supported
 3. Open a terminal and `cd` into this repo's `Python` directory
 4. Run:
 
-    ```(bash)
+    ```bash
     python -m venv <PATH TO VENV>/preprocess
     python -m pip install -r envs/requirements.txt -e <PATH TO VENV>/preprocess
     ```
@@ -74,7 +74,7 @@ Version 3.10 supported
 
 1. Load BIDS files from BIDS directory using `pybids`
     
-    ```(python)
+    ```python
     from bids import BIDSLayout
     import ieeg
     layout = BIDSLayout(BIDS_root)
