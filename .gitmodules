@@ -1,3 +1,0 @@
-[submodule "decoding"]
-	path = decoding
-	url = git@github.com:dsuseendar/Neural_Decoding.git
