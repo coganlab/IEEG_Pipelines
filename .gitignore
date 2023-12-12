@@ -7,6 +7,5 @@ docs/auto_examples/*
 .idea/*
 *.log
 *.ipynb_checkpoints*
-*.rst
-!docs/index.rst
-!docs/matlab.rst
+docs/reference/*.rst
+!docs/reference/index.rst
