@@ -5,7 +5,7 @@ Time and Frequency Permutation Cluster Statistics
 Below is a code sample for performing a permutation test with cluster
 correction
 """
-from ieeg.navigate import channel_outlier_marker, trial_ieeg, outliers_to_nan
+from ieeg.navigate import trial_ieeg, outliers_to_nan
 from ieeg.calc import stats
 from ieeg.timefreq.utils import wavelet_scaleogram, crop_pad
 import matplotlib.pyplot as plt
@@ -39,7 +39,7 @@ base = out[0]
 
 # %% run time cluster stats
 
-mask = stats.time_perm_cluster(np.squeeze(resp._data), np.squeeze(base._data), 0.1,
-                               ignore_adjacency=1, n_perm=2000)
+mask = stats.time_perm_cluster(np.squeeze(resp._data), np.squeeze(base._data),
+                               0.1, ignore_adjacency=1, n_perm=2000)
 plt.imshow(mask)
 plt.title(resp.info['ch_names'][0])

@@ -23,7 +23,6 @@ filt = raw_from_layout(layout, subject="pt1", preload=True,
 
 # %% Crop raw data to minimize processing time
 #
-# new = crop_data(filt)
 new = filt.copy()
 
 # Mark channel outliers as bad
