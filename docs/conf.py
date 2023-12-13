@@ -149,7 +149,7 @@ html_theme_options = {
     "navigation_depth": 3,
     "logo_only": False,
 }
-html_logo = "./images/brain_rot.gif"
+html_logo = "./images/brain_logo.png"
 html_favicon = "./images/favicon.ico"
 
 html_context = {
