@@ -751,7 +751,7 @@ if __name__ == "__main__":
     # subjects_dir = sample_path / "subjects"
 
     # brain = plot_subj("D29")
-    fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='lh', transparency=0.4,
+    fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both', transparency=0.4,
                           picks=list(range(28)) + list(range(52, 176)), color=None,
-                          average="D81")
+                          average="D79", background=(0,0.4,0.5))
     # plot_gamma(raw)
