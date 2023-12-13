@@ -52,6 +52,7 @@ sphinx_gallery_conf = {
     'reference_url': {
         'ieeg': None,
     },
+    "recommender": {"enable": True},
     # Add ability to link to mini-gallery under each function/class
     # directory where function/class granular galleries are stored
     'backreferences_dir': 'gen_modules/backreferences',

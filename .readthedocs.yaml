@@ -19,7 +19,7 @@ build:
     # golang: "1.19"
   jobs:
     pre_build:
-      - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain, sphinx_rtd_theme, numpydoc
+      - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy, sphinxcontrib-matlabdomain, sphinx_rtd_theme, numpydoc
       - sphinx-apidoc -f -o docs -M -e -T -t docs/_templates .
 
 # Build documentation in the docs/ directory with Sphinx
