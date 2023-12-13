@@ -1,5 +1,5 @@
 """
-Example of Time Permutation Cluster Statistics
+Time Permutation Cluster Statistics
 ===================================
 
 Below is a code sample for performing a permutation test with cluster
@@ -9,7 +9,7 @@ from ieeg.navigate import channel_outlier_marker, trial_ieeg
 from ieeg.timefreq.utils import crop_pad
 from ieeg.timefreq import gamma
 from ieeg.calc import stats
-import matplotlib as mpl
+import matplotlib.pyplot as plt
 import mne
 
 # %% Load Data
@@ -46,7 +46,6 @@ base.decimate(2)
 del raw
 # %% run time cluster stats
 
-# import scipy
 mask = stats.time_perm_cluster(resp._data, base._data, 0.05, axis=0,
                                n_perm=1000, n_jobs=6, ignore_adjacency=1)
-mpl.pyplot.imshow(mask)
+plt.imshow(mask)

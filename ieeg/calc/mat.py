@@ -1154,10 +1154,10 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
         The combined dict
 
     Examples
+    --------
     >>> data = {'a': {'b': {'c': 1}}}
     >>> combine(data, (0, 2))
     {'b': {'a-c': 1}}
-
     >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
     >>> combine(data, (0, 2))
     {'b': {'a-c': 1, 'd-c': 2, 'd-e': 3}}

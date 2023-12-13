@@ -1,8 +1,3 @@
-"""ieeg: a package for working with intracranial EEG data
-
-.. include:: ../ieeg/README.md
-    :parser: myst_parser.sphinx_
-"""
 from os import PathLike as PL
 
 import mne.io
@@ -22,5 +17,5 @@ ListNum = int | float | ndarray | list | tuple
 
 
 @njit(cache=True)
-def rand_seed(seed: int = 42):
+def _rand_seed(seed: int = 42):
     random.seed(seed)

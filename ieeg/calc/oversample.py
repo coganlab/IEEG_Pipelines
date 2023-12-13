@@ -145,8 +145,8 @@ def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
 
     Examples
     --------
-    >>> from ieeg import rand_seed
-    >>> rand_seed(0)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> mixup2d(arr)
@@ -200,8 +200,8 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     --------
     >>> import numpy as np
     >>> from ieeg.calc.oversample import TwoSplitNaN
-    >>> from ieeg import rand_seed
-    >>> rand_seed(0)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(0)
     >>> np.random.seed(0)
     >>> X = np.vstack((np.arange(1, 9).reshape(4, 2), np.full((4, 2), np.nan)))
     >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1])
@@ -282,8 +282,8 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         Examples
         --------
-        >>> from ieeg import rand_seed
-        >>> rand_seed(0)
+        >>> from ieeg import _rand_seed
+        >>> _rand_seed(0)
         >>> np.random.seed(0)
         >>> arr = np.array([[1, 2], [4, 5], [7, 8],
         ... [float("nan"), float("nan")]])
@@ -327,8 +327,8 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
 
     Examples
     --------
-    >>> from ieeg import rand_seed
-    >>> rand_seed(0)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(0)
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
@@ -448,8 +448,8 @@ def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
 
     Examples
     --------
-    >>> from ieeg import rand_seed
-    >>> rand_seed(0)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(0)
     >>> np.random.seed(0)
     >>> arr = np.array([1, 2, 4, 5, 7, 8,
     ... float("nan"), float("nan")])
@@ -490,8 +490,9 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
 
     References
     ----------
-    .. [1] <https://stackoverflow.com/questions/31955660/efficiently-generating
-    -multiple-instances-of-numpy-random-choice-without-replace/31958263#31958263>
+    [1] `stackoverflow link <https://stackoverflow.com/questions/31955660/effic
+    iently-generating-multiple-instances-of-numpy-random-choice-without-replace
+    /31958263#31958263>`_
     """
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]

@@ -10,7 +10,7 @@ from mne.viz import Brain
 
 from ieeg import PathLike, Signal
 from ieeg.io import get_elec_volume_labels
-from ieeg.viz import _qt_backend
+from ieeg.viz import _qt_backend, parula
 
 _qt_backend()
 
@@ -248,7 +248,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None,
                     label_every: int = None, background: str = 'white',
-                    units: str = 'm') -> Brain:
+                    units: str = 'm', transparency: float = 0.6,
+                    average: str = 'fsaverage') -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -280,6 +281,10 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         Background color
     units: str, optional
         Units of the electrodes
+    transparency: float, optional
+        Transparency of the brain
+    average: str, optional
+        The average brain to plot on, by default 'fsaverage'
 
     Returns
     -------
@@ -289,15 +294,16 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
 
     subj_dir = get_sub_dir(subj_dir)
     if fig is None:
-        fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.6, background=background, surf=surface, hemi=hemi,
-                    units=units)
+        fig = Brain(average, subjects_dir=subj_dir, cortex='low_contrast',
+                    alpha=transparency, background=background, surf=surface,
+                    hemi=hemi, units=units)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
     if isinstance(sigs, Iterable):
         sigs = {get_sub(v): v for v in sigs}
 
+    default_c = parula.mat_colors.copy()
     for subj, inst in sigs.items():
 
         if isinstance(inst, mne.Info):
@@ -311,8 +317,15 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
             raise TypeError(type(inst))
 
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
-        to_fsaverage = mne.transforms.Transform(fro='head', to='mri',
-                                                trans=to_fsaverage['trans'])
+        if average == 'fsaverage':
+            trans = mne.transforms.Transform(fro='head', to='mri',
+                                             trans=to_fsaverage['trans'])
+        else:
+            from_average = mne.read_talxfm(average, subj_dir)
+            to_average = np.dot(np.linalg.inv(from_average['trans']),
+                                to_fsaverage['trans'])
+            trans = mne.transforms.Transform(fro='head', to='mri',
+                                             trans=to_average)
 
         these_picks = range(len(new.ch_names))
         if isinstance(picks, Iterable):
@@ -339,9 +352,20 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         if len(these_picks) == 0:
             continue
 
+        # select colors
+        if color is None:
+            this_color = []
+            p_int = [new.ch_names.index(p) for p in these_picks]
+            groups = _group_channels(mne.pick_info(new, p_int))
+            n_groups = len(set(groups.values()))
+            while len(this_color) < n_groups:
+                this_color += [default_c.pop(0)]
+        else:
+            this_color = color
+
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
-                  trans=to_fsaverage, color=color, size=size,
+                  trans=trans, color=this_color, size=size,
                   labels_every=label_every, hemi=hemi, background=background)
 
     return fig
@@ -400,9 +424,10 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int | None = 8, surface: str = 'pial',
               hemi: str = 'both', fig: Brain = None,
-              trans=None, color: matplotlib.colors = (1, 1, 1),
+              trans=None, color: matplotlib.colors = None,
               size: float = 0.35, show: bool = True, background: str = 'white',
-              title: str = None, units: str = 'm') -> Brain:
+              title: str = None, units: str = 'm', transparency: float = 0.5
+              ) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -437,6 +462,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         Title the plot
     units: str, optional
         Units of the electrodes
+    transparency: float, optional
+        Transparency of the brain
 
     Returns
     -------
@@ -462,8 +489,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.5, background=background, surf=surface, hemi=hemi,
-                    show=show, units=units)
+                    alpha=transparency, background=background, surf=surface,
+                    hemi=hemi, show=show, units=units)
 
     # Set the title if provided
     if title is not None:
@@ -489,19 +516,71 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     right = {k: p for k, p in pos.items() if k.startswith('R')}
 
     if left and hemi != 'rh':
-        fig.add_foci(np.vstack(list(left.values())), hemi='lh', color=color,
-                     scale_factor=size)
+        _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())),
+                        color, size)
     if right and hemi != 'lh':
-        fig.add_foci(np.vstack(list(right.values())), hemi='rh', color=color,
-                     scale_factor=size)
+        _add_electrodes(fig, info, 'rh', np.vstack(list(right.values())),
+                        color, size)
 
     if labels_every is not None:
-        settings = dict(shape=None, always_visible=True, text_color=(0, 0, 0),
-                        bold=False)
+        settings = dict(shape=None, always_visible=True,
+                        text_color=fig._fg_color, bold=False)
         _add_labels(fig, info, sub, labels_every, hemi,
                     (left, right), **settings)
 
     return fig
+
+
+def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
+                    pos: np.ndarray, colors: matplotlib.colors = None,
+                    size: float = 0.35):
+    groups = _group_channels(info)
+    n_groups = len(set(groups.values()))
+    if colors is None:
+        colors = parula.mat_colors[:n_groups]
+    elif not isinstance(colors, Iterable) or isinstance(colors, tuple):
+        colors = [colors] * n_groups
+    else:
+        colors = list(colors)
+
+    i = 0
+    vals = list(groups.values())
+    while i < n_groups:
+        start, end = vals.index(i), len(vals) - vals[::-1].index(i)
+        shank_pos = pos[start:end]
+        fig.add_foci(shank_pos, hemi=hemi, color=colors[i],
+                     scale_factor=size)
+        i += 1
+
+
+def _group_channels(info, groups: dict = None) -> dict:
+    """Automatically find a group based on the name of the channel."""
+    if groups is not None:
+        for name in info.ch_names:
+            if name not in groups.keys():
+                raise ValueError(f"{name} not found in ``groups``")
+        return groups
+
+    i = 0
+    groups = dict()
+    base_names = dict()
+    for name in info.ch_names:
+        # strip all numbers from the name
+        base_name = "".join(
+            [
+                letter
+                for letter in name
+                if not letter.isdigit() and letter != " "
+            ]
+        )
+        if base_name in base_names:
+            # look up group number by base name
+            groups[name] = base_names[base_name]
+        else:
+            groups[name] = i
+            base_names[base_name] = i
+            i += 1
+    return groups
 
 
 def _add_labels(fig, info, sub, every, hemi, lr, **kwargs):
@@ -672,6 +751,10 @@ if __name__ == "__main__":
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
 
-    brain = plot_subj("D29")
-    # plot_on_average(filt)
+    # brain = plot_subj("D29")
+    fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
+                          transparency=0.4,
+                          picks=list(range(28)) + list(range(52, 176)),
+                          color=None,
+                          average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)

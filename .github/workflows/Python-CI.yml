@@ -35,7 +35,7 @@ jobs:
           python: '3.11'
           kind: mamba
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       # Xvfb/OpenGL
       - uses: pyvista/setup-headless-display-action@main
         with:
@@ -52,7 +52,7 @@ jobs:
           if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
         if: startswith(matrix.kind, 'pip')
       # Python (if conda)
-      - uses: conda-incubator/setup-miniconda@v2
+      - uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-variant: Mambaforge
           miniforge-version: latest

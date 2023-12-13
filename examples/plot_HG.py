@@ -1,5 +1,5 @@
 """
-Example of High Gamma Filter
+High Gamma Filter
 ===================================
 
 Below is a code sample for extracting high gamma power from a raw data file
