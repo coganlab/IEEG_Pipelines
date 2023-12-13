@@ -248,7 +248,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None,
                     label_every: int = None, background: str = 'white',
-                    units: str = 'm', transparency: float = 0.6) -> Brain:
+                    units: str = 'm', transparency: float = 0.6,
+                    average: str = 'fsaverage') -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -282,6 +283,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         Units of the electrodes
     transparency: float, optional
         Transparency of the brain
+    average: str, optional
+        The average brain to plot on, by default 'fsaverage'
 
     Returns
     -------
@@ -291,7 +294,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
 
     subj_dir = get_sub_dir(subj_dir)
     if fig is None:
-        fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
+        fig = Brain(average, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=transparency, background=background, surf=surface,
                     hemi=hemi, units=units)
 
@@ -314,8 +317,15 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
             raise TypeError(type(inst))
 
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
-        to_fsaverage = mne.transforms.Transform(fro='head', to='mri',
-                                                trans=to_fsaverage['trans'])
+        if average == 'fsaverage':
+            trans = mne.transforms.Transform(fro='head', to='mri',
+                                             trans=to_fsaverage['trans'])
+        else:
+            from_average = mne.read_talxfm(average, subj_dir)
+            to_average = np.dot(np.linalg.inv(from_average['trans']),
+                                to_fsaverage['trans'])
+            trans = mne.transforms.Transform(fro='head', to='mri',
+                                             trans=to_average)
 
         these_picks = range(len(new.ch_names))
         if isinstance(picks, Iterable):
@@ -342,6 +352,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         if len(these_picks) == 0:
             continue
 
+        # select colors
         if color is None:
             this_color = []
             p_int = [new.ch_names.index(p) for p in these_picks]
@@ -354,7 +365,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
 
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
-                  trans=to_fsaverage, color=this_color, size=size,
+                  trans=trans, color=this_color, size=size,
                   labels_every=label_every, hemi=hemi, background=background)
 
     return fig
@@ -741,5 +752,6 @@ if __name__ == "__main__":
 
     # brain = plot_subj("D29")
     fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='lh', transparency=0.4,
-                          picks=list(range(28)) + list(range(52, 176)), color=None)
+                          picks=list(range(28)) + list(range(52, 176)), color=None,
+                          average="D81")
     # plot_gamma(raw)
