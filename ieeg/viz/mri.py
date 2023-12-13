@@ -426,7 +426,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               hemi: str = 'both', fig: Brain = None,
               trans=None, color: matplotlib.colors = None,
               size: float = 0.35, show: bool = True, background: str = 'white',
-              title: str = None, units: str = 'm', transparency: float = 0.5) -> Brain:
+              title: str = None, units: str = 'm', transparency: float = 0.5
+              ) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -751,7 +752,9 @@ if __name__ == "__main__":
     # subjects_dir = sample_path / "subjects"
 
     # brain = plot_subj("D29")
-    fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both', transparency=0.4,
-                          picks=list(range(28)) + list(range(52, 176)), color=None,
-                          average="D79", background=(0,0.4,0.5))
+    fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
+                          transparency=0.4,
+                          picks=list(range(28)) + list(range(52, 176)),
+                          color=None,
+                          average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)

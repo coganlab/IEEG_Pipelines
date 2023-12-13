@@ -31,7 +31,7 @@ release = '0.1'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['myst_nb',
+extensions = ['myst_parser',
               'sphinx_gallery.gen_gallery',
               'sphinxcontrib.matlab',
               'sphinx.ext.duration',
@@ -58,7 +58,13 @@ sphinx_gallery_conf = {
     # Modules for which function/class level galleries are created. In
     # this case sphinx_gallery and ieeg in a tuple of strings.
     'doc_module': ('sphinx_gallery', 'ieeg'),
-    'filename_pattern': '/plot_'
+}
+default_role = 'py:obj'
+
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.txt': 'markdown',
+    '.md': 'markdown',
 }
 
 autosummary_generate = True

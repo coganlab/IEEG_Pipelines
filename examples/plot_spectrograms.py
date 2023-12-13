@@ -1,48 +1,35 @@
 """
-Example spectrogram plot
+Multitaper spectrogram plot
 ========================
 
 Below is a code sample for plotting spectrograms
 """
 from ieeg.viz import utils
-from bids import BIDSLayout
-from ieeg.timefreq.multitaper import spectrogram
+from ieeg.timefreq.multitaper import spectrogram, crop_pad
 from ieeg.navigate import channel_outlier_marker
-from ieeg.io import raw_from_layout
+from ieeg.viz.parula import parula_map
 import numpy as np
 import mne
 
 # %% Load Data
-bids_root = mne.datasets.epilepsy_ecog.data_path()
-# sample_path = mne.datasets.sample.data_path()
-layout = BIDSLayout(bids_root)
-filt = raw_from_layout(layout, subject="pt1", preload=True,
-                       extension=".vhdr")
+misc_path = mne.datasets.misc.data_path()
+raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif')
 
-# %% Crop raw data to minimize processing time
-#
-# new = crop_data(filt)
-new = filt.copy()
-
-# Mark channel outliers as bad
-new.info['bads'] = channel_outlier_marker(new, 5)
+# %% Mark channel outliers as bad
+raw.info['bads'] = channel_outlier_marker(raw, 3)
 
 # Exclude bad channels
-good = new.copy().drop_channels(new.info['bads'])
-good.load_data()
+raw.drop_channels(raw.info['bads'])
+raw.load_data()
 
-# Remove intermediates from mem
-del new
+# CAR
+raw.set_eeg_reference(ref_channels="average", ch_type='seeg')
 
 # %% Calculate spectra
-freq = np.arange(10, 200., 2.)
-spectra = spectrogram(good, freq, 'PD', -1, 1.5, 'onset', -0.5, 0,
+freq = np.arange(10, 200., 4.)
+spectra = spectrogram(raw, freq, 'Response', -1.5, 1.5, 'Fixation', -1.5, 0.5,
                       n_jobs=6, verbose=10, time_bandwidth=10, n_cycles=freq/2)
+crop_pad(spectra, "0.5s")
 
 # %% Plot data
-utils.chan_grid(spectra, vmin=0.7, vmax=1.4)
-
-# %% example output for our data
-# .. image:: ../../examples/D29_spec.png
-#  :width: 700
-#  :alt: spectrogram
+utils.chan_grid(spectra, vmin=0, vmax=2, cmap=parula_map)

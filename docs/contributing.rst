@@ -1,5 +1,5 @@
 Contributing to IEEG_Pipelines
-=============================
+==============================
 
 (adopted from scikit-learn)
 

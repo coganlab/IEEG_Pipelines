@@ -1,5 +1,5 @@
 """
-Example line noise filtering script
+Line noise filtering script
 ===================================
 
 Filters the 60Hz line noise from the data, as well as the harmonics. Includes

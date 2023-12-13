@@ -1,5 +1,5 @@
 """
-Example joint pca decoding script
+Joint pca decoding
 ===================================
 
 Takes high gamma filtered data with event labels from multiple subjects and

@@ -1,5 +1,5 @@
 """
-Example of Time Permutation Cluster Statistics
+Time Permutation Cluster Statistics
 ===================================
 
 Below is a code sample for performing a permutation test with cluster
