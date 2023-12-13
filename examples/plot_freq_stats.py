@@ -29,7 +29,7 @@ for epoch, t in zip(('Fixation', 'Response'), ((-0.3, 0), (-0.1, 0.2))):
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
-    trials = trial_ieeg(raw, epoch, times, preload=True, picks=[78])
+    trials = trial_ieeg(raw, epoch, times, preload=True)
     outliers_to_nan(trials, 10)
     spec = wavelet_scaleogram(trials, n_jobs=-2, decim=20)
     crop_pad(spec, "0.5s")
@@ -39,7 +39,14 @@ base = out[0]
 
 # %% run time cluster stats
 
-mask = stats.time_perm_cluster(np.squeeze(resp._data), np.squeeze(base._data),
+mask = stats.time_perm_cluster(resp._data, base._data,
                                0.1, ignore_adjacency=1, n_perm=2000)
-plt.imshow(mask)
-plt.title(resp.info['ch_names'][0])
+
+# %% plot the results
+fig, axs = plt.subplots(5, 24, figsize=(20, 20))
+for i, ax in enumerate(axs.flat):
+    if i >= mask.shape[0]:
+        ax.axis('off')
+        continue
+    ax.imshow(mask[i])
+    ax.set_title(resp.info['ch_names'][i])
