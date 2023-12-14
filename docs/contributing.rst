@@ -50,7 +50,7 @@ to provide you with good feedback:
 -  If an exception is raised, please **provide the full traceback**.
 
 -  Please include your **operating system type and version number**, as
-   well as your **Python and naplib-python versions**. This information can
+   well as your **Python and IEEG_Pipelines versions**. This information can
    be found by running the following code snippet in Python.
 
    .. code-block:: python
@@ -68,7 +68,7 @@ to provide you with good feedback:
 Contributing Code
 -----------------
 
-The preferred workflow for contributing to naplib is to fork the main
+The preferred workflow for contributing to ieeg is to fork the main
 repository on GitHub, clone, and develop on a branch. Steps:
 
 1. Fork the
@@ -79,13 +79,13 @@ repository on GitHub, clone, and develop on a branch. Steps:
    `this guide <https://help.github.com/articles/fork-a-repo/>`_.
 
 
-2. Clone your fork of the naplib-python repo from your GitHub account to
+2. Clone your fork of the IEEG_Pipelines repo from your GitHub account to
    your local disk:
 
    .. code:: bash
 
-       $ git clone git@github.com:YourLogin/naplib-python.git
-       $ cd naplib-python
+       $ git clone git@github.com:YourLogin/IEEG_Pipelines.git
+       $ cd IEEG_Pipelines
 
 
 3. Create a ``feature`` branch to hold your development changes:
@@ -173,7 +173,7 @@ Coding Guidelines
 ~~~~~~~~~~~~~~~~~
 
 Uniformly formatted code makes it easier to share code ownership. The
-naplib-python package closely follows the official Python guidelines
+IEEG_Pipelines package closely follows the official Python guidelines
 detailed in `PEP8 <https://www.python.org/dev/peps/pep-0008/>`__
 that detail how code should be formatted and indented. Please read it
 and follow it.
