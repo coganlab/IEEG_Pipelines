@@ -1,7 +1,7 @@
 import csv
 import os.path as op
 from collections import OrderedDict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from functools import singledispatch
 import mne
 import nibabel as nib
@@ -240,6 +240,31 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         x, y = pos
         color = cmap(i / xy_pts.shape[0])
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
+
+
+def get_grey_matter(subjects: Sequence[str]) -> set[str]:
+    """Gets the grey matter channels for a list of subjects
+
+    Parameters
+    ----------
+    subjects : Sequence[str]
+        The subjects to get the grey matter channels for
+
+    Returns
+    -------
+    set[str]
+        The grey matter channels
+    """
+    grey_matter = set()
+    for i, subj in enumerate(subjects):
+        info = subject_to_info(get_sub(subj))
+        parcel_label = gen_labels(info, get_sub(subj))
+        subj_grey_matter = pick_no_wm(info.ch_names, parcel_label)
+
+        # get the indices of channels in info that are not in grey_matter
+        grey_matter |= {f"{subj}-{ch}" for ch in info.ch_names
+                        if ch in subj_grey_matter}
+    return grey_matter
 
 
 def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
