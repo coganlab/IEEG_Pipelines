@@ -167,5 +167,6 @@ html_context = {
     # {{ github_version }}{{ conf_py_path }}{{ pagename }}{{ suffix }}
     "github_user": "coganlab",
     "github_repo": "IEEG_Pipelines",
-    "github_version": "main/docs/",
+    "github_version": "main/",
+    "conf_py_path": "docs/",
 }

@@ -1,6 +1,6 @@
 """
 Multitaper spectrogram plot
-========================
+===========================
 
 Below is a code sample for plotting spectrograms
 """

@@ -1,6 +1,6 @@
 """
 Time and Frequency Permutation Cluster Statistics
-===================================
+=================================================
 
 Below is a code sample for performing a permutation test with cluster
 correction
