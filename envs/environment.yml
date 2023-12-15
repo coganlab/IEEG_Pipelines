@@ -8,8 +8,10 @@ dependencies:
   - matplotlib
   - scipy
   - scikit-image
+  - scikit-learn-intelex
   - pandas
   - tqdm
   - notebook
+  - numba
   - pip:
     - -r requirements.txt
