@@ -769,7 +769,11 @@ class LabeledArray(np.ndarray):
         """
         new_labels = list(self.labels)
         new = np.hstack((self.labels[axis], other.labels[axis]))
-        new_labels[axis] = _make_array_unique(new, self.labels[axis].delimiter)
+        if len(set(new)) != len(new):
+            new_labels[axis] = _make_array_unique(
+                new.astype(str), self.labels[axis].delimiter)
+        else:
+            new_labels[axis] = new
         return LabeledArray(np.concatenate(
             (self.__array__(), other.__array__()), axis, **kwargs),
             new_labels, dtype=self.dtype)
