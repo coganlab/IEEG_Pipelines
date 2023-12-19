@@ -738,7 +738,7 @@ class LabeledArray(np.ndarray):
         return self[index]
 
     def concatenate(self, other: 'LabeledArray', axis: int = 0,
-                    mismatch: str = 'safe', **kwargs) -> 'LabeledArray':
+                    mismatch: str = 'raise', **kwargs) -> 'LabeledArray':
         """Concatenate two LabeledArrays along an axis.
 
         Parameters
@@ -747,6 +747,11 @@ class LabeledArray(np.ndarray):
             The LabeledArray to concatenate with.
         axis : int, optional
             The axis to concatenate along, by default 0.
+        mismatch : str, optional
+            What to do if the number of labels are not the same, 'raise'
+            (default) will raise a ValueError, 'shrink' will shrink the labels
+            to the smallest size, and 'expand' (not implemented) will expand
+            the labels to the largest size, filling in with NaNs.
         kwargs : dict
             Additional keyword arguments to pass to np.concatenate.
 
@@ -757,8 +762,10 @@ class LabeledArray(np.ndarray):
 
         Examples
         --------
-        >>> arr1 = LabeledArray([[1, 2],[3, 4]], labels=[('a', 'b'), ('c', 'd')])
-        >>> arr2 = LabeledArray([[5, 6],[7, 8]], labels=[('a', 'b'), ('c', 'd')])
+        >>> arr1 = LabeledArray([[1, 2],[3, 4]],
+        ... labels=[('a', 'b'), ('c', 'd')])
+        >>> arr2 = LabeledArray([[5, 6],[7, 8]],
+        ... labels=[('a', 'b'), ('c', 'd')])
         >>> arr1.concatenate(arr2, axis=0)
         array([[1, 2],
                [3, 4],
@@ -777,13 +784,22 @@ class LabeledArray(np.ndarray):
                [ 3,  5,  4]])
         labels(['a-0', 'b-0', 'a-1', 'b-1']
                ['c', 'd', 'e'])
-        >>> arr2.concatenate(arr4, axis=0)
+        >>> arr2.concatenate(arr4, axis=0) # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        ValueError: When mismatch is 'raise', the base array must the same s...
+        >>> arr2.concatenate(arr4, 0, mismatch='shrink')
         array([[5, 6],
                [7, 8],
                [1, 3],
                [3, 5]])
         labels(['a-0', 'b-0', 'a-1', 'b-1']
                ['c', 'd'])
+        >>> arr3.concatenate(arr1, 0, mismatch='shrink') # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        NotImplementedError: Base array must the same size or smaller than i...
+        Base size:(2, 3), Input size: (2, 2)
         """
 
         new_labels = list(self.labels)
@@ -796,19 +812,31 @@ class LabeledArray(np.ndarray):
                         new.astype(str), self.labels[i].delimiter)
                 else:
                     new_labels[i] = new
-            elif not is_unique(new_labels[i]) or not is_unique(other.labels[i]):
+            elif not (is_unique(new_labels[i]) and is_unique(other.labels[i])):
                 raise NotImplementedError(
                     "Cannot concatenate arrays with non-unique labels "
                     f"{new_labels[i]}, {other.labels[i]}")
+            elif self.shape[i] != other.shape[i] and mismatch == 'raise':
+                raise ValueError(
+                    "When mismatch is 'raise', the base array must the same "
+                    "size as the input array in all but the concatination "
+                    f"axis, but along dimension {i} the base array has size "
+                    f"{self.shape[i]} and the input array has size "
+                    f"{other.shape[i]}")
             elif self.labels[i].shape[0] < other.labels[i].shape[0]:
-                idx[i] = get_subset_reorder_indices(
-                    other.labels[i], self.labels[i])
+                if mismatch == 'shrink':
+                    idx[i] = get_subset_reorder_indices(
+                        other.labels[i], self.labels[i])
+                else:
+                    raise NotImplementedError(
+                        f"No method associated with mismatch = '{mismatch}',"
+                        " try setting mismatch to 'shrink' or 'raise'")
             elif self.labels[i].shape[0] > other.labels[i].shape[0]:
-                idx[i] = get_subset_reorder_indices(
-                    self.labels[i], other.labels[i])
-            elif np.all(self.labels[i] == other.labels[i]):
-                pass
-            else:
+                raise NotImplementedError(
+                    "Base array must the same size or smaller than input "
+                    "array in all but the concatination axes. \nBase size:"
+                    f"{self.shape}, Input size: {other.shape}")
+            elif np.any(self.labels[i] != other.labels[i]):
                 idx[i] = get_subset_reorder_indices(
                     other.labels[i], self.labels[i])
 
