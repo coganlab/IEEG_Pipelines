@@ -795,7 +795,6 @@ class LabeledArray(np.ndarray):
                 idx[i] = get_subset_reorder_indices(other.labels[i],
                                                     self.labels[i])
             else:
-                print(set(new))
                 raise NotImplementedError(
                     "Cannot concatenate arrays with non-unique labels "
                     f"{new_labels[i]}, {other.labels[i]}")
