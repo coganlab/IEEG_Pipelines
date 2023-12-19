@@ -738,7 +738,7 @@ class LabeledArray(np.ndarray):
         return self[index]
 
     def concatenate(self, other: 'LabeledArray', axis: int = 0,
-                    **kwargs) -> 'LabeledArray':
+                    mismatch: str = 'safe', **kwargs) -> 'LabeledArray':
         """Concatenate two LabeledArrays along an axis.
 
         Parameters
@@ -766,16 +766,29 @@ class LabeledArray(np.ndarray):
                [7, 8]])
         labels(['a-0', 'b-0', 'a-1', 'b-1']
                ['c', 'd'])
+        >>> arr3 = LabeledArray([[5,6,9],[7,8,10]], labels=[('a', 'b'), ('c', 'd', 'e')])
+        >>> arr1.concatenate(arr3, axis=0)
         """
+
         new_labels = list(self.labels)
+        idx = [slice(None)] * self.ndim
         new = np.hstack((self.labels[axis], other.labels[axis]))
-        if len(set(new)) != len(new):
-            new_labels[axis] = _make_array_unique(
-                new.astype(str), self.labels[axis].delimiter)
-        else:
-            new_labels[axis] = new
+        for i in range(self.ndim):
+            unique = len(set(new)) == len(new)
+            if i == axis:
+                if not unique:
+                    new_labels[i] = _make_array_unique(new.astype(str), self.labels[i].delimiter)
+                else:
+                    new_labels[i] = self.labels[i]
+            elif np.all(self.labels[i] == other.labels[i]):
+                pass
+            elif unique:
+                idx[i] = get_subset_reorder_indices(other.labels[i], self.labels[i])
+            else:
+                raise NotImplementedError("Cannot concatenate arrays with "
+                                          "non-unique labels")
         return LabeledArray(np.concatenate(
-            (self.__array__(), other.__array__()), axis, **kwargs),
+            (self.__array__(), other.__array__()[tuple(idx)]), axis, **kwargs),
             new_labels, dtype=self.dtype)
 
 
@@ -957,8 +970,14 @@ def _lcs(s1: tuple, s2: tuple) -> list[bool]:
     return matrix
 
 
+def get_subset_reorder_indices(array1, array2):
+    """Get indices to reorder array1 to match array2"""
+    o = [np.where(array1 == i)[0][0] for i in array2 if i in array1]
+    return np.array(o)
+
+
 def add_to_list_if_not_present(lst: list, element: Iterable):
-    """Add an element to a list if it is not present. Runs in O(1) time.
+    """Add an element to a list if it is not prese6nt. Runs in O(1) time.
 
     Parameters
     ----------
