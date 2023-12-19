@@ -440,7 +440,7 @@ def get_sub(inst: Signal | mne.Info | str) -> str:
     out_str = inst['subject_info']['his_id'][4:]
     if len(out_str) == 1:
         return out_str
-    return out_str[0] + str(int(out_str[1:]))
+    return out_str[0] + str(int("".join(s for s in out_str if s.isdigit())))
 
 # TODO: figure out why elec positions are only correct in meters not mm
 
