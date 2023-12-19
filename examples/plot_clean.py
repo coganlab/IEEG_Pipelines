@@ -11,7 +11,6 @@ import os
 from ieeg.io import raw_from_layout
 from ieeg.mt_filter import line_filter
 from ieeg.viz.utils import figure_compare
-from ieeg import viz
 from bids import BIDSLayout
 
 # %% Set up paths
