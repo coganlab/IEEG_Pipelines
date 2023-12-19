@@ -777,6 +777,13 @@ class LabeledArray(np.ndarray):
                [ 3,  5,  4]])
         labels(['a-0', 'b-0', 'a-1', 'b-1']
                ['c', 'd', 'e'])
+        >>> arr2.concatenate(arr4, axis=0)
+        array([[5, 6],
+               [7, 8],
+               [1, 3],
+               [3, 5]])
+        labels(['a-0', 'b-0', 'a-1', 'b-1']
+               ['c', 'd'])
         """
 
         new_labels = list(self.labels)
@@ -788,21 +795,26 @@ class LabeledArray(np.ndarray):
                     new_labels[i] = _make_array_unique(
                         new.astype(str), self.labels[i].delimiter)
                 else:
-                    new_labels[i] = self.labels[i]
-            elif np.all(self.labels[i] == other.labels[i]):
-                pass
-            elif is_unique(new_labels[i]) and is_unique(other.labels[i]):
-                idx[i] = get_subset_reorder_indices(other.labels[i],
-                                                    self.labels[i])
-            else:
+                    new_labels[i] = new
+            elif not is_unique(new_labels[i]) or not is_unique(other.labels[i]):
                 raise NotImplementedError(
                     "Cannot concatenate arrays with non-unique labels "
                     f"{new_labels[i]}, {other.labels[i]}")
+            elif self.labels[i].shape[0] < other.labels[i].shape[0]:
+                idx[i] = get_subset_reorder_indices(
+                    other.labels[i], self.labels[i])
+            elif self.labels[i].shape[0] > other.labels[i].shape[0]:
+                idx[i] = get_subset_reorder_indices(
+                    self.labels[i], other.labels[i])
+            elif np.all(self.labels[i] == other.labels[i]):
+                pass
+            else:
+                idx[i] = get_subset_reorder_indices(
+                    other.labels[i], self.labels[i])
 
-        reordered_other = other[tuple(idx)]
-        return LabeledArray(np.concatenate(
-            (self.__array__(), reordered_other.__array__()), axis, **kwargs),
-                   new_labels, dtype=self.dtype)
+        reordered = other.__array__()[tuple(idx)]
+        out = np.concatenate((self.__array__(), reordered), axis, **kwargs)
+        return LabeledArray(out, new_labels, dtype=self.dtype)
 
 
 def is_unique(arr: np.ndarray) -> bool:
@@ -825,7 +837,7 @@ def is_unique(arr: np.ndarray) -> bool:
     >>> is_unique(np.array([1, 2, 2]))
     False
     """
-    return len(set(arr)) == len(arr)
+    return np.unique(arr).shape[0] == np.prod(arr.shape)
 
 
 class Labels(np.ndarray):
