@@ -757,8 +757,8 @@ class LabeledArray(np.ndarray):
 
         Examples
         --------
-        >>> arr1 = LabeledArray([[1,2],[3,4]], labels=[('a', 'b'), ('c', 'd')])
-        >>> arr2 = LabeledArray([[5,6],[7,8]], labels=[('a', 'b'), ('c', 'd')])
+        >>> arr1 = LabeledArray([[1, 2],[3, 4]], labels=[('a', 'b'), ('c', 'd')])
+        >>> arr2 = LabeledArray([[5, 6],[7, 8]], labels=[('a', 'b'), ('c', 'd')])
         >>> arr1.concatenate(arr2, axis=0)
         array([[1, 2],
                [3, 4],
@@ -766,30 +766,67 @@ class LabeledArray(np.ndarray):
                [7, 8]])
         labels(['a-0', 'b-0', 'a-1', 'b-1']
                ['c', 'd'])
-        >>> arr3 = LabeledArray([[5,6,9],[7,8,10]], labels=[('a', 'b'), ('c', 'd', 'e')])
-        >>> arr1.concatenate(arr3, axis=0)
+        >>> arr3 = LabeledArray([[5, 6, 9],[7, 8, 10]],
+        ... labels=[('a', 'b'), ('c', 'd', 'e')])
+        >>> arr4 = LabeledArray([[1, 2, 3],[3, 4, 5]],
+        ... labels=[('a', 'b'), ('c', 'e', 'd')])
+        >>> arr3.concatenate(arr4, axis=0)
+        array([[ 5,  6,  9],
+               [ 7,  8, 10],
+               [ 1,  3,  2],
+               [ 3,  5,  4]])
+        labels(['a-0', 'b-0', 'a-1', 'b-1']
+               ['c', 'd', 'e'])
         """
 
         new_labels = list(self.labels)
         idx = [slice(None)] * self.ndim
         new = np.hstack((self.labels[axis], other.labels[axis]))
         for i in range(self.ndim):
-            unique = len(set(new)) == len(new)
             if i == axis:
-                if not unique:
-                    new_labels[i] = _make_array_unique(new.astype(str), self.labels[i].delimiter)
+                if not is_unique(new):
+                    new_labels[i] = _make_array_unique(
+                        new.astype(str), self.labels[i].delimiter)
                 else:
                     new_labels[i] = self.labels[i]
             elif np.all(self.labels[i] == other.labels[i]):
                 pass
-            elif unique:
-                idx[i] = get_subset_reorder_indices(other.labels[i], self.labels[i])
+            elif is_unique(new_labels[i]) and is_unique(other.labels[i]):
+                idx[i] = get_subset_reorder_indices(other.labels[i],
+                                                    self.labels[i])
             else:
-                raise NotImplementedError("Cannot concatenate arrays with "
-                                          "non-unique labels")
+                print(set(new))
+                raise NotImplementedError(
+                    "Cannot concatenate arrays with non-unique labels "
+                    f"{new_labels[i]}, {other.labels[i]}")
+
+        reordered_other = other[tuple(idx)]
         return LabeledArray(np.concatenate(
-            (self.__array__(), other.__array__()[tuple(idx)]), axis, **kwargs),
-            new_labels, dtype=self.dtype)
+            (self.__array__(), reordered_other.__array__()), axis, **kwargs),
+                   new_labels, dtype=self.dtype)
+
+
+def is_unique(arr: np.ndarray) -> bool:
+    """Check if an array is unique.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        The array to check.
+
+    Returns
+    -------
+    bool
+        Whether the array is unique.
+
+    Examples
+    --------
+    >>> is_unique(np.array([1, 2, 3]))
+    True
+    >>> is_unique(np.array([1, 2, 2]))
+    False
+    """
+    return len(set(arr)) == len(arr)
 
 
 class Labels(np.ndarray):
