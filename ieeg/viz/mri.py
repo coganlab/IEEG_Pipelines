@@ -563,7 +563,7 @@ def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
     n_groups = len(set(groups.values()))
     if colors is None:
         colors = parula.mat_colors[:n_groups]
-    elif not isinstance(colors, Iterable) or isinstance(colors, tuple):
+    elif not np.isscalar(colors) or isinstance(colors, tuple):
         colors = [colors] * n_groups
     else:
         colors = list(colors)
