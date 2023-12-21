@@ -45,7 +45,10 @@ extensions = ['myst_parser',
               'sphinx.ext.mathjax',
               'sphinx.ext.ifconfig',
               'sphinx.ext.githubpages',
-              'sphinx.ext.todo']
+              'sphinx.ext.todo',
+              'sphinx_automodapi.automodapi',
+              'sphinx_automodapi.smart_resolver']
+
 sphinx_gallery_conf = {
     'examples_dirs': '../examples',
     'gallery_dirs': 'auto_examples',
@@ -68,6 +71,11 @@ source_suffix = {
     '.md': 'markdown',
 }
 
+numpydoc_show_class_members = False
+automodapi_toctreedirnm = "references"
+automodapi_inheritance_diagram = False
+automodsumm_inherited_members = False
+autosummary_imported_members = False
 autosummary_generate = True
 notebook_images = True
 myst_enable_extensions = [
@@ -96,6 +104,7 @@ napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
 autodoc_typehints = 'both'
+add_module_names = True
 
 matlab_src_dir = os.path.abspath('../MATLAB')
 matlab_auto_link = True
@@ -146,14 +155,14 @@ html_static_path = ["_static"]
 modindex_common_prefix = ["ieeg."]
 
 pygments_style = "sphinx"
-smartquotes = False
+# smartquotes = False
 
 html_theme = "sphinx_rtd_theme"
 html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 html_theme_options = {
     # 'includehidden': False,
     "collapse_navigation": False,
-    "navigation_depth": 3,
+    "navigation_depth": 4,
     "logo_only": False,
 }
 html_logo = "./images/brain_logo_blue.png"

@@ -8,22 +8,12 @@ Welcome to the IEEG_Pipelines Documentation
 This is the main page of the IEEG_Pipelines documentation. Here you will find the table of contents and links to other important resources.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: API Reference:
 
-   ieeg
+   references/ieeg
    matlab
-
-.. toctree::
-   :maxdepth: 2
-   :caption: User Guide:
-
    auto_examples/index
-
-.. toctree::
-   :maxdepth: 2
-   :caption: External tools:
-
    external
 
 .. toctree::

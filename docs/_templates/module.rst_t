@@ -1,0 +1,10 @@
+{%- if show_headings %}
+{{- basename.split('.') | last | e | heading }}
+{% endif -%}
+
+.. automodapi:: {{ qualname }}
+    :no-inheritance-diagram:
+    :no-inherited-members:
+{#{%- for option in automodule_options %}#}
+{#   :{{ option }}:#}
+{#{%- endfor %}#}
