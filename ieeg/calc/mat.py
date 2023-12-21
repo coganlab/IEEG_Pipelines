@@ -802,6 +802,9 @@ class LabeledArray(np.ndarray):
         Base size:(2, 3), Input size: (2, 2)
         """
 
+        while axis < 0:
+            axis += self.ndim
+
         new_labels = list(self.labels)
         idx = [slice(None)] * self.ndim
         new = np.hstack((self.labels[axis], other.labels[axis]))
@@ -816,7 +819,11 @@ class LabeledArray(np.ndarray):
                 raise NotImplementedError(
                     "Cannot concatenate arrays with non-unique labels "
                     f"{new_labels[i]}, {other.labels[i]}")
-            elif self.shape[i] != other.shape[i] and mismatch == 'raise':
+            elif self.shape[i] == other.shape[i]:
+                if np.any(self.labels[i] != other.labels[i]):
+                    idx[i] = get_subset_reorder_indices(
+                        other.labels[i], self.labels[i])
+            elif mismatch == 'raise':
                 raise ValueError(
                     "When mismatch is 'raise', the base array must the same "
                     "size as the input array in all but the concatination "
@@ -836,9 +843,8 @@ class LabeledArray(np.ndarray):
                     "Base array must the same size or smaller than input "
                     "array in all but the concatination axes. \nBase size:"
                     f"{self.shape}, Input size: {other.shape}")
-            elif np.any(self.labels[i] != other.labels[i]):
-                idx[i] = get_subset_reorder_indices(
-                    other.labels[i], self.labels[i])
+            else:
+                raise ValueError("Unexpected error")
 
         reordered = other.__array__()[tuple(idx)]
         out = np.concatenate((self.__array__(), reordered), axis, **kwargs)
