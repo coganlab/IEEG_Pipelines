@@ -55,7 +55,7 @@ function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTr
         phonoTacticToken = trialInfoStruct(maxRepeatId).phonemeTrial.phonoTactic(repeatIds{maxRepeatId}(1:maxRepeat), :);
         
         dataToken = [];
-        totalzeropad = 0;
+        totalnanpad = 0;
         
         % Combine the ephys data for the current token across subjects
         for iSubject = 1:length(trialInfoStruct)
@@ -64,14 +64,14 @@ function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTr
             
             if maxRepeat - length(repeatIdsShuffle) > 0
                 numtrials2zeropad = maxRepeat - length(repeatIdsShuffle);
-                dataTemp = cat(2, dataTemp, zeros(size(dataTemp, 1), numtrials2zeropad, size(dataTemp, 3)));
-                totalzeropad = totalzeropad + numtrials2zeropad;
+                dataTemp = cat(2, dataTemp, nan(size(dataTemp, 1), numtrials2zeropad, size(dataTemp, 3)));
+                totalnanpad = totalnanpad + numtrials2zeropad;
             end
             
             dataToken = cat(1, dataToken, dataTemp);
         end
         
-        disp(['Number of zero padded trials: ' num2str(totalzeropad)])
+        disp(['Number of NaN padded trials: ' num2str(totalnanpad)])
         
         % Append the trial information and ephys data for the current token
         phonemeTrialAll.syllableUnit = cat(1, phonemeTrialAll.syllableUnit, syllableToken);
