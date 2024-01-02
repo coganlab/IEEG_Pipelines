@@ -73,22 +73,21 @@ if(isempty(options.normFactor))
     disp('No normalization factors provided');
     
     % Selecting all trials with no noise for baseline
-    ieegBaseStruct = extractRawDataWithROI(Subject, Epoch = options.baseName, ...
-        Time = [options.baseTimeRange(1)-timePad options.baseTimeRange(2)+timePad], ...
-        roi = options.roi, remFastResponseTimeTrials = -1, ...
-        remNoiseTrials = options.remNoiseTrials, remNoResponseTrials = false, ...
-        subsetElec = options.subsetElec, remWMchannels = options.remWMchannels);
+    ieegBaseStruct = extractRawDataWithROI(Subject, 'Epoch', options.baseName, ...
+        'Time', [options.baseTimeRange(1)-timePad options.baseTimeRange(2)+timePad], ...
+        'roi', options.roi, 'remFastResponseTimeTrials', -1, ...
+        'remNoiseTrials', false, 'remNoResponseTrials', false, ...
+        'subsetElec', options.subsetElec, 'remWMchannels', options.remWMchannels);
     
     % Extracting normalization parameters for each subject
+    normFactorSubject = cell(length(Subject), 1);
     parfor iSubject = 1:length(Subject)
-        if(isempty(ieegBaseStruct(iSubject).ieegStruct))
-            normFactorSubject{iSubject} = [];
-            continue;
+        if(~isempty(ieegBaseStruct(iSubject).ieegStruct))
+            ieegBaseHG = extractHiGamma(ieegBaseStruct(iSubject).ieegStruct, ...
+                options.fDown, options.baseTimeRange);
+            normFactorBase = extractHGnormFactor(ieegBaseHG);
+            normFactorSubject{iSubject} = normFactorBase;
         end
-        ieegBaseHG = extractHiGamma(ieegBaseStruct(iSubject).ieegStruct, ...
-            options.fDown, options.baseTimeRange);
-        normFactorBase = extractHGnormFactor(ieegBaseHG);
-        normFactorSubject{iSubject} = normFactorBase;
     end
 else
     normFactorSubject = options.normFactor;
@@ -97,29 +96,26 @@ end
 clear ieegBaseStruct;
 
 % Extracting field epochs for the fixed parameters
-ieegFieldStruct = extractRawDataWithROI(Subject, Epoch = options.Epoch, ...
-    Time = [options.Time(1)-timePad options.Time(2)+timePad], ...
-    roi = options.roi, remFastResponseTimeTrials = options.respTimeThresh, ...
-    remNoiseTrials = options.remNoiseTrials, remNoResponseTrials = options.remNoResponseTrials, ...
-    subsetElec = options.subsetElec, remWMchannels = options.remWMchannels);
+ieegFieldStruct = extractRawDataWithROI(Subject, 'Epoch', options.Epoch, ...
+    'Time', [options.Time(1)-timePad options.Time(2)+timePad], ...
+    'roi', options.roi, 'remFastResponseTimeTrials', options.respTimeThresh, ...
+    'remNoiseTrials', options.remNoiseTrials, 'remNoResponseTrials', options.remNoResponseTrials, ...
+    'subsetElec', options.subsetElec, 'remWMchannels', options.remWMchannels);
 
-ieegHGAll = [];
+ieegHGAll = repmat(struct('ieegHGNorm', [], 'channelName', [], 'normFactor', [], 'trialInfo', []), length(Subject), 1);
 
 % Filtering signal in the high-gamma band for each subject
 parfor iSubject = 1:length(Subject)
-    if(isempty(ieegFieldStruct(iSubject).ieegStruct))
-        ieegHGAll(iSubject).ieegHGNorm = [];
-        ieegHGAll(iSubject).channelName = [];
-        ieegHGAll(iSubject).normFactor = [];
-        ieegHGAll(iSubject).trialInfo = [];
-        continue;
+    if(~isempty(ieegFieldStruct(iSubject).ieegStruct))
+        ieegFieldHG = extractHiGamma(ieegFieldStruct(iSubject).ieegStruct, ...
+            options.fDown, options.Time, normFactorSubject{iSubject}, normType);
+        ieegHGAll(iSubject).ieegHGNorm = ieegFieldHG;
+        ieegHGAll(iSubject).channelName = ieegFieldStruct(iSubject).channelName;
+        ieegHGAll(iSubject).trialInfo = ieegFieldStruct(iSubject).trialInfo;
+        ieegHGAll(iSubject).normFactor = normFactorSubject{iSubject};
+        ieegHGAll(iSubject).responseTime = ieegFieldStruct(iSubject).responseTime;
+        ieegHGAll(iSubject).responseDuration = ieegFieldStruct(iSubject).responseDuration;
     end
-    ieegFieldHG = extractHiGamma(ieegFieldStruct(iSubject).ieegStruct, ...
-        options.fDown, options.Time, normFactorSubject{iSubject}, normType);
-    ieegHGAll(iSubject).ieegHGNorm = ieegFieldHG;
-    ieegHGAll(iSubject).channelName = ieegFieldStruct(iSubject).channelName;
-    ieegHGAll(iSubject).trialInfo = ieegFieldStruct(iSubject).trialInfo;
-    ieegHGAll(iSubject).normFactor = normFactorSubject{iSubject};
 end
 
 end
