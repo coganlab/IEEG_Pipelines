@@ -1,7 +1,6 @@
 {%- macro automodule(modname, options) -%}
-.. automodapi:: {{ modname }}
-    :no-inheritance-diagram:
-    :no-inherited-members:
+.. automodule:: {{ modname }}
+    :members:
 {#{%- for option in options %}#}
 {#   :{{ option }}:#}
 {#{%- endfor %}#}

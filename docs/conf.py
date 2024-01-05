@@ -42,12 +42,7 @@ extensions = ['myst_parser',
               'sphinx.ext.intersphinx',
               'sphinx.ext.linkcode',
               'sphinx.ext.viewcode',
-              'sphinx.ext.mathjax',
-              'sphinx.ext.ifconfig',
-              'sphinx.ext.githubpages',
-              'sphinx.ext.todo',
-              'sphinx_automodapi.automodapi',
-              'sphinx_automodapi.smart_resolver']
+              'sphinx.ext.mathjax']
 
 sphinx_gallery_conf = {
     'examples_dirs': '../examples',
@@ -71,11 +66,6 @@ source_suffix = {
     '.md': 'markdown',
 }
 
-numpydoc_show_class_members = False
-automodapi_toctreedirnm = "references"
-automodapi_inheritance_diagram = False
-automodsumm_inherited_members = False
-autosummary_imported_members = False
 autosummary_generate = True
 notebook_images = True
 myst_enable_extensions = [
@@ -104,7 +94,7 @@ napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
 autodoc_typehints = 'both'
-add_module_names = True
+add_module_names = False
 
 matlab_src_dir = os.path.abspath('../MATLAB')
 matlab_auto_link = True

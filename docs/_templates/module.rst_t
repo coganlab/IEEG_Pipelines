@@ -1,10 +1,17 @@
-{%- if show_headings %}
-{{- basename.split('.') | last | e | heading }}
+{%- set base = basename.split('.') | last -%}
+{%- if show_headings -%}
+{{ base | e | heading }}
 {% endif -%}
 
-.. automodapi:: {{ qualname }}
-    :no-inheritance-diagram:
-    :no-inherited-members:
+.. automodule:: {{ qualname }}
+
+.. currentmodule:: {{ basename.replace('.' + base, '') }}
+
+.. autosummary::
+    :toctree: ../references
+    :recursive:
+
+    {{ base }}
 {#{%- for option in automodule_options %}#}
 {#   :{{ option }}:#}
 {#{%- endfor %}#}
