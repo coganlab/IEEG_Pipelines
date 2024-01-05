@@ -1,7 +1,7 @@
+import mne
 import numpy as np
 import pytest
 import scipy
-import mne
 
 from ieeg.calc.stats import mean_diff
 

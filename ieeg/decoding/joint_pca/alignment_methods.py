@@ -4,11 +4,13 @@ Author: Zac Spalding
 Cogan & Viventi Labs, Duke University
 """
 
-import numpy as np
-from sklearn.decomposition import PCA
 from functools import reduce
-from ieeg.decoding.joint_pca.utils import cnd_avg, label2str
+
+import numpy as np
 from numba import njit
+from sklearn.decomposition import PCA
+
+from ieeg.decoding.joint_pca.utils import cnd_avg, label2str
 
 
 class JointPCADecomp:
@@ -139,7 +141,7 @@ class JointPCADecomp:
              transformations.
         """
 
-        transformed_lst = [0]*len(X)
+        transformed_lst = [0] * len(X)
         for i, (feats, transform) in enumerate(zip(X, self.transforms)):
             transform_feats = feats.reshape(-1, feats.shape[-1]) @ transform
             transformed_lst[i] = transform_feats.reshape(feats.shape[:-1] +
@@ -262,7 +264,7 @@ def get_joint_PCA_transforms(features, labels, n_components=40, dim_red=PCA):
     labels = [label2str(labs) for labs in labels]
 
     # condition average firing rates for all datasets
-    cnd_avg_data = [0]*len(features)
+    cnd_avg_data = [0] * len(features)
     for i, (feats, labs) in enumerate(zip(features, labels)):
         cnd_avg_data[i] = cnd_avg(feats, labs)
 
@@ -282,7 +284,7 @@ def get_joint_PCA_transforms(features, labels, n_components=40, dim_red=PCA):
     latent_mat = dim_red(n_components=n_components).fit_transform(cross_pt_mat)
 
     # calculate per pt channel -> factor transformation matrices
-    pt_latent_trans = [0]*len(cnd_avg_data)
+    pt_latent_trans = [0] * len(cnd_avg_data)
     for i, pt_ca in enumerate(cnd_avg_data):
         pt_ca = pt_ca.reshape(-1, pt_ca.shape[-1])  # isolate channel dim
         latent_trans = np.linalg.pinv(pt_ca) @ latent_mat  # lst_sq soln
@@ -562,6 +564,7 @@ def CCA_align(L_a, L_b):
 
 if __name__ == '__main__':
     from timeit import timeit
+
     L_a = np.random.randn(50, 1000)
     L_b = np.random.randn(50, 1000)
     M_a, M_b = CCA_align(L_a, L_b)

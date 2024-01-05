@@ -120,7 +120,6 @@ def _(inst: Evoked, fs: int = None,
 
 
 def _my_hilt(x: np.ndarray, fs, Wn=(1, 150), n_jobs=-1):
-
     # Set default window function and threshold
     cfs = get_centers(Wn)
     n_times = x.shape[0]

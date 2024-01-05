@@ -3,7 +3,6 @@ from numba import njit
 from numba.extending import overload
 
 
-# @njit(nogil=True, cache=True)
 def concatenate_arrays(arrays: tuple[np.ndarray], axis: int = 0
                        ) -> np.ndarray:
     """Concatenate arrays along a specified axis, filling in empty arrays with
@@ -60,14 +59,13 @@ def concatenate_arrays(arrays: tuple[np.ndarray], axis: int = 0
                                          )
 
     # Concatenate the modified arrays along the specified axis
-    result = concatenate(tuple(modified_arrays[:i-j+1]), axis=axis)
+    result = concatenate(tuple(modified_arrays[:i - j + 1]), axis=axis)
 
     return result
 
 
 @njit(nogil=True, cache=True)
 def mod_arr(arr: np.ndarray, shape: tuple[int, ...], idx: tuple[slice]):
-
     # Create an array filled with nan values
     nan_array = np.full(shape, np.nan)
 

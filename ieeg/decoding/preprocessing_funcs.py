@@ -84,7 +84,7 @@ def bin_output(outputs, output_times, dt, wdw_start, wdw_end,
     for i in range(num_bins):  # Loop through bins
         # Indices to consider the output signal (in the correct time range)
         idxs = np.where((np.squeeze(output_times) >= edges[i]) & (
-                    np.squeeze(output_times) < edges[i + 1]))[0]
+                np.squeeze(output_times) < edges[i + 1]))[0]
         for j in range(output_dim):  # Loop through output features
             outputs_binned[i, j] = np.mean(outputs[idxs, j])
 

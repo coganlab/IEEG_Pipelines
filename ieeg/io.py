@@ -224,7 +224,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
-        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
+        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i + 1])
         write_raw_bids(run, bids_path, allow_preload=True, format=format,
                        acpc_aligned=True, overwrite=overwrite, verbose=verbose)
 
@@ -304,7 +304,7 @@ def get_elec_volume_labels(subj: str, subj_dir: PathLike, radius: int = 3
     filename = op.join(subj_dir, subj, "elec_recon",
                        f"{subj}_elec_location_radius_{radius}mm_aparc.a2009s+"
                        f"aseg.mgz")
-    if op.exists(filename+"_brainshifted.csv"):
+    if op.exists(filename + "_brainshifted.csv"):
         filename += "_brainshifted.csv"
     else:
         filename += ".csv"

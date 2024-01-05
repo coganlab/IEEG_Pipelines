@@ -328,8 +328,7 @@ def _check_filterable(x: Union[Signal, np.ndarray],
 if __name__ == "__main__":
     # Description: Produce spectrograms for each subject
     from ieeg.io import get_data, raw_from_layout
-    from ieeg.navigate import trial_ieeg, channel_outlier_marker, \
-        crop_empty_data, \
+    from ieeg.navigate import trial_ieeg, crop_empty_data, \
         outliers_to_nan
     import os
     import numpy as np

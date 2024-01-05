@@ -290,6 +290,7 @@ def trial_ieeg(raw: mne.io.Raw, event: str | list[str, ...], times: Doubles,
 if __name__ == "__main__":
     from os import path
     from ieeg.io import raw_from_layout
+
     # %% Set up logging
     log_filename = "output.log"
     # op.join(LAB_root, "Aaron_test", "Information.log")

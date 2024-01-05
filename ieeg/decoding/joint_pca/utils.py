@@ -4,8 +4,10 @@ Author: Zac Spalding
 Cogan & Viventi Labs, Duke University
 """
 
-import numpy as np
 import pickle
+
+import numpy as np
+
 from ieeg.calc.mat import Labels
 
 

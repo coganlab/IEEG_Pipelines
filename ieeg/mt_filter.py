@@ -205,7 +205,7 @@ def _get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(subject: str = None, save: bool = False):
+def _main(subject: str = None, save: bool = False):
     import mne
     from bids import BIDSLayout
     from ieeg.io import raw_from_layout, save_derivative
@@ -251,4 +251,4 @@ def main(subject: str = None, save: bool = False):
 
 if __name__ == "__main__":
     args = _get_parser().parse_args()
-    main(**vars(args))
+    _main(**vars(args))

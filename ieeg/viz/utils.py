@@ -1,12 +1,12 @@
 import gc
 from functools import partial
+
 import numpy as np
 from joblib import cpu_count
 from mne.io import Raw
 
 from ieeg import Doubles, Signal
 from ieeg.calc import stats
-
 from ieeg.viz import _qt_backend
 
 _qt_backend()

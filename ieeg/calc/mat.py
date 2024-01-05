@@ -1,15 +1,14 @@
-from collections.abc import Iterable
 import functools
+from collections.abc import Iterable
 
 import mne
-
-from ieeg.calc.reshape import concatenate_arrays
-from ieeg import Signal
-
 import numpy as np
+from numba import extending, njit
 from numpy.matlib import repmat
 from numpy.typing import ArrayLike
-from numba import njit, extending, types, vectorize
+
+import ieeg
+import ieeg.calc.reshape as reshape
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -276,7 +275,7 @@ class LabeledArray(np.ndarray):
         return cls(arr, keys, **kwargs)
 
     @classmethod
-    def from_signal(cls, sig: Signal, **kwargs) -> 'LabeledArray':
+    def from_signal(cls, sig: ieeg.Signal, **kwargs) -> 'LabeledArray':
         """Create a LabeledArray from a Signal.
 
         Parameters
@@ -460,6 +459,7 @@ class LabeledArray(np.ndarray):
     def _label_formatter(self):
         def _liststr(x):
             return f"\n       ".join(x)
+
         return _liststr([str(lab) for lab in self.labels])
 
     def memory(self):
@@ -643,7 +643,7 @@ class LabeledArray(np.ndarray):
                     range(self.ndim)] for sl in range(self.shape[levels[0]]))
 
         arrs = [self.__array__()[*idx] for idx in all_idx]
-        new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
+        new_array = reshape.concatenate_arrays(arrs, axis=levels[1] - 1)
 
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
 
@@ -877,6 +877,7 @@ def is_unique(arr: np.ndarray) -> bool:
 class Labels(np.ndarray):
     """A class for storing labels for a LabeledArray."""
     delimiter: str
+
     # __slots__ = ['delimiter', '__dict__']
 
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
@@ -1084,7 +1085,7 @@ def add_to_list_if_not_present(lst: list, element: Iterable):
 
 
 @extending.overload(add_to_list_if_not_present)
-def add_jit(lst: list, element: list):
+def _add_jit(lst: list, element: list):
     seen = set(lst)
     for x in element:
         if not (x in seen or seen.add(x)):
@@ -1127,23 +1128,23 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         for d in data.values():
             if np.isscalar(d):
                 continue
-            inner_all_keys(d, keys, lvl+1)
+            inner_all_keys(d, keys, lvl + 1)
     elif isinstance(data, np.ndarray):
         data = np.atleast_1d(data)
         rows = range(data.shape[0])
-        if len(keys) < lvl+1:
+        if len(keys) < lvl + 1:
             keys.append(list(rows))
         else:
             add_to_list_if_not_present(keys[lvl], rows)
         if len(data.shape) > 1:
             if not np.isscalar(data[0]):
-                inner_all_keys(data[0], keys, lvl+1)
+                inner_all_keys(data[0], keys, lvl + 1)
     else:
         raise TypeError(f"Unexpected data type: {type(data)}")
     return tuple(map(tuple, keys))
 
 
-def combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
+def _combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
     # Create a meshgrid of indices
     grids = np.meshgrid(*arrays, indexing='ij')
 
@@ -1185,7 +1186,7 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         gen_arr = (inner_array(d) for d in data.values())
         arr = [a for a in gen_arr if a is not None]
         if len(arr) > 0:
-            return concatenate_arrays(arr, axis=None)
+            return reshape.concatenate_arrays(arr, axis=None)
     # elif not isinstance(data, np.ndarray):
     #     raise TypeError(f"Unexpected data type: {type(data)}")
 
@@ -1354,6 +1355,7 @@ if __name__ == "__main__":
     import os
     from ieeg.io import get_data
     import mne
+
     conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5),
                                                           "Audio/LS"),
              "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),

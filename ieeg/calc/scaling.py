@@ -3,8 +3,10 @@ from functools import singledispatch
 import numpy as np
 from mne import Epochs
 from mne.epochs import BaseEpochs
-from mne.time_frequency import AverageTFR, EpochsTFR, _BaseTFR
+from mne.time_frequency import AverageTFR, EpochsTFR
 from mne.utils import logger, verbose
+
+TFR = EpochsTFR | AverageTFR
 
 
 def _log_rescale(baseline, mode='mean'):
@@ -124,7 +126,7 @@ def _(line: BaseEpochs, baseline: BaseEpochs,
 
 @rescale.register
 @verbose
-def _(line: _BaseTFR, baseline: _BaseTFR,
+def _(line: TFR, baseline: TFR,
       mode: str = 'mean', copy: bool = False, picks: list = 'data',
       verbose=None) -> Epochs:
     """Rescale (baseline correct) Epochs"""

@@ -3,6 +3,7 @@ import os.path as op
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from functools import singledispatch
+
 import mne
 import nibabel as nib
 import numpy as np
@@ -442,6 +443,7 @@ def get_sub(inst: Signal | mne.Info | str) -> str:
         return out_str
     return out_str[0] + str(int("".join(s for s in out_str if s.isdigit())))
 
+
 # TODO: figure out why elec positions are only correct in meters not mm
 
 
@@ -750,7 +752,7 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
 
 
 if __name__ == "__main__":
-    from ieeg.io import get_data, raw_from_layout
+    from ieeg.io import get_data
     from os import path
 
     HOME = path.expanduser("~")

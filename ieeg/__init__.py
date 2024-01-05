@@ -4,9 +4,8 @@ import mne.io
 from mne.epochs import BaseEpochs
 from mne.evoked import Evoked
 from mne.io import base
-from numpy import ndarray, random
 from numba import njit
-
+from numpy import ndarray, random
 
 PathLike = str | PL
 RunDict = dict[int, mne.io.Raw]

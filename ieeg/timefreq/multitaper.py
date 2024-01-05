@@ -168,7 +168,7 @@ class WindowingRemover(object):
         if self.adaptive and len(eigvals) < 3:
             self.logger.warn('Not adaptively combining the spectral estimators'
                              ' due to a low number of tapers (%s < 3).' % (
-                                len(eigvals),))
+                                 len(eigvals),))
             self.adaptive = False
 
         return window_fun, eigvals, self.adaptive

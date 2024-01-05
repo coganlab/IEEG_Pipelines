@@ -1,12 +1,12 @@
 import numpy as np
 from joblib import Parallel, delayed
 from mne.utils import logger
+from numba import guvectorize, njit
+from scipy import stats as st
 from skimage import measure
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from scipy import stats as st
-from numba import njit, guvectorize, float64, vectorize
 
 
 def weighted_avg_and_std(values, weights, axis=0):

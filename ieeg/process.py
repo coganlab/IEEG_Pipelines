@@ -271,7 +271,7 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
 def get_mem() -> Union[float, int]:
     """Get the amount of memory to use for parallelization."""
     from psutil import virtual_memory
-    ram_per = virtual_memory().available/cpu_count()
+    ram_per = virtual_memory().available / cpu_count()
     return ram_per
 
 

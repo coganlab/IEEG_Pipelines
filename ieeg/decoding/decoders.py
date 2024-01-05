@@ -1,4 +1,3 @@
-
 # %% IMPORT PACKAGES
 
 import numpy as np

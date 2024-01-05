@@ -1,9 +1,10 @@
-import numpy as np
+import itertools
 from typing import Literal, Tuple
+
+import numpy as np
+from numba import njit
 from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
-from numba import njit
-import itertools
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -78,7 +79,6 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
         # combine the folds
         for (nan_train, nan_test), (not_nan_train, not_nan_test) in zip(
                 nan_folds, not_nan_folds):
-
             train = np.concatenate((where[nan_train], not_where[not_nan_train]
                                     ))
             test = np.concatenate((where[nan_test], not_where[not_nan_test]))
