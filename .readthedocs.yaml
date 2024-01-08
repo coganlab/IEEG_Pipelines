@@ -18,16 +18,10 @@ build:
     # rust: "1.64"
     # golang: "1.19"
   jobs:
-    steps:
-      pre_build:
-        - uses: pyvista/setup-headless-display-action@main
-          with:
-            qt: false
-            pyvista: true
-        - name: install pip requirements
-          run: |
-            pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
-            sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
+    pre_build:
+      - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
+      - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
+      - bash .github/setup_xvfb.sh
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
