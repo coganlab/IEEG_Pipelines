@@ -23,8 +23,10 @@ build:
         with:
           qt: false
           pyvista: true
-      - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
-      - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
+      - name: install pip requirements
+        run: |
+          pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
+          sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
