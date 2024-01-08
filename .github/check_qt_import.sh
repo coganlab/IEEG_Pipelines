@@ -1,4 +1,4 @@
-#!/bin/bash -ef
+#!/bin/bash
 
 if [[ "$1" == "" ]]; then
     echo "Qt library must be provided as first argument"
