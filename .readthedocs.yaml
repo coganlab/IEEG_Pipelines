@@ -21,8 +21,7 @@ build:
     pre_build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
-      - ./.github/check_qt_import.sh $MNE_QT_BACKEND
-      - ./.github/setup_xvfb.sh
+      - bash .github/setup_xvfb.sh
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
