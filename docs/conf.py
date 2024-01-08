@@ -304,8 +304,6 @@ exclude_patterns = ['tests']
 # -- Options for HTML output -------------------------------------------------
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
-html_static_path = ["_static"]
-html_css_files = ['custom.css']
 modindex_common_prefix = ["ieeg"]
 
 pygments_style = "sphinx"
