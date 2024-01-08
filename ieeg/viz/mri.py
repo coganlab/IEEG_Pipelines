@@ -275,7 +275,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     size: float = 0.35, fig: Brain = None,
                     label_every: int = None, background: str = 'white',
                     units: str = 'm', transparency: float = 0.6,
-                    average: str = 'fsaverage') -> Brain:
+                    average: str = 'fsaverage', show: bool = True) -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
@@ -311,6 +311,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         Transparency of the brain
     average: str, optional
         The average brain to plot on, by default 'fsaverage'
+    show: bool, optional
+        Whether to show the figure, by default True
 
     Returns
     -------
@@ -322,7 +324,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
     if fig is None:
         fig = Brain(average, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=transparency, background=background, surf=surface,
-                    hemi=hemi, units=units)
+                    hemi=hemi, units=units, show=show)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
@@ -393,7 +395,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
                   trans=trans, color=this_color, size=size,
-                  labels_every=label_every, hemi=hemi, background=background)
+                  labels_every=label_every, hemi=hemi, background=background,
+                  show=show)
 
     return fig
 
