@@ -1,7 +1,8 @@
 #!/bin/sh
 # set up the headless display for pyvista off-screen rendering on example plots
 set -x
-sudo apt-get update && sudo apt-get install libgl1-mesa-glx xvfb -y
+sudo apt-get update
+sudo apt-get install libgl1-mesa-glx xvfb -y
 sudo apt-get install libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libopengl0 libegl1 libosmesa6 mesa-utils libxcb-shape0 libx
 export DISPLAY=:99.0
 export PYVISTA_OFF_SCREEN=True
