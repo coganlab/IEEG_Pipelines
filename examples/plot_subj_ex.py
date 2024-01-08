@@ -23,4 +23,4 @@ if not os.path.exists(os.path.join(subjects_dir, "1")):
 raw = mne.io.read_raw(misc_path / "seeg" / "sample_seeg_ieeg.fif")
 
 # %% plot the data
-plot_subj(raw, subj_dir=subjects_dir, show=False)
+plot_subj(raw, subj_dir=subjects_dir)
