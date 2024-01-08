@@ -19,6 +19,10 @@ build:
     # golang: "1.19"
   jobs:
     pre_build:
+      - uses: pyvista/setup-headless-display-action@main
+        with:
+          qt: false
+          pyvista: true
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
 

@@ -194,6 +194,7 @@ scrapers = (
 )
 
 os.environ["_MNE_BUILDING_DOC"] = "true"
+os.environ["MNE_3D_OPTION_ANTIALIAS"] = "false"
 mne.viz.set_3d_backend("pyvistaqt")
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
