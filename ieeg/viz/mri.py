@@ -326,6 +326,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
+        color = None
     if isinstance(sigs, Iterable):
         sigs = {get_sub(v): v for v in sigs}
 
@@ -379,7 +380,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
             continue
 
         # select colors
-        if color is None:
+        if color is (1, 1, 1):
             this_color = []
             p_int = [new.ch_names.index(p) for p in these_picks]
             groups = _group_channels(mne.pick_info(new, p_int))
