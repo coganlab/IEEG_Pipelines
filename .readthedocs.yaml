@@ -21,7 +21,7 @@ build:
     pre_build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
-      - bash .github/setup_xvfb.sh
+      - python -c "import mne; mne.sys_info()"
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
