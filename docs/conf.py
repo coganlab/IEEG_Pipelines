@@ -20,14 +20,12 @@ import time
 import warnings
 import gc
 import mne
-import numpy as np
 import os
 from mne.utils import (
     _assert_no_instances, # noqa, analysis:ignore
     sizeof_fmt,
 )
-
-_np_print_defaults = np.get_printoptions()
+from mne.viz import Brain # noqa, needed for mne.viz._brain._BrainScraper
 
 
 class Resetter(object):
@@ -61,7 +59,6 @@ class Resetter(object):
         from mne.viz.backends.renderer import backend
 
         _Renderer = backend._Renderer if backend is not None else None
-        reset_warnings(gallery_conf, fname)
         # in case users have interactive mode turned on in matplotlibrc,
         # turn it off here (otherwise the build can be very slow)
         plt.ioff()
@@ -124,137 +121,10 @@ class Resetter(object):
             print(f"{prefix}{time.time() - self.t0:6.1f} s : {mem}".ljust(22))
 
 
-# -- Warnings management -----------------------------------------------------
-
-
-def reset_warnings(gallery_conf, fname):
-    """Ensure we are future compatible and ignore silly warnings."""
-    # In principle, our examples should produce no warnings.
-    # Here we cause warnings to become errors, with a few exceptions.
-    # This list should be considered alongside
-    # setup.cfg -> [tool:pytest] -> filterwarnings
-
-    # remove tweaks from other module imports or example runs
-    warnings.resetwarnings()
-    # restrict
-    warnings.filterwarnings("error")
-    # allow these, but show them
-    warnings.filterwarnings("always", '.*non-standard config type: "foo".*')
-    warnings.filterwarnings("always", '.*config type: "MNEE_USE_CUUDAA".*')
-    warnings.filterwarnings("always", ".*cannot make axes width small.*")
-    warnings.filterwarnings("always", ".*Axes that are not compatible.*")
-    warnings.filterwarnings("always", ".*FastICA did not converge.*")
-    # ECoG BIDS spec violations:
-    warnings.filterwarnings("always", ".*Fiducial point nasion not found.*")
-    warnings.filterwarnings("always", ".*DigMontage is only a subset of.*")
-    warnings.filterwarnings(  # xhemi morph (should probably update sample)
-        "always", ".*does not exist, creating it and saving it.*"
-    )
-    # internal warnings
-    warnings.filterwarnings("default", module="sphinx")
-    # allow these warnings, but don't show them
-    for key in (
-        "invalid version and will not be supported",  # pyxdf
-        "distutils Version classes are deprecated",  # seaborn and neo
-        "is_categorical_dtype is deprecated",  # seaborn
-        "`np.object` is a deprecated alias for the builtin `object`",  # pyxdf
-        # nilearn, should be fixed in > 0.9.1
-        "In future, it will be an error for 'np.bool_' scalars to",
-        # sklearn hasn't updated to SciPy's sym_pos dep
-        "The 'sym_pos' keyword is deprecated",
-        # numba
-        "`np.MachAr` is deprecated",
-        # joblib hasn't updated to avoid distutils
-        "distutils package is deprecated",
-        # jupyter
-        "Jupyter is migrating its paths to use standard",
-        r"Widget\..* is deprecated\.",
-        # PyQt6
-        "Enum value .* is marked as deprecated",
-        # matplotlib PDF output
-        "The py23 module has been deprecated",
-        # pkg_resources
-        "Implementing implicit namespace packages",
-        "Deprecated call to `pkg_resources",
-        # nilearn
-        "pkg_resources is deprecated as an API",
-        r"The .* was deprecated in Matplotlib 3\.7",
-        # scipy
-        r"scipy.signal.morlet2 is deprecated in SciPy 1\.12",
-    ):
-        warnings.filterwarnings(  # deal with other modules having bad imports
-            "ignore", message=".*%s.*" % key, category=DeprecationWarning
-        )
-    warnings.filterwarnings(
-        "ignore",
-        message="Matplotlib is currently using agg, which is a non-GUI backend.*",
-    )
-    warnings.filterwarnings(
-        "ignore",
-        message=".*is non-interactive, and thus cannot.*",
-    )
-    # seaborn
-    warnings.filterwarnings(
-        "ignore",
-        message="The figure layout has changed to tight",
-        category=UserWarning,
-    )
-    # matplotlib 3.6 in nilearn and pyvista
-    warnings.filterwarnings("ignore", message=".*cmap function will be deprecated.*")
-    # xarray/netcdf4
-    warnings.filterwarnings(
-        "ignore",
-        message=r"numpy\.ndarray size changed, may indicate.*",
-        category=RuntimeWarning,
-    )
-    # qdarkstyle
-    warnings.filterwarnings(
-        "ignore",
-        message=r".*Setting theme=.*6 in qdarkstyle.*",
-        category=RuntimeWarning,
-    )
-    # pandas, via seaborn (examples/time_frequency/time_frequency_erds.py)
-    for message in (
-        "use_inf_as_na option is deprecated.*",
-        r"iteritems is deprecated.*Use \.items instead\.",
-        "is_categorical_dtype is deprecated.*",
-        "The default of observed=False.*",
-    ):
-        warnings.filterwarnings(
-            "ignore",
-            message=message,
-            category=FutureWarning,
-        )
-    # pandas in 50_epochs_to_data_frame.py
-    warnings.filterwarnings(
-        "ignore", message=r"invalid value encountered in cast", category=RuntimeWarning
-    )
-    # xarray _SixMetaPathImporter (?)
-    warnings.filterwarnings(
-        "ignore", message=r"falling back to find_module", category=ImportWarning
-    )
-    # Sphinx deps
-    warnings.filterwarnings(
-        "ignore", message="The str interface for _CascadingStyleSheet.*"
-    )
-    # mne-qt-browser until > 0.5.2 released
-    warnings.filterwarnings(
-        "ignore",
-        r"mne\.io\.pick.channel_indices_by_type is deprecated.*",
-    )
-
-    # In case we use np.set_printoptions in any tutorials, we only
-    # want it to affect those:
-    np.set_printoptions(**_np_print_defaults)
-
-
-reset_warnings(None, None)
-
-
 # -- Project information -----------------------------------------------------
 
 project = 'IEEG_Pipelines'
-copyright = '2023, Aaron Earle-Richardson'
+copyright = '2024, Aaron Earle-Richardson'
 author = 'Aaron Earle-Richardson'
 
 # The full version, including alpha/beta/rc tags
@@ -280,7 +150,56 @@ extensions = ['myst_parser',
               'sphinx.ext.mathjax',
               'sphinx_copybutton']
 
+# -- TOC configuration -------------------------------------------------------
+
+toc_object_entries = False
+
+# -- Sphinx-Copybutton configuration -----------------------------------------
+copybutton_prompt_text = r">>> |\.\.\. |\$ "
+copybutton_prompt_is_regexp = True
+
+# -- Options for plot_directive ----------------------------------------------
+
+# Adapted from SciPy
+plot_include_source = True
+plot_formats = [("png", 96)]
+plot_html_show_formats = False
+plot_html_show_source_link = False
+font_size = 13 * 72 / 96.0  # 13 px
+plot_rcparams = {
+    "font.size": font_size,
+    "axes.titlesize": font_size,
+    "axes.labelsize": font_size,
+    "xtick.labelsize": font_size,
+    "ytick.labelsize": font_size,
+    "legend.fontsize": font_size,
+    "figure.figsize": (6, 5),
+    "figure.subplot.bottom": 0.2,
+    "figure.subplot.left": 0.2,
+    "figure.subplot.right": 0.9,
+    "figure.subplot.top": 0.85,
+    "figure.subplot.wspace": 0.4,
+    "text.usetex": False,
+}
+
 # -- Sphinx-gallery configuration --------------------------------------------
+
+scrapers = (
+    "matplotlib",
+    mne.gui._GUIScraper(),
+    mne.viz._brain._BrainScraper(),
+    "pyvista",
+    mne.report._ReportScraper(),
+    mne.viz._scraper._MNEQtBrowserScraper(),
+)
+
+os.environ["_MNE_BUILDING_DOC"] = "true"
+mne.viz.set_3d_backend("pyvistaqt")
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    import pyvista
+pyvista.OFF_SCREEN = False
+pyvista.BUILDING_GALLERY = True
 
 sphinx_gallery_conf = {
     'examples_dirs': '../examples',
@@ -294,10 +213,13 @@ sphinx_gallery_conf = {
     'backreferences_dir': 'gen_modules/backreferences',
     # Modules for which function/class level galleries are created. In
     # this case sphinx_gallery and ieeg in a tuple of strings.
+    "plot_gallery": "True",
     'doc_module': ('sphinx_gallery', 'ieeg'),
     "reset_modules": ("matplotlib", Resetter()),  # called w/each script
     "reset_modules_order": "both",
+    "image_scrapers": scrapers,
     "show_memory": not sys.platform.startswith(("win", "darwin")),
+    "thumbnail_size": (160, 112),
 }
 
 default_role = 'py:obj'
@@ -341,9 +263,6 @@ add_module_names = False
 matlab_src_dir = os.path.abspath('../MATLAB')
 matlab_auto_link = True
 
-
-# nb_execution_mode = 'off'
-
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
                        'numpy': ('https://docs.scipy.org/doc/numpy/', None),
                        'mne': ('https://mne.tools/stable/', None),
@@ -376,11 +295,6 @@ def linkcode_resolve(domain, info):
     return "https://github.com/coganlab/IEEG_Pipelines/%s.py" % filename
 
 
-def setup(app):
-    # to hide/show the prompt in code examples:
-    app.add_js_file("js/copybutton.js")
-
-
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
@@ -391,7 +305,8 @@ exclude_patterns = ['tests']
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 html_static_path = ["_static"]
-modindex_common_prefix = ["ieeg."]
+html_css_files = ['custom.css']
+modindex_common_prefix = ["ieeg"]
 
 pygments_style = "sphinx"
 # smartquotes = False
