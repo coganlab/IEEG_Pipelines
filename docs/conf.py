@@ -199,7 +199,7 @@ mne.viz.set_3d_backend("pyvistaqt")
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import pyvista
-pyvista.OFF_SCREEN = False
+pyvista.OFF_SCREEN = True
 pyvista.BUILDING_GALLERY = True
 
 sphinx_gallery_conf = {
