@@ -26,6 +26,7 @@ from mne.utils import (
     sizeof_fmt,
 )
 from mne.viz import Brain # noqa, needed for mne.viz._brain._BrainScraper
+import matplotlib
 
 
 class Resetter(object):
@@ -196,6 +197,7 @@ scrapers = (
 os.environ["_MNE_BUILDING_DOC"] = "true"
 os.environ["MNE_3D_OPTION_ANTIALIAS"] = "false"
 mne.viz.set_3d_backend("pyvistaqt")
+matplotlib.use("qt5agg")
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import pyvista
