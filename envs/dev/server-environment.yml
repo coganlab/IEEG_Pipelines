@@ -1,7 +1,6 @@
 name: ieeg-dev
 channels:
   - conda-forge
-  - defaults
 dependencies:
   - python<3.13
   - pip
@@ -11,11 +10,12 @@ dependencies:
   - scikit-image
   - pandas
   - numba
-  - vtk>=9.2=*osmesa*
+  - vtk[version>=9.2,build=*osmesa*]
   - mesalib
   - pyvistaqt
   - mne
   - joblib
+  - pyqt5
   - pip:
     - -r ../requirements.txt
     - -r testing-reqs.txt
