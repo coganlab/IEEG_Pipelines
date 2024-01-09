@@ -14,8 +14,16 @@ dependencies:
   - mesalib
   - pyvistaqt
   - mne
+  - mne-bids
   - joblib
   - qtpy
+  - pybids
+  - nipype
+  - EDFlib-Python
+  - psutil
+  - pytz
+  - h5io
+  - dipy
   - pip:
-    - -r ../requirements.txt
+    - naplib
     - -r testing-reqs.txt
