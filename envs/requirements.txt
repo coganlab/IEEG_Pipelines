@@ -14,6 +14,7 @@ numba
 psutil
 pyvistaqt
 pytz
+pyqt5>=5.12
 tqdm
 h5io
 dipy
