@@ -21,6 +21,7 @@ import warnings
 import gc
 import mne
 import os
+import matplotlib
 from mne.utils import (
     _assert_no_instances, # noqa, analysis:ignore
     sizeof_fmt,
@@ -197,7 +198,6 @@ scrapers = (
 os.environ["_MNE_BUILDING_DOC"] = "true"
 os.environ["MNE_3D_OPTION_ANTIALIAS"] = "false"
 mne.viz.set_3d_backend("pyvistaqt")
-matplotlib.use("qt5agg")
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import pyvista
