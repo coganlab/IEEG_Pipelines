@@ -1,0 +1,17 @@
+name: ieeg-dev
+channels:
+  - defaults
+dependencies:
+  - python<3.13
+  - pip
+  - numpy
+  - matplotlib
+  - scipy
+  - scikit-image
+  - pandas
+  - numba
+  - conda-forge::vtk>=9.2=*osmesa*
+  - conda-forge::mesalib
+  - pip:
+    - -r ../requirements.txt
+    - -r testing-reqs.txt

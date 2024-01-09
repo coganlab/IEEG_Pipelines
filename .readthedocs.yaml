@@ -6,13 +6,13 @@
 version: 2
 
 conda:
-  environment: envs/environment.yml
+  environment: envs/dev/server-environment.yml
 
 # Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
   tools:
-    python: "mambaforge-4.10"
+    python: "mambaforge-22.9"
     # You can also specify other tool versions:
     # nodejs: "19"
     # rust: "1.64"
@@ -20,7 +20,6 @@ build:
   jobs:
     pre_build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
-      - conda install -c conda-forge "vtk>=9.2=*osmesa*" mesalib
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
       - python -c "import mne; mne.sys_info()"
 
