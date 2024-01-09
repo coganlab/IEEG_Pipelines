@@ -15,7 +15,7 @@ dependencies:
   - pyvistaqt
   - mne
   - joblib
-  - pyqt5
+  - pyqt
   - pip:
     - -r ../requirements.txt
     - -r testing-reqs.txt
