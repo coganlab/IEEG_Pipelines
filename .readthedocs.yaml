@@ -20,6 +20,7 @@ build:
   jobs:
     pre_build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
+      - pip install --upgrade ipympl ipywidgets trame_client trame_server trame_vtk trame_vuetify
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
       - python -c "import mne; mne.sys_info()"
 
