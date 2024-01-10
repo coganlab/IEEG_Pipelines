@@ -38,7 +38,7 @@ good.load_data()
 del new
 
 # %%
-# Calculate spectra
+# Calculate Spectra
 # -----------------
 for epoch, t in zip(
         ("onset", "offset"),

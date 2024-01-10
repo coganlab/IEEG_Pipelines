@@ -25,8 +25,8 @@ raw.load_data()
 raw.set_eeg_reference(ref_channels="average", ch_type='seeg')
 
 # %%
-# Gamma Filtering
-# ---------------
+# Calculate Spectra
+# -----------------
 out = []
 for epoch, t in zip(('Fixation', 'Response'),  # epochs to extract
                     ((-0.3, 0), (-0.1, 0.2))):  # times to extract
@@ -43,12 +43,16 @@ for epoch, t in zip(('Fixation', 'Response'),  # epochs to extract
 resp = out[1]
 base = out[0]
 
-# %% run time cluster stats
+# %%
+# Time Cluster Statistics
+# -----------------------
 
 mask = stats.time_perm_cluster(resp._data, base._data,
                                0.1, ignore_adjacency=1, n_perm=2000)
 
-# %% plot the results
+# %%
+# Plot the Time-Frequency Clusters
+# --------------------------------
 fig, axs = plt.subplots(5, 24, figsize=(20, 20))
 for i, ax in enumerate(axs.flat):
     if i >= mask.shape[0]:

@@ -33,7 +33,7 @@ raw.load_data()
 raw.set_eeg_reference(ref_channels="average", ch_type='seeg')
 
 # %%
-# Calculate spectra
+# Calculate Spectra
 # -----------------
 freq = np.arange(10, 200., 4.)
 spectra = spectrogram(raw, freq, 'Response', -1.5, 1.5, 'Fixation', -1.5, 0.5,

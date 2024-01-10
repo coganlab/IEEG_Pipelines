@@ -1249,6 +1249,7 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     sub-dictionary.
 
     Parameters
+    ----------
     data: dict
         The nested dict to combine
     levels: tuple[int, int]
@@ -1256,6 +1257,7 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
         of the dict keys into one level at the 2nd level.
 
     Returns
+    -------
     dict
         The combined dict
 

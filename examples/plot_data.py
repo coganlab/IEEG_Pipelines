@@ -5,18 +5,17 @@ Load IEEG Data Example
 This example demonstrates the discrepancy between the provided examples and the actual data loading process.
 
 The provided examples:
-    1. Use `ieeg.io.raw_from_layout` function to load IEEG data.
-    2. Use `mne.io.read_raw` function to load IEEG data.
-
-However, the actual data loading process involves using the `ieeg.io.get_data` and `ieeg.io.raw_from_layout` functions.
+    1. Use `raw_from_layout<ieeg.io.raw_from_layout>`_ function to load ECoG data.
+    2. Use `mne.io.read_raw` function to load SEEG data.
+    3. Use `get_data<ieeg.io.get_data>`_ and `raw_from_layout<ieeg.io.raw_from_layout>`_ functions to load ECoG / SEEG data
 
 """
 
 # %%
-# Example 1
+# Example 1 (BrainVision)
 # ---------
 # ECoG data in BIDS file structure saved in the `BrainVision Core Data Format
-# <https://www.brainproducts.com/support-resources/brainvision-core-data-format-1-0/>'_
+# <https://www.brainproducts.com/support-resources/brainvision-core-data-format-1-0/>`_
 import mne
 from ieeg.io import raw_from_layout
 from bids import BIDSLayout
@@ -26,7 +25,7 @@ raw1 = raw_from_layout(layout, subject="pt1", preload=True, extension=".vhdr")
 raw1.plot()
 
 # %%
-# Example 2
+# Example 2 (FIF)
 # ---------
 # SEEG data saved in the `FIF file format
 # <https://mne.tools/stable/auto_tutorials/io/plot_20_reading_eeg_data.html#sphx-glr-auto-tutorials-io-plot-20-reading-eeg-data-py>`_
@@ -35,12 +34,11 @@ misc_path = mne.datasets.misc.data_path()
 raw2 = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif')
 raw2
 
-
 # %%
-# Actual Data Loading Process
+# Example 3 (EDF)
 # ---------------------------
 # ECoG / SEEG data in BIDS file structure saved in the `European data format
-# <https://www.edfplus.info/specs/edf.html>'_
+# <https://www.edfplus.info/specs/edf.html>`_
 import os
 from ieeg.io import get_data, raw_from_layout
 
@@ -56,7 +54,7 @@ for subject in subjects:
 print(subjects)
 
 # %%
-# The provided examples above do not reflect the actual data loading process used in this script.
+# Examples 1 and 2 above do not reflect the data loading process for CoganLab data.
 #
 # To load the IEEG data, the following steps are taken:
 #
@@ -66,7 +64,7 @@ print(subjects)
 #
 # 2. Set the home directory and the root folder containing the BIDS formatted data.
 #
-# 3. Use the `get_data` function from `ieeg.io` to obtain a BIDSLayout object with the specified root folder and task name.
+# 3. Use the `get_data<ieeg.io.get_data>`_ function to obtain a BIDSLayout object with the specified root folder and task name.
 #
 # 4. Get the list of subjects from the BIDSLayout object.
 #

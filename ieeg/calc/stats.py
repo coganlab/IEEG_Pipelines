@@ -9,18 +9,6 @@ from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
 
 
-def weighted_avg_and_std(values, weights, axis=0):
-    """
-    Return the weighted average and standard deviation.
-
-    values, weights -- NumPy ndarrays with the same shape.
-    """
-    average = np.average(values, weights=weights, axis=axis)
-    # Fast and numerically precise:
-    variance = np.average((values - average) ** 2, weights=weights, axis=axis)
-    return (average, np.sqrt(variance) / np.sqrt(sum(weights) - 1))
-
-
 def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
          where: np.ndarray = None) -> Doubles:
     """ Calculate the mean and standard deviation of a matrix.
@@ -699,13 +687,13 @@ def tail_compare(diff: np.ndarray | float | int,
     """Compare the difference between two groups to the observed difference.
 
     This function applies the appropriate comparison based on the number of
-    tails.
+    tails. The shapes of the two arrays must be broadcastable.
 
     Parameters
     ----------
-    diff : array, shape (..., time)
+    diff : array
         The difference between the two groups.
-    obs_diff : array, shape (..., time)
+    obs_diff : array
         The observed difference between the two groups.
     tails : int, optional
         The number of tails to use. 1 for one-tailed, 2 for two-tailed.
@@ -715,7 +703,32 @@ def tail_compare(diff: np.ndarray | float | int,
     larger : array, shape (..., time)
         The boolean array indicating whether the difference between the two
         groups is larger than the observed difference.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> rand = np.random.default_rng(seed=42)
+    >>> diff1 = rand.random(5) - 0.5
+    >>> diff1
+    array([ 0.27395605, -0.06112156,  0.35859792,  0.19736803, -0.40582265])
+    >>> obs_diff1 = 0.25
+    >>> tail_compare(diff1, obs_diff1)
+    array([ True, False,  True, False, False])
+    >>> tail_compare(diff1, obs_diff1, tails=2)
+    array([ True, False,  True, False,  True])
+    >>> tail_compare(diff1, obs_diff1, tails=-1)
+    array([False,  True, False,  True,  True])
+    >>> tail_compare(diff1, np.array([1, 2])
+    ... ) # doctest: +ELLIPSIS +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+    ValueError: shape mismatch: objects cannot be broadcast to a single ...
     """
+
+    # check if arrays are broadcastable
+    try:
+        np.broadcast(diff, obs_diff)
+    except ValueError as e:
+        raise e
 
     # Account for one or two tailed test
     match tails:
@@ -809,12 +822,13 @@ def sum_squared(x: np.ndarray) -> np.ndarray | float:
 @njit()
 def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
                 ) -> (np.ndarray, np.ndarray):
-    """computes the F-statistic for sine wave in locally-white noise.
+    """Computes the F-statistic for sine wave in locally-white noise.
 
     This function computes the F-statistic for a sine wave in locally-white
     noise. The sine wave is assumed to be of the form:
-    .. math::
-        x(t) = A \\sin(2 \\pi f t + \\phi)
+
+    :math:`x(t) = A \\sin(2 \\pi f t + \\phi)`
+
     where :math:`A` is the amplitude of the sine wave, :math:`f` is the
     frequency of the sine wave, and :math:`\\phi` is the phase of the sine
     wave. The F-statistic is computed by taking the ratio of the variance of
