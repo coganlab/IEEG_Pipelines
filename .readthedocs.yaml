@@ -12,21 +12,6 @@ conda:
 build:
   os: ubuntu-22.04
   apt_packages:
-    - libxcb-image0
-    - libxcb-keysyms1
-    - libxcb-randr0
-    - libxcb-render-util0
-    - libxcb-xinerama0
-    - libxcb-xfixes0
-    - libopengl0
-    - libegl1
-    - libosmesa6
-    - mesa-utils
-    - libxcb-shape0
-    - libxcb-cursor0
-    - libxml2
-    - libxcb-icccm4
-    - libxkbcommon-x11-0
     - libgl1-mesa-glx
     - xvfb
   tools:
@@ -40,7 +25,6 @@ build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
       - python -c "import mne; mne.sys_info()"
-      - bash .github/start_xvfb.sh
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

@@ -25,4 +25,3 @@ dependencies:
   - ipympl
   - pip:
     - naplib
-    - -r testing-reqs.txt
