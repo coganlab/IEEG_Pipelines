@@ -40,7 +40,7 @@ build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
       - python -c "import mne; mne.sys_info()"
-      - bash .github/setup_xvfb.sh
+      - bash .github/start_xvfb.sh
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
