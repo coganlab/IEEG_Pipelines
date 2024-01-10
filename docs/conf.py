@@ -199,7 +199,6 @@ mne.viz.set_3d_backend("pyvistaqt")
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import pyvista
-    # if os.getenv("PYVISTA_OFF_SCREEN", "false").lower() == "true":
     if os.environ.get("READTHEDOCS") == "True":
         pyvista.start_xvfb()
         pyvista.OFF_SCREEN = True
