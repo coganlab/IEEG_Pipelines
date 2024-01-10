@@ -284,7 +284,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
     Parameters
     ----------
     sigs : Union[Signal, list[Signal]]
-        The signal(s) to plot
+        The signal(s) to plot. If a list, all electrodes will be the same color.
+        If a single signal, each electrode will be a different color.
     subj_dir : PathLike, optional
         The subjects directory, by default LAB_root / 'ECoG_Recon'
     rm_wm : bool, optional
@@ -296,7 +297,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
     hemi : str, optional
         The hemisphere to plot, by default 'split'
     color : matplotlib.colors, optional
-        The color to plot, by default (1, 1, 1)
+        The color to plot, by default (1, 1, 1). If None, each electrode group
+        will be a different color.
     size : float, optional
         The size of the markers, by default 0.35
     fig : Brain, optional
@@ -382,7 +384,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
             continue
 
         # select colors
-        if color is (1, 1, 1):
+        if color is None and len(sigs) > 1:
             this_color = []
             p_int = [new.ch_names.index(p) for p in these_picks]
             groups = _group_channels(mne.pick_info(new, p_int))
@@ -569,7 +571,8 @@ def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
     n_groups = len(set(groups.values()))
     if colors is None:
         colors = parula.mat_colors[:n_groups]
-    elif not np.isscalar(colors) or isinstance(colors, tuple):
+    elif (not np.isscalar(colors) and len(colors) != n_groups) \
+            or isinstance(colors, tuple):
         colors = [colors] * n_groups
     else:
         colors = list(colors)

@@ -36,6 +36,17 @@ mne.viz.set_3d_view(fig1, azimuth=150, elevation=70, focalpoint="auto",
 # Plot the data on an average brain
 # ---------------------------------
 
-fig2 = plot_on_average(raw, subj_dir=subjects_dir, rm_wm=False, hemi='both')
+fig2 = plot_on_average([raw], subj_dir=subjects_dir, rm_wm=False, hemi='both')
+mne.viz.set_3d_view(fig2, azimuth=150, elevation=70, focalpoint="auto",
+                    distance="auto")
+
+# %%
+# Plot single subject on average brain
+# ------------------------------------
+
+fig2 = plot_on_average(raw,
+                       subj_dir=subjects_dir,
+                       rm_wm=False,
+                       hemi='both')
 mne.viz.set_3d_view(fig2, azimuth=150, elevation=70, focalpoint="auto",
                     distance="auto")
