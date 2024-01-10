@@ -29,3 +29,5 @@ dependencies:
   - pip:
     - naplib
     - -r testing-reqs.txt
+    - --index-url https://gitlab.kitware.com/api/v4/projects/13/packages/pypi/simple
+    - vtk-osmesa
