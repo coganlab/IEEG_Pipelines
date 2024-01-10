@@ -51,7 +51,7 @@ good.set_eeg_reference()
 # -----------------
 
 # extract the epochs of interest
-ev1 = trial_ieeg(good, "AD1-4, ATT1,2", (-1, 2), preload=True)
+ev1 = trial_ieeg(good, ["PD", "G16", "SLT1-3"], (-1, 2), preload=True)
 base = trial_ieeg(good, "onset", (-1, 0.5), preload=True)
 
 # extract high gamma power
