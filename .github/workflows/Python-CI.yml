@@ -65,6 +65,10 @@ jobs:
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
+      - name: List packages
+        run: |
+          conda list
+          python -c "import mne; mne.sys_info()"
       - name: Test with pytest
         run: |
           pip install envs/dev/testing-reqs.txt
