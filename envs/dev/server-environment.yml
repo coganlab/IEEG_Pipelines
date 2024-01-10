@@ -25,7 +25,6 @@ dependencies:
   - h5io
   - dipy
   - ipympl
-  - ipyevents
   - pip:
     - naplib
     - -r testing-reqs.txt

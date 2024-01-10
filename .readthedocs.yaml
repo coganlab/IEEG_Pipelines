@@ -11,6 +11,9 @@ conda:
 # Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
+  apt_packages:
+    - libgl1-mesa-glx
+    - xvfb
   tools:
     python: "mambaforge-22.9"
     # You can also specify other tool versions:
@@ -22,6 +25,10 @@ build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
       - python -c "import mne; mne.sys_info()"
+      - export DISPLAY=:99.0
+      - export PYVISTA_OFF_SCREEN=True
+      - which Xvfb
+      - Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
