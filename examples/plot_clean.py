@@ -8,7 +8,7 @@ environment checks for SLURM jobs for convenience
 
 import mne
 import os
-from ieeg.io import raw_from_layout
+from ieeg.io import raw_from_layout, save_derivative
 from ieeg.mt_filter import line_filter
 from ieeg.viz.utils import figure_compare
 from bids import BIDSLayout
@@ -32,12 +32,10 @@ raw = raw_from_layout(layout, subject="pt1", preload=True,
                       extension=".vhdr")
 
 # %% filter data
+
 filt = line_filter(raw, mt_bandwidth=10., n_jobs=6,
                    filter_length='700ms', verbose=10,
                    freqs=[60], notch_widths=20)
-# filt2 = line_filter(filt, mt_bandwidth=10., n_jobs=-1,
-#                     filter_length='20s', verbose=10,
-#                     freqs=[60, 120, 180, 240], notch_widths=20)
 
 # %% plot the data
 data = [raw, filt]
@@ -56,5 +54,14 @@ figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
 #  :alt: Filtered
 #
 
-# %% Save the data
-# save_derivative(filt2, layout, "clean")
+# %% Save the data to bids_root / derivatives / test
+
+# Check if derivatives folder exists and create if not
+if not os.path.exists(os.path.join(bids_root, "derivatives")):
+    os.mkdir(os.path.join(bids_root, "derivatives"))
+    os.mkdir(os.path.join(bids_root, "derivatives", "test"))
+elif not os.path.exists(os.path.join(bids_root, "derivatives", "test")):
+    os.mkdir(os.path.join(bids_root, "derivatives", "test"))
+
+# save the data
+save_derivative(filt, layout, "test", True)

@@ -195,7 +195,7 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
 @verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
                     overwrite: bool = False, format: str = 'EDF',
-                    verbose=None):
+                    anonymize: bool = True, verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
@@ -225,8 +225,18 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
         run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i + 1])
+        if anonymize:
+            if isinstance(run, Signal):
+                run.anonymize()
+                anonymize = None
+            else:
+                anonymize = {'daysback': 10000000}
+        else:
+            anonymize = None
+
         write_raw_bids(run, bids_path, allow_preload=True, format=format,
-                       acpc_aligned=True, overwrite=overwrite, verbose=verbose)
+                       acpc_aligned=True, overwrite=overwrite,
+                       anonymize=anonymize, verbose=verbose)
 
 
 def get_bad_chans(fname: str):

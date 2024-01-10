@@ -21,13 +21,11 @@ import warnings
 import gc
 import mne
 import os
-import matplotlib
 from mne.utils import (
     _assert_no_instances, # noqa, analysis:ignore
     sizeof_fmt,
 )
 from mne.viz import Brain # noqa, needed for mne.viz._brain._BrainScraper
-import matplotlib
 
 
 class Resetter(object):
@@ -201,7 +199,8 @@ mne.viz.set_3d_backend("pyvistaqt")
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import pyvista
-    if os.getenv("PYVISTA_OFF_SCREEN", "false").lower() == "true":
+    # if os.getenv("PYVISTA_OFF_SCREEN", "false").lower() == "true":
+    if True:
         pyvista.start_xvfb()
         pyvista.OFF_SCREEN = True
 pyvista.BUILDING_GALLERY = True
@@ -212,7 +211,8 @@ sphinx_gallery_conf = {
     'reference_url': {
         'ieeg': None,
     },
-    "recommender": {"enable": True},
+    "recommender": {"enable": True,
+                    "n_examples": 3},
     # Add ability to link to mini-gallery under each function/class
     # directory where function/class granular galleries are stored
     'backreferences_dir': 'gen_modules/backreferences',
