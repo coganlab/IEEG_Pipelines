@@ -44,15 +44,17 @@ base = out[0]
 base.decimate(2)
 
 del raw
-# %% run time cluster stats
-
-mask1 = stats.time_perm_cluster(resp._data, base._data, 0.05, axis=0,
-                                n_perm=1000, n_jobs=6, ignore_adjacency=1)
-plt.imshow(mask1)
 
 # %% use a windowed average test instead
 
 # response data points are length 201, while baseline is 200. We need to
 # trim the response data to match the baseline with [..., :-1]
-mask2 = stats.window_averaged_shuffle(resp._data[..., :-1], base._data, 1000)
-plt.imshow(mask2[:, None])
+mask1 = stats.window_averaged_shuffle(resp._data[..., :-1], base._data, 1000)
+plt.imshow(mask1[:, None])
+
+# %% run time cluster stats
+
+mask2 = stats.time_perm_cluster(resp._data, base._data, 0.05, axis=0,
+                                n_perm=1000, n_jobs=6, ignore_adjacency=1)
+plt.imshow(mask2)
+
