@@ -20,14 +20,17 @@ from sklearn.model_selection import KFold
 from sklearn.svm import SVC
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-# %% Load Data
+# %%
+# Load Data
+# ---------
 bids_root = mne.datasets.epilepsy_ecog.data_path()
-# sample_path = mne.datasets.sample.data_path()
 layout = BIDSLayout(bids_root)
 raw = raw_from_layout(layout, subject="pt1", preload=True,
                       extension=".vhdr")
 
-# %% Some preprocessing
+# %%
+# Preprocessing
+# -------------
 
 # Mark channel outliers as bad
 channel_outlier_marker(raw, 5)
@@ -37,33 +40,45 @@ raw.drop_channels(raw.info['bads'])
 good = raw.copy()
 good.load_data()
 
-# Remove intermediates from mem
+# Remove intermediates for memory efficiency
 del raw
 
-# CAR
+# CAR (common average reference)
 good.set_eeg_reference()
 
-# %% High Gamma Filter
+# %%
+# High Gamma Filter
+# -----------------
 
-ev1 = trial_ieeg(good, ["PD", "G16", "SLT1-3"], (-1, 2), preload=True)
+# extract the epochs of interest
+ev1 = trial_ieeg(good, "AD1-4, ATT1,2", (-1, 2), preload=True)
 base = trial_ieeg(good, "onset", (-1, 0.5), preload=True)
 
+# extract high gamma power
 gamma.extract(ev1, copy=False, n_jobs=1)
 gamma.extract(base, copy=False, n_jobs=1)
+
+# trim 0.5 seconds on the beginning and end of the data (edge artifacts)
 crop_pad(ev1, "500ms")
 crop_pad(base, "500ms")
 
+# remove intermediates
 del good
-# %% Zac do your stuff
+
+# %%
+# Extract data and labels
+# -----------------------
 
 data1 = ev1.get_data(slice(0, 40)).swapaxes(1, 2)
 data2 = ev1.get_data(slice(41, 81)).swapaxes(1, 2)
 phon_labels = Labels([["AD1-4, ATT1,2", "PD", "G16"]]).T
 
-# %% Decoding
+# %%
+# Decoding
+# --------
+
 n_iter = 5
 cv = KFold(n_splits=3, shuffle=True, random_state=42)
-
 y_true_all, y_pred_all = [], []
 for _ in range(n_iter):  # repeat K-fold evaluation n_iter times
     for train_idx, test_idx in cv.split(data1, phon_labels):
@@ -97,7 +112,9 @@ for _ in range(n_iter):  # repeat K-fold evaluation n_iter times
         y_true_all.extend(y1_test)
         y_pred_all.extend(y_pred)
 
-# %% Results - Confusion Matrix
+# %%
+# Results - Confusion Matrix
+# --------------------------
 cmat = confusion_matrix(y_true_all, y_pred_all)
 disp = ConfusionMatrixDisplay(cmat, display_labels=phon_labels)
 disp.plot()

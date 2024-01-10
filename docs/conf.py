@@ -312,12 +312,10 @@ templates_path = ["_templates"]
 modindex_common_prefix = ["ieeg"]
 
 pygments_style = "sphinx"
-# smartquotes = False
 
 html_theme = "sphinx_rtd_theme"
 html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 html_theme_options = {
-    # 'includehidden': False,
     "collapse_navigation": False,
     "navigation_depth": 4,
     "logo_only": False,

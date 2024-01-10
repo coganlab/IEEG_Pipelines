@@ -14,15 +14,17 @@ from ieeg.viz.parula import parula_map
 import numpy as np
 import mne
 
-# %% Load Data
+# %%
+# Load Data
+# ---------
 bids_root = mne.datasets.epilepsy_ecog.data_path()
-# sample_path = mne.datasets.sample.data_path()
 layout = BIDSLayout(bids_root)
 filt = raw_from_layout(layout, subject="pt1", preload=True,
-                       extension=".vhdr")
+                      extension=".vhdr")
 
-# %% Crop raw data to minimize processing time
-#
+# %%
+# Crop raw data to minimize processing time
+# -----------------------------------------
 new = filt.copy()
 
 # Mark channel outliers as bad
@@ -35,7 +37,9 @@ good.load_data()
 # Remove intermediates from mem
 del new
 
-# %% Calculate spectra
+# %%
+# Calculate spectra
+# -----------------
 for epoch, t in zip(
         ("onset", "offset"),
         ((-1, 0), (-1, 1)),):
@@ -54,5 +58,7 @@ for epoch, t in zip(
         lambda x: np.nanmean(x, axis=0), copy=True)
     spec_a._data = np.log10(spec_a._data) * 20
 
-# %% Plot data
+# %%
+# Plot data
+# ---------
 utils.chan_grid(spec_a, vmin=-2, vmax=20, cmap=parula_map)
