@@ -25,10 +25,7 @@ build:
       - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
       - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
       - python -c "import mne; mne.sys_info()"
-      - export DISPLAY=:99.0
-      - export PYVISTA_OFF_SCREEN=True
-      - which Xvfb
-      - Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+      - bash .github/setup_xvfb.sh
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

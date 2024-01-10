@@ -10,8 +10,6 @@ dependencies:
   - scikit-image
   - pandas
   - numba
-  - vtk[version>=9.2,build=*osmesa*]
-  - mesalib
   - pyvistaqt
   - mne
   - mne-bids
