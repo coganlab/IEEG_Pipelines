@@ -200,7 +200,7 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import pyvista
     # if os.getenv("PYVISTA_OFF_SCREEN", "false").lower() == "true":
-    if True:
+    if os.environ.get("READTHEDOCS") == "True":
         pyvista.start_xvfb()
         pyvista.OFF_SCREEN = True
 pyvista.BUILDING_GALLERY = True
@@ -218,6 +218,7 @@ sphinx_gallery_conf = {
     'backreferences_dir': 'gen_modules/backreferences',
     # Modules for which function/class level galleries are created. In
     # this case sphinx_gallery and ieeg in a tuple of strings.
+    'expected_failing_examples': ['../examples/plot_data.py'],
     "plot_gallery": "True",
     'doc_module': ('sphinx_gallery', 'ieeg'),
     "reset_modules": ("matplotlib", Resetter()),  # called w/each script

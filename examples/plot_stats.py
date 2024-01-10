@@ -55,5 +55,6 @@ plt.imshow(mask1)
 
 # response data points are length 201, while baseline is 200. We need to
 # trim the response data to match the baseline with [..., :-1]
-mask2 = stats.window_averaged_shuffle(resp._data[..., :-1], base._data, 1000)
+mask2 = stats.window_averaged_shuffle(resp._data[..., :-1], base._data, 1000,
+                                      stat_func=stats.mean_diff)
 plt.imshow(mask2[:, None])
