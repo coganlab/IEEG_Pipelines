@@ -284,8 +284,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
     Parameters
     ----------
     sigs : Union[Signal, list[Signal]]
-        The signal(s) to plot. If a list, all electrodes will be the same color.
-        If a single signal, each electrode will be a different color.
+        The signal(s) to plot. If a list, all electrodes will be the same
+        color. If a single signal, each electrode will be a different color.
     subj_dir : PathLike, optional
         The subjects directory, by default LAB_root / 'ECoG_Recon'
     rm_wm : bool, optional
