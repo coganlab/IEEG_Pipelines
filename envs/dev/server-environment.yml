@@ -16,7 +16,6 @@ dependencies:
   - joblib
   - qtpy
   - pybids
-  - nipype
   - EDFlib-Python
   - psutil
   - pytz
