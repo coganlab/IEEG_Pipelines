@@ -24,6 +24,7 @@ dependencies:
   - pytz
   - h5io
   - dipy
+  - ipympl
   - pip:
     - naplib
     - -r testing-reqs.txt
