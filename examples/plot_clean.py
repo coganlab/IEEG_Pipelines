@@ -33,22 +33,34 @@ else:  # if not then set box directory
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 layout = BIDSLayout(bids_root)
-raw = raw_from_layout(layout, subject="pt1", preload=True,
+raw = raw_from_layout(layout,
+                      subject="pt1",
+                      preload=True,
                       extension=".vhdr")
 
 # %%
 # Filter Data
 # -----------
-
-filt = line_filter(raw, mt_bandwidth=10., n_jobs=6,
-                   filter_length='700ms', verbose=10,
-                   freqs=[60], notch_widths=20)
+# A filter length of 700 ms does a good job of removing 60Hz line noise, while
+# a Filter length of 20000 ms does a good job of removing the harmonics (120Hz,
+# 180Hz, 240Hz)
+filt = line_filter(raw,
+                   mt_bandwidth=10.,
+                   n_jobs=6,
+                   filter_length='700ms',
+                   verbose=10,
+                   freqs=[60],
+                   notch_widths=20)
 
 # %%
 # plot the data before and after filtering
-data = [raw, filt]
-figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
-                   verbose=10, proj=True, fmax=250)
+figure_compare([raw, filt],
+               labels=["Un", ""],
+               avg=True,
+               n_jobs=6,
+               verbose=10,
+               proj=True,
+               fmax=250)
 
 # %%
 # Our Data Unfiltered
@@ -71,7 +83,7 @@ figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
 # %%
 # Save the Data
 # -------------
-# to bids_root/derivatives/test folder
+# Save your line noise cleaned data to `bids_root`/derivatives/test folder
 
 # Check if derivatives folder exists and create if not
 if not os.path.exists(os.path.join(bids_root, "derivatives")):

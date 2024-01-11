@@ -3,7 +3,7 @@ Time Permutation Cluster Statistics
 ===================================
 
 Below is a code sample for performing a permutation test with cluster
-correction
+correction, as well as using the window averaged test.
 """
 from ieeg.navigate import channel_outlier_marker, trial_ieeg
 from ieeg.timefreq.utils import crop_pad

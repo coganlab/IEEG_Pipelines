@@ -2,7 +2,7 @@
 Morlet Wavelet spectrogram plot
 ===============================
 
-Below is a code sample for plotting spectrograms
+Below is a code sample for plotting wavelet spectrograms
 """
 from ieeg.viz import utils
 from bids import BIDSLayout

@@ -25,7 +25,9 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 # ---------
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 layout = BIDSLayout(bids_root)
-raw = raw_from_layout(layout, subject="pt1", preload=True,
+raw = raw_from_layout(layout,
+                      subject="pt1",
+                      preload=True,
                       extension=".vhdr")
 
 # %%
@@ -35,7 +37,7 @@ raw = raw_from_layout(layout, subject="pt1", preload=True,
 # Mark channel outliers as bad
 channel_outlier_marker(raw, 5)
 
-# Exclude bad channels
+# Exclude bad channels, then load the good channels into memory
 raw.drop_channels(raw.info['bads'])
 good = raw.copy()
 good.load_data()

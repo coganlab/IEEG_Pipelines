@@ -18,7 +18,9 @@ import mne
 # ---------
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 layout = BIDSLayout(bids_root)
-raw = raw_from_layout(layout, subject="pt1", preload=True,
+raw = raw_from_layout(layout,
+                      subject="pt1",
+                      preload=True,
                       extension=".vhdr")
 
 # %%
@@ -42,14 +44,24 @@ good.set_eeg_reference()
 # %%
 # High Gamma Filter
 # -----------------
+# Extract the epochs of interest
 
-# extract the epochs of interest
-ev1 = trial_ieeg(good, "AD1-4, ATT1,2", (-1, 2), preload=True)
-base = trial_ieeg(good, "onset", (-1, 0.5), preload=True)
+ev1 = trial_ieeg(good,
+                 event="AD1-4, ATT1,2",
+                 times=(-1, 2),
+                 preload=True)
+base = trial_ieeg(good,
+                  event="onset",
+                  times=(-1, 0.5),
+                  preload=True)
 
 # extract high gamma power
-gamma.extract(ev1, copy=False, n_jobs=1)
-gamma.extract(base, copy=False, n_jobs=1)
+gamma.extract(ev1,
+              copy=False,
+              n_jobs=1)
+gamma.extract(base,
+              copy=False,
+              n_jobs=1)
 
 # trim 0.5 seconds on the beginning and end of the data (edge artifacts)
 crop_pad(ev1, "500ms")
@@ -58,8 +70,11 @@ crop_pad(base, "500ms")
 # %%
 # Baseline Normalization
 # ----------------------
+# Z-score normalize `ev1` in-place to save memory
 
-rescale(ev1, base, 'zscore', copy=False)
+rescale(ev1, base,
+        mode='zscore',
+        copy=False)
 
 # %%
 # Plotting

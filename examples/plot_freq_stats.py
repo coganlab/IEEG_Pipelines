@@ -36,7 +36,9 @@ for epoch, t in zip(('Fixation', 'Response'),  # epochs to extract
     trials = trial_ieeg(raw, epoch, times, preload=True)
     # values greater than 10 standard deviations from the mean are set to NaN
     outliers_to_nan(trials, 10)
-    spec = wavelet_scaleogram(trials, n_jobs=-2, decim=20)
+    spec = wavelet_scaleogram(trials,
+                              n_jobs=-2,
+                              decim=20)
     # trim 0.5 seconds on the beginning and end of the data (edge artifacts)
     crop_pad(spec, "0.5s")
     out.append(spec)
@@ -48,7 +50,9 @@ base = out[0]
 # -----------------------
 
 mask = stats.time_perm_cluster(resp._data, base._data,
-                               0.1, ignore_adjacency=1, n_perm=2000)
+                               p_thresh=0.1,
+                               ignore_adjacency=1,  # ignore channel adjacency
+                               n_perm=2000)
 
 # %%
 # Plot the Time-Frequency Clusters
