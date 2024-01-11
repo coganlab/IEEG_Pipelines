@@ -5,7 +5,8 @@ Multitaper spectrogram plot
 Below is a code sample for plotting spectrograms
 """
 from ieeg.viz import utils
-from ieeg.timefreq.multitaper import spectrogram, crop_pad
+from ieeg.timefreq.multitaper import spectrogram
+from ieeg.timefreq.utils import crop_pad
 from ieeg.navigate import channel_outlier_marker
 from ieeg.viz.parula import parula_map
 import numpy as np

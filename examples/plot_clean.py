@@ -18,7 +18,6 @@ from bids import BIDSLayout
 # ------------
 HOME = os.path.expanduser("~")
 
-# %%
 # check if currently running a slurm job
 # if so, set the root directory to the workspace
 if 'SLURM_ARRAY_TASK_ID' in os.environ.keys():
@@ -31,6 +30,7 @@ else:  # if not then set box directory
 # %%
 # Load Data
 # ---------
+
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 layout = BIDSLayout(bids_root)
 raw = raw_from_layout(layout, subject="pt1", preload=True,
@@ -52,6 +52,8 @@ figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
 
 # %%
 # Our Data Unfiltered
+# -------------------
+#
 # .. image:: ../../examples/unfilt.png
 #  :width: 400
 #  :alt: Unfiltered
@@ -59,6 +61,8 @@ figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
 
 # %%
 # Our Data Filtered
+# -----------------
+#
 # .. image:: ../../examples/filt.png
 #  :width: 400
 #  :alt: Filtered
@@ -67,7 +71,7 @@ figure_compare(data, ["Un", ""], avg=True, n_jobs=6,
 # %%
 # Save the Data
 # -------------
-# to bids_root / derivatives / test
+# to bids_root/derivatives/test folder
 
 # Check if derivatives folder exists and create if not
 if not os.path.exists(os.path.join(bids_root, "derivatives")):

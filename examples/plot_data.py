@@ -2,12 +2,19 @@
 Load IEEG Data Example
 ======================
 
-This example demonstrates the discrepancy between the provided examples and the actual data loading process.
+This example demonstrates the discrepancy between the provided examples and the
+ actual data loading process.
 
 The provided examples:
-    1. Use `raw_from_layout<ieeg.io.raw_from_layout>`_ function to load ECoG data.
+    1. Use `raw_from_layout` function to load ECoG data.
     2. Use `mne.io.read_raw` function to load SEEG data.
-    3. Use `get_data<ieeg.io.get_data>`_ and `raw_from_layout<ieeg.io.raw_from_layout>`_ functions to load ECoG / SEEG data
+    3. Use `get_data` and `raw_from_layout` functions to load ECoG / SEEG data
+
+Only example 3 is representative of the actual data loading process for
+CoganLab data. The other two examples are provided for comparison purposes, as
+well as because CoganLab data cannot be loaded in these docs. Going forward, we
+will be using examples 1 and 2 to demonstrate the data loading process, while
+you should use example 3 to load CoganLab data.
 
 """
 
