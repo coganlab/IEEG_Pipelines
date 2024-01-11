@@ -70,18 +70,14 @@ print(subjects)
 #
 # To load the IEEG data, the following steps are taken:
 #
-# 1. Import the necessary modules:
-#     - `ieeg.io` module for data loading functions.
-#     - `os` module for file path manipulation.
-# 2. Set the home directory and the root folder containing the
-#   BIDS formatted data.
-# 3. Use the `get_data` function to obtain a BIDSLayout object
-#   with the specified root folder and task name.
-# 4. Get the list of subjects from the BIDSLayout object.
-# 5. Iterate over each subject and perform the desired operations
-#   on the subject data.
+#     1. Import the necessary modules:
+#         - `ieeg.io` module for data loading functions.
+#         - `os` module for file path manipulation.
+#     2. Set the home directory and the root folder containing the BIDS formatted data.
+#     3. Use the `get_data` function to obtain a BIDSLayout object with the specified root folder and task name.
+#     4. Get the list of subjects from the BIDSLayout object.
+#     5. Iterate over each subject and perform the desired operations on the subject data.
 #
 # .. note:: The actual code provided above is not executable as it
 #   contains placeholders and references to specific file paths
 #   on the user's computer.
-#
