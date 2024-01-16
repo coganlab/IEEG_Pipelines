@@ -8,10 +8,9 @@ environment checks for SLURM jobs for convenience
 
 import mne
 import os
-from ieeg.io import raw_from_layout, save_derivative
+from ieeg.io import save_derivative
 from ieeg.mt_filter import line_filter
 from ieeg.viz.utils import figure_compare
-from bids import BIDSLayout
 
 # %%
 # Set up paths
@@ -31,12 +30,8 @@ else:  # if not then set box directory
 # Load Data
 # ---------
 
-bids_root = mne.datasets.epilepsy_ecog.data_path()
-layout = BIDSLayout(bids_root)
-raw = raw_from_layout(layout,
-                      subject="pt1",
-                      preload=True,
-                      extension=".vhdr")
+misc_path = mne.datasets.misc.data_path()
+raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif', preload=True)
 
 # %%
 # Filter Data
@@ -63,27 +58,10 @@ figure_compare([raw, filt],
                fmax=250)
 
 # %%
-# Our Data Unfiltered
-# -------------------
-#
-# .. image:: ../../examples/unfilt.png
-#  :width: 400
-#  :alt: Unfiltered
-#
-
-# %%
-# Our Data Filtered
-# -----------------
-#
-# .. image:: ../../examples/filt.png
-#  :width: 400
-#  :alt: Filtered
-#
-
-# %%
 # Save the Data
 # -------------
 # Save your line noise cleaned data to `bids_root`/derivatives/test folder
+bids_root = mne.datasets.epilepsy_ecog.data_path()
 
 # Check if derivatives folder exists and create if not
 if not os.path.exists(os.path.join(bids_root, "derivatives")):
