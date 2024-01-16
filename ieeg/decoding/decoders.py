@@ -2,6 +2,7 @@
 
 import numpy as np
 from numpy.linalg import inv as inv  # Used in kalman filter
+from joblib import Parallel, delayed
 
 # Used for naive bayes decoder
 try:
@@ -1981,3 +1982,33 @@ class PcaEstimateDecoder(BaseEstimator):
 
         """
         return accuracy_score(y, self.predict(X), sample_weight=sample_weight)
+
+
+# %% sliding window decoder mixins
+
+class SlidingWindowMixIn(object):
+    def sliding_window(self, x_data: np.ndarray, labels: np.ndarray,
+                       scorer: callable = None,
+                       window_size: int = 20, axis: int = -1,
+                       n_jobs: int = -3, **kwargs) -> np.ndarray:
+
+        if scorer is None:
+            scorer = self.fit_predict
+        # make windowing generator
+        axis = x_data.ndim + axis if axis < 0 else axis
+        slices = (slice(start, start + window_size)
+                  for start in range(0, x_data.shape[axis] - window_size))
+        idxs = (tuple(slice(None) if i != axis else sl for i in
+                      range(x_data.ndim)) for sl in slices)
+
+        # initialize output array
+        n_cats = len(self.categories)
+        out = np.zeros((x_data.shape[axis] - window_size, self.cv.n_repeats, n_cats, n_cats))
+
+        # Use joblib to parallelize the computation
+        gen = Parallel(n_jobs=n_jobs, return_as='generator', verbose=40)(
+            delayed(scorer)(x_data[idx], labels, **kwargs) for idx in idxs)
+        for i, mat in enumerate(gen):
+            out[i] = mat
+
+        return out
