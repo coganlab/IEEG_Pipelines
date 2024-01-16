@@ -269,10 +269,76 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
 
 
 def get_mem() -> Union[float, int]:
-    """Get the amount of memory to use for parallelization."""
+    """Get the amount of memory to use for parallelization.
+
+    Returns
+    -------
+    float | int
+        The amount of memory to use for parallelization
+    """
     from psutil import virtual_memory
     ram_per = virtual_memory().available / cpu_count()
     return ram_per
+
+
+def sliding_window(x_data: np.ndarray, labels: np.ndarray,
+                   scorer: callable, window_size: int = 20, axis: int = -1,
+                   n_jobs: int = -3, **kwargs) -> np.ndarray:
+    """Compute a function over a sliding window.
+
+    Parameters
+    ----------
+    x_data : np.ndarray, shape (..., trials, time)
+        The data to compute the function over
+    labels : np.ndarray, shape (trials,)
+        The labels for each trial
+    scorer : callable
+        The function to compute over the sliding window. Must take two
+        arguments, the data and the labels.
+    window_size : int
+        The size of the sliding window
+    axis : int
+        The axis to compute the sliding window over
+    n_jobs : int
+        The number of jobs to run in parallel
+
+    Returns
+    -------
+    np.ndarray
+        The output of the function, shape (..., time - window_size + 1)
+
+    Examples
+    --------
+    >>> def square(x, labels):
+    ...     return np.mean(x ** 2, where=labels == 1)
+    >>> x_data = np.arange(40).reshape(4, 10)
+    >>> labels = np.array([0, 1, 1])
+    >>> sliding_window(x_data, labels, square, window_size=3)
+    array([397.5, 431.5, 467.5, 505.5, 545.5, 587.5, 631.5])
+    """
+
+    # make windowing generator
+    axis = x_data.ndim + axis if axis < 0 else axis
+    slices = (slice(start, start + window_size)
+              for start in range(0, x_data.shape[axis] - window_size))
+    idxs = (tuple(slice(None) if i != axis else sl for i in
+                  range(x_data.ndim)) for sl in slices)
+
+    # Use joblib to parallelize the computation
+    gen = Parallel(n_jobs=n_jobs, return_as='generator', verbose=40)(
+        delayed(scorer)(x_data[idx], labels, **kwargs) for idx in idxs)
+
+    # initialize output array by running 1 job and get the shape
+    mat = next(gen)
+    out = np.zeros((x_data.shape[axis] - window_size, *mat.shape),
+                   dtype=mat.dtype)
+    out[0] = mat
+
+    # fill in the rest of the output array
+    for i, mat in enumerate(gen):
+        out[i + 1] = mat
+
+    return out
 
 
 ###############################################################################
