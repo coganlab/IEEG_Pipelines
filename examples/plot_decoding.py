@@ -24,7 +24,8 @@ import matplotlib.pyplot as plt
 # Load Data
 # ---------
 misc_path = mne.datasets.misc.data_path()
-raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif', preload=True)
+raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif',
+                      preload=True)
 
 # %%
 # Filter the data to remove line noise
@@ -32,9 +33,9 @@ raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif', preload=True)
 
 line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
             filter_length='700ms', freqs=[60], notch_widths=20)
-line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
-            filter_length='7s', freqs=[60, 120, 180, 240],
-            notch_widths=20)
+# line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
+#             filter_length='7s', freqs=[60, 120, 180, 240],
+#             notch_widths=20)
 raw.plot()
 
 # %%
@@ -51,17 +52,16 @@ good.load_data()
 
 # CAR (common average reference)
 good.set_eeg_reference()
+del raw
 
 # %%
 # High Gamma Filter
 # -----------------
 
 # extract the epochs of interest
-# picks = ['LPIT 5', 'LPIT 6', 'LPIT 7']
-picks=None
 ev1 = trial_ieeg(good, ["Fixation", "ISI Onset", "Go Cue", "Response"],
-                 (-0.6, 0.7), preload=True, picks=picks)
-base = trial_ieeg(good, "Fixation", (-1, 0.5), preload=True, picks=picks)
+                 (-0.6, 0.7), preload=True)
+base = trial_ieeg(good, "Fixation", (-1, 0.5), preload=True)
 
 outliers_to_nan(ev1, outliers=10)
 outliers_to_nan(base, outliers=10)
@@ -91,33 +91,28 @@ arr = LabeledArray.from_signal(ev1)
 # ----------------
 
 
-class Decoder(PcaLdaClassification):
+class Decoder(PcaLdaClassification, MinimumNaNSplit):
 
     def __init__(self, categories: dict, *args,
-                 cv=MinimumNaNSplit,
                  n_splits: int = 5,
                  n_repeats: int = 10,
                  oversample: bool = True,
                  max_features: int = float("inf"),
                  **kwargs):
-        super().__init__(*args, **kwargs)
-        self.cv = cv(n_splits=n_splits, n_repeats=n_repeats)
+        PcaLdaClassification.__init__(self, *args, **kwargs)
+        MinimumNaNSplit.__init__(self, n_splits, n_repeats)
+        if not oversample:
+            self.oversample = lambda x, func, axis: x
         self.categories = categories
         self.max_features = max_features
 
-        if not oversample:
-            self.oversample = lambda x, axis: x
-        else:
-            self.oversample = cv.oversample
-
     def cv_cm(self, x_data: np.ndarray, labels: np.ndarray,
               normalize: str = None, obs_axs: int = -2):
-        cv = self.cv
         n_cats = len(set(labels))
-        mats = np.zeros((cv.n_repeats, cv.n_splits, n_cats, n_cats))
+        mats = np.zeros((self.n_repeats, self.n_splits, n_cats, n_cats))
         obs_axs = x_data.ndim + obs_axs if obs_axs < 0 else obs_axs
         idx = [slice(None) for _ in range(x_data.ndim)]
-        for f, (train_idx, test_idx) in enumerate(cv.split(x_data.swapaxes(
+        for f, (train_idx, test_idx) in enumerate(self.split(x_data.swapaxes(
                 0, obs_axs), labels)):
             x_train = np.take(x_data, train_idx, obs_axs)
             x_test = np.take(x_data, test_idx, obs_axs)
@@ -128,7 +123,8 @@ class Decoder(PcaLdaClassification):
                 # existing train data trials (mixup)
                 idx[obs_axs] = y_train == i
                 x_train[tuple(idx)] = self.oversample(x_train[tuple(idx)],
-                                                      axis=obs_axs, func=mixupnd)
+                                                      axis=obs_axs,
+                                                      func=mixupnd)
 
             # fill in test data nans with noise from distribution
             is_nan = np.isnan(x_test)
@@ -146,7 +142,7 @@ class Decoder(PcaLdaClassification):
             # fit model and score results
             self.fit(train_in, y_train)
             pred = self.predict(test_in)
-            rep, fold = divmod(f, cv.n_splits)
+            rep, fold = divmod(f, self.n_splits)
             mats[rep, fold] = confusion_matrix(y_test, pred)
 
         # average the repetitions, sum the folds
@@ -156,7 +152,7 @@ class Decoder(PcaLdaClassification):
         elif normalize == 'pred':
             divisor = np.sum(matk, axis=-2, keepdims=True)
         elif normalize == 'all':
-            divisor = cv.n_repeats
+            divisor = self.n_repeats
         else:
             divisor = 1
         return matk / divisor
@@ -173,13 +169,13 @@ def flatten_features(arr: np.ndarray, obs_axs: int = -2) -> np.ndarray:
 
 def classes_from_labels(labels: np.ndarray, delim: str = '-', which: int = 0,
                         crop: slice = slice(None)) -> tuple[dict, np.ndarray]:
-    class_ids = np.array([k.split(delim, )[which][crop] for k in labels])
+    class_ids = np.array([k.split(delim)[which][crop] for k in labels])
     classes = {k: i for i, k in enumerate(np.unique(class_ids))}
     return classes, np.array([classes[k] for k in class_ids])
 
 
 cats, labels = classes_from_labels(arr.labels[0])
-decoder = Decoder(cats, 0.99, oversample=True, n_splits=5, n_repeats=100)
+decoder = Decoder(cats, 0.80, oversample=True, n_splits=5, n_repeats=100)
 cm = decoder.cv_cm(arr.__array__().swapaxes(0, 1), labels, normalize='true')
 cm = np.mean(cm, axis=0)
 
