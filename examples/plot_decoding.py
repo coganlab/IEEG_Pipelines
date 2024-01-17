@@ -27,12 +27,14 @@ misc_path = mne.datasets.misc.data_path()
 raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif', preload=True)
 
 # %%
+# Filter the data to remove line noise
+# ------------------------------------
 
 line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
             filter_length='700ms', freqs=[60], notch_widths=20)
-# line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
-#             filter_length='20s', freqs=[60, 120, 180, 240],
-#             notch_widths=20)
+line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
+            filter_length='7s', freqs=[60, 120, 180, 240],
+            notch_widths=20)
 raw.plot()
 
 # %%
@@ -40,7 +42,7 @@ raw.plot()
 # -------------
 
 # Mark channel outliers as bad
-channel_outlier_marker(raw, 5, 2)
+channel_outlier_marker(raw, 3, 2)
 
 # Exclude bad channels, then load the good channels into memory
 raw.drop_channels(raw.info['bads'])
@@ -178,7 +180,6 @@ def classes_from_labels(labels: np.ndarray, delim: str = '-', which: int = 0,
 
 cats, labels = classes_from_labels(arr.labels[0])
 decoder = Decoder(cats, 0.99, oversample=True, n_splits=5, n_repeats=100)
-non_nan = ~np.any(np.isnan(arr), axis=(1, 2))
 cm = decoder.cv_cm(arr.__array__().swapaxes(0, 1), labels, normalize='true')
 cm = np.mean(cm, axis=0)
 
