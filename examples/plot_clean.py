@@ -11,6 +11,7 @@ import os
 from ieeg.io import save_derivative
 from ieeg.mt_filter import line_filter
 from ieeg.viz.utils import figure_compare
+from bids import BIDSLayout
 
 # %%
 # Set up paths
@@ -62,6 +63,7 @@ figure_compare([raw, filt],
 # -------------
 # Save your line noise cleaned data to `bids_root`/derivatives/test folder
 bids_root = mne.datasets.epilepsy_ecog.data_path()
+layout = BIDSLayout(bids_root)
 
 # Check if derivatives folder exists and create if not
 if not os.path.exists(os.path.join(bids_root, "derivatives")):
