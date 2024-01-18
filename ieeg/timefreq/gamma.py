@@ -44,6 +44,38 @@ def extract(data: np.ndarray, fs: int = None,
     convenience function for extracting the gamma envelope from data. It is
     optimized for speed, but not memory. If you have a lot of data, you may
     want to epoch your data first and then extract the envelope.
+
+    Examples
+    --------
+    >>> import mne
+    >>> import numpy as np
+    >>> from bids import BIDSLayout
+    >>> from ieeg.navigate import trial_ieeg
+    >>> from ieeg.io import raw_from_layout
+    >>> from ieeg.timefreq.utils import crop_pad
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1",
+    ... preload=True, extension=".vhdr", verbose=False) # doctest: +ELLIPSIS
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> trials = trial_ieeg(raw, "AD1-4, ATT1,2", (-0.5, 1),
+    ... preload=True, verbose=False, picks=['AD2'])
+    >>> gamma = extract(trials, n_jobs=1)
+    >>> crop_pad(gamma, "0.5s") # doctest: +ELLIPSIS
+    <Epochs |  1 events (all good), 0 – 0.5 s, baseline off, ~44 kB,...
+     'AD1-4, ATT1,2': 1>
+    >>> gamma.resample(100) # doctest: +ELLIPSIS
+    <Epochs |  1 events (all good), 0 – 0.49 s, baseline off, ~41 kB,...
+     'AD1-4, ATT1,2': 1>
+    >>> expected = np.array([
+    ... 3.5729, 3.8323, 4.0820, 5.4100, 8.0623, 12.579, 20.280, 31.027, 43.918,
+    ... 56.523, 65.739, 68.678, 64.378, 54.357, 42.245, 32.177, 26.568, 23.578,
+    ... 20.584, 17.003, 13.105, 9.6693, 6.9391, 4.8671, 3.6392, 3.0246, 2.8268,
+    ... 2.9109, 3.2376, 3.6906, 4.1659, 4.5842, 4.9949, 5.3240, 6.0321, 7.1968,
+    ... 8.0531, 8.4710, 8.3094, 7.8219, 7.3717, 7.1496, 7.0281, 7.0632, 7.0525,
+    ... 7.2997, 7.7566, 7.7874, 7.3208, 6.4729]) * 1e-05
+    >>> np.abs(np.sum(gamma._data - expected)) < 1e-6
+    True
     """
 
     if fs is None:
@@ -99,6 +131,7 @@ def _extract_inst(inst: Signal, fs: int, copy: bool, **kwargs) -> Signal:
 def _(inst: base.BaseRaw, fs: int = None,
       passband: tuple[int, int] = (70, 150),
       copy: bool = True, n_jobs=-1, verbose: bool = True) -> Raw:
+    """Extract gamma band envelope from Raw object."""
     return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
                          verbose=verbose)
 
@@ -107,6 +140,7 @@ def _(inst: base.BaseRaw, fs: int = None,
 def _(inst: BaseEpochs, fs: int = None,
       passband: tuple[int, int] = (70, 150),
       copy: bool = True, n_jobs=-1, verbose: bool = True) -> Epochs:
+    """Extract gamma band envelope from Epochs object."""
     return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
                          verbose=verbose)
 
@@ -115,6 +149,7 @@ def _(inst: BaseEpochs, fs: int = None,
 def _(inst: Evoked, fs: int = None,
       passband: tuple[int, int] = (70, 150),
       copy: bool = True, n_jobs=-1, verbose: bool = True) -> Evoked:
+    """Extract gamma band envelope from Evoked object."""
     return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
                          verbose=verbose)
 

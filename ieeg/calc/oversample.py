@@ -309,7 +309,8 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
             func(arr, axis)
         return arr
 
-    def shuffle_labels(self, arr: np.ndarray, labels: np.ndarray, trials_ax: int = 1):
+    def shuffle_labels(self, arr: np.ndarray, labels: np.ndarray,
+                       trials_ax: int = 1):
         """Shuffle the labels while making sure that the minimum non nan
         trials are kept
 
