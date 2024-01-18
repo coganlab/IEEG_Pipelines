@@ -309,6 +309,39 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
             func(arr, axis)
         return arr
 
+    def shuffle_labels(self, arr: np.ndarray, labels: np.ndarray,
+                       trials_ax: int = 1):
+        """Shuffle the labels while making sure that the minimum non nan
+        trials are kept
+
+        Parameters
+        ----------
+        arr : array
+            The data to shuffle.
+        labels : array
+            The labels to shuffle.
+        trials_ax : int
+            The axis along which to apply func.
+
+        Examples
+        --------
+        >>> np.random.seed(0)
+        >>> arr = np.array([[[1, 2], [4, 5], [7, 8],
+        ... [float("nan"), float("nan")]]])
+        >>> labels = np.array([0, 0, 1, 1])
+        >>> MinimumNaNSplit(1).shuffle_labels(arr, labels)
+        >>> labels
+        array([1, 1, 0, 0])
+        """
+        cats = np.unique(labels)
+        gt_labels = [0] * cats.shape[0]
+        while not all(g >= self.n_splits for g in gt_labels):
+            np.random.shuffle(labels)
+            for j, l in enumerate(cats):
+                eval_arr = np.take(arr, np.flatnonzero(labels == l), trials_ax)
+                gt_labels[j] = np.min(np.sum(
+                    np.all(~np.isnan(eval_arr), axis=2), axis=trials_ax))
+
 
 def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
                    copy: bool = True) -> np.ndarray:

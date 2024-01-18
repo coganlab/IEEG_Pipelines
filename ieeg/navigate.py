@@ -180,7 +180,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     --------
     >>> import mne
     >>> from ieeg.io import raw_from_layout
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=50)
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)

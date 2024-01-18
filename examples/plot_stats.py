@@ -57,9 +57,13 @@ del raw
 # Time Cluster Stats
 # ------------------
 
-mask1 = stats.time_perm_cluster(resp._data, base._data, 0.05, axis=0,
-                                n_perm=1000, n_jobs=6, ignore_adjacency=1)
-plt.imshow(mask1)
+mask1 = stats.time_perm_cluster(resp._data, base._data,
+                                p_thresh=0.05,
+                                axis=0,
+                                n_perm=1000,
+                                n_jobs=6,
+                                ignore_adjacency=1)
+fig1 = plt.imshow(mask1)
 
 # %%
 # Windowed Average Test (alternative test)
@@ -67,6 +71,7 @@ plt.imshow(mask1)
 
 # response data points are length 201, while baseline is 200. We need to
 # trim the response data to match the baseline with [..., :-1]
-mask2 = stats.window_averaged_shuffle(resp._data[..., :-1], base._data, 1000,
+mask2 = stats.window_averaged_shuffle(resp._data[..., :-1], base._data,
+                                      n_perm=1000,
                                       stat_func=stats.mean_diff)
-plt.imshow(mask2[:, None])
+fig2 = plt.imshow(0.05 >= mask2[:, None])
