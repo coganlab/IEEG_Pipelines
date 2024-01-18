@@ -64,7 +64,7 @@ def extract(data: np.ndarray, fs: int = None,
     >>> crop_pad(gamma, "0.5s") # doctest: +ELLIPSIS
     <Epochs |  1 events (all good), 0 – 0.5 s, baseline off, ~44 kB,...
      'AD1-4, ATT1,2': 1>
-    >>> gamma.resample(100) # doctest: +ELLIPSIS
+    >>> gamma.resample(100, verbose=50) # doctest: +ELLIPSIS
     <Epochs |  1 events (all good), 0 – 0.49 s, baseline off, ~41 kB,...
      'AD1-4, ATT1,2': 1>
     >>> expected = np.array([
