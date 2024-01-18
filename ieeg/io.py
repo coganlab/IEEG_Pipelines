@@ -221,6 +221,8 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         entities = parse_file_entities(file)
         if 'desc' in entities.keys():
             entities['description'] = entities.pop('desc')
+        if 'subject' not in entities.keys():
+            entities['subject'] = inst.info['subject_info']['his_id']
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
