@@ -224,6 +224,8 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         if 'subject' not in entities.keys():
             sub = inst.info['subject_info']['his_id']
             entities['subject'] = sub[slice(4, None)]
+        if 'task' not in entities.keys():
+            entities['task'] = ''
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
