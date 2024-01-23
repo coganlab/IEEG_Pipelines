@@ -1,5 +1,4 @@
 bids>=0.0
-naplib
 EDFlib-Python
 mne
 mne-bids

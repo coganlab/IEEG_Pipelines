@@ -22,5 +22,3 @@ dependencies:
   - h5io
   - dipy
   - ipympl
-  - pip:
-    - naplib
