@@ -310,7 +310,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         return arr
 
     def shuffle_labels(self, arr: np.ndarray, labels: np.ndarray,
-                       trials_ax: int = 1, min: int = None):
+                       trials_ax: int = 1, min_trials: int = None):
         """Shuffle the labels while making sure that the minimum non nan
         trials are kept
 
@@ -322,7 +322,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
             The labels to shuffle.
         trials_ax : int
             The axis along which to apply func.
-        min : int
+        min_trials : int
             The minimum number of non-nan trials to keep. By default,
             self.n_splits
 
@@ -338,21 +338,22 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         """
         cats = np.unique(labels)
         gt_labels = [0] * cats.shape[0]
-        if min is None:
-            min = self.n_splits
+        if min_trials is None:
+            min_trials = self.n_splits
         i = 0
-        while not all(g >= min for g in gt_labels):
+        while not all(g >= min_trials for g in gt_labels):
             np.random.shuffle(labels)
             for j, l in enumerate(cats):
                 eval_arr = np.take(arr, np.flatnonzero(labels == l), trials_ax)
                 gt_labels[j] = np.min(np.sum(
                     np.all(~np.isnan(eval_arr), axis=2), axis=trials_ax))
-            if sum(gt_labels) < min * cats.shape[0]:
+            if sum(gt_labels) < min_trials * cats.shape[0]:
                 raise ValueError("Not enough non-nan trials to shuffle")
             i += 1
             if i > 100000:
                 raise ValueError("Could not find a shuffle that satisfies the"
-                                 f" minimum number of non-nan trials {gt_labels}")
+                                 " minimum number of non-nan trials "
+                                 f"{gt_labels}")
 
 
 def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
