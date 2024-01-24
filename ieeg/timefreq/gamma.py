@@ -368,7 +368,7 @@ def filterbank_hilbert(x, fs, Wn=[70,150], n_jobs=1):
 
     # process channels sequentially
     if n_jobs == 1:
-        for chn in trange(x.shape[1], disable=loggerDisabled()):
+        for chn in range(x.shape[1]):
             hilb_phase[:,chn], hilb_amp[:,chn] = extract_channel(Xf[:,chn])
     # process channels in parallel
     else:
@@ -388,13 +388,3 @@ def _vectorized_band_hilbert(X_fft, h, N, freqs, cfs, sds) -> NDArray:
     H = np.multiply(H, h)
     
     return ifft(X_fft[:,np.newaxis] * H, N, axis=0).astype('complex64')
-
-def loggerDisabled() -> logging.Logger:
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-
-    _console = logging.StreamHandler()
-    _console.setLevel(logging.INFO)
-    _console.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-    logger.addHandler(_console)
-    return not logger.isEnabledFor(logging.DEBUG)
