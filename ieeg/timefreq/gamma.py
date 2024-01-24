@@ -8,7 +8,6 @@ from numpy.typing import NDArray
 from scipy.fft import fft, ifft
 from tqdm.auto import trange
 from joblib import Parallel, delayed
-import logging
 
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
 from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
