@@ -5,6 +5,7 @@ mne-bids
 numpy
 matplotlib
 scipy
+scikit-learn
 scikit-image
 pandas
 joblib>=1.3
