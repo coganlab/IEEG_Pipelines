@@ -149,7 +149,7 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     <EpochsTFR | time : [-1.000000, 2.000000], freq : [2.079716, 1064.814640...
 
     """
-    data = inst.get_data(copy=False)
+    data = inst.get_data() #delete copy=False
 
     f = np.fft.fft(data - np.mean(data, axis=-1, keepdims=True))
 
