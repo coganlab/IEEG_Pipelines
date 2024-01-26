@@ -279,9 +279,9 @@ def filterbank_hilbert(x, fs, Wn=[70,150], n_jobs=1):
     (1000, 3, 42)
     >>> x_envelope.shape
     (1000, 3, 42)
-    >>> freqs[0] # center frequency of first filter bank filter
+    >>> round(freqs[0], 8) # center frequency of first filter bank filter
     1.21558792
-    >>> freqs[-1] # center frequency of last filter bank filter
+    >>> round(freqs[-1], 8) # center frequency of last filter bank filter
     143.97075186
     
     '''
