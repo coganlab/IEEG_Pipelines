@@ -270,12 +270,10 @@ def filterbank_hilbert(x, fs, Wn=[70,150], n_jobs=1):
         Center frequencies for each frequency bin used in the filter bank.
     Examples
     --------
-    >>> import naplib as nl
-    >>> from naplib.preprocessing import filterbank_hilbert as fb_hilb
     >>> import numpy as np
     >>> x = np.random.rand(1000,3) # 3 channels of signals
     >>> fs = 500
-    >>> x_phase, x_envelope, freqs = fb_hilb(x, fs, Wn=[1, 150])
+    >>> x_phase, x_envelope, freqs = filterbank_hilbert(x, fs, Wn=[1, 150])
     >>> # the outputs have the phase and envelope for each channel and each filter in the filterbank
     >>> x_phase.shape  # 3rd dimension is one for each filter in filterbank
     (1000, 3, 42)
