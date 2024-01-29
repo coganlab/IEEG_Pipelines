@@ -69,6 +69,9 @@ jobs:
         run: |
           conda list
           python -c "import mne; mne.sys_info()"
+      - name: fetch mne datasets
+        run: |
+          python -c "import mne; mne.datasets.misc.data_path(force_update=True); mne.datasets.epilepsy_ecog.data_path(force_update=True); mne.datasets.sample.data_path(force_update=True)"
       - name: Test with pytest
         run: |
           pip install -r envs/dev/testing-reqs.txt
