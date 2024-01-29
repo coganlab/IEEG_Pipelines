@@ -39,7 +39,7 @@ def crop_empty_data(raw: mne.io.Raw, bound: str = 'boundary',
     --------
     >>> import mne
     >>> from ieeg.io import raw_from_layout
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
@@ -119,7 +119,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     --------
     >>> import mne
     >>> from ieeg.io import raw_from_layout
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
@@ -148,15 +148,19 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
             mne.utils.logger.info(f'outlier round {i} channels: {bads}')
 
     if save:
-        tmp.info['bads'] = bads
-        update(tmp, desc)
+        if not hasattr(tmp, 'filenames'):
+            raise ValueError("Raw instance must have filenames attribute to "
+                             "save bad channels")
+        for file in tmp.filenames:
+            update(file, bads, desc)
 
     return bads
 
 
+@verbose
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
-                    copy: bool = False, picks: list = 'data'
-                    ) -> mne.epochs.BaseEpochs:
+                    copy: bool = False, picks: list = 'data',
+                    verbose=None) -> mne.epochs.BaseEpochs:
     """Set outliers to nan.
 
     Parameters
@@ -187,7 +191,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     Reading 0 ... 269079  =      0.000 ...   269.079 secs...
     >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
     ... verbose=False)
-    >>> epochs = outliers_to_nan(epochs, 3)
+    >>> epochs = outliers_to_nan(epochs, 3, verbose=False)
     >>> epochs['AD1-4, ATT1,2'].get_data()[0]
     array([[        nan,         nan,         nan, ...,         nan,
                     nan,         nan],
@@ -207,7 +211,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
         trials = trials.copy()
     picks = mne.io.pick._picks_to_idx(trials.info, picks)
     trials.load_data()
-    data = trials.get_data(picks=picks)
+    data = trials.get_data(picks=picks, verbose=verbose)
 
     # bool array of where to keep data trials X channels
     keep = stats.find_outliers(data, outliers)
@@ -256,7 +260,7 @@ def trial_ieeg(raw: mne.io.Raw, event: str | list[str, ...], times: Doubles,
     --------
     >>> import mne
     >>> from ieeg.io import raw_from_layout
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)

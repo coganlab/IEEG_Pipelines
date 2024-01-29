@@ -1,6 +1,7 @@
 import os
 
 import mne
+import vtk
 
 misc_path = mne.datasets.misc.data_path()
 sample_path = mne.datasets.sample.data_path()
@@ -22,3 +23,9 @@ def test_plot_avg():
     from ieeg.viz.mri import plot_on_average
     plot_on_average(raw, subj_dir=subjects_dir, show=False, rm_wm=False,
                     hemi='both')
+
+
+# if on windows, finalize closing the vtk window
+if os.name == 'nt':
+    vtk.vtkRenderWindow().Finalize()
+    vtk.vtkObject.GlobalWarningDisplayOff()

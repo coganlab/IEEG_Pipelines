@@ -95,7 +95,7 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     --------
 
     >>> import mne
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
