@@ -148,8 +148,11 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
             mne.utils.logger.info(f'outlier round {i} channels: {bads}')
 
     if save:
-        tmp.info['bads'] = bads
-        update(tmp, desc)
+        if not hasattr(tmp, 'filenames'):
+            raise ValueError("Raw instance must have filenames attribute to "
+                             "save bad channels")
+        for file in tmp.filenames:
+            update(file, bads, desc)
 
     return bads
 
