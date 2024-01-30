@@ -907,39 +907,6 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
     return f_stat, A
 
 
-if __name__ == '__main__':
-    import numpy as np
-    from timeit import timeit
-
-    rng = np.random.default_rng(seed=42)
-    sig1 = np.array([[0, 1, 2, 3, 3] for _ in range(50)]) - rng.random(
-        (50, 5)) * 5
-    sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
-    diff = time_perm_shuffle(sig1, sig2, 3000, 0)
-    act = mean_diff(sig1, sig2, axis=0)
-
-    # Calculate the p value of the permutation distribution and compare
-    # execution times
-
-    # p_perm1 = _perm_gt(diff, diff)
-    p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
-    p_perm3 = (_perm_gt(diff, diff[:, None], axis=0) * diff.shape[0] /
-               (diff.shape[0] - 1))
-    p_perm4 = proportion(diff, axis=0)
-
-    # Time the functions
-    runs = 20
-    # time1 = timeit('_perm_gt(diff, diff)', globals=globals(), number=runs)
-    time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
-                   '(diff.shape[0] - 1)', globals=globals(), number=runs)
-    time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
-                   '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
-    time4 = timeit('proportion(diff, axis=0)', globals=globals(), number=runs)
-
-    # print(f'Time for _perm_gt_2: {time1 / runs:.6f} seconds per run')
-    print(f'Time for sum method: {time2 / runs:.6f} seconds per run')
-    print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
-    print(f'Time for perm_gt: {time4 / runs:.6f} seconds per run')
 
 
 def label(label_image, background=None, return_num=False, connectivity=1):
@@ -1003,9 +970,9 @@ def label(label_image, background=None, return_num=False, connectivity=1):
     >>> import numpy as np
     >>> x = np.eye(3).astype(bool)
     >>> print(x)
-    [[1 0 0]
-     [0 1 0]
-     [0 0 1]]
+    [[ True False False]
+     [False  True False]
+     [False False  True]]
     >>> print(label(x, connectivity=1))
     [[1 0 0]
      [0 2 0]
@@ -1040,7 +1007,7 @@ def label(label_image, background=None, return_num=False, connectivity=1):
         return result[0]
 
 
-def _resolve_neighborhood(footprint, connectivity, ndim, enforce_adjacency=True):
+def _resolve_neighborhood(footprint, connectivity, ndim):
     """Validate or create a footprint (structuring element).
 
     Depending on the values of `connectivity` and `footprint` this function
@@ -1093,9 +1060,44 @@ def _resolve_neighborhood(footprint, connectivity, ndim, enforce_adjacency=True)
                 "number of dimensions in image and footprint do not" "match"
             )
         # Must only specify direct neighbors
-        if enforce_adjacency and any(s != 3 for s in footprint.shape):
+        if any(s != 3 for s in footprint.shape):
             raise ValueError("dimension size in footprint is not 3")
         elif any((s % 2 != 1) for s in footprint.shape):
             raise ValueError("footprint size must be odd along all dimensions")
 
     return footprint
+
+
+if __name__ == '__main__':
+    import numpy as np
+    from timeit import timeit
+
+    rng = np.random.default_rng(seed=42)
+    sig1 = np.array([[0, 1, 2, 3, 3] for _ in range(50)]) - rng.random(
+        (50, 5)) * 5
+    sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
+    diff = time_perm_shuffle(sig1, sig2, 3000, 0)
+    act = mean_diff(sig1, sig2, axis=0)
+
+    # Calculate the p value of the permutation distribution and compare
+    # execution times
+
+    # p_perm1 = _perm_gt(diff, diff)
+    p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
+    p_perm3 = (_perm_gt(diff, diff[:, None], axis=0) * diff.shape[0] /
+               (diff.shape[0] - 1))
+    p_perm4 = proportion(diff, axis=0)
+
+    # Time the functions
+    runs = 20
+    # time1 = timeit('_perm_gt(diff, diff)', globals=globals(), number=runs)
+    time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
+                   '(diff.shape[0] - 1)', globals=globals(), number=runs)
+    time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
+                   '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
+    time4 = timeit('proportion(diff, axis=0)', globals=globals(), number=runs)
+
+    # print(f'Time for _perm_gt_2: {time1 / runs:.6f} seconds per run')
+    print(f'Time for sum method: {time2 / runs:.6f} seconds per run')
+    print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
+    print(f'Time for perm_gt: {time4 / runs:.6f} seconds per run')
