@@ -907,8 +907,6 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
     return f_stat, A
 
 
-
-
 def label(label_image, background=None, return_num=False, connectivity=1):
     r"""Label connected regions of an integer array.
 
@@ -981,10 +979,14 @@ def label(label_image, background=None, return_num=False, connectivity=1):
     [[1 0 0]
      [0 1 0]
      [0 0 1]]
-    >>> print(label(x, background=-1))
-    [[1 2 2]
-     [2 1 2]
-     [2 2 1]]
+    >>> print(label(x, background=False))
+    [[1 0 0]
+     [0 1 0]
+     [0 0 1]]
+    >>> print(label(x, background=True))
+    [[0 1 1]
+     [1 0 1]
+     [1 1 0]]
     """
     if background == 1:
         label_image = ~label_image
