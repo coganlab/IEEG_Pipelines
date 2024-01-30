@@ -938,6 +938,7 @@ def label(label_image, background=None, return_num=False, connectivity=1):
         as a neighbor.
         Accepted values are ranging from  1 to input.ndim. If ``None``, a full
         connectivity of ``input.ndim`` is used.
+        Default is 1 for ieeg usage.
 
     Returns
     -------
@@ -981,12 +982,12 @@ def label(label_image, background=None, return_num=False, connectivity=1):
      [0 0 1]]
     >>> print(label(x, background=False))
     [[1 0 0]
-     [0 1 0]
-     [0 0 1]]
+     [0 2 0]
+     [0 0 3]]
     >>> print(label(x, background=True))
     [[0 1 1]
-     [1 0 1]
-     [1 1 0]]
+     [2 0 1]
+     [2 2 0]]
     """
     if background == 1:
         label_image = ~label_image
