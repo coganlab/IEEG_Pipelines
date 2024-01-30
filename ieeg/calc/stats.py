@@ -3,7 +3,7 @@ from joblib import Parallel, delayed
 from mne.utils import logger
 from numba import guvectorize, njit
 from scipy import stats as st
-from skimage import measure
+from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
@@ -647,10 +647,10 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
 
     # Create an index of all the binary clusters in the active and permuted
     # passive data
-    act_clusters = measure.label(act, connectivity=1)
+    act_clusters = label(act)
     perm_clusters = np.zeros(perm.shape, dtype=int)
     for i in range(perm.shape[0]):
-        perm_clusters[i] = measure.label(perm[i], connectivity=1)
+        perm_clusters[i] = label(perm[i])
 
     # For each permutation in the passive data, determine the maximum cluster
     # size
@@ -905,6 +905,170 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
     f_stat = num / den
 
     return f_stat, A
+
+
+def label(label_image, background=None, return_num=False, connectivity=1):
+    r"""Label connected regions of an integer array.
+
+    Two pixels are connected when they are neighbors and have the same value.
+    In 2D, they can be neighbors either in a 1- or 2-connected sense.
+    The value refers to the maximum number of orthogonal hops to consider a
+    pixel/voxel a neighbor::
+
+      1-connectivity     2-connectivity     diagonal connection close-up
+
+           [ ]           [ ]  [ ]  [ ]             [ ]
+            |               \  |  /                 |  <- hop 2
+      [ ]--[x]--[ ]      [ ]--[x]--[ ]        [x]--[ ]
+            |               /  |  \             hop 1
+           [ ]           [ ]  [ ]  [ ]
+
+    Parameters
+    ----------
+    label_image : ndarray of dtype int
+        Image to label.
+    background : int, optional
+        Consider all pixels with this value as background pixels, and label
+        them as 0. By default, 0-valued pixels are considered as background
+        pixels.
+    return_num : bool, optional
+        Whether to return the number of assigned labels.
+    connectivity : int, optional
+        Maximum number of orthogonal hops to consider a pixel/voxel
+        as a neighbor.
+        Accepted values are ranging from  1 to input.ndim. If ``None``, a full
+        connectivity of ``input.ndim`` is used.
+        Default is 1 for ieeg usage.
+
+    Returns
+    -------
+    labels : ndarray of dtype int
+        Labeled array, where all connected regions are assigned the
+        same integer value.
+    num : int, optional
+        Number of labels, which equals the maximum label index and is only
+        returned if return_num is `True`.
+
+    See Also
+    --------
+    regionprops
+    regionprops_table
+
+    References
+    ----------
+    .. [1] Christophe Fiorio and Jens Gustedt, "Two linear time Union-Find
+           strategies for image processing", Theoretical Computer Science
+           154 (1996), pp. 165-181.
+    .. [2] Kensheng Wu, Ekow Otoo and Arie Shoshani, "Optimizing connected
+           component labeling algorithms", Paper LBNL-56864, 2005,
+           Lawrence Berkeley National Laboratory (University of California),
+           http://repositories.cdlib.org/lbnl/LBNL-56864
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.eye(3).astype(bool)
+    >>> print(x)
+    [[ True False False]
+     [False  True False]
+     [False False  True]]
+    >>> print(label(x, connectivity=1))
+    [[1 0 0]
+     [0 2 0]
+     [0 0 3]]
+    >>> print(label(x, connectivity=2))
+    [[1 0 0]
+     [0 1 0]
+     [0 0 1]]
+    >>> print(label(x, background=False))
+    [[1 0 0]
+     [0 2 0]
+     [0 0 3]]
+    >>> print(label(x, background=True))
+    [[0 1 1]
+     [2 0 1]
+     [2 2 0]]
+    """
+    if background == 1:
+        label_image = ~label_image
+
+    if connectivity is None:
+        connectivity = label_image.ndim
+
+    if not 1 <= connectivity <= label_image.ndim:
+        raise ValueError(
+            f'Connectivity for {label_image.ndim}D label_image should '
+            f'be in [1, ..., {label_image.ndim}]. Got {connectivity}.'
+        )
+
+    footprint = _resolve_neighborhood(None, connectivity, label_image.ndim)
+    result = ndimage.label(label_image, structure=footprint)
+
+    if return_num:
+        return result
+    else:
+        return result[0]
+
+
+def _resolve_neighborhood(footprint, connectivity, ndim):
+    """Validate or create a footprint (structuring element).
+
+    Depending on the values of `connectivity` and `footprint` this function
+    either creates a new footprint (`footprint` is None) using `connectivity`
+    or validates the given footprint (`footprint` is not None).
+
+    Parameters
+    ----------
+    footprint : ndarray
+        The footprint (structuring) element used to determine the neighborhood
+        of each evaluated pixel (``True`` denotes a connected pixel). It must
+        be a boolean array and have the same number of dimensions as `image`.
+        If neither `footprint` nor `connectivity` are given, all adjacent
+        pixels are considered as part of the neighborhood.
+    connectivity : int
+        A number used to determine the neighborhood of each evaluated pixel.
+        Adjacent pixels whose squared distance from the center is less than or
+        equal to `connectivity` are considered neighbors. Ignored if
+        `footprint` is not None.
+    ndim : int
+        Number of dimensions `footprint` ought to have.
+    enforce_adjacency : bool
+        A boolean that determines whether footprint must only specify direct
+        neighbors.
+
+    Returns
+    -------
+    footprint : ndarray
+        Validated or new footprint specifying the neighborhood.
+
+    Examples
+    --------
+    >>> _resolve_neighborhood(None, 1, 2)
+    array([[False,  True, False],
+           [ True,  True,  True],
+           [False,  True, False]])
+    >>> _resolve_neighborhood(None, None, 3).shape
+    (3, 3, 3)
+    """
+    if footprint is None:
+        if connectivity is None:
+            connectivity = ndim
+        footprint = ndimage.generate_binary_structure(ndim, connectivity)
+    else:
+        # Validate custom structured element
+        footprint = np.asarray(footprint, dtype=bool)
+        # Must specify neighbors for all dimensions
+        if footprint.ndim != ndim:
+            raise ValueError(
+                "number of dimensions in image and footprint do not" "match"
+            )
+        # Must only specify direct neighbors
+        if any(s != 3 for s in footprint.shape):
+            raise ValueError("dimension size in footprint is not 3")
+        elif any((s % 2 != 1) for s in footprint.shape):
+            raise ValueError("footprint size must be odd along all dimensions")
+
+    return footprint
 
 
 if __name__ == '__main__':
