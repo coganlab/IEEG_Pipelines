@@ -214,6 +214,15 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     train: [0 2 5 6] test: [1 3 4 7]
     train: [0 3 5 7] test: [1 2 4 6]
     train: [1 2 4 6] test: [0 3 5 7]
+    >>> msn = MinimumNaNSplit(2, 3, which='test', min_non_nan=1)
+    >>> for train, test in msn.split(X, y):
+    ...     print("train:", train, "test:", test)
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    train: [0 1 2 7] test: [3 4 5 6]
+    train: [3 4 5 6] test: [0 1 2 7]
+    train: [3 4 5 7] test: [0 1 2 6]
+    train: [0 1 2 6] test: [3 4 5 7]
     """
 
     def __init__(self, n_splits: int, n_repeats: int = 10,
@@ -238,9 +247,12 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         if len(where) == 0:
             yield from super(MinimumNaNSplit, self).split(X, y, groups)
             return
-        elif (n_non_nan := len(not_where)) < (n_min := self.min_non_nan + 1):
+        elif (n_non_nan := not_where.shape[0]) < (n_min := self.min_non_nan + 1):
             raise ValueError(f"Need at least {n_min} non-nan values, but only"
                              f" have {n_non_nan}")
+
+        check = {'train': lambda t: np.setdiff1d(not_where, t),
+                 'test': lambda t: np.intersect1d(not_where, t)}
 
         splits = super().split(X, y, groups)
 
@@ -254,12 +266,10 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 else:
                     train, test = next(splits)
 
-                check = {'train': lambda t: sum(x not in t for x in not_where),
-                         'test': lambda t: sum(x in t for x in not_where)}
                 # if any test set has more non-nan values than the total number
                 # of non-nan values minus the minimum number of non-nan values,
                 # then throw out the split and append an extra repetition
-                if check[self.which](test) < self.min_non_nan:
+                if check[self.which](test).shape[0] < self.min_non_nan:
                     for _ in range(i + 1, self.n_splits):
                         next(splits)
                     extra = super().split(X, y, groups)
