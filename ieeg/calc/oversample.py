@@ -217,11 +217,15 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     """
 
     def __init__(self, n_splits: int, n_repeats: int = 10,
-                 random_state: int = None, min_non_nan: int = 2):
+                 random_state: int = None, min_non_nan: int = 2,
+                 which: str = 'train'):
         super().__init__(n_splits=n_splits, n_repeats=n_repeats,
                          random_state=random_state)
         self.n_splits = n_splits
         self.min_non_nan = min_non_nan
+        if which not in ('train', 'test'):
+            raise ValueError("which must be either 'train' or 'test'")
+        self.which = which
 
     def split(self, X, y=None, groups=None):
 
@@ -250,15 +254,17 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 else:
                     train, test = next(splits)
 
+                check = {'train': lambda t: sum(x not in t for x in not_where),
+                         'test': lambda t: sum(x in t for x in not_where)}
                 # if any test set has more non-nan values than the total number
                 # of non-nan values minus the minimum number of non-nan values,
                 # then throw out the split and append an extra repetition
-                if sum(ix not in test for ix in not_where) < self.min_non_nan:
+                if check[self.which](test) < self.min_non_nan:
                     for _ in range(i + 1, self.n_splits):
                         next(splits)
                     extra = super().split(X, y, groups)
                     one_rep = itertools.islice(extra, self.n_splits)
-                    splits = itertools.chain(splits, one_rep)
+                    splits = itertools.chain(one_rep, splits)
                     break
                 kfold_set.append((train, test))
             else:
