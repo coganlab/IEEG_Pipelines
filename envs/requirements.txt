@@ -8,7 +8,6 @@ scipy
 scikit-learn
 pandas
 joblib>=1.3
-numba
 psutil
 pyvistaqt
 pytz
@@ -16,3 +15,4 @@ tqdm
 h5io
 dipy
 mne-qt-browser
+cython

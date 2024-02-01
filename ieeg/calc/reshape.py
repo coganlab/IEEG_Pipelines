@@ -1,6 +1,4 @@
 import numpy as np
-from numba import njit
-from numba.extending import overload
 
 
 def concatenate_arrays(arrays: tuple[np.ndarray], axis: int = 0

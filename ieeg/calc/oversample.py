@@ -6,6 +6,9 @@ from numba import njit
 from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
+import itertools
+from mixup import mixupnd as cmixup
+
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
 
@@ -544,24 +547,24 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
                       )[:, :n_picks]
 
 
-@njit("void(float64[:])", nogil=True)
-def norm1d(arr: Vector) -> None:
-    """Oversample by obtaining the distribution and randomly selecting"""
-    # Get indices of rows with NaN values
-    wh = np.isnan(arr)
-    non_nan_rows = np.flatnonzero(~wh)
-
-    # Check if there are at least two non-NaN rows
-    if len(non_nan_rows) < 1:
-        raise ValueError("No test data to fit distribution")
-
-    # Calculate mean and standard deviation for each column
-    mean = np.mean(arr[non_nan_rows])
-    std = np.std(arr[non_nan_rows])
-
-    # Get the normal distribution of each timepoint
-    for i in np.flatnonzero(wh):
-        arr[i] = np.random.normal(mean, std)
+# @njit("void(float64[:])", nogil=True)
+# def norm1d(arr: Vector) -> None:
+#     """Oversample by obtaining the distribution and randomly selecting"""
+#     # Get indices of rows with NaN values
+#     wh = np.isnan(arr)
+#     non_nan_rows = np.flatnonzero(~wh)
+#
+#     # Check if there are at least two non-NaN rows
+#     if len(non_nan_rows) < 1:
+#         raise ValueError("No test data to fit distribution")
+#
+#     # Calculate mean and standard deviation for each column
+#     mean = np.mean(arr[non_nan_rows])
+#     std = np.std(arr[non_nan_rows])
+#
+#     # Get the normal distribution of each timepoint
+#     for i in np.flatnonzero(wh):
+#         arr[i] = np.random.normal(mean, std)
 
 
 def smote(arr: np.ndarray) -> None:
