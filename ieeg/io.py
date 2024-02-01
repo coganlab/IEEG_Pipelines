@@ -95,7 +95,7 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     --------
 
     >>> import mne
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
@@ -195,7 +195,7 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
 @verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
                     overwrite: bool = False, format: str = 'EDF',
-                    verbose=None):
+                    anonymize: bool = True, verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
@@ -221,12 +221,27 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         entities = parse_file_entities(file)
         if 'desc' in entities.keys():
             entities['description'] = entities.pop('desc')
+        if 'subject' not in entities.keys():
+            sub = inst.info['subject_info']['his_id']
+            entities['subject'] = sub[slice(4, None)]
+        if 'task' not in entities.keys():
+            entities['task'] = ''
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
-        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
+        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i + 1])
+        if anonymize:
+            if isinstance(run, Signal):
+                run.anonymize()
+                anonymize = None
+            else:
+                anonymize = {'daysback': 10000000}
+        else:
+            anonymize = None
+
         write_raw_bids(run, bids_path, allow_preload=True, format=format,
-                       acpc_aligned=True, overwrite=overwrite, verbose=verbose)
+                       acpc_aligned=True, overwrite=overwrite,
+                       anonymize=anonymize, verbose=verbose)
 
 
 def get_bad_chans(fname: str):
@@ -304,7 +319,7 @@ def get_elec_volume_labels(subj: str, subj_dir: PathLike, radius: int = 3
     filename = op.join(subj_dir, subj, "elec_recon",
                        f"{subj}_elec_location_radius_{radius}mm_aparc.a2009s+"
                        f"aseg.mgz")
-    if op.exists(filename+"_brainshifted.csv"):
+    if op.exists(filename + "_brainshifted.csv"):
         filename += "_brainshifted.csv"
     else:
         filename += ".csv"

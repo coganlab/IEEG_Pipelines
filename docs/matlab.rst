@@ -28,9 +28,3 @@ MATLAB Documentation
 .. mat:automodule:: phonemeAnalysis
    :members:
    :undoc-members:
-
-External Sources
-================
-
-.. include:: ../MATLAB/README.md
-   :parser: myst_parser.sphinx_

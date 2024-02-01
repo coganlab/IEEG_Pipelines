@@ -1,0 +1,5 @@
+pytest
+pytest-pycodestyle
+pytest-cov
+pytest-xdist
+coverage

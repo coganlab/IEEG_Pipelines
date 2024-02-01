@@ -1,15 +1,17 @@
-from collections.abc import Iterable
 import functools
+from collections.abc import Iterable
 
 import mne
-
 from concat import concatenate_arrays
 from ieeg import Signal
 
 import numpy as np
+from numba import extending, njit
 from numpy.matlib import repmat
 from numpy.typing import ArrayLike
-from numba import njit, extending, typed
+
+import ieeg
+import ieeg.calc.reshape as reshape
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -276,7 +278,7 @@ class LabeledArray(np.ndarray):
         return cls(arr, keys, **kwargs)
 
     @classmethod
-    def from_signal(cls, sig: Signal, **kwargs) -> 'LabeledArray':
+    def from_signal(cls, sig: ieeg.Signal, **kwargs) -> 'LabeledArray':
         """Create a LabeledArray from a Signal.
 
         Parameters
@@ -460,6 +462,7 @@ class LabeledArray(np.ndarray):
     def _label_formatter(self):
         def _liststr(x):
             return f"\n       ".join(x)
+
         return _liststr([str(lab) for lab in self.labels])
 
     def memory(self):
@@ -643,7 +646,7 @@ class LabeledArray(np.ndarray):
                     range(self.ndim)] for sl in range(self.shape[levels[0]]))
 
         arrs = [self.__array__()[*idx] for idx in all_idx]
-        new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
+        new_array = reshape.concatenate_arrays(arrs, axis=levels[1] - 1)
 
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
 
@@ -738,7 +741,7 @@ class LabeledArray(np.ndarray):
         return self[index]
 
     def concatenate(self, other: 'LabeledArray', axis: int = 0,
-                    **kwargs) -> 'LabeledArray':
+                    mismatch: str = 'raise', **kwargs) -> 'LabeledArray':
         """Concatenate two LabeledArrays along an axis.
 
         Parameters
@@ -747,6 +750,11 @@ class LabeledArray(np.ndarray):
             The LabeledArray to concatenate with.
         axis : int, optional
             The axis to concatenate along, by default 0.
+        mismatch : str, optional
+            What to do if the number of labels are not the same, 'raise'
+            (default) will raise a ValueError, 'shrink' will shrink the labels
+            to the smallest size, and 'expand' (not implemented) will expand
+            the labels to the largest size, filling in with NaNs.
         kwargs : dict
             Additional keyword arguments to pass to np.concatenate.
 
@@ -757,27 +765,123 @@ class LabeledArray(np.ndarray):
 
         Examples
         --------
-        >>> arr1 = LabeledArray([[1,2],[3,4]], labels=[('a', 'b'), ('c', 'd')])
-        >>> arr2 = LabeledArray([[5,6],[7,8]], labels=[('a', 'b'), ('c', 'd')])
+        >>> arr1 = LabeledArray([[1, 2],[3, 4]],
+        ... labels=[('a', 'b'), ('c', 'd')])
+        >>> arr2 = LabeledArray([[5, 6],[7, 8]],
+        ... labels=[('a', 'b'), ('c', 'd')])
         >>> arr1.concatenate(arr2, axis=0)
-    array([[1, 2],
-           [3, 4],
-           [5, 6],
-           [7, 8]])
-    labels(['a-0', 'b-0', 'a-1', 'b-1']
-           ['c', 'd'])
+        array([[1, 2],
+               [3, 4],
+               [5, 6],
+               [7, 8]])
+        labels(['a-0', 'b-0', 'a-1', 'b-1']
+               ['c', 'd'])
+        >>> arr3 = LabeledArray([[5, 6, 9],[7, 8, 10]],
+        ... labels=[('a', 'b'), ('c', 'd', 'e')])
+        >>> arr4 = LabeledArray([[1, 2, 3],[3, 4, 5]],
+        ... labels=[('a', 'b'), ('c', 'e', 'd')])
+        >>> arr3.concatenate(arr4, axis=0)
+        array([[ 5,  6,  9],
+               [ 7,  8, 10],
+               [ 1,  3,  2],
+               [ 3,  5,  4]])
+        labels(['a-0', 'b-0', 'a-1', 'b-1']
+               ['c', 'd', 'e'])
+        >>> arr2.concatenate(arr4, axis=0) # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        ValueError: When mismatch is 'raise', the base array must the same s...
+        >>> arr2.concatenate(arr4, 0, mismatch='shrink')
+        array([[5, 6],
+               [7, 8],
+               [1, 3],
+               [3, 5]])
+        labels(['a-0', 'b-0', 'a-1', 'b-1']
+               ['c', 'd'])
+        >>> arr3.concatenate(arr1, 0, mismatch='shrink') # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        NotImplementedError: Base array must the same size or smaller than i...
+        Base size:(2, 3), Input size: (2, 2)
         """
+
+        while axis < 0:
+            axis += self.ndim
+
         new_labels = list(self.labels)
+        idx = [slice(None)] * self.ndim
         new = np.hstack((self.labels[axis], other.labels[axis]))
-        new_labels[axis] = _make_array_unique(new, self.labels[axis].delimiter)
-        return LabeledArray(np.concatenate(
-            (self.__array__(), other.__array__()), axis, **kwargs),
-            new_labels, dtype=self.dtype)
+        for i in range(self.ndim):
+            if i == axis:
+                if not is_unique(new):
+                    new_labels[i] = _make_array_unique(
+                        new.astype(str), self.labels[i].delimiter)
+                else:
+                    new_labels[i] = new
+            elif not (is_unique(new_labels[i]) and is_unique(other.labels[i])):
+                raise NotImplementedError(
+                    "Cannot concatenate arrays with non-unique labels "
+                    f"{new_labels[i]}, {other.labels[i]}")
+            elif self.shape[i] == other.shape[i]:
+                if np.any(self.labels[i] != other.labels[i]):
+                    idx[i] = get_subset_reorder_indices(
+                        other.labels[i], self.labels[i])
+            elif mismatch == 'raise':
+                raise ValueError(
+                    "When mismatch is 'raise', the base array must the same "
+                    "size as the input array in all but the concatination "
+                    f"axis, but along dimension {i} the base array has size "
+                    f"{self.shape[i]} and the input array has size "
+                    f"{other.shape[i]}")
+            elif self.labels[i].shape[0] < other.labels[i].shape[0]:
+                if mismatch == 'shrink':
+                    idx[i] = get_subset_reorder_indices(
+                        other.labels[i], self.labels[i])
+                else:
+                    raise NotImplementedError(
+                        f"No method associated with mismatch = '{mismatch}',"
+                        " try setting mismatch to 'shrink' or 'raise'")
+            elif self.labels[i].shape[0] > other.labels[i].shape[0]:
+                raise NotImplementedError(
+                    "Base array must the same size or smaller than input "
+                    "array in all but the concatination axes. \nBase size:"
+                    f"{self.shape}, Input size: {other.shape}")
+            else:
+                raise ValueError("Unexpected error")
+
+        reordered = other.__array__()[tuple(idx)]
+        out = np.concatenate((self.__array__(), reordered), axis, **kwargs)
+        return LabeledArray(out, new_labels, dtype=self.dtype)
+
+
+def is_unique(arr: np.ndarray) -> bool:
+    """Check if an array is unique.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        The array to check.
+
+    Returns
+    -------
+    bool
+        Whether the array is unique.
+
+    Examples
+    --------
+    >>> is_unique(np.array([1, 2, 3]))
+    True
+    >>> is_unique(np.array([1, 2, 2]))
+    False
+    """
+    return np.unique(arr).shape[0] == np.prod(arr.shape)
 
 
 class Labels(np.ndarray):
     """A class for storing labels for a LabeledArray."""
-    __slots__ = ['delimiter', '__dict__']
+    delimiter: str
+
+    # __slots__ = ['delimiter', '__dict__']
 
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
         obj = np.asarray(input_array).view(cls)
@@ -866,6 +970,33 @@ class Labels(np.ndarray):
         else:
             return tuple(map(int, idx))
 
+    def join(self, axis: int = None):
+        """Join the labels into a single string using the delimiter
+
+        Parameters
+        ----------
+        axis : int, optional
+            The axis to join along, by default None
+
+        Examples
+        --------
+        >>> Labels(['a', 'b', 'c']).join()
+        'a-b-c'
+        >>> Labels(['a', 'b', 'c']).reshape(1,3).join()
+        'a-b-c'
+        >>> Labels([['a','b'],['c','d']]).join()
+        'a-b-c-d'
+        >>> Labels([['a','b'],['c','d']]).join(axis=0)
+        ['a-b', 'c-d']
+        >>> Labels([['a','b'],['c','d']], '').join(axis=1)
+        ['ac', 'bd']
+        """
+        if axis is None:
+            return self.delimiter.join(self.flat)
+        else:
+            labs = self.swapaxes(0, axis)
+            return Labels([lab.join() for lab in labs], self.delimiter)
+
 
 def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     """Make an array unique by appending a number to duplicate values.
@@ -925,8 +1056,14 @@ def _lcs(s1: tuple, s2: tuple) -> list[bool]:
     return matrix
 
 
+def get_subset_reorder_indices(array1, array2):
+    """Get indices to reorder array1 to match array2"""
+    o = [np.where(array1 == i)[0][0] for i in array2 if i in array1]
+    return np.array(o)
+
+
 def add_to_list_if_not_present(lst: list, element: Iterable):
-    """Add an element to a list if it is not present. Runs in O(1) time.
+    """Add an element to a list if it is not prese6nt. Runs in O(1) time.
 
     Parameters
     ----------
@@ -951,7 +1088,7 @@ def add_to_list_if_not_present(lst: list, element: Iterable):
 
 
 @extending.overload(add_to_list_if_not_present)
-def add_jit(lst: list, element: list):
+def _add_jit(lst: list, element: list):
     seen = set(lst)
     for x in element:
         if not (x in seen or seen.add(x)):
@@ -994,23 +1131,23 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
         for d in data.values():
             if np.isscalar(d):
                 continue
-            inner_all_keys(d, keys, lvl+1)
+            inner_all_keys(d, keys, lvl + 1)
     elif isinstance(data, np.ndarray):
         data = np.atleast_1d(data)
         rows = range(data.shape[0])
-        if len(keys) < lvl+1:
+        if len(keys) < lvl + 1:
             keys.append(list(rows))
         else:
             add_to_list_if_not_present(keys[lvl], rows)
         if len(data.shape) > 1:
             if not np.isscalar(data[0]):
-                inner_all_keys(data[0], keys, lvl+1)
+                inner_all_keys(data[0], keys, lvl + 1)
     else:
         raise TypeError(f"Unexpected data type: {type(data)}")
     return tuple(map(tuple, keys))
 
 
-def combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
+def _combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
     # Create a meshgrid of indices
     grids = np.meshgrid(*arrays, indexing='ij')
 
@@ -1052,7 +1189,7 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         gen_arr = (inner_array(d) for d in data.values())
         arr = [a for a in gen_arr if a is not None]
         if len(arr) > 0:
-            return concatenate_arrays(arr, axis=None)
+            return reshape.concatenate_arrays(arr, axis=None)
     # elif not isinstance(data, np.ndarray):
     #     raise TypeError(f"Unexpected data type: {type(data)}")
 
@@ -1115,6 +1252,7 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     sub-dictionary.
 
     Parameters
+    ----------
     data: dict
         The nested dict to combine
     levels: tuple[int, int]
@@ -1122,14 +1260,15 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
         of the dict keys into one level at the 2nd level.
 
     Returns
+    -------
     dict
         The combined dict
 
     Examples
+    --------
     >>> data = {'a': {'b': {'c': 1}}}
     >>> combine(data, (0, 2))
     {'b': {'a-c': 1}}
-
     >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
     >>> combine(data, (0, 2))
     {'b': {'a-c': 1, 'd-c': 2, 'd-e': 3}}
@@ -1221,6 +1360,7 @@ if __name__ == "__main__":
     import os
     from ieeg.io import get_data
     import mne
+
     conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5),
                                                           "Audio/LS"),
              "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),

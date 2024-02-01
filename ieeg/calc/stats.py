@@ -1,23 +1,12 @@
 import numpy as np
 from joblib import Parallel, delayed
 from mne.utils import logger
-from skimage import measure
+from numba import guvectorize, njit
+from scipy import stats as st
+from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from scipy import stats as st
-
-
-def weighted_avg_and_std(values, weights, axis=0):
-    """
-    Return the weighted average and standard deviation.
-
-    values, weights -- NumPy ndarrays with the same shape.
-    """
-    average = np.average(values, weights=weights, axis=axis)
-    # Fast and numerically precise:
-    variance = np.average((values-average)**2, weights=weights, axis=axis)
-    return (average, np.sqrt(variance) / np.sqrt(sum(weights) - 1))
 
 
 def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
@@ -181,7 +170,7 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
 
 def avg_no_outlier(data: np.ndarray, outliers: float = None,
                    keep: np.ndarray[bool] = None) -> np.ndarray:
-    """ Calculate the average of data without trial outliers.
+    """Calculate the average of data without trial outliers.
 
     This function calculates the average of data without trial outliers.
     Outliers are defined as any trial with a maximum value greater than the
@@ -205,7 +194,6 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
 
     Examples
     --------
-import mne    >>> import numpy as np
     >>> import mne
     >>> mne.set_log_file(None)
     >>> data = np.array([[[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]]).T
@@ -253,7 +241,7 @@ import mne    >>> import numpy as np
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
               axis: int | tuple[int] = None) -> np.ndarray | float:
-    """ Calculate the mean difference between two groups.
+    """Calculate the mean difference between two groups.
 
     This function is the default statistic function for time_perm_cluster. It
     calculates the mean difference between two groups along the specified axis.
@@ -276,26 +264,24 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
-    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]).T
-    >>> mean_diff(group1, group2)
-    7.0
+    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]], order='F').T
+    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]], order='F').T
     >>> mean_diff(group1, group2, axis=0)
     array([ 0., 14.])
     >>> mean_diff(group1, group2, axis=1)
     array([ 0., 30.,  0.,  5.,  0.])
     """
 
-    avg1 = np.nanmean(group1, axis=axis)
-    avg2 = np.nanmean(group2, axis=axis)
-
+    wh1 = ~np.isnan(group1)
+    wh2 = ~np.isnan(group2)
+    avg1 = np.mean(group1, axis=axis, where=wh1)
+    avg2 = np.mean(group2, axis=axis, where=wh2)
     return avg1 - avg2
 
 
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
-                            p_thresh: float, n_perm: int = 1000,
-                            tails: int = 1, obs_axis: int = 0,
-                            window_axis: int = -1,
+                            n_perm: int = 1000, tails: int = 1,
+                            obs_axis: int = 0, window_axis: int = -1,
                             stat_func: callable = mean_diff
                             ) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
@@ -313,8 +299,6 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
         The first group of observations.
     sig2 : array, shape (trials, ..., time)
         The second group of observations.
-    p_thresh : float
-        The p-value threshold for the shuffle distribution.
     n_perm : int, optional
         The number of permutations to perform. Default is 1000.
     tails : int, optional
@@ -334,35 +318,49 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> rng = np.random.default_rng(seed=42)
-    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
-    ... for _ in range(50)]) - rng.random((50, 15)) * 3.323
-    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    >>> window_averaged_shuffle(sig1, sig2, 0.05, n_perm=1000
-    ... ) # doctest: +ELLIPSIS
-    0.0...
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(42)
+    >>> np.random.seed(42)
+    >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
+    ... for _ in range(50)]) - np.random.random((50, 15)) * 2.4
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + np.random.random(
+    ... (100, 15))
+    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000)
+    0.0308
     """
 
     # sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
 
-    # Average across time, shape is now (obs, ...)
-    sig1_avg = np.nanmean(sig1, axis=window_axis)
-    sig2_avg = np.nanmean(sig2, axis=window_axis)
+    # Concatenate the two signals for trial shuffling
+    all_trial = np.concatenate((sig1, sig2), axis=obs_axis)
+    labels = np.concatenate((np.full(sig1.shape[obs_axis], False, dtype=bool),
+                             np.full(sig2.shape[obs_axis], True, dtype=bool)))
 
-    # Calculate the shuffle distribution, shape is now (...)
-    p_act = time_perm_shuffle(sig1_avg, sig2_avg, n_perm, tails, obs_axis,
-                              False, stat_func)
+    # Calculate the observed difference
+    obs_diff = stat_func(sig1, sig2, axis=(obs_axis, window_axis))
+    if isinstance(obs_diff, tuple):
+        logger.warn('Given stats function has more than one output. Accepting '
+                    'only the first output')
+        obs_diff = obs_diff[0]
+        orig_func = stat_func
+
+        def stat_func(s1, s2, axis):
+            return orig_func(s1, s2, axis=axis)[0]
+
+    # Calculate the difference between the two groups averaged across
+    # trials and time
+    diff = np.zeros((n_perm, *obs_diff.shape))
+    for i in range(n_perm):
+        perm_labels = np.random.permutation(labels)
+        fake_sig1 = np.take(all_trial, np.where(np.invert(perm_labels))[0],
+                            axis=obs_axis)
+        fake_sig2 = np.take(all_trial, np.where(perm_labels)[0], axis=obs_axis)
+        diff[i] = stat_func(fake_sig1, fake_sig2, axis=(obs_axis, window_axis))
+
+    # Calculate the p-value
+    p_act = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
+
     return p_act
-    # if tails == -1:
-    #     method = 'negcorr'
-    # else:
-    #     method = 'indep'
-
-    # reject, p_corr = mne.stats.fdr_correction(p_act, 0.05, method)
-    #
-    # if np.isscalar(reject):
-    #     return np.array([reject])
-    # return reject
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
@@ -405,7 +403,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         axis keyword input to denote observations (trials, for example).
         Default function is `mean_diff`, but may be substituted with other test
         functions found here:
-        https://scipy.github.io/devdocs/reference/stats.html#independent-sample-tests
+        https://scipy.github.io/devdocs/reference/stats.html#independent
+        -sample-tests
     ignore_adjacency : int or tuple of ints, optional
         The axis or axes to ignore when finding clusters. For example, if
         sig1.shape = (trials, channels, time), and you want to find clusters
@@ -426,15 +425,18 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     Examples
     --------
     >>> import numpy as np
-    >>> rng = np.random.default_rng(seed=42)
-    >>> sig1 = np.array([[0,1,2,3,3,3,3,3,3,3,3,3,2,1,0]
-    ... for _ in range(50)]) - rng.random((50, 15)) * 4
-    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random((100, 15))
-    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=3000)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(42)
+    >>> np.random.seed(42)
+    >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
+    ... for _ in range(50)]) - np.random.random((50, 15)) * 2.6
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + np.random.random(
+    ... (100, 15))
+    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000)
     array([False, False, False,  True,  True,  True,  True,  True,  True,
             True,  True,  True, False, False, False])
-    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=3000)
-    array([False, False, False,  True,  True,  True,  True,  True,  True,
+    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000)
+    array([False, False, False, False,  True,  True,  True,  True,  True,
             True,  True, False, False, False, False])
     """
     # check inputs
@@ -470,22 +472,21 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')
-    p_act, diff = time_perm_shuffle(sig1, sig2, n_perm, tails, axis, True,
-                                    stat_func)
+    diff = time_perm_shuffle(sig1, sig2, n_perm, axis, stat_func)
+
+    # contatenate the actual group statistic and concatenate with the null
+    # distribution along the observations axis
+    act = stat_func(sig1, sig2, axis=axis)
+    if isinstance(act, tuple):
+        act = act[0]
+    act = np.expand_dims(act, axis=axis)
+    p_act = np.mean(tail_compare(diff, act, tails), axis=0)
+
+    # all_diff = np.concatenate((act, diff), axis=axis)
 
     # Calculate the p value of the permutation distribution
-    # logger.info('Calculating permutation distribution')
-    # p_perm = np.zeros(diff.shape, dtype=np.float16)
-    # for i in range(diff.shape[0]):
-    #     # p_perm is the probability of observing a difference as large as the
-    #     # other permutations, or larger, by chance
-    #
-    #     larger = tail_compare(diff[i], diff[np.arange(len(diff)) != i],tails)
-    #     p_perm[i] = np.mean(larger, axis=0)
-
-    # The line below accomplishes the same as above twice as fast, but could
-    # run into memory errors if n_perm is greater than 1000
-    p_perm = np.mean(tail_compare(diff, diff[:, np.newaxis]), axis=axis+1)
+    # p_act = proportion(act, diff, tails, axis=0)
+    p_perm = proportion(diff, tail=tails, axis=0)
 
     # Create binary clusters using the p value threshold
     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
@@ -493,23 +494,126 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # logger.info('Finding clusters')
     if ignore_adjacency is None:
-        return time_cluster(b_act, b_perm, 1 - p_cluster)
+        return time_cluster(b_act, b_perm, 1 - p_cluster, tails)
 
     # If there are axes to ignore, we need to loop over them
     clusters = np.zeros(b_act.shape, dtype=int)
     for i in np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency)):
         index = tuple(j for j in i) + (slice(None),)
         clusters[index] = time_cluster(
-            b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster)
+            b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster, tails)
 
     return clusters
 
 
-def _perm_iter(array: np.ndarray, perm: int, axis: int = 0, tails: int = 0
-               ) -> np.ndarray:
-    larger = tail_compare(array[perm],
-                          array[np.arange(len(array)) != perm], tails)
-    return np.mean(larger, axis=axis)
+def proportion(val: np.ndarray[float, ...] | float,
+               comp: np.ndarray[float, ...] = None, tail: int = 1,
+               axis: int = None) -> np.ndarray[float, ...] | float:
+    """takes a value and a comparison and returns the proportion of the
+    comparison that is greater than the value
+
+    Parameters
+    ----------
+    val : array, shape (x, ...) or float,
+        The difference between two groups.
+    comp : array, shape (y, ...) optional
+        The difference between two groups.
+    tail : int, optional
+        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
+    axis : int, optional
+        The axis to perform the permutation test across. Also known as the
+        observations axis
+
+    Returns
+    -------
+    proportion : array, shape (..., time)
+        The proportion of the comparison that is greater than the value.
+
+    Examples
+    ________
+    >>> import numpy as np
+    >>> rand = np.random.default_rng(seed=42)
+    >>> diff1 = rand.random(5)
+    >>> diff1
+    array([0.77395605, 0.43887844, 0.85859792, 0.69736803, 0.09417735])
+    >>> proportion(diff1)
+    array([0.75, 0.25, 1.  , 0.5 , 0.  ])
+    >>> np.sum(diff1 > diff1[:, None], axis=0) / (diff1.shape[0] - 1)
+    array([0.75, 0.25, 1.  , 0.5 , 0.  ])
+    >>> diff2 = rand.random((2, 4))
+    >>> diff2
+    array([[0.97562235, 0.7611397 , 0.78606431, 0.12811363],
+           [0.45038594, 0.37079802, 0.92676499, 0.64386512]])
+    >>> proportion(diff2, axis=1)
+    array([[1.        , 0.33333333, 0.66666667, 0.        ],
+           [0.33333333, 0.        , 1.        , 0.66666667]])
+    >>> proportion(diff2, axis=0)
+    array([[1., 1., 0., 0.],
+           [0., 0., 1., 1.]])
+    >>> val = 0.5
+    >>> compare = np.array([0.2, 0.4, 0.5, 0.7, 0.9])
+    >>> proportion(val, compare)
+    0.4
+    >>> proportion(compare, compare) * compare.shape[0] / (
+    ... compare.shape[0] - 1)
+    array([0.  , 0.25, 0.5 , 0.75, 1.  ])
+    >>> val = np.full(5, 0.5)
+    >>> compare = np.array([[0.2, 0.4, 0.4, 0.7, 0.9],
+    ...                     [0.1, 0.3, 0.6, 0.5, 0.9]])
+    >>> proportion(val, compare, axis=0)
+    array([1. , 1. , 0.5, 0. , 0. ])
+    >>> proportion(compare, compare[:, None], axis=0
+    ... ) * compare.shape[0] / (compare.shape[0] - 1)
+    array([[1., 1., 0., 1., 0.],
+           [0., 0., 1., 0., 0.]])
+    """
+
+    match tail:
+        case 1:
+            pass
+        case 2:
+            val = np.abs(val)
+            if comp is not None:
+                comp = np.abs(comp)
+        case -1:
+            val *= -1
+            if comp is not None:
+                comp *= -1
+        case _:
+            raise ValueError('tail must be 1, 2, or -1')
+
+    if axis is None and comp is None:
+        return _perm_gt_1d(val)
+    elif comp is None:
+        return _perm_gt_1d(val, axis=axis)
+    elif axis is None:
+        return _perm_gt(val, comp)
+    else:
+        return _perm_gt(val, comp, axis=axis)
+
+
+# @guvectorize(['void(f8[::1], f8[::1])'], '(n)->(n)', nopython=True)
+def _perm_gt_1d(diff, axis=0):
+    m = diff.shape[axis] - 1
+    sorted_indices = diff.argsort(axis=axis)  # Get sorted indices
+    proportions = np.arange(diff.shape[axis]) / m  # Create proportions array
+    # Rearrange to match original order
+    return proportions[sorted_indices.argsort(axis=axis)]
+
+
+@guvectorize(['(f8, f8[::1], f8[::1])'], '(), (m)->()', nopython=True)
+def _perm_gt(vals, compare, result):
+    # result[0] = np.searchsorted(sorted(compare), vals, "left") / len(compare)
+
+    # Initialize the result
+    result[0] = 0
+    # Loop over the compare array
+    for c in compare:
+        # If the value is greater than the compare value, add 1 to the result
+        if vals > c:
+            result[0] += 1
+
+    result[0] /= compare.shape[0]
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
@@ -543,10 +647,10 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
 
     # Create an index of all the binary clusters in the active and permuted
     # passive data
-    act_clusters = measure.label(act, connectivity=1)
+    act_clusters = label(act)
     perm_clusters = np.zeros(perm.shape, dtype=int)
     for i in range(perm.shape[0]):
-        perm_clusters[i] = measure.label(perm[i], connectivity=1)
+        perm_clusters[i] = label(perm[i])
 
     # For each permutation in the passive data, determine the maximum cluster
     # size
@@ -566,8 +670,8 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
         act_cluster_size = np.sum(act_cluster)
         # Determine the proportion of permutations that have a cluster of the
         # same size or larger
-        larger = tail_compare(act_cluster_size, max_cluster_len, tails)
-        cluster_p_values[act_cluster] = np.mean(larger, axis=0)
+        cluster_p_values[act_cluster] = np.mean(act_cluster_size >
+                                                max_cluster_len, axis=0)
 
     # If p_val is not None, return the boolean array indicating whether the
     # cluster is significant
@@ -583,13 +687,13 @@ def tail_compare(diff: np.ndarray | float | int,
     """Compare the difference between two groups to the observed difference.
 
     This function applies the appropriate comparison based on the number of
-    tails.
+    tails. The shapes of the two arrays must be broadcastable.
 
     Parameters
     ----------
-    diff : array, shape (..., time)
+    diff : array
         The difference between the two groups.
-    obs_diff : array, shape (..., time)
+    obs_diff : array
         The observed difference between the two groups.
     tails : int, optional
         The number of tails to use. 1 for one-tailed, 2 for two-tailed.
@@ -599,23 +703,49 @@ def tail_compare(diff: np.ndarray | float | int,
     larger : array, shape (..., time)
         The boolean array indicating whether the difference between the two
         groups is larger than the observed difference.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> rand = np.random.default_rng(seed=42)
+    >>> diff1 = rand.random(5) - 0.5
+    >>> diff1
+    array([ 0.27395605, -0.06112156,  0.35859792,  0.19736803, -0.40582265])
+    >>> obs_diff1 = 0.25
+    >>> tail_compare(diff1, obs_diff1)
+    array([ True, False,  True, False, False])
+    >>> tail_compare(diff1, obs_diff1, tails=2)
+    array([ True, False,  True, False,  True])
+    >>> tail_compare(diff1, obs_diff1, tails=-1)
+    array([False,  True, False,  True,  True])
+    >>> tail_compare(diff1, np.array([1, 2])
+    ... ) # doctest: +ELLIPSIS +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+    ValueError: shape mismatch: objects cannot be broadcast to a single ...
     """
+
+    # check if arrays are broadcastable
+    try:
+        np.broadcast(diff, obs_diff)
+    except ValueError as e:
+        raise e
+
     # Account for one or two tailed test
     match tails:
         case 1:
-            return diff > obs_diff
+            temp = np.greater(diff, obs_diff)
         case 2:
-            return np.abs(diff) > np.abs(obs_diff)
+            temp = np.greater(np.abs(diff), np.abs(obs_diff))
         case -1:
-            return diff < obs_diff
+            temp = np.less(diff, obs_diff)
         case _:
             raise ValueError('tails must be 1, 2, or -1')
 
+    return temp
+
 
 def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                      tails: int = 1, axis: int = 0, return_perm: bool = False,
-                      func: callable = mean_diff
-                      ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+                      axis: int = 0, func: callable = mean_diff) -> np.ndarray:
     """Time permutation cluster test between two time series.
 
     The test is performed by shuffling the trials of the two time series and
@@ -632,12 +762,8 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         Passive signal. The first dimension is assumed to be the trials
     n_perm : int, optional
         The number of permutations to perform.
-    tails : int, optional
-        The number of tails to use. 1 for one-tailed, 2 for two-tailed.
     axis : int, optional
         The axis to perform the permutation test across.
-    return_perm : bool, optional
-        If True, return the permutation distribution.
     func :
         The statistical function to use to compare populations. Requires an
         axis keyword input to denote observations (trials, for example).
@@ -663,7 +789,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         def func(s1, s2, axis):
             return orig_func(s1, s2, axis=axis)[0]
 
-    # Calculate the difference between the two groups averaged across
+    # Calculate the average difference between the two groups averaged across
     # trials at each time point
     diff = np.zeros((n_perm, *obs_diff.shape))
     for i in range(n_perm):
@@ -673,13 +799,7 @@ def time_perm_shuffle(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         fake_sig2 = np.take(all_trial, np.where(perm_labels)[0], axis=axis)
         diff[i] = func(fake_sig1, fake_sig2, axis=axis)
 
-    # Calculate the p-value
-    p = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
-
-    if return_perm:
-        return p, diff
-    else:
-        return p
+    return diff
 
 
 def sum_squared(x: np.ndarray) -> np.ndarray | float:
@@ -700,12 +820,13 @@ def sum_squared(x: np.ndarray) -> np.ndarray | float:
 
 def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
                 ) -> (np.ndarray, np.ndarray):
-    """computes the F-statistic for sine wave in locally-white noise.
+    """Computes the F-statistic for sine wave in locally-white noise.
 
     This function computes the F-statistic for a sine wave in locally-white
     noise. The sine wave is assumed to be of the form:
-    .. math::
-        x(t) = A \\sin(2 \\pi f t + \\phi)
+
+    :math:`x(t) = A \\sin(2 \\pi f t + \\phi)`
+
     where :math:`A` is the amplitude of the sine wave, :math:`f` is the
     frequency of the sine wave, and :math:`\\phi` is the phase of the sine
     wave. The F-statistic is computed by taking the ratio of the variance of
@@ -747,6 +868,7 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
            [1., 1.],
            [1., 1.],
            [1., 1.]]))
+
     """
     # drop the even tapers
     n_tapers = len(window_fun)
@@ -781,3 +903,202 @@ def sine_f_test(window_fun: np.ndarray, x_p: np.ndarray
     f_stat = num / den
 
     return f_stat, A
+
+
+def label(label_image, background=None, return_num=False, connectivity=1):
+    r"""Label connected regions of an integer array.
+
+    Two pixels are connected when they are neighbors and have the same value.
+    In 2D, they can be neighbors either in a 1- or 2-connected sense.
+    The value refers to the maximum number of orthogonal hops to consider a
+    pixel/voxel a neighbor::
+
+      1-connectivity     2-connectivity     diagonal connection close-up
+
+           [ ]           [ ]  [ ]  [ ]             [ ]
+            |               \  |  /                 |  <- hop 2
+      [ ]--[x]--[ ]      [ ]--[x]--[ ]        [x]--[ ]
+            |               /  |  \             hop 1
+           [ ]           [ ]  [ ]  [ ]
+
+    Parameters
+    ----------
+    label_image : ndarray of dtype int
+        Image to label.
+    background : int, optional
+        Consider all pixels with this value as background pixels, and label
+        them as 0. By default, 0-valued pixels are considered as background
+        pixels.
+    return_num : bool, optional
+        Whether to return the number of assigned labels.
+    connectivity : int, optional
+        Maximum number of orthogonal hops to consider a pixel/voxel
+        as a neighbor.
+        Accepted values are ranging from  1 to input.ndim. If ``None``, a full
+        connectivity of ``input.ndim`` is used.
+        Default is 1 for ieeg usage.
+
+    Returns
+    -------
+    labels : ndarray of dtype int
+        Labeled array, where all connected regions are assigned the
+        same integer value.
+    num : int, optional
+        Number of labels, which equals the maximum label index and is only
+        returned if return_num is `True`.
+
+    See Also
+    --------
+    regionprops
+    regionprops_table
+
+    References
+    ----------
+    .. [1] Christophe Fiorio and Jens Gustedt, "Two linear time Union-Find
+           strategies for image processing", Theoretical Computer Science
+           154 (1996), pp. 165-181.
+    .. [2] Kensheng Wu, Ekow Otoo and Arie Shoshani, "Optimizing connected
+           component labeling algorithms", Paper LBNL-56864, 2005,
+           Lawrence Berkeley National Laboratory (University of California),
+           http://repositories.cdlib.org/lbnl/LBNL-56864
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.eye(3).astype(bool)
+    >>> print(x)
+    [[ True False False]
+     [False  True False]
+     [False False  True]]
+    >>> print(label(x, connectivity=1))
+    [[1 0 0]
+     [0 2 0]
+     [0 0 3]]
+    >>> print(label(x, connectivity=2))
+    [[1 0 0]
+     [0 1 0]
+     [0 0 1]]
+    >>> print(label(x, background=False))
+    [[1 0 0]
+     [0 2 0]
+     [0 0 3]]
+    >>> print(label(x, background=True))
+    [[0 1 1]
+     [2 0 1]
+     [2 2 0]]
+    """
+    if background == 1:
+        label_image = ~label_image
+
+    if connectivity is None:
+        connectivity = label_image.ndim
+
+    if not 1 <= connectivity <= label_image.ndim:
+        raise ValueError(
+            f'Connectivity for {label_image.ndim}D label_image should '
+            f'be in [1, ..., {label_image.ndim}]. Got {connectivity}.'
+        )
+
+    footprint = _resolve_neighborhood(None, connectivity, label_image.ndim)
+    result = ndimage.label(label_image, structure=footprint)
+
+    if return_num:
+        return result
+    else:
+        return result[0]
+
+
+def _resolve_neighborhood(footprint, connectivity, ndim):
+    """Validate or create a footprint (structuring element).
+
+    Depending on the values of `connectivity` and `footprint` this function
+    either creates a new footprint (`footprint` is None) using `connectivity`
+    or validates the given footprint (`footprint` is not None).
+
+    Parameters
+    ----------
+    footprint : ndarray
+        The footprint (structuring) element used to determine the neighborhood
+        of each evaluated pixel (``True`` denotes a connected pixel). It must
+        be a boolean array and have the same number of dimensions as `image`.
+        If neither `footprint` nor `connectivity` are given, all adjacent
+        pixels are considered as part of the neighborhood.
+    connectivity : int
+        A number used to determine the neighborhood of each evaluated pixel.
+        Adjacent pixels whose squared distance from the center is less than or
+        equal to `connectivity` are considered neighbors. Ignored if
+        `footprint` is not None.
+    ndim : int
+        Number of dimensions `footprint` ought to have.
+    enforce_adjacency : bool
+        A boolean that determines whether footprint must only specify direct
+        neighbors.
+
+    Returns
+    -------
+    footprint : ndarray
+        Validated or new footprint specifying the neighborhood.
+
+    Examples
+    --------
+    >>> _resolve_neighborhood(None, 1, 2)
+    array([[False,  True, False],
+           [ True,  True,  True],
+           [False,  True, False]])
+    >>> _resolve_neighborhood(None, None, 3).shape
+    (3, 3, 3)
+    """
+    if footprint is None:
+        if connectivity is None:
+            connectivity = ndim
+        footprint = ndimage.generate_binary_structure(ndim, connectivity)
+    else:
+        # Validate custom structured element
+        footprint = np.asarray(footprint, dtype=bool)
+        # Must specify neighbors for all dimensions
+        if footprint.ndim != ndim:
+            raise ValueError(
+                "number of dimensions in image and footprint do not" "match"
+            )
+        # Must only specify direct neighbors
+        if any(s != 3 for s in footprint.shape):
+            raise ValueError("dimension size in footprint is not 3")
+        elif any((s % 2 != 1) for s in footprint.shape):
+            raise ValueError("footprint size must be odd along all dimensions")
+
+    return footprint
+
+
+if __name__ == '__main__':
+    import numpy as np
+    from timeit import timeit
+
+    rng = np.random.default_rng(seed=42)
+    sig1 = np.array([[0, 1, 2, 3, 3] for _ in range(50)]) - rng.random(
+        (50, 5)) * 5
+    sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
+    diff = time_perm_shuffle(sig1, sig2, 3000, 0)
+    act = mean_diff(sig1, sig2, axis=0)
+
+    # Calculate the p value of the permutation distribution and compare
+    # execution times
+
+    # p_perm1 = _perm_gt(diff, diff)
+    p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
+    p_perm3 = (_perm_gt(diff, diff[:, None], axis=0) * diff.shape[0] /
+               (diff.shape[0] - 1))
+    p_perm4 = proportion(diff, axis=0)
+
+    # Time the functions
+    runs = 20
+    # time1 = timeit('_perm_gt(diff, diff)', globals=globals(), number=runs)
+    time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
+                   '(diff.shape[0] - 1)', globals=globals(), number=runs)
+    time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
+                   '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
+    time4 = timeit('proportion(diff, axis=0)', globals=globals(), number=runs)
+
+    # print(f'Time for _perm_gt_2: {time1 / runs:.6f} seconds per run')
+    print(f'Time for sum method: {time2 / runs:.6f} seconds per run')
+    print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
+    print(f'Time for perm_gt: {time4 / runs:.6f} seconds per run')

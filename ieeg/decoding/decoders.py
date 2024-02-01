@@ -1,4 +1,4 @@
-############### IMPORT PACKAGES ##################
+# %% IMPORT PACKAGES
 
 import numpy as np
 from numpy.linalg import inv as inv  # Used in kalman filter
@@ -39,6 +39,7 @@ try:
     from sklearn import \
         discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
     from sklearn.base import BaseEstimator
+    from sklearn.metrics import accuracy_score
 except ImportError:
     print(
         "\nWARNING: scikit-learn is not installed. You will be unable to use"
@@ -80,10 +81,10 @@ except ImportError:
     pass
 
 
-##################### DECODER FUNCTIONS ##########################
+# %% DECODER FUNCTIONS
 
 
-##################### WIENER FILTER ##########################
+# %% WIENER FILTER
 
 class WienerFilterRegression(object):
     """Class for the Wiener Filter Decoder
@@ -133,7 +134,7 @@ class WienerFilterRegression(object):
         return y_test_predicted
 
 
-##################### WIENER CASCADE ##########################
+# %% WIENER CASCADE
 
 class WienerCascadeRegression(object):
     """Class for the Wiener Cascade Decoder
@@ -216,7 +217,7 @@ class WienerCascadeRegression(object):
         return y_test_predicted
 
 
-##################### KALMAN FILTER ##########################
+# %% KALMAN FILTER
 
 class KalmanFilterRegression(object):
     """Class for the Kalman Filter Decoder
@@ -346,8 +347,7 @@ class KalmanFilterRegression(object):
         return y_test_predicted
 
 
-##################### DENSE (FULLY-CONNECTED) NEURAL NETWORK
-# ##########################
+# %% DENSE (FULLY-CONNECTED) NEURAL NETWORK
 
 class DenseNNRegression(object):
     """Class for the dense (fully-connected) neural network decoder
@@ -381,7 +381,8 @@ class DenseNNRegression(object):
         # If "units" is an integer, put it in the form of a vector
         try:  # Check if it's a vector
             units[0]
-        except:  # If it's not a vector, create a vector of the number of
+        except IndexError:
+            # If it's not a vector, create a vector of the number of
             # units for each layer
             units = [units]
         self.units = units
@@ -411,17 +412,18 @@ class DenseNNRegression(object):
                         input_dim=X_flat_train.shape[1]))  # Add dense layer
         model.add(Activation('relu'))  # Add nonlinear (tanh) activation
         # if self.dropout!=0:
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units if proportion of dropout != 0
+        if self.dropout != 0:
+            # Dropout some units if proportion of dropout != 0
+            model.add(Dropout(self.dropout))
 
         # Add any additional hidden layers (beyond the 1st)
         for layer in range(
                 self.num_layers - 1):  # Loop through additional layers
             model.add(Dense(self.units[layer + 1]))  # Add dense layer
             model.add(Activation('relu'))  # Add nonlinear (tanh) activation
-            if self.dropout != 0: model.add(Dropout(
-                self.dropout))  # Dropout some units if proportion of
-            # dropout != 0
+            if self.dropout != 0:
+                # Dropout some units if proportion of dropout != 0
+                model.add(Dropout(self.dropout))
 
         # Add dense connections to all outputs
         model.add(Dense(
@@ -457,7 +459,7 @@ class DenseNNRegression(object):
         return y_test_predicted
 
 
-##################### SIMPLE RECURRENT NEURAL NETWORK #########################
+# %% SIMPLE RECURRENT NEURAL NETWORK
 
 class SimpleRNNRegression(object):
     """Class for the simple recurrent neural network decoder
@@ -512,8 +514,9 @@ class SimpleRNNRegression(object):
                                 recurrent_dropout=self.dropout,
                                 activation='relu'))  # Within recurrent
             # layer, include dropout
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units (recurrent layer output units)
+        if self.dropout != 0:
+            # Dropout some units (recurrent layer output units)
+            model.add(Dropout(self.dropout))
 
         # Add dense connections to output layer
         model.add(Dense(y_train.shape[1]))
@@ -548,7 +551,7 @@ class SimpleRNNRegression(object):
         return y_test_predicted
 
 
-##################### GATED RECURRENT UNIT (GRU) DECODER ######################
+# %% GATED RECURRENT UNIT (GRU) DECODER
 
 class GRURegression(object):
     """Class for the gated recurrent unit (GRU) decoder
@@ -602,8 +605,9 @@ class GRURegression(object):
                           input_shape=(X_train.shape[1], X_train.shape[2]),
                           dropout=self.dropout,
                           recurrent_dropout=self.dropout))
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units (recurrent layer output units)
+        if self.dropout != 0:
+            # Dropout some units (recurrent layer output units)
+            model.add(Dropout(self.dropout))
 
         # Add dense connections to output layer
         model.add(Dense(y_train.shape[1]))
@@ -638,7 +642,7 @@ class GRURegression(object):
         return y_test_predicted
 
 
-#################### LONG SHORT TERM MEMORY (LSTM) DECODER ####################
+# %% LONG SHORT TERM MEMORY (LSTM) DECODER
 
 class LSTMRegression(object):
     """Class for the gated recurrent unit (GRU) decoder
@@ -693,8 +697,9 @@ class LSTMRegression(object):
                            dropout=self.dropout,
                            recurrent_dropout=self.dropout))  # Within recurrent
             # layer, include dropout
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units (recurrent layer output units)
+        if self.dropout != 0:
+            # Dropout some units (recurrent layer output units)
+            model.add(Dropout(self.dropout))
 
         # Add dense connections to output layer
         model.add(Dense(y_train.shape[1]))
@@ -729,7 +734,7 @@ class LSTMRegression(object):
         return y_test_predicted
 
 
-##################### EXTREME GRADIENT BOOSTING (XGBOOST) #####################
+# %% EXTREME GRADIENT BOOSTING (XGBOOST)
 
 class XGBoostRegression(object):
     """Class for the XGBoost Decoder
@@ -792,9 +797,8 @@ class XGBoostRegression(object):
         models = []  # Initialize list of models (there will be a separate
         # model for each output)
         for y_idx in range(num_outputs):  # Loop through outputs
-            dtrain = xgb.DMatrix(X_flat_train, label=y_train[:,
-                                                     y_idx])  # Put in correct
-            # format for XGB
+            dtrain = xgb.DMatrix(X_flat_train, label=y_train[:, y_idx])
+            # Put in correct format for XGB
             bst = xgb.train(param, dtrain, self.num_round)  # Train model
             models.append(bst)  # Add fit model to list of models
 
@@ -826,7 +830,7 @@ class XGBoostRegression(object):
         return y_test_predicted
 
 
-##################### SUPPORT VECTOR REGRESSION ##########################
+# %% SUPPORT VECTOR REGRESSION
 
 class SVRegression(object):
     """Class for the Support Vector Regression (SVR) Decoder
@@ -948,7 +952,7 @@ class NaiveBayesRegression(object):
             This is the outputs that are being predicted (training data)
         """
 
-        #### FIT TUNING CURVE ####
+        # %% FIT TUNING CURVE
         # First, get the output values (x/y position or velocity) that we will
         # be creating tuning curves over
         # Create the range for x and y (position/velocity) values
@@ -1015,9 +1019,9 @@ class NaiveBayesRegression(object):
         n = y_train.shape[0]
         dx = np.zeros([n - 1, 1])
         for i in range(n - 1):
+            # Change in state across time steps
             dx[i] = np.sqrt((y_train[i + 1, 0] - y_train[i, 0]) ** 2 + (
-                    y_train[i + 1, 1] - y_train[
-                i, 1]) ** 2)  # Change in state across time steps
+                    y_train[i + 1, 1] - y_train[i, 1]) ** 2)
         std = np.sqrt(np.mean(
             dx ** 2))  # dx is only positive. this gets approximate stdev of
         # distribution (if it was positive and negative)
@@ -1113,7 +1117,7 @@ class NaiveBayesRegression(object):
         return y_test_predicted  # Return predictions
 
 
-######### ALIASES for Regression ########
+# %% ALIASES for Regression
 
 WienerFilterDecoder = WienerFilterRegression
 WienerCascadeDecoder = WienerCascadeRegression
@@ -1127,7 +1131,7 @@ SVRDecoder = SVRegression
 NaiveBayesDecoder = NaiveBayesRegression
 
 
-####################################### CLASSIFICATION #######################
+# %% CLASSIFICATION
 
 
 class WienerFilterClassification(object):
@@ -1183,7 +1187,7 @@ class WienerFilterClassification(object):
         return y_test_predicted
 
 
-##################### SUPPORT VECTOR REGRESSION ##########################
+# %% SUPPORT VECTOR REGRESSION
 
 class SVClassification(object):
     """Class for the Support Vector Classification Decoder
@@ -1242,7 +1246,7 @@ class SVClassification(object):
         return y_test_predicted
 
 
-##################### DENSE (FULLY-CONNECTED) NEURAL NETWORK ##################
+# %% DENSE (FULLY-CONNECTED) NEURAL NETWORK
 
 class DenseNNClassification(object):
     """Class for the dense (fully-connected) neural network decoder
@@ -1276,7 +1280,8 @@ class DenseNNClassification(object):
         # If "units" is an integer, put it in the form of a vector
         try:  # Check if it's a vector
             units[0]
-        except:  # If it's not a vector, create a vector of the number of
+        except IndexError:
+            # If it's not a vector, create a vector of the number of
             # units for each layer
             units = [units]
         self.units = units
@@ -1312,19 +1317,20 @@ class DenseNNClassification(object):
                         input_dim=X_flat_train.shape[1]))  # Add dense layer
         model.add(Activation('relu'))  # Add nonlinear (tanh) activation
         # if self.dropout!=0:
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units if proportion of dropout != 0
+        if self.dropout != 0:
+            # Dropout some units if proportion of dropout != 0
+            model.add(Dropout(self.dropout))
 
         # Add any additional hidden layers (beyond the 1st)
         for layer in range(
                 self.num_layers - 1):  # Loop through additional layers
             model.add(Dense(self.units[layer + 1]))  # Add dense layer
-            model.add(Activation(
-                'tanh'))  # Add nonlinear (tanh) activation - can also make
+            # Add nonlinear (tanh) activation - can also make
+            model.add(Activation('tanh'))
             # relu
-            if self.dropout != 0: model.add(Dropout(
-                self.dropout))  # Dropout some units if proportion of
-            # dropout != 0
+            if self.dropout != 0:
+                # Dropout some units if proportion of dropout != 0
+                model.add(Dropout(self.dropout))
 
         # Add dense connections to all outputs
         model.add(Dense(
@@ -1365,7 +1371,7 @@ class DenseNNClassification(object):
         return y_test_predicted
 
 
-##################### SIMPLE RNN DECODER ##########################
+# %% SIMPLE RNN DECODER
 
 class SimpleRNNClassification(object):
     """Class for the RNN decoder
@@ -1415,7 +1421,7 @@ class SimpleRNNClassification(object):
         model = Sequential()  # Declare model
         # Add recurrent layer
 
-        #### MAKE RELU ACTIVATION BELOW LIKE IN REGRESSION????? ####
+        # %% MAKE RELU ACTIVATION BELOW LIKE IN REGRESSION?????
         if keras_v1:
             model.add(SimpleRNN(self.units, input_shape=(
                 X_train.shape[1], X_train.shape[2]), dropout_W=self.dropout,
@@ -1426,8 +1432,9 @@ class SimpleRNNClassification(object):
                 X_train.shape[1], X_train.shape[2]), dropout=self.dropout,
                                 recurrent_dropout=self.dropout))
             # Within recurrent layer, include dropout
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units (recurrent layer output units)
+        if self.dropout != 0:
+            # Dropout some units (recurrent layer output units)
+            model.add(Dropout(self.dropout))
 
         # Add dense connections to output layer
         model.add(Dense(y_train.shape[1]))
@@ -1465,7 +1472,7 @@ class SimpleRNNClassification(object):
         return y_test_predicted
 
 
-##################### GATED RECURRENT UNIT (GRU) DECODER ######################
+# %% GATED RECURRENT UNIT (GRU) DECODER
 
 class GRUClassification(object):
     """Class for the gated recurrent unit (GRU) decoder
@@ -1526,8 +1533,9 @@ class GRUClassification(object):
                           dropout=self.dropout,
                           recurrent_dropout=self.dropout))
             # Within recurrent layer, include dropout
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units (recurrent layer output units)
+        if self.dropout != 0:
+            # Dropout some units (recurrent layer output units)
+            model.add(Dropout(self.dropout))
 
         # Add dense connections to output layer
         model.add(Dense(y_train.shape[1]))
@@ -1565,7 +1573,7 @@ class GRUClassification(object):
         return y_test_predicted
 
 
-#################### LONG SHORT TERM MEMORY (LSTM) DECODER ####################
+# %% LONG SHORT TERM MEMORY (LSTM) DECODER
 
 class LSTMClassification(object):
     """Class for the LSTM decoder
@@ -1626,8 +1634,9 @@ class LSTMClassification(object):
                            dropout=self.dropout,
                            recurrent_dropout=self.dropout))
             # Within recurrent layer, include dropout
-        if self.dropout != 0: model.add(Dropout(
-            self.dropout))  # Dropout some units (recurrent layer output units)
+        if self.dropout != 0:
+            # Dropout some units (recurrent layer output units)
+            model.add(Dropout(self.dropout))
 
         # Add dense connections to output layer
         model.add(Dense(y_train.shape[1]))
@@ -1665,7 +1674,7 @@ class LSTMClassification(object):
         return y_test_predicted
 
 
-##################### EXTREME GRADIENT BOOSTING (XGBOOST) #####################
+# %% EXTREME GRADIENT BOOSTING (XGBOOST)
 
 class XGBoostClassification(object):
     """Class for the XGBoost Decoder
@@ -1763,7 +1772,7 @@ class XGBoostClassification(object):
         return y_test_predicted
 
 
-###### PRINCIPAL COMPONENT ANALYSIS - LINEAR DISCRIMINANT CLASSIFIER ##########
+# %% PRINCIPAL COMPONENT ANALYSIS - LINEAR DISCRIMINANT CLASSIFIER
 
 class PcaLdaClassification(BaseEstimator):
     """Class for the PCA - LDA Classifier
@@ -1843,7 +1852,7 @@ class PcaLdaClassification(BaseEstimator):
 
         Args:
             deep (bool, optional): Defaults to True.
-            
+
         Returns:
             scores: dict
             Returns fitted scores of PCA and LDA
@@ -1882,14 +1891,7 @@ class PcaLdaClassification(BaseEstimator):
         from sklearn.metrics import accuracy_score
         return accuracy_score(y, self.predict(X), sample_weight=sample_weight)
 
-    #### PRINCIPAL COMPONENT ANALYSIS Wrapper for classification function  ####
-
-
-from sklearn.base import BaseEstimator
-from sklearn.decomposition import PCA
-from sklearn.pipeline import Pipeline
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score
+    # %% PRINCIPAL COMPONENT ANALYSIS Wrapper for classification function
 
 
 class PcaEstimateDecoder(BaseEstimator):

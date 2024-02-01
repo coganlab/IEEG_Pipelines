@@ -1,0 +1,23 @@
+name: ieeg-dev
+channels:
+  - conda-forge
+dependencies:
+  - python<3.13
+  - pip
+  - numpy
+  - matplotlib
+  - scipy
+  - pandas
+  - numba
+  - pyvistaqt
+  - mne
+  - mne-bids
+  - joblib
+  - qtpy
+  - pybids
+  - EDFlib-Python
+  - psutil
+  - pytz
+  - h5io
+  - dipy
+  - ipympl

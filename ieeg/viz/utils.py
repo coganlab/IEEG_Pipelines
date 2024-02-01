@@ -1,12 +1,12 @@
 import gc
 from functools import partial
+
 import numpy as np
 from joblib import cpu_count
 from mne.io import Raw
 
 from ieeg import Doubles, Signal
 from ieeg.calc import stats
-
 from ieeg.viz import _qt_backend
 
 _qt_backend()
@@ -74,7 +74,7 @@ def _onclick_select(event, inst, axs):
 
 def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
               plot_func: callable = None, picks: list[str | int] = None,
-              size: tuple[int, int] = (8, 12), show: bool = True, **kwargs
+              size: tuple[int, int] = (12, 18), show: bool = True, **kwargs
               ) -> list[plt.Figure]:
     """Plot a grid of the channels of a Signal object
 

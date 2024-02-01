@@ -108,7 +108,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     >>> import mne
     >>> from bids import BIDSLayout
     >>> from ieeg.io import raw_from_layout
-    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
@@ -205,7 +205,7 @@ def _get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(subject: str = None, save: bool = False):
+def _main(subject: str = None, save: bool = False):
     import mne
     from bids import BIDSLayout
     from ieeg.io import raw_from_layout, save_derivative
@@ -251,4 +251,4 @@ def main(subject: str = None, save: bool = False):
 
 if __name__ == "__main__":
     args = _get_parser().parse_args()
-    main(**vars(args))
+    _main(**vars(args))

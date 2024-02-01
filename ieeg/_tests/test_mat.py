@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from ieeg.calc.mat import LabeledArray, combine, iter_nest_dict, Labels
+from ieeg.calc.mat import LabeledArray, Labels, combine, iter_nest_dict
 from ieeg.calc.reshape import concatenate_arrays, get_homogeneous_shapes
 
 
@@ -38,8 +38,8 @@ from ieeg.calc.reshape import concatenate_arrays, get_homogeneous_shapes
 
     # Test case 7: Concatenate along axis -1 (last axis)
     ((np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])),
-        -1,
-        np.array([[[1, 3], [np.nan, 4]], [[2, 5], [np.nan, 6]]])),
+     -1,
+     np.array([[[1, 3], [np.nan, 4]], [[2, 5], [np.nan, 6]]])),
 
     # Test case 8: Concatenate an array containing only nan values
     ((np.array([[np.nan, np.nan], [np.nan, np.nan]]),
@@ -164,14 +164,14 @@ def test_array_shape():
 # Test combine
 @pytest.mark.parametrize('data, dims, expected', [
     ({'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}, (1, 2),
-        {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}),
+     {'a': {'b-c': 1, 'b-d': 2, 'b-e': 3, 'f-c': 4, 'f-d': 5}}),
     ({'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}, (0, 2),
-        {'b': {'a-c': 1, 'a-d': 2, 'a-e': 3}, 'f': {'a-c': 4, 'a-d': 5}}),
+     {'b': {'a-c': 1, 'a-d': 2, 'a-e': 3}, 'f': {'a-c': 4, 'a-d': 5}}),
     ({'a': {'b': {'c': {'d': {'e': 1, 'f': 2}}}}}, (0, 4),
-        {'b': {'c': {'d': {'a-e': 1, 'a-f': 2}}}}),
+     {'b': {'c': {'d': {'a-e': 1, 'a-f': 2}}}}),
     ({'a': {'b': {'c': {'d': {'e': 1, 'f': 2}}}},
-        'g': {'b': {'c': {'d': {'e': 3, 'f': 4}}}}}, (0, 4),
-        {'b': {'c': {'d': {'a-e': 1, 'a-f': 2, 'g-e': 3, 'g-f': 4}}}})
+      'g': {'b': {'c': {'d': {'e': 3, 'f': 4}}}}}, (0, 4),
+     {'b': {'c': {'d': {'a-e': 1, 'a-f': 2, 'g-e': 3, 'g-f': 4}}}})
 ])
 def test_combine(data, dims, expected):
     new = combine(data, dims)

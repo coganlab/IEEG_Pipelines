@@ -35,7 +35,7 @@ jobs:
           python: '3.11'
           kind: mamba
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       # Xvfb/OpenGL
       - uses: pyvista/setup-headless-display-action@main
         with:
@@ -52,7 +52,7 @@ jobs:
           if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
         if: startswith(matrix.kind, 'pip')
       # Python (if conda)
-      - uses: conda-incubator/setup-miniconda@v2
+      - uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-variant: Mambaforge
           miniforge-version: latest
@@ -65,9 +65,17 @@ jobs:
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
+      - name: List packages
+        run: |
+          conda list
+          python -c "import mne; mne.sys_info()"
+      - name: fetch mne datasets
+        run: |
+          python -c "import mne; mne.datasets.misc.data_path(); mne.datasets.epilepsy_ecog.data_path(); mne.datasets.sample.data_path()"
       - name: Test with pytest
         run: |
-           pytest ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
+          pip install -r envs/dev/testing-reqs.txt
+          pytest ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
         if: matrix.kind == 'mamba'

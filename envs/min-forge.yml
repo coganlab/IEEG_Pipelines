@@ -1,0 +1,9 @@
+name: ieeg
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - pip
+  - mne
+  - mne-bids
+  - pybids

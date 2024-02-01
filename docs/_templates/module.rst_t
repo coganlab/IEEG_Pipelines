@@ -1,0 +1,17 @@
+{%- set base = basename.split('.') | last -%}
+{%- if show_headings -%}
+{{ base | e | heading }}
+{% endif -%}
+
+.. automodule:: {{ qualname }}
+
+.. currentmodule:: {{ basename.replace('.' + base, '') }}
+
+.. autosummary::
+    :toctree: ../references
+    :recursive:
+
+    {{ base }}
+{#{%- for option in automodule_options %}#}
+{#   :{{ option }}:#}
+{#{%- endfor %}#}
