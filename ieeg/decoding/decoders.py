@@ -1789,10 +1789,19 @@ class PcaLdaClassification(BaseEstimator):
 
     def __init__(self, explained_variance=0.8, da_type='lda', PCA_kwargs={},
                  DA_kwargs={}):
-        self.da_type = da_type
-        self.PCA_kwargs = PCA_kwargs
-        self.PCA_kwargs['n_components'] = explained_variance
-        self.DA_kwargs = DA_kwargs
+        # choose discriminant type
+        if (da_type == 'lda'):
+            # linear discriminant analysis
+            da_model = da.LinearDiscriminantAnalysis(**DA_kwargs)
+        else:
+            # Quadratic discriminant analysis
+            da_model = da.QuadraticDiscriminantAnalysis(**DA_kwargs)
+        PCA_kwargs = PCA_kwargs
+        PCA_kwargs['n_components'] = explained_variance
+        # Create a pipeline classifier
+        self.model = Pipeline(steps=[
+            ('pca', PCA(**PCA_kwargs)),
+            ('discriminant', da_model)])
 
     def fit(self, X_flat_train, y_train):
 
@@ -1810,23 +1819,8 @@ class PcaLdaClassification(BaseEstimator):
             This is the outputs that are being predicted
         """
 
-        # choose discriminant type
-        if (self.da_type == 'lda'):
-            # linear discriminant analysis
-            da_model = da.LinearDiscriminantAnalysis(**self.DA_kwargs)
-        else:
-            # Quadratic discriminant analysis
-            da_model = da.QuadraticDiscriminantAnalysis(**self.DA_kwargs)
-
-        # Create a pipeline classifier
-        pca_lda = Pipeline(steps=[
-            ('pca', PCA(**self.PCA_kwargs)),
-            ('discriminant', da_model)])
-
         # Fit the model
-        pca_lda.fit(X_flat_train, y_train)
-
-        self.model = pca_lda
+        self.model.fit(X_flat_train, y_train)
 
     def predict(self, X_flat_test):
 
