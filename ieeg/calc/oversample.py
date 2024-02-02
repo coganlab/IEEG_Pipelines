@@ -251,15 +251,15 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
             raise ValueError(f"Need at least {n_min} non-nan values, but only"
                              f" have {n_non_nan}")
 
-        check = {'train': lambda t: np.setdiff1d(not_where, t),
-                 'test': lambda t: np.intersect1d(not_where, t)}
+        check = {'train': lambda t: np.setdiff1d(not_where, t, assume_unique=True),
+                 'test': lambda t: np.intersect1d(not_where, t, assume_unique=True)}
 
         splits = super().split(X, y, groups)
 
         # check that all training sets for each kfold within each repetition
         # have at least min_non_nan non-nan values
+        kfold_set = [None] * self.n_splits
         while element := next(splits, False):
-            kfold_set = []
             for i in range(self.n_splits):
                 if i == 0:
                     train, test = element
@@ -276,7 +276,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                     one_rep = itertools.islice(extra, self.n_splits)
                     splits = itertools.chain(one_rep, splits)
                     break
-                kfold_set.append((train, test))
+                kfold_set[i] = (train, test)
             else:
                 yield from kfold_set
 
