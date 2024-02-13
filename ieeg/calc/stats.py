@@ -329,33 +329,20 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     0.0308
     """
 
-    # sig2 = make_data_same(sig2, sig1.shape, obs_axis, window_axis)
+    # average the windows
+    in1 = np.mean(sig1, axis=window_axis)
+    in2 = np.mean(sig2, axis=window_axis)
 
-    # Concatenate the two signals for trial shuffling
-    all_trial = np.concatenate((sig1, sig2), axis=obs_axis)
-    labels = np.concatenate((np.full(sig1.shape[obs_axis], False, dtype=bool),
-                             np.full(sig2.shape[obs_axis], True, dtype=bool)))
+    # calc obs axis
+    obs_axis = obs_axis + sig1.ndim if obs_axis < 0 else obs_axis
+    window_axis = window_axis + sig1.ndim if window_axis < 0 else window_axis
+    obs_axis = obs_axis - 1 if window_axis < obs_axis else obs_axis
 
     # Calculate the observed difference
-    obs_diff = stat_func(sig1, sig2, axis=(obs_axis, window_axis))
-    if isinstance(obs_diff, tuple):
-        logger.warn('Given stats function has more than one output. Accepting '
-                    'only the first output')
-        obs_diff = obs_diff[0]
-        orig_func = stat_func
-
-        def stat_func(s1, s2, axis):
-            return orig_func(s1, s2, axis=axis)[0]
+    obs_diff = stat_func(in1, in2, obs_axis)
 
     # Calculate the difference between the two groups averaged across
-    # trials and time
-    diff = np.zeros((n_perm, *obs_diff.shape))
-    for i in range(n_perm):
-        perm_labels = np.random.permutation(labels)
-        fake_sig1 = np.take(all_trial, np.where(np.invert(perm_labels))[0],
-                            axis=obs_axis)
-        fake_sig2 = np.take(all_trial, np.where(perm_labels)[0], axis=obs_axis)
-        diff[i] = stat_func(fake_sig1, fake_sig2, axis=(obs_axis, window_axis))
+    diff = time_perm_shuffle(in1, in2, n_perm, obs_axis, stat_func)
 
     # Calculate the p-value
     p_act = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
