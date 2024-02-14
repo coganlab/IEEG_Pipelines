@@ -1,7 +1,13 @@
-from setuptools import setup
 from setuptools.extension import Extension
 from Cython.Build import cythonize
 import numpy as np
+from setuptools import setup, find_packages
+import os.path as op
+
+
+# Read requirements.txt
+with open(op.join('envs', 'requirements.txt')) as f:
+    requirements = f.read().splitlines()
 
 extensions = [
     Extension(
@@ -24,6 +30,13 @@ extensions = [
 ]
 
 setup(
-    name="C Optimized Functions",
+    name='ieeg',
+    version='0.1',
+    packages=find_packages(),
+    description='A Python package for iEEG data processing.',
+    author='Aaron Earle-Richardson',
+    author_email='ae166@duke.edu',
+    url='https://github.com/coganlab/IEEG_Pipelines',
+    install_requires=requirements,
     ext_modules=cythonize(extensions),
 )
