@@ -525,6 +525,9 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
                     alpha=transparency, background=background, surf=surface,
                     hemi=hemi, show=show, units=units)
 
+    if isinstance(color, str):
+        color = matplotlib.colors.to_rgb(color)
+
     # Set the title if provided
     if title is not None:
         mne.viz.set_3d_title(fig, title, size=40)
