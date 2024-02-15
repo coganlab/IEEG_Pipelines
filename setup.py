@@ -27,6 +27,15 @@ extensions = [
         language="c",  # can be "c" or "c++"
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
     ),
+    Extension(
+        "hilbert",  # the module name exposed to python
+        ["ieeg/timefreq/hilbert.pyx"],
+        # the Cython source file
+        include_dirs=[np.get_include(), 'ieeg/timefreq'],  # includes for numpy
+        extra_compile_args=["-O3"],  # compile optimization flag
+        language="c",  # can be "c" or "c++"
+        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
+    ),
 ]
 
 setup(

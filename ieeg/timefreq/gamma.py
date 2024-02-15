@@ -11,7 +11,7 @@ from joblib import Parallel, delayed
 
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
 from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
-from hilbert import filterbank_hilbert_first_half_wrapper
+from hilbert import filterbank_hilbert_first_half_wrapper, extract_channel_wrapper
 
 @singledispatch
 def extract(data: np.ndarray, fs: int = None,
@@ -289,8 +289,23 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
 
     '''
 
-    Xf, x, cfs, extract_channel = filterbank_hilbert_first_half_wrapper(x, fs, Wn)
+    x = x.astype('float32')
+    minf, maxf = Wn
+    
+    if minf >= maxf:
+        raise ValueError(
+            (f'Upper bound of frequency range must be greater than lower bound'
+             f', but got lower bound of {minf} and upper bound of {maxf}'))
 
+    if x.ndim != 1 and x.ndim != 2:
+        raise ValueError('Input signal must be 1- or 2-dimensional but got input with'
+             f'shape {x.shape}')
+    
+    Xf, freqs, cfs, N, sds, h, x = filterbank_hilbert_first_half_wrapper(x, fs, minf, maxf)
+
+    def extract_channel(Xf):
+        return extract_channel_wrapper(Xf, freqs, cfs, N, sds, h, x, Wn)
+    
     # pre-allocate
     hilb_phase = np.zeros((*x.shape, len(cfs)), dtype='float32')
     hilb_amp = np.zeros((*x.shape, len(cfs)), dtype='float32')
@@ -307,3 +322,4 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
             hilb_phase[:, chn], hilb_amp[:, chn] = phase, amp
 
     return hilb_phase, hilb_amp, cfs
+
