@@ -99,12 +99,12 @@ def extract(data: np.ndarray, fs: int = None,
             par_out = parallelize(filterbank_hilbert, ins, fs=fs, Wn=passband,
                                   n_jobs=n_jobs)
             env[:, :, :] = np.array([np.sum(out, axis=-1).T for
-                                     _, out, _ in par_out])
+                                     out in par_out])
         else:
             if verbose:
                 trials = tqdm(trials)
             for trial in trials:
-                _, out, _ = filterbank_hilbert(in_data[trial, :, :].T, fs,
+                out = filterbank_hilbert(in_data[trial, :, :].T, fs,
                                                passband, 1)
                 env[trial, :, :] = np.sum(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
@@ -275,17 +275,11 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
     >>> import numpy as np
     >>> x = np.random.rand(1000,3) # 3 channels of signals
     >>> fs = 500
-    >>> x_phase, x_envelope, freqs = filterbank_hilbert(x, fs, Wn=[1, 150])
+    >>> x_envelope = filterbank_hilbert(x, fs, Wn=[1, 150])
     >>> # the outputs have the phase and envelope for each channel and each
     filter in the filterbank
-    >>> x_phase.shape  # 3rd dimension is one for each filter in filterbank
+    >>> x_envelope.shape # 3rd dimension is one for each filter in filterbank
     (1000, 3, 42)
-    >>> x_envelope.shape
-    (1000, 3, 42)
-    >>> round(freqs[0], 8) # center frequency of first filter bank filter
-    1.21558792
-    >>> round(freqs[-1], 8) # center frequency of last filter bank filter
-    143.97075186
 
     '''
 
@@ -296,30 +290,25 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
         raise ValueError(
             (f'Upper bound of frequency range must be greater than lower bound'
              f', but got lower bound of {minf} and upper bound of {maxf}'))
-
-    if x.ndim != 1 and x.ndim != 2:
-        raise ValueError('Input signal must be 1- or 2-dimensional but got input with'
-             f'shape {x.shape}')
     
-    Xf, freqs, cfs, N, sds, h, x = filterbank_hilbert_first_half_wrapper(x, fs, minf, maxf)
+    Xf, freqs, cfs, N, sds, h = filterbank_hilbert_first_half_wrapper(x, fs, minf, maxf)
 
     def extract_channel(Xf):
-        return extract_channel_wrapper(Xf, freqs, cfs, N, sds, h, x, Wn)
+        return extract_channel_wrapper(Xf, freqs, cfs, N, sds, h, minf, maxf)
     
     # pre-allocate
-    hilb_phase = np.zeros((*x.shape, len(cfs)), dtype='float32')
     hilb_amp = np.zeros((*x.shape, len(cfs)), dtype='float32')
 
     # process channels sequentially
     if n_jobs == 1:
         for chn in range(x.shape[1]):
-            hilb_phase[:, chn], hilb_amp[:, chn] = extract_channel(Xf[:, chn])
+            hilb_amp[:, chn] = extract_channel(Xf[:, chn])
     # process channels in parallel
     else:
         results = Parallel(n_jobs)(delayed(extract_channel)(
             Xf[:, chn]) for chn in range(x.shape[1]))
-        for chn, (phase, amp) in enumerate(results):
-            hilb_phase[:, chn], hilb_amp[:, chn] = phase, amp
+        for chn, amp in enumerate(results):
+            hilb_amp[:, chn] = amp
 
-    return hilb_phase, hilb_amp, cfs
+    return hilb_amp
 
