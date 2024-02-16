@@ -108,7 +108,7 @@ def extract(data: np.ndarray, fs: int = None,
                                                passband, 1)
                 env[trial, :, :] = np.sum(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
-        _, out, _ = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
+        out = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
         env = np.sum(out, axis=-1).T
     else:
         raise ValueError("number of dims should be either 2 or 3, not {}"
