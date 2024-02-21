@@ -279,6 +279,21 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     return avg1 - avg2
 
 
+@njit
+def mean_diff_njit(group1, group2):
+    def mean(arr):
+        return arr.sum() / arr.shape[0]
+
+    def isnan(arr):
+        return arr != arr
+
+    wh1 = ~isnan(group1)
+    wh2 = ~isnan(group2)
+    avg1 = mean(group1[wh1])
+    avg2 = mean(group2[wh2])
+    return avg1 - avg2
+
+
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 1000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
@@ -319,14 +334,13 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     --------
     >>> import numpy as np
     >>> from ieeg import _rand_seed
-    >>> _rand_seed(42)
     >>> np.random.seed(42)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
-    ... for _ in range(50)]) - np.random.random((50, 15)) * 2.4
-    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + np.random.random(
-    ... (100, 15))
-    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000)
-    0.0308
+    ... for _ in range(50)])
+    >>> sig2 = np.random.random((100, 15)) * 3.2
+    >>> stat_func = lambda x, y, axis: mean_diff_njit(x, y)
+    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000, stat_func=stat_func)
+    0.0001
     """
 
     # average the windows
@@ -758,8 +772,19 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     Returns
     -------
     p : np.ndarray, shape (...)
-        The p-values for each time point.
-        """
+        The p-values
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> np.random.seed(42)
+    >>> sig1 = np.mean(np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]]), axis=1)
+    >>> sig2 = np.mean(np.random.random((100, 15)) * 2.4, axis=1)
+    >>> round(np.mean(sig1 - sig2), 3)
+    0.535
+    >>> np.mean(np.mean(sig1 - sig2) > shuffle_test(sig1, sig2, n_perm=10000))
+    0.991
+    """
 
     axis = axis + sig1.ndim if axis < 0 else axis
 
@@ -767,9 +792,8 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     all_trial = np.concatenate((sig1, sig2), axis=axis)
 
     # Calculate the average difference between the two groups averaged across
-    # trials at each time point
-    out_shape = (n_perm, *sig1.shape[:axis], *sig1.shape[axis + 1:])
-    diff = np.zeros(out_shape, dtype=float)
+    # trials
+    diff = np.zeros((n_perm, *sig1.shape[:axis], *sig1.shape[axis + 1:]))
     all_idx = np.arange(all_trial.shape[axis])
     for i in range(n_perm):
         idx1 = np.random.choice(all_idx, sig1.shape[axis], replace=False)
