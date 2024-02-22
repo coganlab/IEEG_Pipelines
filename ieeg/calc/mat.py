@@ -2,6 +2,9 @@ import functools
 from collections.abc import Iterable
 
 import mne
+from concat import concatenate_arrays
+from ieeg import Signal
+
 import numpy as np
 from numba import extending, njit
 from numpy.matlib import repmat
@@ -1196,7 +1199,7 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
     --------
     >>> data = {'a': {'b': {'c': 1}}}
     >>> inner_array(data)
-    array([[[1.]]])
+    array([[[1]]])
     >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
     >>> inner_array(data)
     array([[[ 1., nan]],
@@ -1401,3 +1404,28 @@ if __name__ == "__main__":
     labels = Labels(np.arange(1000))
     l2d = labels @ labels
     x = l2d.reshape((10, -1)).decompose()
+
+
+def _cat_test():
+    """Test concatenation of arrays
+
+    Concatenate a list of arrays along a given axis.
+
+    Parameters
+    ----------
+    arrays
+    axis
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> a = np.array([[1, 2, 3]])
+    >>> b = np.array([[4, 5]])
+    >>> c = np.array([[6, 7, 8, 9]])
+    >>> concatenate_arrays([a, b, c])
+    array([[ 1.,  2.,  3., nan],
+           [ 4.,  5., nan, nan],
+           [ 6.,  7.,  8.,  9.]])
+    >>> concatenate_arrays([a, b, c], axis=1)
+    array([[1., 2., 3., 4., 5., 6., 7., 8., 9.]])
+    """

@@ -11,7 +11,7 @@ from joblib import Parallel, delayed
 
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
 from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
-
+from hilbert import filterbank_hilbert_first_half_wrapper, extract_channel_wrapper
 
 @singledispatch
 def extract(data: np.ndarray, fs: int = None,
@@ -99,16 +99,16 @@ def extract(data: np.ndarray, fs: int = None,
             par_out = parallelize(filterbank_hilbert, ins, fs=fs, Wn=passband,
                                   n_jobs=n_jobs)
             env[:, :, :] = np.array([np.sum(out, axis=-1).T for
-                                     _, out, _ in par_out])
+                                     out in par_out])
         else:
             if verbose:
                 trials = tqdm(trials)
             for trial in trials:
-                _, out, _ = filterbank_hilbert(in_data[trial, :, :].T, fs,
+                out = filterbank_hilbert(in_data[trial, :, :].T, fs,
                                                passband, 1)
                 env[trial, :, :] = np.sum(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
-        _, out, _ = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
+        out = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
         env = np.sum(out, axis=-1).T
     else:
         raise ValueError("number of dims should be either 2 or 3, not {}"
@@ -275,125 +275,40 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
     >>> import numpy as np
     >>> x = np.random.rand(1000,3) # 3 channels of signals
     >>> fs = 500
-    >>> x_phase, x_envelope, freqs = filterbank_hilbert(x, fs, Wn=[1, 150])
+    >>> x_envelope = filterbank_hilbert(x, fs, Wn=[1, 150])
     >>> # the outputs have the phase and envelope for each channel and each
     filter in the filterbank
-    >>> x_phase.shape  # 3rd dimension is one for each filter in filterbank
+    >>> x_envelope.shape # 3rd dimension is one for each filter in filterbank
     (1000, 3, 42)
-    >>> x_envelope.shape
-    (1000, 3, 42)
-    >>> round(freqs[0], 8) # center frequency of first filter bank filter
-    1.21558792
-    >>> round(freqs[-1], 8) # center frequency of last filter bank filter
-    143.97075186
 
     '''
 
+    x = x.astype('float32')
     minf, maxf = Wn
-
+    
     if minf >= maxf:
         raise ValueError(
             (f'Upper bound of frequency range must be greater than lower bound'
              f', but got lower bound of {minf} and upper bound of {maxf}'))
-
-    if x.ndim != 1 and x.ndim != 2:
-        raise ValueError(
-            ('Input signal must be 1- or 2-dimensional but got input with'
-             f'shape {x.shape}'))
-
-    if x.ndim == 1:
-        x = x[:, np.newaxis]
-
-    # create filter bank
-    a = np.array([np.log10(0.39), 0.5])
-    f0 = 0.018
-    octSpace = 1./7
-    maxfo = np.log2(maxf / f0)  # octave of max freq
-    cfs = [f0]
-    sigma_f = 10**(a[0]+a[1]*np.log10(cfs[-1]))
-
-    while np.log2(cfs[-1]/f0) < maxfo:
-
-        if cfs[-1] < 4:
-            cfs.append(cfs[-1]+sigma_f)
-        else:  # switches to log spacing at 4 Hz
-            cfo = np.log2(cfs[-1]/f0)        # current freq octave
-            cfo += octSpace           # new freq octave
-            cfs.append(f0*(2**(cfo)))
-
-        sigma_f = 10**(a[0]+a[1]*np.log10(cfs[-1]))
-
-    cfs = np.array(cfs)
-    if np.logical_and(cfs >= minf, cfs <= maxf).sum() == 0:
-        raise ValueError(
-            (f'Frequency band [{minf}, {maxf}] is too narrow, so no filters in'
-             ' filterbank are placed inside. Try a wider frequency band.'))
-
-    # choose those that lie in the input freqRange
-    cfs = cfs[np.logical_and(cfs >= minf, cfs <= maxf)]
-
-    exponent = np.concatenate(
-        (np.ones((len(cfs), 1)), np.log10(cfs)[:, np.newaxis]), axis=1) @ a
-    sigma_fs = 10**exponent
-    sds = sigma_fs * np.sqrt(2)
-
-    N = x.shape[0]
-    freqs = np.arange(0, N//2+1)*(fs/N)
-
-    # perform hilbert transform at each center freq
-
-    if x.dtype != np.float32:
-        x = x.astype('float32')
-    Xf = fft(x, N, axis=0)
-
-    h = np.zeros(N, dtype=Xf.dtype)
-    if N % 2 == 0:
-        h[0] = h[N // 2] = 1
-        h[1:N // 2] = 2
-    else:
-        h[0] = 1
-        h[1:(N + 1) // 2] = 2
-    if x.ndim > 1:
-        ind = [np.newaxis] * x.ndim
-        ind[0] = slice(None)
-        h = h[tuple(ind)]
+    
+    Xf, freqs, cfs, N, sds, h = filterbank_hilbert_first_half_wrapper(x, fs, minf, maxf)
 
     def extract_channel(Xf):
-        hilb_channel = _vectorized_band_hilbert(Xf, h, N, freqs, cfs, sds)
-        hilb_phase = np.zeros((x.shape[0], len(cfs)), dtype='float32')
-        hilb_amp = np.zeros((x.shape[0], len(cfs)), dtype='float32')
-
-        band_locator = np.logical_and(cfs >= minf, cfs <= maxf)
-        hilb_phase = np.angle(hilb_channel[:, band_locator])
-        hilb_amp = np.abs(hilb_channel[:, band_locator])
-
-        return hilb_phase, hilb_amp
-
+        return extract_channel_wrapper(Xf, freqs, cfs, N, sds, h, minf, maxf)
+    
     # pre-allocate
-    hilb_phase = np.zeros((*x.shape, len(cfs)), dtype='float32')
     hilb_amp = np.zeros((*x.shape, len(cfs)), dtype='float32')
 
     # process channels sequentially
     if n_jobs == 1:
         for chn in range(x.shape[1]):
-            hilb_phase[:, chn], hilb_amp[:, chn] = extract_channel(Xf[:, chn])
+            hilb_amp[:, chn] = extract_channel(Xf[:, chn])
     # process channels in parallel
     else:
         results = Parallel(n_jobs)(delayed(extract_channel)(
             Xf[:, chn]) for chn in range(x.shape[1]))
-        for chn, (phase, amp) in enumerate(results):
-            hilb_phase[:, chn], hilb_amp[:, chn] = phase, amp
+        for chn, amp in enumerate(results):
+            hilb_amp[:, chn] = amp
 
-    return hilb_phase, hilb_amp, cfs
+    return hilb_amp
 
-
-def _vectorized_band_hilbert(X_fft, h, N, freqs, cfs, sds) -> NDArray:
-    n_freqs = len(freqs)
-    k = freqs.reshape(-1, 1) - cfs.reshape(1, -1)
-    H = np.zeros((N, len(cfs)), dtype='float32')
-    H[:n_freqs, :] = np.exp(-0.5 * np.divide(k, sds) ** 2)
-    H[n_freqs:, :] = H[1:int(np.floor((N+1)/2)), :][::-1]
-    H[0, :] = 0.
-    H = np.multiply(H, h)
-
-    return ifft(X_fft[:, np.newaxis] * H, N, axis=0).astype('complex64')
