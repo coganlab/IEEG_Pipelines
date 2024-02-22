@@ -397,10 +397,16 @@ class LabeledArray(np.ndarray):
         return new_keys
 
     def _to_coords(self, orig_keys):
-        if np.isscalar(orig_keys):
+
+        if np.isscalar(orig_keys) or np.issubdtype(
+                (dtype := getattr(orig_keys, 'dtype', None)), np.integer):
             keys = [orig_keys]
             l_keys = self._parse_index(keys)
             return keys[0], tuple(l_keys)
+        elif dtype == np.bool_ and is_broadcastable(
+                getattr(orig_keys, 'shape', ()), self.shape):
+            l_keys = np.where(np.reshape(orig_keys, self.shape))
+            return orig_keys, l_keys
         else:
             keys = list(orig_keys)
             l_keys = self._parse_index(keys)
@@ -1051,6 +1057,23 @@ def _lcs(s1: tuple, s2: tuple) -> list[bool]:
         if s1[i] == s2[i]:
             matrix[i] = True
     return matrix
+
+
+def is_broadcastable(shp1: tuple[int, ...], shp2: tuple[int, ...]):
+
+    ndim1 = len(shp1)
+    ndim2 = len(shp2)
+    if ndim1 < ndim2:
+        shp1 += (1,) * (ndim2 - ndim1)
+    elif ndim2 < ndim1:
+        shp2 += (1,) * (ndim1 - ndim2)
+
+    for a, b in zip(shp1, shp2):
+        if a == 1 or b == 1 or a == b:
+            pass
+        else:
+            return False
+    return True
 
 
 def get_subset_reorder_indices(array1, array2):
