@@ -2,7 +2,7 @@ import functools
 from collections.abc import Iterable
 
 import mne
-from concat import concatenate_arrays
+from ieeg.calc.concat import concatenate_arrays
 from ieeg import Signal
 
 import numpy as np
