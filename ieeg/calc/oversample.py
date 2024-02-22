@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
-from mixup import mixupnd as cmixup
+from ieeg.calc.mixup import mixupnd as cmixup
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -268,7 +268,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 yield from kfold_set
 
     @staticmethod
-    def oversample(arr: np.ndarray, func: callable = mixupnd,
+    def oversample(arr: np.ndarray, func: callable = cmixup,
                    axis: int = 1, copy: bool = True) -> np.ndarray:
         """Oversample nan rows using func
 
