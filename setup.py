@@ -21,7 +21,7 @@ extensions = [
         "ieeg.calc.mixup",  # the module name exposed to python
         ["ieeg/calc/mixup.pyx"],  # the Cython source file
         include_dirs=['ieeg/calc'] + lib_path,  # includes for numpy
-        extra_compile_args=["-O3"],  # compile optimization flag
+        extra_compile_args=["/O2"],  # compile optimization flag
         language="c",  # can be "c" or "c++"
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
     ),
@@ -30,7 +30,7 @@ extensions = [
         ["ieeg/calc/concat.pyx"],
         # the Cython source file
         include_dirs=['ieeg/calc'] + lib_path,  # includes for numpy
-        extra_compile_args=["-O3"],  # compile optimization flag
+        extra_compile_args=["/O2"],  # compile optimization flag
         language="c",  # can be "c" or "c++"
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
     ),
@@ -39,7 +39,7 @@ extensions = [
         ["ieeg/timefreq/hilbert.pyx"],
         # the Cython source file
         include_dirs=['ieeg/timefreq'] + lib_path,  # includes for numpy
-        extra_compile_args=["-O3"],  # compile optimization flag
+        extra_compile_args=["/O2"],  # compile optimization flag
         language="c",  # can be "c" or "c++"
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
     ),
