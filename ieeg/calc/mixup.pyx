@@ -64,14 +64,15 @@ cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0,
         rng = RNG()
         seed = rng.rng.next_uint32(rng.rng.state)
 
-    srand(seed)
+    if seed != -2:
+        srand(seed)
 
     if arr.ndim == 2:
         mixup2d(arr_in, alpha)
     elif arr.ndim > 2:
         for i in range(arr_in.shape[0]):
             # Ensure that the last two dimensions are free
-            mixupnd(arr_in[i], -2, alpha, seed)
+            mixupnd(arr_in[i], -2, alpha, -2)
     else:
         raise ValueError("Cannot apply mixup to a 1-dimensional array")
 
