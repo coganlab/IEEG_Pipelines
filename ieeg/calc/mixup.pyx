@@ -2,9 +2,8 @@ import numpy as np
 cimport numpy as cnp
 cimport cython
 from libc.stdlib cimport rand, RAND_MAX, srand
-from libc.time cimport time
 from numpy.random cimport bitgen_t
-from numpy.random import PCG64DXSM
+from numpy.random import SFC64
 from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
 
 DTYPE = np.float64
@@ -50,9 +49,9 @@ cdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
 
 @cython.boundscheck(False)
 cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0,
-                   int seed=time(NULL)):
+                   int seed=-1):
     cdef cnp.ndarray arr_in
-    cdef RNG rng = RNG(seed)
+    cdef RNG rng
 
     # create a view of the array with the observation axis in the second to
     # last position
@@ -61,14 +60,18 @@ cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0,
     else:
         arr_in = arr
 
-    srand(rng.rng.next_uint32(rng.rng.state))
+    if seed == -1:
+        rng = RNG()
+        seed = rng.rng.next_uint32(rng.rng.state)
+
+    srand(seed)
 
     if arr.ndim == 2:
         mixup2d(arr_in, alpha)
     elif arr.ndim > 2:
         for i in range(arr_in.shape[0]):
             # Ensure that the last two dimensions are free
-            mixupnd(arr_in[i], -2, alpha)
+            mixupnd(arr_in[i], -2, alpha, seed)
     else:
         raise ValueError("Cannot apply mixup to a 1-dimensional array")
 
@@ -122,9 +125,9 @@ cdef class RNG:
     def __cinit__(self, int seed=-1):
         cdef const char *capsule_name = "BitGenerator"
         if seed == -1:
-            self.bit_generator = PCG64DXSM()
+            self.bit_generator = SFC64()
         else:
-            self.bit_generator = PCG64DXSM(seed=seed)
+            self.bit_generator = SFC64(seed=seed)
         capsule = self.bit_generator.capsule
         if not PyCapsule_IsValid(capsule, capsule_name):
             raise ValueError("Invalid pointer to anon_func_state")
