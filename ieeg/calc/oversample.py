@@ -234,7 +234,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
     @staticmethod
     def oversample(arr: np.ndarray, func: callable = cmixup,
-                   axis: int = 1, copy: bool = True) -> np.ndarray:
+                   axis: int = 1, copy: bool = True, seed=None) -> np.ndarray:
         """Oversample nan rows using func
 
         Parameters
@@ -250,9 +250,6 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         Examples
         --------
-        >>> from ieeg import _rand_seed
-        >>> _rand_seed(0)
-        >>> np.random.seed(0)
         >>> arr = np.array([[1, 2], [4, 5], [7, 8],
         ... [float("nan"), float("nan")]])
         >>> MinimumNaNSplit.oversample(arr, normnd, 0)
@@ -260,11 +257,11 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                [4.        , 5.        ],
                [7.        , 8.        ],
                [8.32102813, 5.98018098]])
-        >>> MinimumNaNSplit.oversample(arr, mixupnd, 0)
+        >>> MinimumNaNSplit.oversample(arr, cmixup, 0, seed=42)
         array([[1.        , 2.        ],
                [4.        , 5.        ],
                [7.        , 8.        ],
-               [3.13990284, 4.13990284]])
+               [1.58503983, 2.58503983]])
         """
         if copy:
             arr = arr.copy()
@@ -273,6 +270,8 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         if arr.ndim <= 0:
             raise ValueError("Cannot apply func to a 0-dimensional array")
+        elif seed is not None:
+            func(arr, axis, seed=seed)
         else:
             func(arr, axis)
         return arr

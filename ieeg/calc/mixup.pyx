@@ -1,7 +1,11 @@
 import numpy as np
 cimport numpy as cnp
 cimport cython
-from libc.stdlib cimport rand, RAND_MAX
+from libc.stdlib cimport rand, RAND_MAX, srand
+from libc.time cimport time
+from numpy.random cimport bitgen_t
+from numpy.random import PCG64DXSM
+from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
 
 DTYPE = np.float64
 ctypedef cnp.float64_t DTYPE_t
@@ -45,8 +49,10 @@ cdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
 
 
 @cython.boundscheck(False)
-cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0):
+cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0,
+                   int seed=time(NULL)):
     cdef cnp.ndarray arr_in
+    cdef RNG rng = RNG(seed)
 
     # create a view of the array with the observation axis in the second to
     # last position
@@ -54,6 +60,8 @@ cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0):
         arr_in = np.swapaxes(arr, obs_axis, -2)
     else:
         arr_in = arr
+
+    srand(rng.rng.next_uint32(rng.rng.state))
 
     if arr.ndim == 2:
         mixup2d(arr_in, alpha)
@@ -105,3 +113,27 @@ cpdef void normnd(cnp.ndarray arr, int obs_axis=-1):
             normnd(arr_in[i], -1)
     else:
         raise ValueError("Cannot apply norm to a 0-dimensional array")
+
+
+cdef class RNG:
+    cdef bitgen_t *rng
+    cdef object bit_generator
+
+    def __cinit__(self, int seed=-1):
+        cdef const char *capsule_name = "BitGenerator"
+        if seed == -1:
+            self.bit_generator = PCG64DXSM()
+        else:
+            self.bit_generator = PCG64DXSM(seed=seed)
+        capsule = self.bit_generator.capsule
+        if not PyCapsule_IsValid(capsule, capsule_name):
+            raise ValueError("Invalid pointer to anon_func_state")
+        # Cast the pointer
+        self.rng = <bitgen_t *> PyCapsule_GetPointer(capsule, capsule_name)
+
+    def lock(self):
+        return self.bit_generator.lock
+
+    def spawn(self, int n):
+        for i in range(n):
+            yield RNG(seed=i)
