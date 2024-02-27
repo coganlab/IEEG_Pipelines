@@ -7,11 +7,8 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
-from mixup import mixupnd as cmixup
-
-Array2D = NDArray[Tuple[Literal[2], ...]]
-Vector = NDArray[Literal[1]]
-
+from mixup import mixup2d, mixup3d, mixup4d, mixup5d
+from mixup import norm1d, norm2d, norm3d, norm4d, norm5d
 
 class TwoSplitNaN(RepeatedStratifiedKFold):
     """A Repeated Stratified KFold iterator that splits the data into sections
@@ -90,7 +87,7 @@ class TwoSplitNaN(RepeatedStratifiedKFold):
             yield train, test
 
 
-@njit(nogil=True, cache=True)
+# @njit(nogil=True, cache=True)
 def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     """Oversample by mixing two random non-NaN observations
 
@@ -120,7 +117,15 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
 
     # create a view of the array with the observation axis in the second to
     # last position
-    arr_in = np.swapaxes(arr, obs_axis, -2)
+    if arr.ndim < 2:
+        raise ValueError("Cannot apply mixup to a 1-dimensional array")    
+
+    # create a view of the array with the observation axis in the second to
+    # last position    
+    if obs_axis != -2:
+        arr_in = np.swapaxes(arr, obs_axis, -2)
+    else:
+        arr_in = arr
 
     if arr.ndim == 2:
         mixup2d(arr_in, alpha)
@@ -131,58 +136,37 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
         raise ValueError("Cannot apply mixup to a 1-dimensional array")
 
 
-@njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
-def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
-    """Oversample by mixing two random non-NaN observations
+# # @njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
+# def mixup2d(arr: NDArray, alpha: float = 1.) -> None:
+#     """Oversample by mixing two random non-NaN observations
 
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    alpha : float
-        The alpha parameter for the beta distribution. If alpha is 0, then
-        the distribution is uniform. If alpha is 1, then the distribution is
-        symmetric. If alpha is greater than 1, then the distribution is
-        skewed towards the first observation. If alpha is less than 1, then
-        the distribution is skewed towards the second observation.
+#     Parameters
+#     ----------
+#     arr : array
+#         The data to oversample.
+#     alpha : float
+#         The alpha parameter for the beta distribution. If alpha is 0, then
+#         the distribution is uniform. If alpha is 1, then the distribution is
+#         symmetric. If alpha is greater than 1, then the distribution is
+#         skewed towards the first observation. If alpha is less than 1, then
+#         the distribution is skewed towards the second observation.
 
-    Examples
-    --------
-    >>> from ieeg import _rand_seed
-    >>> _rand_seed(0)
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
-    >>> mixup2d(arr)
-    >>> arr
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [5.72901614, 6.72901614]])
-    """
-    # Get indices of rows with NaN values
-    wh = np.zeros(arr.shape[0], dtype=np.bool_)
-    for i in range(arr.shape[0]):
-        wh[i] = np.any(np.isnan(arr[i]))
-    non_nan_rows = np.flatnonzero(~wh)
-    n_nan = np.sum(wh)
-
-    # Construct an array of 2-length vectors for each NaN row
-    vectors = np.empty((n_nan, 2))
-
-    # The two elements of each vector are different indices of non-NaN rows
-    for i in range(n_nan):
-        vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
-
-    # get beta distribution parameters
-    if alpha > 0.:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    x1 = arr[vectors[:, 0].astype(np.intp)]
-    x2 = arr[vectors[:, 1].astype(np.intp)]
-
-    arr[wh] = lam * x1 + (1 - lam) * x2
+#     Examples
+#     --------
+#     >>> from ieeg import _rand_seed
+#     >>> from initc import _rand_seed_c
+#     >>> _rand_seed(0)
+#     >>> _rand_seed_c(0)
+#     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+#     ... [float("nan"), float("nan")]])
+#     >>> mixup2d(arr)
+#     >>> arr
+#     array([[1.       , 2.       ],
+#            [4.       , 5.       ],
+#            [7.       , 8.       ],
+#            [6.7861718, 7.7861718]])
+#     """
+#     cmixup2d(arr, alpha)
 
 
 class MinimumNaNSplit(RepeatedStratifiedKFold):
@@ -484,7 +468,7 @@ def norm(arr: np.ndarray, obs_axis: int) -> None:
     arr[tuple(nan_idx)] = np.random.normal(mean, std, out_shape)
 
 
-@njit(nogil=True, cache=True)
+# @njit(nogil=True, cache=True)
 def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
     """Oversample by obtaining the distribution and randomly selecting
 
@@ -508,15 +492,27 @@ def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
            8.        , 8.91013086, 5.50039302])
     """
 
-    # create a view of the array with the observation axis in the last position
-    arr_in = np.swapaxes(arr, obs_axis, -1)
-    if arr.ndim == 1:
-        norm1d(arr_in)
-    elif arr.ndim > 1:
-        for ijk in np.ndindex(arr_in.shape[:-1]):
-            norm1d(arr_in[ijk])
-    else:
+    if arr.ndim < 1:
         raise ValueError("Cannot apply norm to a 0-dimensional array")
+
+    # create a view of the array with the observation axis in the last position
+    if obs_axis != -1:
+        arr_in = np.swapaxes(arr, obs_axis, -1)
+    else:
+        arr_in = arr
+    
+    if arr_in.ndim == 1:
+        norm1d(arr_in)
+    elif arr_in.ndim == 2:
+        norm2d(arr_in)
+    elif arr_in.ndim == 3:
+        norm3d(arr_in)
+    elif arr_in.ndim == 4:
+        norm4d(arr_in)
+    elif arr_in.ndim == 5:
+        norm5d(arr_in)
+    else:
+        raise NotImplementedError()
 
 
 def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
@@ -548,7 +544,7 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
 
 
 # @njit("void(float64[:])", nogil=True)
-# def norm1d(arr: Vector) -> None:
+# def norm1d(arr: NDArray) -> None:
 #     """Oversample by obtaining the distribution and randomly selecting"""
 #     # Get indices of rows with NaN values
 #     wh = np.isnan(arr)
