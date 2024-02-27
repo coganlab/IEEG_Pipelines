@@ -7,84 +7,11 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
-from ieeg.calc.mixup import mixup2d, mixup3d, mixup4d, mixup5d
-from ieeg.calc.mixup import norm1d, norm2d, norm3d, norm4d, norm5d
+from ieeg.calc.mixup import mixupnd as cmixup
+from ieeg.calc.mixup import normnd as cnorm
 
-class TwoSplitNaN(RepeatedStratifiedKFold):
-    """A Repeated Stratified KFold iterator that splits the data into sections
-    that do and don't contain NaNs
-
-    Parameters
-    ----------
-    n_splits : int
-        The number of splits.
-    n_repeats : int, optional
-        The number of times to repeat the splits, by default 10.
-    random_state : int, optional
-        The random state to use, by default None.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from ieeg.calc.oversample import TwoSplitNaN
-    >>> np.random.seed(0)
-    >>> X = np.vstack((np.arange(1, 9).reshape(4, 2), np.full((4, 2), np.nan)))
-    >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1])
-    >>> tsn = TwoSplitNaN(2, 3)
-    >>> for train, test in tsn.split(X, y):
-    ...     print("train:", train, "test:", test)
-    train: [1 2 4 7] test: [0 3 5 6]
-    train: [0 3 5 6] test: [1 2 4 7]
-    train: [1 3 5 7] test: [0 2 4 6]
-    train: [0 2 4 6] test: [1 3 5 7]
-    train: [1 2 5 7] test: [0 3 4 6]
-    train: [0 3 4 6] test: [1 2 5 7]
-    """
-
-    def __init__(self, n_splits: int, n_repeats: int = 10,
-                 random_state: int = None):
-        super().__init__(n_splits=n_splits, n_repeats=n_repeats,
-                         random_state=random_state)
-        self.n_splits = n_splits
-
-    def split(self, X, y=None, groups=None):
-
-        # find where the nans are
-        where = np.isnan(X).any(axis=tuple(range(X.ndim))[1:])
-        not_where = np.where(~where)[0]
-        where = np.where(where)[0]
-
-        # if there are no nans, then just split the data
-        if len(where) == 0:
-            yield from super(TwoSplitNaN, self).split(X, y, groups)
-            return
-
-        # split the data
-        nan = X[where, ...]
-        not_nan = X[not_where, ...]
-
-        # split the labels and verify the stratification
-        y_nan = y[where, ...]
-        y_not_nan = y[not_where, ...]
-        for i in set(y_nan):
-            least = np.sum(y_not_nan == i)
-            if np.sum(y_not_nan == i) < self.n_splits:
-                raise ValueError(f"Cannot split data into {self.n_splits} "
-                                 f"folds with at most {least} non nan values")
-
-        # split each section into k folds
-        nan_folds = super().split(nan, y_nan)
-        not_nan_folds = super().split(not_nan, y_not_nan)
-
-        # combine the folds
-        for (nan_train, nan_test), (not_nan_train, not_nan_test) in zip(
-                nan_folds, not_nan_folds):
-            train = np.concatenate((where[nan_train], not_where[not_nan_train]
-                                    ))
-            test = np.concatenate((where[nan_test], not_where[not_nan_test]))
-            train.sort()
-            test.sort()
-            yield train, test
+Array2D = NDArray[Tuple[Literal[2], ...]]
+Vector = NDArray[Literal[1]]
 
 
 # @njit(nogil=True, cache=True)
@@ -107,37 +34,45 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     Examples
     --------
     >>> from ieeg.calc.oversample import mixupnd
-    >>> np.random.seed(0)
+    >>> from ieeg import _rand_seed
+    >>> _rand_seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> mixupnd(arr, 0)
-    >>> arr # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
-    array([[...
+    >>> arr # doctest: +NORMALIZE_WHITESPACE
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [5.72901614, 6.72901614]])
+    >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
+    >>> arr2[0, 2, :] = [float("nan")] * 4
+    >>> mixupnd(arr2, 1)
+    >>> arr2 # doctest: +NORMALIZE_WHITESPACE
+    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
+            [ 4.        ,  5.        ,  6.        ,  7.        ],
+            [ 1.36837048,  2.36837048,  3.36837048,  4.36837048]],
+    <BLANKLINE>
+           [[12.        , 13.        , 14.        , 15.        ],
+            [16.        , 17.        , 18.        , 19.        ],
+            [20.        , 21.        , 22.        , 23.        ]]])
+    >>> arr3 = np.arange(24, dtype=float).reshape(3, 2, 4)
+    >>> arr3[0, :, :] = float("nan")
+    >>> mixupnd(arr3, 0)
+    >>> arr3 # doctest: +NORMALIZE_WHITESPACE
+    array([[[14.9814921 , 15.9814921 , 16.9814921 , 17.9814921 ],
+            [17.75113945, 18.75113945, 19.75113945, 20.75113945]],
+    <BLANKLINE>
+           [[ 8.        ,  9.        , 10.        , 11.        ],
+            [12.        , 13.        , 14.        , 15.        ]],
+    <BLANKLINE>
+           [[16.        , 17.        , 18.        , 19.        ],
+            [20.        , 21.        , 22.        , 23.        ]]])
     """
-
-    # create a view of the array with the observation axis in the second to
-    # last position
-    if arr.ndim < 2:
-        raise ValueError("Cannot apply mixup to a 1-dimensional array")    
-
-    # create a view of the array with the observation axis in the second to
-    # last position    
-    if obs_axis != -2:
-        arr_in = np.swapaxes(arr, obs_axis, -2)
-    else:
-        arr_in = arr
-
-    if arr.ndim == 2:
-        mixup2d(arr_in, alpha)
-    elif arr.ndim > 2:
-        for ijk in np.ndindex(arr.shape[:-2]):
-            mixup2d(arr_in[ijk], alpha)
-    else:
-        raise ValueError("Cannot apply mixup to a 1-dimensional array")
+    cmixup(arr, obs_axis, alpha)
 
 
-# # @njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
-# def mixup2d(arr: NDArray, alpha: float = 1.) -> None:
+# @njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
+# def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
 #     """Oversample by mixing two random non-NaN observations
 
 #     Parameters
@@ -154,17 +89,15 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
 #     Examples
 #     --------
 #     >>> from ieeg import _rand_seed
-#     >>> from initc import _rand_seed_c
 #     >>> _rand_seed(0)
-#     >>> _rand_seed_c(0)
 #     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
 #     ... [float("nan"), float("nan")]])
 #     >>> mixup2d(arr)
 #     >>> arr
-#     array([[1.       , 2.       ],
-#            [4.       , 5.       ],
-#            [7.       , 8.       ],
-#            [6.7861718, 7.7861718]])
+#     array([[1.        , 2.        ],
+#            [4.        , 5.        ],
+#            [7.        , 8.        ],
+#            [5.72901614, 6.72901614]])
 #     """
 #     cmixup2d(arr, alpha)
 
@@ -186,7 +119,6 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     Examples
     --------
     >>> import numpy as np
-    >>> from ieeg.calc.oversample import TwoSplitNaN
     >>> from ieeg import _rand_seed
     >>> _rand_seed(0)
     >>> np.random.seed(0)
@@ -201,14 +133,27 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     train: [0 2 5 6] test: [1 3 4 7]
     train: [0 3 5 7] test: [1 2 4 6]
     train: [1 2 4 6] test: [0 3 5 7]
+    >>> msn = MinimumNaNSplit(2, 3, which='test', min_non_nan=1)
+    >>> for train, test in msn.split(X, y):
+    ...     print("train:", train, "test:", test)
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    train: [0 1 2 7] test: [3 4 5 6]
+    train: [3 4 5 6] test: [0 1 2 7]
+    train: [3 4 5 7] test: [0 1 2 6]
+    train: [0 1 2 6] test: [3 4 5 7]
     """
 
     def __init__(self, n_splits: int, n_repeats: int = 10,
-                 random_state: int = None, min_non_nan: int = 2):
+                 random_state: int = None, min_non_nan: int = 2,
+                 which: str = 'train'):
         super().__init__(n_splits=n_splits, n_repeats=n_repeats,
                          random_state=random_state)
         self.n_splits = n_splits
         self.min_non_nan = min_non_nan
+        if which not in ('train', 'test'):
+            raise ValueError("which must be either 'train' or 'test'")
+        self.which = which
 
     def split(self, X, y=None, groups=None):
 
@@ -221,16 +166,19 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         if len(where) == 0:
             yield from super(MinimumNaNSplit, self).split(X, y, groups)
             return
-        elif (n_non_nan := len(not_where)) < (n_min := self.min_non_nan + 1):
+        elif (n_non_nan := not_where.shape[0]) < (n_min := self.min_non_nan + 1):
             raise ValueError(f"Need at least {n_min} non-nan values, but only"
                              f" have {n_non_nan}")
+
+        check = {'train': lambda t: np.setdiff1d(not_where, t, assume_unique=True),
+                 'test': lambda t: np.intersect1d(not_where, t, assume_unique=True)}
 
         splits = super().split(X, y, groups)
 
         # check that all training sets for each kfold within each repetition
         # have at least min_non_nan non-nan values
+        kfold_set = [None] * self.n_splits
         while element := next(splits, False):
-            kfold_set = []
             for i in range(self.n_splits):
                 if i == 0:
                     train, test = element
@@ -240,20 +188,20 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 # if any test set has more non-nan values than the total number
                 # of non-nan values minus the minimum number of non-nan values,
                 # then throw out the split and append an extra repetition
-                if sum(ix not in test for ix in not_where) < self.min_non_nan:
+                if check[self.which](test).shape[0] < self.min_non_nan:
                     for _ in range(i + 1, self.n_splits):
                         next(splits)
                     extra = super().split(X, y, groups)
                     one_rep = itertools.islice(extra, self.n_splits)
-                    splits = itertools.chain(splits, one_rep)
+                    splits = itertools.chain(one_rep, splits)
                     break
-                kfold_set.append((train, test))
+                kfold_set[i] = (train, test)
             else:
                 yield from kfold_set
 
     @staticmethod
-    def oversample(arr: np.ndarray, func: callable = mixupnd,
-                   axis: int = 1, copy: bool = True) -> np.ndarray:
+    def oversample(arr: np.ndarray, func: callable = cmixup,
+                   axis: int = 1, copy: bool = True, seed=None) -> np.ndarray:
         """Oversample nan rows using func
 
         Parameters
@@ -269,9 +217,6 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         Examples
         --------
-        >>> from ieeg import _rand_seed
-        >>> _rand_seed(0)
-        >>> np.random.seed(0)
         >>> arr = np.array([[1, 2], [4, 5], [7, 8],
         ... [float("nan"), float("nan")]])
         >>> MinimumNaNSplit.oversample(arr, normnd, 0)
@@ -279,11 +224,11 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                [4.        , 5.        ],
                [7.        , 8.        ],
                [8.32102813, 5.98018098]])
-        >>> MinimumNaNSplit.oversample(arr, mixupnd, 0)
+        >>> MinimumNaNSplit.oversample(arr, cmixup, 0, seed=42)
         array([[1.        , 2.        ],
                [4.        , 5.        ],
                [7.        , 8.        ],
-               [3.13990284, 4.13990284]])
+               [1.58503983, 2.58503983]])
         """
         if copy:
             arr = arr.copy()
@@ -292,12 +237,14 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         if arr.ndim <= 0:
             raise ValueError("Cannot apply func to a 0-dimensional array")
+        elif seed is not None:
+            func(arr, axis, seed=seed)
         else:
             func(arr, axis)
         return arr
 
     def shuffle_labels(self, arr: np.ndarray, labels: np.ndarray,
-                       trials_ax: int = 1, min_trials: int = None):
+                       trials_ax: int = 0, min_trials: int = 1):
         """Shuffle the labels while making sure that the minimum non nan
         trials are kept
 
@@ -319,14 +266,13 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         >>> arr = np.array([[[1, 2], [4, 5], [7, 8],
         ... [float("nan"), float("nan")]]])
         >>> labels = np.array([0, 0, 1, 1])
-        >>> MinimumNaNSplit(1).shuffle_labels(arr, labels)
+        >>> MinimumNaNSplit(1).shuffle_labels(arr, labels, 1, 1)
         >>> labels
         array([1, 1, 0, 0])
         """
         cats = np.unique(labels)
         gt_labels = [0] * cats.shape[0]
-        if min_trials is None:
-            min_trials = self.n_splits
+        min_trials *= self.n_splits
         i = 0
         while not all(g >= min_trials for g in gt_labels):
             np.random.shuffle(labels)
@@ -491,28 +437,7 @@ def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
     array([1.        , 2.        , 4.        , 5.        , 7.        ,
            8.        , 8.91013086, 5.50039302])
     """
-
-    if arr.ndim < 1:
-        raise ValueError("Cannot apply norm to a 0-dimensional array")
-
-    # create a view of the array with the observation axis in the last position
-    if obs_axis != -1:
-        arr_in = np.swapaxes(arr, obs_axis, -1)
-    else:
-        arr_in = arr
-    
-    if arr_in.ndim == 1:
-        norm1d(arr_in)
-    elif arr_in.ndim == 2:
-        norm2d(arr_in)
-    elif arr_in.ndim == 3:
-        norm3d(arr_in)
-    elif arr_in.ndim == 4:
-        norm4d(arr_in)
-    elif arr_in.ndim == 5:
-        norm5d(arr_in)
-    else:
-        raise NotImplementedError()
+    cnorm(arr, obs_axis)
 
 
 def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
@@ -544,7 +469,7 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
 
 
 # @njit("void(float64[:])", nogil=True)
-# def norm1d(arr: NDArray) -> None:
+# def norm1d(arr: Vector) -> None:
 #     """Oversample by obtaining the distribution and randomly selecting"""
 #     # Get indices of rows with NaN values
 #     wh = np.isnan(arr)

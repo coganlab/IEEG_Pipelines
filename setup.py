@@ -36,14 +36,6 @@ extensions = [
         language="c",  # can be "c" or "c++"
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
     ),
-    Extension(
-        "initc",  # the module name exposed to python
-        ["ieeg/__init__.pyx"],  # the Cython source file
-        include_dirs=[np.get_include(), 'ieeg'],  # includes for numpy
-        extra_compile_args=["-O3"],  # compile optimization flag
-        language="c",  # can be "c" or "c++"
-        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
-    ),
 ]
 
 setup(

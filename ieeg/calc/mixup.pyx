@@ -1,8 +1,10 @@
 import numpy as np
 cimport numpy as cnp
 cimport cython
-from libc.stdlib cimport rand, RAND_MAX
-from libc.math cimport sqrt
+from libc.stdlib cimport rand, RAND_MAX, srand
+from numpy.random cimport bitgen_t
+from numpy.random import SFC64
+from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
 
 DTYPE = np.float64
 ctypedef cnp.float64_t DTYPE_t
@@ -13,25 +15,18 @@ cnp.import_array()
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-cpdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
+cdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
     cdef Py_ssize_t i, n_nan, row, j
     cdef cnp.ndarray[BOOL_t, ndim=1, cast=True] wh
-    cdef cnp.ndarray[INTP_t, ndim=2] vectors
     cdef INTP_t [::1] non_nan_rows, nan_rows
     cdef DTYPE_t [::1] lam
+    cdef INTP_t x1, x2
 
     # Get indices of rows with NaN values
     wh = np.isnan(arr).any(axis=1)
     non_nan_rows = np.nonzero(~wh)[0]
     nan_rows = np.nonzero(wh)[0]
-    n_nan = nan_rows.shape[0]
-
-    # Construct an array of 2-length vectors for each NaN row
-    vectors = np.empty((n_nan, 2)).astype(np.intp)
-
-    # The two elements of each vector are different indices of non-NaN rows
-    for i in range(n_nan):
-        vectors[i, :] = np.random.choice(non_nan_rows, 2, replace=False)
+    n_nan = arr.shape[0] - non_nan_rows.shape[0]
 
     # get beta distribution parameters
     if alpha > 0:
@@ -42,112 +37,105 @@ cpdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
     with nogil:
         for i in range(n_nan):
             row = nan_rows[i]
+            x1 = non_nan_rows[rand() % non_nan_rows.shape[0]]
+            x2 = non_nan_rows[rand() % non_nan_rows.shape[0]]
+            while x1 == x2:
+                x2 = non_nan_rows[rand() % non_nan_rows.shape[0]]
             for j in range(arr.shape[1]):
-                arr[row, j] = lam[i] * arr[vectors[i, 0], j] + (1 - lam[i]) * arr[vectors[i, 1], j]
+                arr[row, j] = lam[i] * arr[x1, j] + (1 - lam[i]) * arr[x2, j]
 
 
 @cython.boundscheck(False)
-@cython.wraparound(False)
-cpdef void mixup3d(DTYPE_t[:,:,::1] arr, float alpha):
-    for i in range(arr.shape[0]):
-        mixup2d(arr[i, :, :], alpha)
+cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0,
+                   int seed=-1):
+    cdef cnp.ndarray arr_in
+    cdef RNG rng
 
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cpdef void mixup4d(DTYPE_t[:,:,:,::1] arr, float alpha):
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            mixup2d(arr[i, j, :, :], alpha)
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cpdef void mixup5d(DTYPE_t[:,:,:,:,::1] arr, float alpha):
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            for k in range(arr.shape[2]):
-                mixup2d(arr[i, j, k, :, :], alpha)
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cpdef void mixupnd(cnp.ndarray[DTYPE_t] arr, float alpha):
-    if arr.ndim < 2:
-        raise ValueError("Cannot apply mixup to a 1-dimensional array")  
-    elif arr.ndim == 2:
-        mixup2d(arr, alpha)
+    # create a view of the array with the observation axis in the second to
+    # last position
+    if obs_axis != -2:
+        arr_in = np.swapaxes(arr, obs_axis, -2)
     else:
-        for i in range(arr.shape[0]):
+        arr_in = arr
+
+    if seed == -1:
+        rng = RNG()
+        seed = rng.rng.next_uint32(rng.rng.state)
+
+    if seed != -2:
+        srand(seed)
+
+    if arr.ndim == 2:
+        mixup2d(arr_in, alpha)
+    elif arr.ndim > 2:
+        for i in range(arr_in.shape[0]):
             # Ensure that the last two dimensions are free
-            mixupnd(arr[i], alpha)
+            mixupnd(arr_in[i], -2, alpha, -2)
+    else:
+        raise ValueError("Cannot apply mixup to a 1-dimensional array")
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef inline void norm1d(DTYPE_t [:] arr):
+cdef inline void norm1d(DTYPE_t [:] arr):
     cdef Py_ssize_t i
     cdef cnp.ndarray[cnp.uint8_t, ndim = 1, cast=True] wh
-    cdef INTP_t[::1] non_nan_rows
-    cdef DTYPE_t mean = 0, std = 0
+    cdef DTYPE_t mean, std
 
     # Get indices of rows with NaN values
     wh = np.isnan(arr)
-    non_nan_rows = np.flatnonzero(~wh)
 
     # Check if there are at least two non-NaN rows
-    if non_nan_rows.shape[0] < 1:
+    if np.sum(~wh) < 1:
         raise ValueError("No test data to fit distribution")
 
     # Calculate mean and standard deviation for each column
-    for i in non_nan_rows:
-        mean += arr[i]
-    mean /= non_nan_rows.shape[0]
-    for i in non_nan_rows:
-        std += (arr[i] - mean) * (arr[i] - mean)
-    std /= (non_nan_rows.shape[0] - 1)
-    std = sqrt(std)
+    mean = np.mean(arr[~wh])
+    std = np.std(arr[~wh])
 
     # Get the normal distribution of each timepoint
     for i in np.flatnonzero(wh):
         arr[i] = np.random.normal(mean, std)
 
-
 @cython.boundscheck(False)
-cpdef void norm2d(DTYPE_t[:,::1] arr):
-    for i in range(arr.shape[0]):
-        norm1d(arr[i, :])
+cpdef void normnd(cnp.ndarray arr, int obs_axis=-1):
+    cdef cnp.ndarray arr_in
 
-
-@cython.boundscheck(False)
-cpdef void norm3d(DTYPE_t[:,:,::1] arr):
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            norm1d(arr[i, j, :])
-
-
-@cython.boundscheck(False)
-cpdef void norm4d(DTYPE_t[:,:,:,::1] arr):
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            for k in range(arr.shape[2]):
-                norm1d(arr[i, j, k, :])
-
-
-@cython.boundscheck(False)
-cpdef void norm5d(DTYPE_t[:,:,:,:,::1] arr):
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            for k in range(arr.shape[2]):
-                for l in range(arr.shape[3]):
-                    norm1d(arr[i, j, k, l, :])
-
-
-@cython.boundscheck(False)
-cpdef void normnd(cnp.ndarray[DTYPE_t] arr):
-    if arr.ndim == 1:
-        norm1d(arr)
+    # create a view of the array with the observation axis in the last position
+    if obs_axis != -1:
+        arr_in = np.swapaxes(arr, obs_axis, -1)
     else:
-        for i in range(arr.shape[0]):
+        arr_in = arr
+
+    if arr.ndim == 1:
+        norm1d(arr_in)
+    elif arr.ndim > 1:
+        for i in range(arr_in.shape[0]):
             # Ensure that the last two dimensions are free
-            normnd(arr[i])
+            normnd(arr_in[i], -1)
+    else:
+        raise ValueError("Cannot apply norm to a 0-dimensional array")
+
+
+cdef class RNG:
+    cdef bitgen_t *rng
+    cdef object bit_generator
+
+    def __cinit__(self, int seed=-1):
+        cdef const char *capsule_name = "BitGenerator"
+        if seed == -1:
+            self.bit_generator = SFC64()
+        else:
+            self.bit_generator = SFC64(seed=seed)
+        capsule = self.bit_generator.capsule
+        if not PyCapsule_IsValid(capsule, capsule_name):
+            raise ValueError("Invalid pointer to anon_func_state")
+        # Cast the pointer
+        self.rng = <bitgen_t *> PyCapsule_GetPointer(capsule, capsule_name)
+
+    def lock(self):
+        return self.bit_generator.lock
+
+    def spawn(self, int n):
+        for i in range(n):
+            yield RNG(seed=i)
