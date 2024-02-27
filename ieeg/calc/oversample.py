@@ -7,8 +7,8 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
-from mixup import mixup2d, mixup3d, mixup4d, mixup5d
-from mixup import norm1d, norm2d, norm3d, norm4d, norm5d
+from ieeg.calc.mixup import mixup2d, mixup3d, mixup4d, mixup5d
+from ieeg.calc.mixup import norm1d, norm2d, norm3d, norm4d, norm5d
 
 class TwoSplitNaN(RepeatedStratifiedKFold):
     """A Repeated Stratified KFold iterator that splits the data into sections
