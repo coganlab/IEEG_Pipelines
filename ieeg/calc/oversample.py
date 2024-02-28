@@ -2,7 +2,6 @@ import itertools
 from typing import Literal, Tuple
 
 import numpy as np
-from numba import njit
 from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
