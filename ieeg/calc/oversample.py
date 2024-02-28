@@ -14,8 +14,7 @@ Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
 
 
-# @njit(nogil=True, cache=True)
-def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
+def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1., seed: int=-1) -> None:
     """Oversample by mixing two random non-NaN observations
 
     Parameters
@@ -34,33 +33,31 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
     Examples
     --------
     >>> from ieeg.calc.oversample import mixupnd
-    >>> from ieeg import _rand_seed
-    >>> _rand_seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> mixupnd(arr, 0)
+    >>> mixupnd(arr, 0, seed=42)
     >>> arr # doctest: +NORMALIZE_WHITESPACE
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
-           [5.72901614, 6.72901614]])
+           [5.65262421, 6.65262421]])
     >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr2[0, 2, :] = [float("nan")] * 4
-    >>> mixupnd(arr2, 1)
+    >>> mixupnd(arr2, 1, seed=42)
     >>> arr2 # doctest: +NORMALIZE_WHITESPACE
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ 1.36837048,  2.36837048,  3.36837048,  4.36837048]],
+            [ 0.09482876,  1.09482876,  2.09482876,  3.09482876]],
     <BLANKLINE>
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
     >>> arr3 = np.arange(24, dtype=float).reshape(3, 2, 4)
     >>> arr3[0, :, :] = float("nan")
-    >>> mixupnd(arr3, 0)
+    >>> mixupnd(arr3, 0, seed=42)
     >>> arr3 # doctest: +NORMALIZE_WHITESPACE
-    array([[[14.9814921 , 15.9814921 , 16.9814921 , 17.9814921 ],
-            [17.75113945, 18.75113945, 19.75113945, 20.75113945]],
+    array([[[ 9.24795712, 10.24795712, 11.24795712, 12.24795712],
+            [16.45781188, 17.45781188, 18.45781188, 19.45781188]],
     <BLANKLINE>
            [[ 8.        ,  9.        , 10.        , 11.        ],
             [12.        , 13.        , 14.        , 15.        ]],
@@ -68,10 +65,9 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.) -> None:
            [[16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
     """
-    cmixup(arr, obs_axis, alpha)
+    cmixup(arr, obs_axis, alpha, seed)
 
 
-# @njit(["void(f8[:, :], Omitted(1.))", "void(f8[:, :], f8)"], nogil=True)
 # def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
 #     """Oversample by mixing two random non-NaN observations
 
@@ -414,7 +410,6 @@ def norm(arr: np.ndarray, obs_axis: int) -> None:
     arr[tuple(nan_idx)] = np.random.normal(mean, std, out_shape)
 
 
-# @njit(nogil=True, cache=True)
 def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
     """Oversample by obtaining the distribution and randomly selecting
 
@@ -468,7 +463,6 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
                       )[:, :n_picks]
 
 
-# @njit("void(float64[:])", nogil=True)
 # def norm1d(arr: Vector) -> None:
 #     """Oversample by obtaining the distribution and randomly selecting"""
 #     # Get indices of rows with NaN values

@@ -15,7 +15,7 @@ cnp.import_array()
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-cdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
+cdef inline void mixup2d(DTYPE_t[:, :] arr, DTYPE_t alpha=1.0):
     cdef Py_ssize_t i, n_nan, row, j
     cdef cnp.ndarray[BOOL_t, ndim=1, cast=True] wh
     cdef INTP_t [::1] non_nan_rows, nan_rows
