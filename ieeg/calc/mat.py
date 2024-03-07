@@ -566,35 +566,6 @@ class LabeledArray(np.ndarray):
         new_labels = lab_mat.reshape(*shape, order=order).decompose()
         return LabeledArray(new_array, new_labels)
 
-    def prepend_labels(self, pre: str, level: int) -> 'LabeledArray':
-        """Prepend a string to all labels at a given level.
-
-        Parameters
-        ----------
-        pre : str
-            The string to prepend to all labels.
-        level : int
-            The level to prepend the string to.
-
-        Returns
-        -------
-        LabeledArray
-            The LabeledArray with the prepended labels.
-
-        Examples
-        --------
-        >>> data = {'a': {'b': {'c': 1}}}
-        >>> ad = LabeledArray.from_dict(data, dtype=int)
-        >>> ad.prepend_labels('pre-', 1) # doctest: +ELLIPSIS
-        array([[[1]]])
-        labels(['a']
-               ['pre-b']
-               ['c'])
-        """
-        assert 0 <= level < self.ndim, "level must be >= 0 and < ndim"
-        self.labels[level] = tuple(pre + lab for lab in self.labels[level])
-        return LabeledArray(self.view(np.ndarray), self.labels)
-
     def combine(self, levels: tuple[int, int]) -> 'LabeledArray':
         """Combine any levels of a LabeledArray into the lower level
 
@@ -883,7 +854,7 @@ def is_unique(arr: np.ndarray) -> bool:
     return np.unique(arr).shape[0] == np.prod(arr.shape)
 
 
-class Labels(np.ndarray):
+class Labels(np.char.chararray):
     """A class for storing labels for a LabeledArray."""
     delimiter: str
 
@@ -926,11 +897,30 @@ class Labels(np.ndarray):
 
         # Convert the arrays to 2D
         s_str_2d = s_str[..., None]
-        o_str_2d = np.char.add(self.delimiter, o_str[None])
+        o_str_2d = o_str[None]
 
         # Use broadcasting to create a result array with combined strings
-        result = np.char.add(s_str_2d, o_str_2d)
+        result = s_str_2d + o_str_2d
+        return result
+
+    def __add__(self, other):
+        result = super().__add__(self.delimiter).__add__(other)
         return Labels(result)
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        if ufunc is np.matmul:
+            # Call the __matmul__ method
+            return self.__matmul__(*inputs)
+        elif ufunc is np.add:
+            # Call the __add__ method
+            return self.__add__(*inputs)
+        # Convert all inputs to base class (np.char.chararray) for computation
+        inputs = [i.view(np.char.chararray) if isinstance(i, Labels)
+                  else i for i in inputs]
+        # Perform the ufunc operation
+        out = super().__array_ufunc__(ufunc, method, *inputs, **kwargs)
+        # Return the result as a Labels object
+        return Labels(out)
 
     def decompose(self) -> list['Labels', ...]:
         """Decompose a Labels object into a list of 1d Labels objects.
@@ -1086,7 +1076,7 @@ def get_subset_reorder_indices(array1, array2):
 
 
 def add_to_list_if_not_present(lst: list, element: Iterable):
-    """Add an element to a list if it is not prese6nt. Runs in O(1) time.
+    """Add an element to a list if it is not present. Runs in O(1) time.
 
     Parameters
     ----------
@@ -1108,14 +1098,6 @@ def add_to_list_if_not_present(lst: list, element: Iterable):
     """
     seen = set(lst)
     lst.extend(x for x in element if not (x in seen or seen.add(x)))
-
-
-@extending.overload(add_to_list_if_not_present)
-def _add_jit(lst: list, element: list):
-    seen = set(lst)
-    for x in element:
-        if not (x in seen or seen.add(x)):
-            lst.append(x)
 
 
 def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
@@ -1170,18 +1152,6 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     return tuple(map(tuple, keys))
 
 
-def _combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
-    # Create a meshgrid of indices
-    grids = np.meshgrid(*arrays, indexing='ij')
-
-    # Combine the grids into a single array with string concatenation
-    result = np.core.defchararray.add(grids[0], delim)
-    for grid in grids[1:]:
-        result = np.core.defchararray.add(result, grid)
-
-    return result
-
-
 def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
     """Convert a nested dictionary to a nested array.
 
@@ -1213,8 +1183,6 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         arr = [a for a in gen_arr if a is not None]
         if len(arr) > 0:
             return reshape.concatenate_arrays(arr, axis=None)
-    # elif not isinstance(data, np.ndarray):
-    #     raise TypeError(f"Unexpected data type: {type(data)}")
 
     # Call np.atleast_1d once and store the result in a variable
     data_1d = np.atleast_1d(data)
@@ -1228,44 +1196,16 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         return np.array(data)
 
 
-@njit(nogil=True, cache=True)
-def inner_dict(data: np.ndarray | dict) -> dict:
-    """Convert a nested array to a nested dictionary.
+def _combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
+    # Create a meshgrid of indices
+    grids = np.meshgrid(*arrays, indexing='ij')
 
-    Parameters
-    ----------
-    data : np.ndarray
-        The nested array to convert.
+    # Combine the grids into a single array with string concatenation
+    result = np.core.defchararray.add(grids[0], delim)
+    for grid in grids[1:]:
+        result = np.core.defchararray.add(result, grid)
 
-    Returns
-    -------
-    dict or None
-        The converted nested dictionary.
-
-    Examples
-    --------
-    >>> data = np.array([[[1]]])
-    >>> dict(inner_dict(data)) # doctest: +ELLIPSIS +SKIP
-    {0: DictType[int64,DictType[int64,int32]<iv=None>]<iv=None>({0: {0: 1}})}
-    >>> data = np.array([[[1, np.nan]],
-    ...                  [[2, 3]]])
-    >>> dict(inner_dict(data)) # doctest: +ELLIPSIS +SKIP
-    {0: DictType[int64,DictType[int64,float64]<iv=None>]<iv=None>({0: {0: ...
-    """
-    if isinstance(data, dict):
-        return data
-    elif hasattr(data, 'ndim'):
-        result = {}
-        for i, d in enumerate(data):
-            if data.ndim == 1:
-                result[i] = d
-            elif len(d) > 0:
-                result[i] = inner_dict(d)
-            else:
-                continue
-        return result
-    else:
-        raise TypeError(f"Unexpected data type: {type(data)}")
+    return result
 
 
 def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
@@ -1331,6 +1271,47 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     result = _combine_helper(data, levels, 0, [])
 
     return result
+
+
+def stack_la(arrays: tuple[LabeledArray, ...], new_labels: list[str, ...]
+             ) -> LabeledArray:
+    """Stack a sequence of LabeledArrays along a new axis.
+
+    Parameters
+    ----------
+    arrays : LabeledArray
+        The LabeledArrays to stack.
+    new_labels : Labels
+        The new labels for the stacked axis.
+
+    Returns
+    -------
+    LabeledArray
+        The stacked LabeledArray.
+
+    Examples
+    --------
+    >>> arr1 = LabeledArray([[1, 2],[3, 4]], labels=[('a', 'b'), ('c', 'd')])
+    >>> arr2 = LabeledArray([[5, 6, 7],[7, 8, 9]], labels=[('a', 'b'), ('c', 'd', 'e')])
+    >>> stack_la((arr1, arr2), ['1', '2'])
+    array([[[ 1.,  2., nan],
+            [ 3.,  4., nan]],
+    <BLANKLINE>
+           [[ 5.,  6.,  7.],
+            [ 7.,  8.,  9.]]])
+    labels(['1', '2']
+           ['a', 'b']
+           ['c', 'd', 'e'])
+    """
+    new_array = reshape.concatenate_arrays([a.__array__() for a in arrays], None)
+
+    # get the longest labels in each axis
+    new_labels = [Labels(new_labels)]
+    for i in range(new_array.ndim - 1):
+        new_labels.append(max((a.labels[i] for a in arrays), key=len))
+
+    return LabeledArray(new_array, new_labels)
+
 
 
 def get_elbow(data: np.ndarray) -> int:
