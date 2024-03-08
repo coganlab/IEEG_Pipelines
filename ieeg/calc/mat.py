@@ -861,7 +861,7 @@ class Labels(np.char.chararray):
     # __slots__ = ['delimiter', '__dict__']
 
     def __new__(cls, input_array: ArrayLike, delim: str = '-'):
-        obj = np.asarray(input_array).view(cls)
+        obj = np.asarray(input_array, dtype=str).view(cls)
         setattr(obj, 'delimiter', delim)
         return obj
 
