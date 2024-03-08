@@ -279,25 +279,10 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     return avg1 - avg2
 
 
-@njit
-def mean_diff_njit(group1, group2):
-    def mean(arr):
-        return arr.sum() / arr.shape[0]
-
-    def isnan(arr):
-        return arr != arr
-
-    wh1 = ~isnan(group1)
-    wh2 = ~isnan(group2)
-    avg1 = mean(group1[wh1])
-    avg2 = mean(group2[wh2])
-    return avg1 - avg2
-
-
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 1000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
-                            stat_func: callable = mean_diff
+                            stat_func: callable = mean_diff, seed: int = None,
                             ) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
 
@@ -324,6 +309,8 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
         The axis along which to calculate the window average. Default is -1.
     stat_func : callable, optional
         The statistic function to use. Default is mean_diff.
+    seed : int, optional
+        The random seed to use for the permutation test. Default is None.
 
     Returns
     -------
@@ -334,13 +321,12 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     --------
     >>> import numpy as np
     >>> from ieeg import _rand_seed
-    >>> np.random.seed(42)
+    >>> seed = 43; rng = np.random.default_rng(seed)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)])
-    >>> sig2 = np.random.random((100, 15)) * 3.2
-    >>> stat_func = lambda x, y, axis: mean_diff_njit(x, y)
-    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000, stat_func=stat_func)
-    0.0001
+    >>> sig2 = rng.random((100, 15)) * 3.2
+    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000, seed=seed)
+    0.0002
     """
 
     # average the windows
@@ -356,7 +342,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     obs_diff = stat_func(in1, in2, obs_axis)
 
     # Create shuffle distribution
-    diff = shuffle_test(in1, in2, n_perm, obs_axis, stat_func)
+    diff = shuffle_test(in1, in2, n_perm, obs_axis, stat_func, seed=seed)
 
     # Calculate the p-value
     p_act = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
@@ -369,7 +355,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = mean_diff,
                       ignore_adjacency: tuple[int] | int = None,
-                      n_jobs: int = -1) -> np.ndarray[bool]:
+                      n_jobs: int = -1, seed: int = None) -> np.ndarray[bool]:
     """Calculate significant clusters using permutation testing and cluster
     correction.
 
@@ -413,6 +399,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     n_jobs : int, optional
         The number of jobs to run in parallel. -1 for all processors. Default
         is -1.
+    seed : int, optional
+        The random seed to use for the permutation test. Default is None.
 
     Returns
     -------
@@ -427,18 +415,17 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     --------
     >>> import numpy as np
     >>> from ieeg import _rand_seed
-    >>> _rand_seed(42)
-    >>> np.random.seed(42)
+    >>> seed = 43; rng = np.random.default_rng(seed); _rand_seed(seed)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
-    ... for _ in range(50)]) - np.random.random((50, 15)) * 2.6
-    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + np.random.random(
+    ... for _ in range(50)]) - rng.random((50, 15)) * 2.6
+    >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random(
     ... (100, 15))
-    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000)
+    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000, seed=seed)
     array([False, False, False,  True,  True,  True,  True,  True,  True,
-            True,  True,  True, False, False, False])
-    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000)
-    array([False, False, False, False,  True,  True,  True,  True,  True,
             True,  True, False, False, False, False])
+    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000, seed=seed)
+    array([False, False, False, False,  True,  True,  True,  True,  True,
+            True, False, False, False, False, False])
     """
     # check inputs
     if p_cluster is None:
@@ -473,7 +460,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')
-    diff = shuffle_test(sig1, sig2, n_perm, axis, stat_func)
+    diff = shuffle_test(sig1, sig2, n_perm, axis, stat_func, seed=seed)
 
     # contatenate the actual group statistic and concatenate with the null
     # distribution along the observations axis
@@ -746,7 +733,8 @@ def tail_compare(diff: np.ndarray | float | int,
 
 
 def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                 axis: int = 0, func: callable = mean_diff) -> np.ndarray:
+                 axis: int = 0, func: callable = mean_diff, seed: int = None
+                 ) -> np.ndarray:
     """Time permutation shuffle test between two set of observations.
 
     The test is performed by shuffling the trials and calculating the test
@@ -764,10 +752,12 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     n_perm : int, optional
         The number of permutations to perform.
     axis : int, optional
-        The axis to perform the permutation test across.
+        The axis to perform the permutation test across (trials).
     func :
         The statistical function to use to compare populations. Requires an
         axis keyword input to denote observations (trials, for example).
+    seed : int, optional
+        The seed for the random number generator.
 
     Returns
     -------
@@ -777,30 +767,36 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     Examples
     --------
     >>> import numpy as np
-    >>> np.random.seed(42)
+    >>> seed = 42; rng = np.random.default_rng(seed)
     >>> sig1 = np.mean(np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]]), axis=1)
-    >>> sig2 = np.mean(np.random.random((100, 15)) * 2.4, axis=1)
+    >>> sig2 = np.mean(rng.random((100, 15)) * 2.4, axis=1)
     >>> round(np.mean(sig1 - sig2), 3)
-    0.535
-    >>> np.mean(np.mean(sig1 - sig2) > shuffle_test(sig1, sig2, n_perm=10000))
-    0.991
+    0.534
+    >>> np.mean(np.mean(sig1 - sig2) > shuffle_test(sig1, sig2, n_perm=10000,
+    ... seed=seed))
+    0.993
     """
 
+    rng = np.random.default_rng(seed)
     axis = axis + sig1.ndim if axis < 0 else axis
 
     # Concatenate the two signals for trial shuffling
     all_trial = np.concatenate((sig1, sig2), axis=axis)
 
+    # Generate all permutations at once
+    all_idx = np.arange(all_trial.shape[axis])
+    perm_idx = np.tile(all_idx, (n_perm, 1))
+    rng.permuted(perm_idx, axis=1, out=perm_idx)
+
+    # Split the permuted trials into fake_sig1 and fake_sig2
+    idx1 = perm_idx[:, :sig1.shape[axis]]
+    idx2 = perm_idx[:, sig1.shape[axis]:]
+    fake_sig1 = np.take(all_trial, idx1, axis=axis)
+    fake_sig2 = np.take(all_trial, idx2, axis=axis)
+
     # Calculate the average difference between the two groups averaged across
     # trials
-    diff = np.zeros((n_perm, *sig1.shape[:axis], *sig1.shape[axis + 1:]))
-    all_idx = np.arange(all_trial.shape[axis])
-    for i in range(n_perm):
-        idx1 = np.random.choice(all_idx, sig1.shape[axis], replace=False)
-        idx2 = np.setdiff1d(all_idx, idx1, assume_unique=True)
-        fake_sig1 = np.take(all_trial, idx1, axis=axis)
-        fake_sig2 = np.take(all_trial, idx2, axis=axis)
-        diff[i] = func(fake_sig1, fake_sig2, axis=axis)
+    diff = func(fake_sig1, fake_sig2, axis=axis + 1)
 
     return diff
 
