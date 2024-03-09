@@ -1,12 +1,15 @@
 import numpy as np
 from joblib import Parallel, delayed
 from mne.utils import logger
-from numba import guvectorize, njit
+from numba import guvectorize
 from scipy import stats as st
 from scipy import ndimage
+from scipy.ndimage import label
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
+from ieeg.process import get_mem
+from tqdm import tqdm
 
 
 def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
@@ -782,21 +785,33 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     # Concatenate the two signals for trial shuffling
     all_trial = np.concatenate((sig1, sig2), axis=axis)
+    shape = sig1.shape
 
     # Generate all permutations at once
-    all_idx = np.arange(all_trial.shape[axis])
-    perm_idx = np.tile(all_idx, (n_perm, 1))
-    rng.permuted(perm_idx, axis=1, out=perm_idx)
+    idx = np.tile(np.arange(all_trial.shape[axis]), (n_perm, 1))
+    rng.permuted(idx, axis=1, out=idx)
+    idx1 = idx[:, :shape[axis]]
+    idx2 = idx[:, shape[axis]:]
 
-    # Split the permuted trials into fake_sig1 and fake_sig2
-    idx1 = perm_idx[:, :sig1.shape[axis]]
-    idx2 = perm_idx[:, sig1.shape[axis]:]
-    fake_sig1 = np.take(all_trial, idx1, axis=axis)
-    fake_sig2 = np.take(all_trial, idx2, axis=axis)
+    # Check if the permutation will exceed memory
+    out_mem = all_trial.size * n_perm * 8
+    if out_mem > get_mem():
+        logger.warning(f"Permutation test will exceed memory ({out_mem} bytes)"
+                       f", using a generator instead. This may take longer.")
+        diff = np.zeros((n_perm, *shape[:axis], *shape[axis + 1:]))
+        for i in tqdm(range(n_perm)):
+            fake_sig1 = np.take(all_trial, idx1[i], axis=axis)
+            fake_sig2 = np.take(all_trial, idx2[i], axis=axis)
+            diff[i] = func(fake_sig1, fake_sig2, axis=axis)
+    else:
 
-    # Calculate the average difference between the two groups averaged across
-    # trials
-    diff = func(fake_sig1, fake_sig2, axis=axis + 1)
+        # Split the permuted trials into fake_sig1 and fake_sig2
+        fake_sig1 = np.take(all_trial, idx1, axis=axis)
+        fake_sig2 = np.take(all_trial, idx2, axis=axis)
+
+        # Calculate the average difference between the two groups averaged
+        # across trials
+        diff = func(fake_sig1, fake_sig2, axis=axis + 1)
 
     return diff
 
