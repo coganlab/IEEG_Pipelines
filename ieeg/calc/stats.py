@@ -7,6 +7,7 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
+from ieeg.calc.permgt import permgtnd
 
 
 def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
@@ -583,13 +584,11 @@ def proportion(val: np.ndarray[float, ...] | float,
             raise ValueError('tail must be 1, 2, or -1')
 
     if axis is None and comp is None:
-        return _perm_gt_1d(val)
+        return permgtnd(val)
     elif comp is None:
-        return _perm_gt_1d(val, axis=axis)
-    elif axis is None:
-        return _perm_gt(val, comp)
+        return permgtnd(val, axis=axis)
     else:
-        return _perm_gt(val, comp, axis=axis)
+        raise NotImplementedError()
 
 
 # @guvectorize(['void(f8[::1], f8[::1])'], '(n)->(n)', nopython=True)
@@ -601,7 +600,7 @@ def _perm_gt_1d(diff, axis=0):
     return proportions[sorted_indices.argsort(axis=axis)]
 
 
-@guvectorize(['(f8, f8[::1], f8[::1])'], '(), (m)->()', nopython=True)
+# @guvectorize(['(f8, f8[::1], f8[::1])'], '(), (m)->()', nopython=True)
 def _perm_gt(vals, compare, result):
     # result[0] = np.searchsorted(sorted(compare), vals, "left") / len(compare)
 
