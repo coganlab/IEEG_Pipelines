@@ -43,6 +43,15 @@ extensions = [
         language="c",  # can be "c" or "c++"
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
     ),
+    Extension(
+        "ieeg.calc.cstats",  # the module name exposed to python
+        ["ieeg/calc/stats.c"],
+        # the Cython source file
+        include_dirs=['ieeg/calc'] + lib_path,  # includes for numpy
+        extra_compile_args=["/O2"],  # compile optimization flag
+        language="c",  # can be "c" or "c++"
+        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
+    ),
 ]
 
 setup(

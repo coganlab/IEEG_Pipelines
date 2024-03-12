@@ -8,6 +8,7 @@ from scipy.ndimage import label
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
+from ieeg.calc.cstats import mean_diff as _mean_diff
 from ieeg.process import get_mem
 from tqdm import tqdm
 
@@ -243,7 +244,7 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
 
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
-              axis: int | tuple[int] = None) -> np.ndarray | float:
+              axis: int = -1) -> np.ndarray | float:
     """Calculate the mean difference between two groups.
 
     This function is the default statistic function for time_perm_cluster. It
@@ -274,12 +275,10 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     >>> mean_diff(group1, group2, axis=1)
     array([ 0., 30.,  0.,  5.,  0.])
     """
+    in1 = group1.swapaxes(-1, axis)
+    in2 = group2.swapaxes(-1, axis)
 
-    wh1 = ~np.isnan(group1)
-    wh2 = ~np.isnan(group2)
-    avg1 = np.mean(group1, axis=axis, where=wh1)
-    avg2 = np.mean(group2, axis=axis, where=wh2)
-    return avg1 - avg2
+    return _mean_diff(in1, in2)
 
 
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
@@ -799,6 +798,7 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         logger.warning(f"Permutation test will exceed memory ({out_mem} bytes)"
                        f", using a generator instead. This may take longer.")
         diff = np.zeros((n_perm, *shape[:axis], *shape[axis + 1:]))
+
         for i in tqdm(range(n_perm)):
             fake_sig1 = np.take(all_trial, idx1[i], axis=axis)
             fake_sig2 = np.take(all_trial, idx2[i], axis=axis)
