@@ -275,8 +275,8 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     >>> mean_diff(group1, group2, axis=1)
     array([ 0., 30.,  0.,  5.,  0.])
     """
-    in1 = group1.swapaxes(-1, axis)
-    in2 = group2.swapaxes(-1, axis)
+    in1 = np.moveaxis(group1, axis, -1)
+    in2 = np.moveaxis(group2, axis, -1)
 
     return _mean_diff(in1, in2)
 

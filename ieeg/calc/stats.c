@@ -31,6 +31,8 @@ static void mean_diff(
     char *in1 = args[0], *in2 = args[1], *out = args[2];
 
     npy_intp nloops = dimensions[0];  // Number of outer loops
+    npy_intp len1 = dimensions[1];    // Core dimension i
+    npy_intp len2 = dimensions[2];    // Core dimension j
 
     npy_intp step1 = steps[0];        // Outer loop step size for the first input
     npy_intp step2 = steps[1];        // Outer loop step size for the second input
@@ -42,8 +44,8 @@ static void mean_diff(
          i++, in1 += step1, in2 += step2, out += step_out) {
 
         // core calculation
-        double mean1 = avg_non_nan(in1, dimensions[1], innerstep1);
-        double mean2 = avg_non_nan(in2, dimensions[2], innerstep2);
+        double mean1 = avg_non_nan(in1, len1, innerstep1);
+        double mean2 = avg_non_nan(in2, len2, innerstep2);
 
         *((double *)out) = mean1 - mean2;
     }
