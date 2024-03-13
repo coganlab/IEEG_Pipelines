@@ -7,7 +7,6 @@ Cogan & Viventi Labs, Duke University
 from functools import reduce
 
 import numpy as np
-from numba import njit
 from sklearn.decomposition import PCA
 
 from ieeg.decoding.joint_pca.utils import cnd_avg, label2str
@@ -507,7 +506,6 @@ def parse_return_type(return_space):
                          '"shared".')
 
 
-@njit('UniTuple(float64[:, ::1],2)(float64[:,::1], float64[:,::1])')
 def CCA_align(L_a, L_b):
     """Canonical Correlation Analysis (CCA) alignment between 2 datasets.
 
