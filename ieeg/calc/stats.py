@@ -8,7 +8,7 @@ from scipy.ndimage import label
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from ieeg.calc.cstats import mean_diff as _mean_diff
+from ieeg.calc.cstats import mean_diff as _mean_diff, _perm_gt
 from ieeg.process import get_mem
 from tqdm import tqdm
 
@@ -589,21 +589,6 @@ def _perm_gt_1d(diff, axis=0):
     proportions = np.arange(diff.shape[axis]) / m  # Create proportions array
     # Rearrange to match original order
     return proportions[sorted_indices.argsort(axis=axis)]
-
-
-@guvectorize(['(f8, f8[::1], f8[::1])'], '(), (m)->()', nopython=True)
-def _perm_gt(vals, compare, result):
-    # result[0] = np.searchsorted(sorted(compare), vals, "left") / len(compare)
-
-    # Initialize the result
-    result[0] = 0
-    # Loop over the compare array
-    for c in compare:
-        # If the value is greater than the compare value, add 1 to the result
-        if vals > c:
-            result[0] += 1
-
-    result[0] /= compare.shape[0]
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,

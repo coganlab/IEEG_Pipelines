@@ -51,9 +51,37 @@ static void mean_diff(
     }
 }
 
-PyUFuncGenericFunction funcs[1] = {&mean_diff};
+static void _perm_gt(char **args, const npy_intp *dimensions, const npy_intp *steps, void *extra) {
 
-static char types[3] = {NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE};
+    char *in1 = args[0], *in2 = args[1], *out = args[2];
+
+    npy_intp nloops = dimensions[0];  // Number of outer loops
+    npy_intp len1 = dimensions[1];    // Core dimension m
+
+    npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    npy_intp step_out = steps[2];     // Outer loop step size for the output
+    npy_intp innerstep = steps[3];   // Step size of elements within the first dimension
+
+    for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+
+        // core calculation
+        npy_intp count = 0;
+        double val = *((double *)in1);
+        for (npy_intp j = 0; j < len1; ++j) {
+            double compare = *((double *)(in2 + j*innerstep));
+            if (val > compare) {
+                count++;
+            }
+        }
+
+        *((double *)out) = (double)count / (double)len1;
+    }
+}
+
+PyUFuncGenericFunction funcs[2] = {&mean_diff, &_perm_gt};
+
+static char types[6] = {NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE};
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
@@ -68,7 +96,7 @@ static struct PyModuleDef moduledef = {
 };
 
 PyMODINIT_FUNC PyInit_cstats(void) {
-    PyObject *m, *ufunc, *d;
+    PyObject *m, *ufunc1, *ufunc2, *d;
     import_array();
     import_ufunc();
     import_umath();
@@ -78,14 +106,18 @@ PyMODINIT_FUNC PyInit_cstats(void) {
         return NULL;
     }
 
-    ufunc = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, types, 1, 2, 1, PyUFunc_None, "mean_diff",
+    ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, types, 2, 2, 1, PyUFunc_None, "mean_diff",
     "Calculate the mean difference of two numpy arrays.", 0, "(i),(j)->()");
+
+    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 1, NULL, types + 3, 1, 2, 1, PyUFunc_None, "_perm_gt",
+    "Calculate the proportion of elements in compare that are less than vals.", 0, "(),(m)->()");
 
     d = PyModule_GetDict(m);
 
-    PyDict_SetItemString(d, "mean_diff", ufunc);
-    Py_DECREF(ufunc);
+    PyDict_SetItemString(d, "mean_diff", ufunc1);
+    PyDict_SetItemString(d, "_perm_gt", ufunc2);
+    Py_DECREF(ufunc1);
+    Py_DECREF(ufunc2);
 
     return m;
 }
-
