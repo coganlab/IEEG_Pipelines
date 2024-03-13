@@ -720,8 +720,8 @@ def tail_compare(diff: np.ndarray | float | int,
 
 
 def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                 axis: int = 0, func: callable = mean_diff, seed: int = None
-                 ) -> np.ndarray:
+                 axis: int = 0, func: callable = mean_diff, seed: int = None,
+                 n_jobs: int = -3) -> np.ndarray:
     """Time permutation shuffle test between two set of observations.
 
     The test is performed by shuffling the trials and calculating the test
@@ -745,6 +745,9 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
         axis keyword input to denote observations (trials, for example).
     seed : int, optional
         The seed for the random number generator.
+    n_jobs : int, optional
+        The number of jobs to run in parallel. Only used if the permutation
+        test will exceed memory. Default is -3.
 
     Returns
     -------
@@ -789,7 +792,7 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
             return func(fake_sig1, fake_sig2, axis=axis)
 
         diff = np.zeros((n_perm, *shape[:axis], *shape[axis + 1:]))
-        proc = Parallel(n_jobs=-2, verbose=40)(delayed(_shuffle_test)(
+        proc = Parallel(n_jobs=n_jobs, verbose=40)(delayed(_shuffle_test)(
             idx1[i], idx2[i]) for i in range(n_perm))
         for i, out in enumerate(proc):
             diff[i] = out
