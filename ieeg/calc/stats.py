@@ -1,7 +1,6 @@
 import numpy as np
 from joblib import Parallel, delayed
 from mne.utils import logger
-from numba import guvectorize
 from scipy import stats as st
 from scipy import ndimage
 from scipy.ndimage import label
@@ -469,17 +468,15 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     act = stat_func(sig1, sig2, axis=axis)
     if isinstance(act, tuple):
         act = act[0]
-    act = np.expand_dims(act, axis=axis)
-    p_act = np.mean(tail_compare(diff, act, tails), axis=0)
 
     # all_diff = np.concatenate((act, diff), axis=axis)
 
     # Calculate the p value of the permutation distribution
-    # p_act = proportion(act, diff, tails, axis=0)
+    p_act = proportion(act, diff, tails, axis=0)
     p_perm = proportion(diff, tail=tails, axis=0)
 
     # Create binary clusters using the p value threshold
-    b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
+    b_act = tail_compare(p_act, 1 - p_thresh, tails)
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
     # logger.info('Finding clusters')
@@ -547,6 +544,7 @@ def proportion(val: np.ndarray[float, ...] | float,
     >>> proportion(compare, compare) * compare.shape[0] / (
     ... compare.shape[0] - 1)
     array([0.  , 0.25, 0.5 , 0.75, 1.  ])
+    >>> proportion(compare)
     >>> val = np.full(5, 0.5)
     >>> compare = np.array([[0.2, 0.4, 0.4, 0.7, 0.9],
     ...                     [0.1, 0.3, 0.6, 0.5, 0.9]])
@@ -629,24 +627,26 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
 
     # For each permutation in the passive data, determine the maximum cluster
     # size
-    max_cluster_len = np.zeros(perm_clusters.shape[0])
-    for i in range(perm_clusters.shape[0]):
-        for j in range(1, perm_clusters.max() + 1):
-            max_cluster_len[i] = np.maximum(max_cluster_len[i], np.sum(
-                perm_clusters[i] == j))
+    max_perm = perm_clusters.max() + 1
+    max_cluster_len = np.zeros((perm_clusters.shape[0], max_perm - 1))
+    for i in range(perm.shape[0]):
+        input = perm_clusters[i].ravel()
+        max_cluster_len[i] = np.bincount(input, minlength=max_perm)[1:]
+    max_cluster_len = max_cluster_len.max(axis=0)
 
     # For each cluster in the active data, determine the proportion of
     # permutations that have a cluster of the same size or larger
     cluster_p_values = np.zeros(act_clusters.shape)
-    for i in range(1, act_clusters.max() + 1):
+    max_act = act_clusters.max() + 1
+    for i in range(1, max_act):
         # Get the cluster
         act_cluster = act_clusters == i
         # Get the cluster size
-        act_cluster_size = np.sum(act_cluster)
+        act_cluster_size = np.count_nonzero(act_cluster)
         # Determine the proportion of permutations that have a cluster of the
         # same size or larger
-        cluster_p_values[act_cluster] = np.mean(act_cluster_size >
-                                                max_cluster_len, axis=0)
+        cluster_p_values[act_cluster] = proportion(act_cluster_size,
+                                                   max_cluster_len, axis=0)
 
     # If p_val is not None, return the boolean array indicating whether the
     # cluster is significant

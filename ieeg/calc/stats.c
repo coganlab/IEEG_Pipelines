@@ -56,26 +56,26 @@ static void _perm_gt(char **args, const npy_intp *dimensions, const npy_intp *st
     char *in1 = args[0], *in2 = args[1], *out = args[2];
 
     npy_intp nloops = dimensions[0];  // Number of outer loops
-    npy_intp len1 = dimensions[1];    // Core dimension m
+    npy_intp len = dimensions[1];    // Core dimension m
 
     npy_intp step1 = steps[0];        // Outer loop step size for the first input
     npy_intp step2 = steps[1];        // Outer loop step size for the second input
     npy_intp step_out = steps[2];     // Outer loop step size for the output
-    npy_intp innerstep = steps[3];   // Step size of elements within the first dimension
+    npy_intp innerstep = steps[3];   // Step size of elements within dimension m
 
     for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
 
         // core calculation
         npy_intp count = 0;
         double val = *((double *)in1);
-        for (npy_intp j = 0; j < len1; ++j) {
+        for (npy_intp j = 0; j < len; j++) {
             double compare = *((double *)(in2 + j*innerstep));
             if (val > compare) {
                 count++;
             }
         }
 
-        *((double *)out) = (double)count / (double)len1;
+        *((double *)out) = (double)count / (double)len;
     }
 }
 
