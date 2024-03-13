@@ -322,7 +322,6 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> from ieeg import _rand_seed
     >>> seed = 43; rng = np.random.default_rng(seed)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)])
@@ -416,8 +415,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     Examples
     --------
     >>> import numpy as np
-    >>> from ieeg import _rand_seed
-    >>> seed = 43; rng = np.random.default_rng(seed); _rand_seed(seed)
+    >>> seed = 43; rng = np.random.default_rng(seed)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)]) - rng.random((50, 15)) * 2.6
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random(
@@ -470,14 +468,17 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     if isinstance(act, tuple):
         act = act[0]
 
+    act = np.expand_dims(act, axis=axis)
+    p_act = np.mean(tail_compare(diff, act, tails), axis=0)
+
     # all_diff = np.concatenate((act, diff), axis=axis)
 
     # Calculate the p value of the permutation distribution
-    p_act = proportion(act, diff, tails, axis=0)
+    # p_act = proportion(act, diff, tails, axis=0)
     p_perm = proportion(diff, tail=tails, axis=0)
 
     # Create binary clusters using the p value threshold
-    b_act = tail_compare(p_act, 1 - p_thresh, tails)
+    b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
     b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
 
     # logger.info('Finding clusters')
@@ -572,9 +573,9 @@ def proportion(val: np.ndarray[float, ...] | float,
             raise ValueError('tail must be 1, 2, or -1')
 
     if axis is None and comp is None:
-        return permgtnd(val)
+        return _perm_gt_1d(val)
     elif comp is None:
-        return permgtnd(val, axis=axis)
+        return _perm_gt_1d(val, axis=axis)
     else:
         raise NotImplementedError()
 
@@ -644,8 +645,8 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
         act_cluster_size = np.count_nonzero(act_cluster)
         # Determine the proportion of permutations that have a cluster of the
         # same size or larger
-        cluster_p_values[act_cluster] = proportion(act_cluster_size,
-                                                   max_cluster_len, axis=0)
+        cluster_p_values[act_cluster] = np.mean(act_cluster_size >
+                                                max_cluster_len, axis=0)
 
     # If p_val is not None, return the boolean array indicating whether the
     # cluster is significant
