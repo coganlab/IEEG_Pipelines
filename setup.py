@@ -35,6 +35,15 @@ extensions = [
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
     ),
     Extension(
+        "ieeg.calc.permgt",  # the module name exposed to python
+        ["ieeg/calc/permgt.pyx"],
+        # the Cython source file
+        include_dirs=[np.get_include(), 'ieeg/calc'],  # includes for numpy
+        extra_compile_args=["-O3"],  # compile optimization flag
+        language="c",  # can be "c" or "c++"
+        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
+    ),
+    Extension(
         "ieeg.timefreq.hilbert",  # the module name exposed to python
         ["ieeg/timefreq/hilbert.pyx"],
         # the Cython source file

@@ -15,7 +15,7 @@ cnp.import_array()
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-cdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
+cdef inline void mixup2d(DTYPE_t[:, :] arr, DTYPE_t alpha=1.0):
     cdef Py_ssize_t i, n_nan, row, j
     cdef cnp.ndarray[BOOL_t, ndim=1, cast=True] wh
     cdef INTP_t [::1] non_nan_rows, nan_rows
@@ -29,9 +29,7 @@ cdef inline void mixup2d(DTYPE_t[:, ::1] arr, DTYPE_t alpha=1.0):
     n_nan = arr.shape[0] - non_nan_rows.shape[0]
 
     # get beta distribution parameters
-    if alpha >= 1. :
-        lam = np.array([rand() / float(RAND_MAX) for _ in range(n_nan)]).astype(DTYPE)
-    elif 1. > alpha > 0.:
+    if alpha > 0:
         lam = np.random.beta(alpha, alpha, size=n_nan).astype(DTYPE)
     else:
         lam = np.ones(n_nan, dtype=DTYPE)
