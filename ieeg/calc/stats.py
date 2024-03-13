@@ -9,7 +9,7 @@ from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
 from ieeg.calc.cstats import mean_diff as _mean_diff, _perm_gt
 from ieeg.process import get_mem
-from tqdm import tqdm
+import psutil
 from ieeg.calc.permgt import permgtnd
 
 
@@ -759,7 +759,7 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
     >>> sig2 = np.mean(rng.random((100, 15)) * 2.4, axis=1)
     >>> round(np.mean(sig1 - sig2), 3)
     0.534
-    >>> np.mean(np.mean(sig1 - sig2) > shuffle_test(sig1, sig2, n_perm=10000,
+    >>> np.mean(np.mean(sig1 - sig2) > shuffle_test(sig1, sig2, n_perm=1000000,
     ... seed=seed))
     0.993
     """
@@ -779,15 +779,20 @@ def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
 
     # Check if the permutation will exceed memory
     out_mem = all_trial.size * n_perm * 8
-    if out_mem > get_mem():
+    if out_mem > get_mem() * psutil.cpu_count():
         logger.warning(f"Permutation test will exceed memory ({out_mem} bytes)"
                        f", using a generator instead. This may take longer.")
-        diff = np.zeros((n_perm, *shape[:axis], *shape[axis + 1:]))
 
-        for i in tqdm(range(n_perm)):
-            fake_sig1 = np.take(all_trial, idx1[i], axis=axis)
-            fake_sig2 = np.take(all_trial, idx2[i], axis=axis)
-            diff[i] = func(fake_sig1, fake_sig2, axis=axis)
+        def _shuffle_test(idx_1, idx_2):
+            fake_sig1 = np.take(all_trial, idx_1, axis=axis)
+            fake_sig2 = np.take(all_trial, idx_2, axis=axis)
+            return func(fake_sig1, fake_sig2, axis=axis)
+
+        diff = np.zeros((n_perm, *shape[:axis], *shape[axis + 1:]))
+        proc = Parallel(n_jobs=-2, verbose=40)(delayed(_shuffle_test)(
+            idx1[i], idx2[i]) for i in range(n_perm))
+        for i, out in enumerate(proc):
+            diff[i] = out
     else:
 
         # Split the permuted trials into fake_sig1 and fake_sig2
