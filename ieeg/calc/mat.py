@@ -3,12 +3,11 @@ from collections.abc import Iterable
 
 import mne
 from ieeg.calc.concat import concatenate_arrays
-from ieeg import Signal
 
 import numpy as np
-from numba import extending, njit
 from numpy.matlib import repmat
 from numpy.typing import ArrayLike
+from numpy.core.numeric import normalize_axis_tuple
 
 import ieeg
 import ieeg.calc.reshape as reshape
@@ -157,7 +156,7 @@ class LabeledArray(np.ndarray):
     [2] https://numpy.org/doc/stable/user/basics.indexing.html
     """
 
-    labels: list
+    labels: list = []
 
     def __new__(cls, input_array, labels: list[tuple[str, ...], ...] = (),
                 delimiter: str = '-', **kwargs):
@@ -238,8 +237,14 @@ class LabeledArray(np.ndarray):
     def swapaxes(self, axis1, axis2):
         new = list(self.labels)
         new[axis1], new[axis2] = new[axis2], new[axis1]
-        return LabeledArray(super(LabeledArray, self).swapaxes(axis1, axis2),
-                            new)
+        arr = super(LabeledArray, self).swapaxes(axis1, axis2)
+        return LabeledArray(arr, new)
+
+    def transpose(self, axes):
+        axes = normalize_axis_tuple(axes, self.ndim)
+        new_labels = [self.labels[i] for i in axes]
+        arr_t = super(LabeledArray, self).transpose(axes)
+        return LabeledArray(arr_t, new_labels)
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
@@ -411,7 +416,10 @@ class LabeledArray(np.ndarray):
             l_keys = np.where(np.reshape(orig_keys, self.shape))
             return orig_keys, l_keys
         else:
-            keys = list(orig_keys)
+            if isinstance(orig_keys, slice):
+                keys = [orig_keys]
+            else:
+                keys = list(orig_keys)
             l_keys = self._parse_index(keys)
             return tuple(keys), tuple(l_keys)
 
@@ -1373,7 +1381,7 @@ if __name__ == "__main__":
              "go_jl": ((-0.5, 1.5), "Go/JL")}
     task = "SentenceRep"
     root = os.path.expanduser("~/Box/CoganLab")
-    layout = get_data(task, root=root)
+    # layout = get_data(task, root=root)
     folder = 'stats_old'
     mne.set_log_level("ERROR")
 
@@ -1385,6 +1393,7 @@ if __name__ == "__main__":
     labels = Labels(np.arange(1000))
     l2d = labels @ labels
     x = l2d.reshape((10, -1)).decompose()
+    x = np.moveaxis(ad, 0, 1)
 
 
 def _cat_test():
