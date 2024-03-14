@@ -460,13 +460,19 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')
+    act = stat_func(sig1, sig2, axis=axis)
+    if isinstance(act, tuple):
+        logger.warn('Given stats function has more than one output. Accepting '
+                    'only the first output')
+        act = act[0]
+        orig_func = stat_func
+
+        def stat_func(s1, s2, axis):
+            return orig_func(s1, s2, axis=axis)[0]
     diff = shuffle_test(sig1, sig2, n_perm, axis, stat_func, seed=seed)
 
     # contatenate the actual group statistic and concatenate with the null
     # distribution along the observations axis
-    act = stat_func(sig1, sig2, axis=axis)
-    if isinstance(act, tuple):
-        act = act[0]
 
     act = np.expand_dims(act, axis=axis)
     p_act = np.mean(tail_compare(diff, act, tails), axis=0)
@@ -627,22 +633,20 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
 
     # For each permutation in the passive data, determine the maximum cluster
     # size
-    max_perm = perm_clusters.max() + 1
-    max_cluster_len = np.zeros((perm_clusters.shape[0], max_perm - 1))
-    for i in range(perm.shape[0]):
-        input = perm_clusters[i].ravel()
-        max_cluster_len[i] = np.bincount(input, minlength=max_perm)[1:]
-    max_cluster_len = max_cluster_len.max(axis=0)
+    max_cluster_len = np.zeros(perm_clusters.shape[0])
+    for i in range(perm_clusters.shape[0]):
+        for j in range(1, perm_clusters.max() + 1):
+            max_cluster_len[i] = np.maximum(max_cluster_len[i], np.sum(
+                perm_clusters[i] == j))
 
     # For each cluster in the active data, determine the proportion of
     # permutations that have a cluster of the same size or larger
     cluster_p_values = np.zeros(act_clusters.shape)
-    max_act = act_clusters.max() + 1
-    for i in range(1, max_act):
+    for i in range(1, act_clusters.max() + 1):
         # Get the cluster
         act_cluster = act_clusters == i
         # Get the cluster size
-        act_cluster_size = np.count_nonzero(act_cluster)
+        act_cluster_size = np.sum(act_cluster)
         # Determine the proportion of permutations that have a cluster of the
         # same size or larger
         cluster_p_values[act_cluster] = np.mean(act_cluster_size >
