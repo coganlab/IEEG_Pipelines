@@ -11,7 +11,8 @@ from joblib import Parallel, delayed
 
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
 from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
-from hilbert import filterbank_hilbert_first_half_wrapper, extract_channel_wrapper
+from ieeg.timefreq.hilbert import filterbank_hilbert_first_half_wrapper, extract_channel_wrapper
+
 
 @singledispatch
 def extract(data: np.ndarray, fs: int = None,
