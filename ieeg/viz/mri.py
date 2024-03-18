@@ -1,23 +1,22 @@
+import csv
 import os.path as op
 from collections import OrderedDict
-import csv
+from collections.abc import Iterable, Sequence
 from functools import singledispatch
-
-import matplotlib
-from mne.viz import Brain
-import matplotlib.patheffects as path_effects
 
 import mne
 import nibabel as nib
 import numpy as np
+from mne.viz import Brain
 
-from ieeg import Signal, PathLike
+from ieeg import PathLike, Signal
+from ieeg.io import get_elec_volume_labels
+from ieeg.viz import _qt_backend, parula
 
-try:
-    matplotlib.use("TkAgg")
-except ImportError:
-    pass
+_qt_backend()
 
+import matplotlib  # noqa: E402
+import matplotlib.patheffects as path_effects  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
 
@@ -244,21 +243,49 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
         ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
 
 
-def plot_on_average(sigs: Signal | str | list[Signal | str],
+def get_grey_matter(subjects: Sequence[str]) -> set[str]:
+    """Gets the grey matter channels for a list of subjects
+
+    Parameters
+    ----------
+    subjects : Sequence[str]
+        The subjects to get the grey matter channels for
+
+    Returns
+    -------
+    set[str]
+        The grey matter channels
+    """
+    grey_matter = set()
+    for i, subj in enumerate(subjects):
+        info = subject_to_info(get_sub(subj))
+        parcel_label = gen_labels(info, get_sub(subj))
+        subj_grey_matter = pick_no_wm(info.ch_names, parcel_label)
+
+        # get the indices of channels in info that are not in grey_matter
+        grey_matter |= {f"{subj}-{ch}" for ch in info.ch_names
+                        if ch in subj_grey_matter}
+    return grey_matter
+
+
+def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                     subj_dir: PathLike = None, rm_wm: bool = True,
-                    picks: list[int | str] = None, surface: str = 'pial',
+                    picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
-                    size: float = 0.35, fig: Brain = None) -> Brain:
+                    size: float = 0.35, fig: Brain = None,
+                    label_every: int = None, background: str = 'white',
+                    units: str = 'm', transparency: float = 0.6,
+                    average: str = 'fsaverage', show: bool = True) -> Brain:
     """Plots the signal on the average brain
 
     Takes a signal instance or list of signal instances and plots them on the
     fsaverage brain.
 
-
     Parameters
     ----------
     sigs : Union[Signal, list[Signal]]
-        The signal(s) to plot
+        The signal(s) to plot. If a list, all electrodes will be the same
+        color. If a single signal, each electrode will be a different color.
     subj_dir : PathLike, optional
         The subjects directory, by default LAB_root / 'ECoG_Recon'
     rm_wm : bool, optional
@@ -270,11 +297,24 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
     hemi : str, optional
         The hemisphere to plot, by default 'split'
     color : matplotlib.colors, optional
-        The color to plot, by default (1, 1, 1)
+        The color to plot, by default (1, 1, 1). If None, each electrode group
+        will be a different color.
     size : float, optional
         The size of the markers, by default 0.35
     fig : Brain, optional
         The figure to plot on, by default None
+    label_every : int, optional
+        How often to label the channels, by default None
+    background: str, optional
+        Background color
+    units: str, optional
+        Units of the electrodes
+    transparency: float, optional
+        Transparency of the brain
+    average: str, optional
+        The average brain to plot on, by default 'fsaverage'
+    show: bool, optional
+        Whether to show the figure, by default True
 
     Returns
     -------
@@ -284,14 +324,17 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
 
     subj_dir = get_sub_dir(subj_dir)
     if fig is None:
-        fig = Brain('fsaverage', subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.6, background='grey', surf=surface, hemi=hemi)
+        fig = Brain(average, subjects_dir=subj_dir, cortex='low_contrast',
+                    alpha=transparency, background=background, surf=surface,
+                    hemi=hemi, units=units, show=show)
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
-    if isinstance(sigs, list):
+        color = None
+    if isinstance(sigs, Iterable):
         sigs = {get_sub(v): v for v in sigs}
 
+    default_c = parula.mat_colors.copy()
     for subj, inst in sigs.items():
 
         if isinstance(inst, mne.Info):
@@ -299,16 +342,24 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         elif isinstance(inst, Signal):
             new = inst.info.copy()
         elif isinstance(inst, str):
-            new = subject_to_info(inst)
+            new = subject_to_info(subj)
+            new['subject_info'] = dict(his_id=f"sub-{inst}")
         else:
             raise TypeError(type(inst))
 
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
-        to_fsaverage = mne.transforms.Transform(fro='head', to='mri',
-                                                trans=to_fsaverage['trans'])
+        if average == 'fsaverage':
+            trans = mne.transforms.Transform(fro='head', to='mri',
+                                             trans=to_fsaverage['trans'])
+        else:
+            from_average = mne.read_talxfm(average, subj_dir)
+            to_average = np.dot(np.linalg.inv(from_average['trans']),
+                                to_fsaverage['trans'])
+            trans = mne.transforms.Transform(fro='head', to='mri',
+                                             trans=to_average)
 
         these_picks = range(len(new.ch_names))
-        if isinstance(picks, (tuple, list)):
+        if isinstance(picks, Iterable):
             if len(picks) == 0:
                 continue
             elif isinstance(picks[0], int):
@@ -332,15 +383,27 @@ def plot_on_average(sigs: Signal | str | list[Signal | str],
         if len(these_picks) == 0:
             continue
 
+        # select colors
+        if color is None and len(sigs) > 1:
+            this_color = []
+            p_int = [new.ch_names.index(p) for p in these_picks]
+            groups = _group_channels(mne.pick_info(new, p_int))
+            n_groups = len(set(groups.values()))
+            while len(this_color) < n_groups:
+                this_color += [default_c.pop(0)]
+        else:
+            this_color = color
+
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
-                  trans=to_fsaverage, color=color, size=size,
-                  labels_every=None)
+                  trans=trans, color=this_color, size=size,
+                  labels_every=label_every, hemi=hemi, background=background,
+                  show=show)
 
     return fig
 
 
-def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
+def pick_no_wm(picks: list[str], labels: OrderedDict[str: list[str]]) -> list:
     """Picks the channels that are not in the white matter
 
     Parameters
@@ -355,23 +418,17 @@ def pick_no_wm(picks: list[str], labels: OrderedDict[str, list[str]]):
     list[str | int]
         The channels that are not in the white matter
     """
-
-    # remove 'Unknown' values from label lists
-    for k, v in labels.items():
-        while 'Unknown' in v:
-            labels[k].remove('Unknown')
-            v = labels[k]
+    bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
 
     # remove corresponding picks with either 'White-Matter' in the left most
     # entry or empty lists
     if isinstance(picks[0], int):
         picks = [list(labels.keys())[p] for p in picks]
-    picks = [p for p in picks if labels[p]]
-    picks = [p for p in picks if 'White-Matter' not in labels[p][0]]
+    picks = [p for p in picks if not any(w in labels[p] for w in bad_words)]
     return picks
 
 
-def get_sub(inst: Signal | mne.Info) -> str:
+def get_sub(inst: Signal | mne.Info | str) -> str:
     """Gets the subject from the instance
 
     Parameters
@@ -385,15 +442,25 @@ def get_sub(inst: Signal | mne.Info) -> str:
         The subject"""
     if isinstance(inst, Signal):
         inst = inst.info
-    return "D" + str(int(inst['subject_info']['his_id'][5:]))
+    elif isinstance(inst, str):
+        return f"{inst[0]}{int(inst[1:])}"
+    out_str = inst['subject_info']['his_id'][4:]
+    if len(out_str) == 1:
+        return out_str
+    return out_str[0] + str(int("".join(s for s in out_str if s.isdigit())))
+
+
+# TODO: figure out why elec positions are only correct in meters not mm
 
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
               labels_every: int | None = 8, surface: str = 'pial',
-              hemi: str = 'split', fig: Brain = None,
-              trans=None, color: matplotlib.colors = (1, 1, 1),
-              size: float = 0.35) -> Brain:
+              hemi: str = 'both', fig: Brain = None,
+              trans=None, color: matplotlib.colors = None,
+              size: float = 0.35, show: bool = True, background: str = 'white',
+              title: str = None, units: str = 'm', transparency: float = 0.5
+              ) -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -420,6 +487,16 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         The color of the electrodes, by default (1,1,1)
     size : float, optional
         The size of the electrodes, by default 0.35
+    show : bool, optional
+        Whether to show the figure, by default True
+    background: str, optional
+        Background color
+    title : string, optional
+        Title the plot
+    units: str, optional
+        Units of the electrodes
+    transparency: float, optional
+        Transparency of the brain
 
     Returns
     -------
@@ -445,8 +522,12 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
         fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
-                    alpha=0.5,
-                    background='grey', surf=surface, hemi=hemi)
+                    alpha=transparency, background=background, surf=surface,
+                    hemi=hemi, show=show, units=units)
+
+    # Set the title if provided
+    if title is not None:
+        mne.viz.set_3d_title(fig, title, size=40)
     if picks is None:
         picks = info.ch_names
     if no_wm:
@@ -461,28 +542,104 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     montage = info.get_montage()
     force2frame(montage, trans.from_str)
     montage.apply_trans(trans)
-    pos = montage.get_positions()['ch_pos']
+    pos = {k: v for k, v in montage.get_positions()['ch_pos'].items()}
 
     # Default montage positions are in m, whereas plotting functions assume mm
-    left = [p * 1000 for k, p in pos.items() if k.startswith('L')]
-    if len(left) != 0:
-        fig.add_foci(np.vstack(left), hemi='lh', color=color,
-                     scale_factor=size)
+    left = {k: p for k, p in pos.items() if k.startswith('L')}
+    right = {k: p for k, p in pos.items() if k.startswith('R')}
 
-    right = [p * 1000 for k, p in pos.items() if k.startswith('R')]
-    if len(right) != 0:
-        fig.add_foci(np.vstack(right), hemi='rh', color=color,
-                     scale_factor=size)
+    if left and hemi != 'rh':
+        _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())),
+                        color, size)
+    if right and hemi != 'lh':
+        _add_electrodes(fig, info, 'rh', np.vstack(list(right.values())),
+                        color, size)
 
     if labels_every is not None:
-        if isinstance(picks[0], (int, np.integer)):
-            picks = [info.ch_names[p] for p in picks]
-        names = picks[slice(labels_every - 1, info['nchan'], labels_every)]
-        plt_names = [f'{sub}-{n}' for n in names]
-        positions = np.array([pos[name] for name in names]) * 1000
-        fig.plotter.add_point_labels(positions, plt_names, shape=None,
-                                     always_visible=True)
+        settings = dict(shape=None, always_visible=True,
+                        text_color=fig._fg_color, bold=False)
+        _add_labels(fig, info, sub, labels_every, hemi,
+                    (left, right), **settings)
+
     return fig
+
+
+def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
+                    pos: np.ndarray, colors: matplotlib.colors = None,
+                    size: float = 0.35):
+    groups = _group_channels(info)
+    n_groups = len(set(groups.values()))
+    if colors is None:
+        colors = parula.mat_colors[:n_groups]
+    elif (not np.isscalar(colors) and len(colors) != n_groups) \
+            or isinstance(colors, tuple):
+        colors = [colors] * n_groups
+    else:
+        colors = list(colors)
+
+    i = 0
+    vals = list(groups.values())
+    while i < n_groups:
+        start, end = vals.index(i), len(vals) - vals[::-1].index(i)
+        shank_pos = pos[start:end]
+        fig.add_foci(shank_pos, hemi=hemi, color=colors[i],
+                     scale_factor=size)
+        i += 1
+
+
+def _group_channels(info, groups: dict = None) -> dict:
+    """Automatically find a group based on the name of the channel."""
+    if groups is not None:
+        for name in info.ch_names:
+            if name not in groups.keys():
+                raise ValueError(f"{name} not found in ``groups``")
+        return groups
+
+    i = 0
+    groups = dict()
+    base_names = dict()
+    for name in info.ch_names:
+        # strip all numbers from the name
+        base_name = "".join(
+            [
+                letter
+                for letter in name
+                if not letter.isdigit() and letter != " "
+            ]
+        )
+        if base_name in base_names:
+            # look up group number by base name
+            groups[name] = base_names[base_name]
+        else:
+            groups[name] = i
+            base_names[base_name] = i
+            i += 1
+    return groups
+
+
+def _add_labels(fig, info, sub, every, hemi, lr, **kwargs):
+    names = info.ch_names[slice(every - 1, -1, every)]
+
+    if not hemi == 'both':
+        for hems, pos in enumerate(lr):
+            if (not pos) or \
+                    (hemi == 'lh' and hems == 1) or \
+                    (hemi == 'rh' and hems == 0):
+                continue
+
+            plt_names = filter(lambda x: x.startswith(['L', 'R'][hems]), names)
+            plt_names = [f'{sub}-{n}' for n in plt_names]
+            positions = np.array([pos[n.split("-")[1]] for n in plt_names])
+            fig.plotter.subplot(0, hems)
+            fig.plotter.add_point_labels(positions, plt_names, **kwargs)
+    else:
+        pos = {}
+        for hem in lr:
+            if hem:
+                pos.update(hem)
+        plt_names = [f'{sub}-{n}' for n in names]
+        positions = np.array([pos[name] for name in names])
+        fig.plotter.add_point_labels(positions, plt_names, **kwargs)
 
 
 def subject_to_info(subject: str, subjects_dir: PathLike = None,
@@ -550,7 +707,7 @@ def _(info: mne.Info, frame: str):
 
 
 def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
-               picks: list[str | int] = None) -> OrderedDict[str, list[str]]:
+               picks: list[str] = None) -> OrderedDict[str, list[str]]:
     """Generates the labels for the electrodes
 
     Parameters
@@ -572,21 +729,37 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
     subj_dir = get_sub_dir(subj_dir)
     montage = info.get_montage()
     force2frame(montage, 'mri')
-    aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
-    labels, colors = mne.get_montage_volume_labels(
-        montage, sub, subjects_dir=subj_dir, aseg=aseg)
+    # aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
+    labels = get_elec_volume_labels(sub, subj_dir, 10)
 
     new_labels = OrderedDict()
-    if picks is not None:
-        for i, key in enumerate(labels.keys()):
-            if any((i in picks, key in picks)):
-                new_labels[key] = labels[key]
+    if picks is None:
+        picks = info.ch_names
 
+    bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
+    for p in picks:
+        i = 2
+        label = labels.T[p].T
+        if label[0] not in bad_words:
+            new_labels[p] = label[0]
+            continue
+
+        while not ((not any(w in label[i] for w in bad_words)) and
+                   label[i + 1] > 0.05):
+            if (i + 2) <= len(label.T):  # end of labels
+                i = 0
+                break
+            elif label[i + 2].isspace():  # empty label
+                i = 0
+                break
+            else:
+                i += 2
+        new_labels[p] = label[i]
     return new_labels
 
 
 if __name__ == "__main__":
-    from ieeg.io import get_data, raw_from_layout
+    from ieeg.io import get_data
     from os import path
 
     HOME = path.expanduser("~")
@@ -599,16 +772,23 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 57
+    sub_num = 59
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
-    sub = "D{}".format(sub_num)
+    # sub = "D{}".format(sub_num)
 
-    filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
-                           extension='.edf', desc='clean', preload=False)
+    # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
+    #                        extension='.edf', desc='clean', preload=False)
 
     ##
-    brain = plot_subj("D57")
-    # plot_on_average(filt)
+    # sample_path = mne.datasets.sample.data_path()
+    # subjects_dir = sample_path / "subjects"
+
+    # brain = plot_subj("D29")
+    fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
+                          transparency=0.4,
+                          picks=list(range(28)) + list(range(52, 176)),
+                          color=None,
+                          average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)

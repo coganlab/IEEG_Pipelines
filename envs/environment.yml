@@ -2,15 +2,15 @@ name: ieeg
 channels:
   - defaults
 dependencies:
-  - python<3.12
+  - python<3.13
   - pip
   - numpy
   - matplotlib
   - scipy
-  - scikit-image
+  - scikit-learn-intelex
   - pandas
-  - joblib
   - tqdm
   - notebook
+  - numba
   - pip:
     - -r requirements.txt

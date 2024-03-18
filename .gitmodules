@@ -1,4 +1,0 @@
-[submodule "mne-python"]
-	path = mne-python
-	url = git@github.com:Aaronearlerichardson/mne-python.git
-	branch = 1.4

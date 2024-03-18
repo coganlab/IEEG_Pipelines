@@ -1,14 +1,14 @@
-from typing import Union
 import argparse
+from typing import Union
 
 import numpy as np
 from mne.io import pick
-from mne.utils import logger, verbose, fill_doc
+from mne.utils import fill_doc, logger, verbose
 
+from ieeg import ListNum
+from ieeg.process import proc_array
 from ieeg.timefreq import utils as mt_utils
 from ieeg.timefreq.multitaper import WindowingRemover
-from ieeg.process import proc_array
-from ieeg import ListNum
 
 
 @fill_doc
@@ -102,6 +102,20 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     www.chronux.org and the book "Observed Brain Dynamics" by Partha Mitra
     & Hemant Bokil, Oxford University Press, New York, 2008. Please
     cite this in publications if this function is used.
+
+    Examples
+    --------
+    >>> import mne
+    >>> from bids import BIDSLayout
+    >>> from ieeg.io import raw_from_layout
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> mne.set_log_level("WARNING")
+    >>> filt = line_filter(raw, freqs=[60, 120, 180])
+    >>> mne.set_log_level("INFO")
     """
     if fs is None:
         fs = raw.info["sfreq"]
@@ -191,7 +205,7 @@ def _get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(subject: str = None, save: bool = False):
+def _main(subject: str = None, save: bool = False):
     import mne
     from bids import BIDSLayout
     from ieeg.io import raw_from_layout, save_derivative
@@ -237,4 +251,4 @@ def main(subject: str = None, save: bool = False):
 
 if __name__ == "__main__":
     args = _get_parser().parse_args()
-    main(**vars(args))
+    _main(**vars(args))

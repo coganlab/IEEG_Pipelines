@@ -1,16 +1,18 @@
-from ieeg import PathLike, Signal
 import re
-from os import walk, listdir, mkdir, path as op
 from functools import singledispatch
+from os import listdir, mkdir, path as op, walk
 
-from bids.layout import BIDSFile, parse_file_entities
-from mne_bids import read_raw_bids, BIDSPath, write_raw_bids, \
-    mark_channels, get_bids_path_from_fname
-from mne.utils import verbose, fill_doc
-from mne_bids.write import _from_tsv
-from bids import BIDSLayout
-import numpy as np
 import mne
+import numpy as np
+import pandas as pd
+from bids import BIDSLayout
+from bids.layout import BIDSFile, parse_file_entities
+from mne.utils import fill_doc, verbose
+from mne_bids import BIDSPath, get_bids_path_from_fname, mark_channels, \
+    read_raw_bids, write_raw_bids
+from mne_bids.write import _from_tsv
+
+from ieeg import PathLike, Signal
 
 
 def find_dat(folder: PathLike) -> (PathLike, PathLike):
@@ -88,7 +90,18 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     Returns
     -------
     mne.io.Raw
+
+    Examples
+    --------
+
+    >>> import mne
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
     """
+    verbose = kwargs.pop('verbose', True)
     if run is None:
         runs = layout.get(return_type="id", target="run", **kwargs)
     else:
@@ -97,12 +110,12 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     if runs:
         for r in runs:
             BIDS_path = bidspath_from_layout(layout, run=r, **kwargs)
-            new_raw = read_raw_bids(bids_path=BIDS_path)
+            new_raw = read_raw_bids(bids_path=BIDS_path, verbose=verbose)
             raw.append(new_raw.copy())
         whole_raw: mne.io.Raw = mne.concatenate_raws(raw)
     else:
         BIDS_path = bidspath_from_layout(layout, **kwargs)
-        whole_raw = read_raw_bids(bids_path=BIDS_path)
+        whole_raw = read_raw_bids(bids_path=BIDS_path, verbose=verbose)
     if preload:
         whole_raw.load_data()
     return whole_raw
@@ -181,7 +194,8 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
 @fill_doc
 @verbose
 def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
-                    overwrite: bool = False, verbose=None):
+                    overwrite: bool = False, format: str = 'EDF',
+                    anonymize: bool = True, verbose=None):
     """Save an intermediate data instance from a pipeline to a BIDS folder.
 
     Parameters
@@ -193,6 +207,8 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
     pipeline : str
         The name of the pipeline.
     %(overwrite)s
+    format : str
+        The format to save the data in. Defaults to EDF.
     %(verbose)s
     """
     save_dir = op.join(layout.root, "derivatives", pipeline)
@@ -205,12 +221,27 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         entities = parse_file_entities(file)
         if 'desc' in entities.keys():
             entities['description'] = entities.pop('desc')
+        if 'subject' not in entities.keys():
+            sub = inst.info['subject_info']['his_id']
+            entities['subject'] = sub[slice(4, None)]
+        if 'task' not in entities.keys():
+            entities['task'] = ''
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
-        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i+1])
-        write_raw_bids(run, bids_path, allow_preload=True, format='EDF',
-                       acpc_aligned=True, overwrite=overwrite, verbose=verbose)
+        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i + 1])
+        if anonymize:
+            if isinstance(run, Signal):
+                run.anonymize()
+                anonymize = None
+            else:
+                anonymize = {'daysback': 10000000}
+        else:
+            anonymize = None
+
+        write_raw_bids(run, bids_path, allow_preload=True, format=format,
+                       acpc_aligned=True, overwrite=overwrite,
+                       anonymize=anonymize, verbose=verbose)
 
 
 def get_bad_chans(fname: str):
@@ -258,8 +289,8 @@ def update(filename: PathLike, channels: list[str],
 
 
 @update.register
-def _(inst: mne.io.base.BaseRaw, layout: BIDSLayout,
-      description: list[str] | str = None, verbose=None):
+def _(inst: mne.io.base.BaseRaw,
+      layout: BIDSLayout, description: list[str] | str = None, verbose=None):
     if not hasattr(inst, 'filenames'):
         inst.filenames = inst.info['subject_info'].get('files', None)
     for i, file in enumerate(inst.filenames):
@@ -268,3 +299,29 @@ def _(inst: mne.io.base.BaseRaw, layout: BIDSLayout,
                verbose=verbose)
         goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
         update(fname, channels=goods, status='good', verbose=None)
+
+
+@update.register
+def _(inst: mne.time_frequency._BaseTFR,
+      layout: BIDSLayout, description: list[str] | str = None, verbose=None):
+    if not hasattr(inst, 'filenames'):
+        inst.filenames = inst.info['subject_info'].get('files', None)
+    for i, file in enumerate(inst.filenames):
+        fname = op.join(layout.root, file)
+        update(fname, inst.info['bads'], description=description, status='bad',
+               verbose=verbose)
+        goods = [ch for ch in inst.ch_names if ch not in inst.info['bads']]
+        update(fname, channels=goods, status='good', verbose=None)
+
+
+def get_elec_volume_labels(subj: str, subj_dir: PathLike, radius: int = 3
+                           ) -> pd.DataFrame:
+    filename = op.join(subj_dir, subj, "elec_recon",
+                       f"{subj}_elec_location_radius_{radius}mm_aparc.a2009s+"
+                       f"aseg.mgz")
+    if op.exists(filename + "_brainshifted.csv"):
+        filename += "_brainshifted.csv"
+    else:
+        filename += ".csv"
+    out = pd.read_csv(filename, header=None, skiprows=1, index_col=1)
+    return out

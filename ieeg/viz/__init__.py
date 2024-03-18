@@ -1,6 +1,13 @@
-import matplotlib as mpl
+from mne.utils import logger
 
-try:
-    mpl.use("TkAgg")
-except ImportError:
-    pass
+
+def _qt_backend():
+    """Set the backend to Qt5Agg"""
+    import matplotlib
+    try:
+        matplotlib.use('Qt5Agg')
+    except ImportError:
+        logger.warn("Qt5Agg backend not available, using default backend")
+
+
+_qt_backend()

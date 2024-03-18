@@ -1,10 +1,12 @@
 from functools import singledispatch
 
 import numpy as np
-from mne.utils import logger, verbose
-from mne.epochs import BaseEpochs
 from mne import Epochs
-from mne.time_frequency import EpochsTFR, AverageTFR, _BaseTFR
+from mne.epochs import BaseEpochs
+from mne.time_frequency import AverageTFR, EpochsTFR
+from mne.utils import logger, verbose
+
+TFR = EpochsTFR | AverageTFR
 
 
 def _log_rescale(baseline, mode='mean'):
@@ -26,7 +28,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
 
     Parameters
     ----------
-    data : array
+    data : array | mne.Epochs | mne.EpochsTFR
         It can be of any shape. The only constraint is that the last
         dimension should be time.
     basedata : array
@@ -47,6 +49,8 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
         dividing by the standard deviation of log baseline values ('zlogratio')
     copy : bool, optional
         Whether to return a new instance or modify in place.
+    axis : int or tuple[int], optional
+
 
     Returns
     -------
@@ -122,7 +126,7 @@ def _(line: BaseEpochs, baseline: BaseEpochs,
 
 @rescale.register
 @verbose
-def _(line: _BaseTFR, baseline: _BaseTFR,
+def _(line: TFR, baseline: TFR,
       mode: str = 'mean', copy: bool = False, picks: list = 'data',
       verbose=None) -> Epochs:
     """Rescale (baseline correct) Epochs"""

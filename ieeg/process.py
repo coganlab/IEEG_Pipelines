@@ -1,17 +1,17 @@
-import operator
-from os import environ
-from typing import TypeVar, Iterable, Union
-from itertools import chain
 import inspect
+import operator
+from itertools import chain
+from os import environ
+from typing import Generator, Iterable, TypeVar, Union
 
 import numpy as np
 import pandas as pd
-from scipy.signal import get_window
-from joblib import Parallel, delayed, cpu_count
+from joblib import Parallel, cpu_count, delayed
 from mne.utils import config, logger
+from scipy.signal import get_window
 
 
-def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
+def ensure_int(x, name: str = 'unknown', must_be: str = 'an int', *, extra=''):
     """Ensure a variable is an integer.
 
     Parameters
@@ -24,9 +24,30 @@ def ensure_int(x, name='unknown', must_be='an int', *, extra=''):
         The type of the variable to check.
     extra : str
         Extra text to add to the error message.
+
+    Notes
+    -----
+    This is preferred over numbers.Integral, see:
+    https://github.com/scipy/scipy/pull/7351#issuecomment-299713159
+
+    Examples
+    --------
+    >>> ensure_int(1)
+    1
+    >>> ensure_int(1.0)
+    Traceback (most recent call last):
+    ...
+    TypeError: unknown must be an int, got <class 'float'>
+    >>> ensure_int('1')
+    Traceback (most recent call last):
+    ...
+    TypeError: unknown must be an int, got <class 'str'>
+    >>> ensure_int('1.0', extra='a string')
+    Traceback (most recent call last):
+    ...
+    TypeError: unknown must be an int a string, got <class 'str'>
     """
-    # This is preferred over numbers.Integral, see:
-    # https://github.com/scipy/scipy/pull/7351#issuecomment-299713159
+
     extra = f' {extra}' if extra else extra
     try:
         # someone passing True/False is much more likely to be an error than
@@ -104,9 +125,9 @@ def is_number(s) -> bool:
         return False
 
 
-def proc_array(func: callable, arr_in: np.ndarray,
-               axes: int | tuple[int] = 0, n_jobs: int = None,
-               desc: str = "Slices", inplace: bool = True) -> np.ndarray:
+def proc_array(func: callable, arr_in: np.ndarray, axes: int | tuple[int] = 0,
+               n_jobs: int = None, desc: str = "Slices", inplace: bool = True,
+               **kwargs) -> np.ndarray:
     """Execute a function in parallel over slices of an array
 
     Parameters
@@ -128,14 +149,17 @@ def proc_array(func: callable, arr_in: np.ndarray,
     -------
     np.ndarray
         The output of the function, same shape as the input array
+
+    Examples
+    --------
+    >>> def square(x):
+    ...     return x ** 2
+    >>> proc_array(square, np.arange(10))
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
     """
 
     if isinstance(axes, int):
         axes = (axes,)
-
-    # dump the array to disk for memmap
-    # dump(arr_in, 'temp.npy')
-    # arr_in = load('temp', mmap_mode='w+')
 
     if inplace:
         arr_out = arr_in
@@ -145,10 +169,9 @@ def proc_array(func: callable, arr_in: np.ndarray,
     # Get the cross-section indices and array input generator
     cross_sect_ind = list(np.ndindex(*[arr_in.shape[axis] for axis in axes]))
     array_gen = list(arr_in[indices] for indices in cross_sect_ind)
-    # array_gen = tqdm(array_gen, desc=desc, total=len(cross_sect_ind))
 
-    gen = Parallel(n_jobs, return_generator=True, verbose=40)(
-        delayed(func)(x_) for x_ in array_gen)
+    gen = Parallel(n_jobs, return_as='generator', verbose=40)(
+        delayed(func)(x_, **kwargs) for x_ in array_gen)
 
     # Create process pool and apply the function in parallel
     for out, ind in zip(gen, cross_sect_ind):
@@ -193,6 +216,13 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
     -------
     list
         The output of the function for each element in par_var
+
+    Examples
+    --------
+    >>> def square(x):
+    ...     return x ** 2
+    >>> parallelize(square, [1, 2, 3])
+    [1, 4, 9]
     """
 
     assert ins
@@ -223,9 +253,11 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
     for var in ins:
         if isinstance(var, tuple):
             x_is_tup = True
+        elif isinstance(ins, Generator):
+            x_is_tup = False
+            ins = chain((var,), ins)
         else:
             x_is_tup = False
-        ins = chain((var,), ins)
         break
 
     if x_is_tup:
@@ -237,10 +269,76 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
 
 
 def get_mem() -> Union[float, int]:
-    """Get the amount of memory to use for parallelization."""
+    """Get the amount of memory to use for parallelization.
+
+    Returns
+    -------
+    float | int
+        The amount of memory to use for parallelization
+    """
     from psutil import virtual_memory
-    ram_per = virtual_memory()[3]/cpu_count()
+    ram_per = virtual_memory().available / cpu_count()
     return ram_per
+
+
+def sliding_window(x_data: np.ndarray, labels: np.ndarray,
+                   scorer: callable, window_size: int = 20, axis: int = -1,
+                   n_jobs: int = -3, **kwargs) -> np.ndarray:
+    """Compute a function over a sliding window.
+
+    Parameters
+    ----------
+    x_data : np.ndarray, shape (..., trials, time)
+        The data to compute the function over
+    labels : np.ndarray, shape (trials,)
+        The labels for each trial
+    scorer : callable
+        The function to compute over the sliding window. Must take two
+        arguments, the data and the labels.
+    window_size : int
+        The size of the sliding window
+    axis : int
+        The axis to compute the sliding window over
+    n_jobs : int
+        The number of jobs to run in parallel
+
+    Returns
+    -------
+    np.ndarray
+        The output of the function, shape (..., time - window_size + 1)
+
+    Examples
+    --------
+    >>> def square(x, labels):
+    ...     return np.mean(x ** 2, where=labels == 1)
+    >>> x_data = np.arange(40).reshape(4, 10)
+    >>> labels = np.array([0, 1, 1])
+    >>> sliding_window(x_data, labels, square, window_size=3)
+    array([397.5, 431.5, 467.5, 505.5, 545.5, 587.5, 631.5])
+    """
+
+    # make windowing generator
+    axis = x_data.ndim + axis if axis < 0 else axis
+    slices = (slice(start, start + window_size)
+              for start in range(0, x_data.shape[axis] - window_size))
+    idxs = (tuple(slice(None) if i != axis else sl for i in
+                  range(x_data.ndim)) for sl in slices)
+
+    # Use joblib to parallelize the computation
+    gen = Parallel(n_jobs=n_jobs, return_as='generator', verbose=40)(
+        delayed(scorer)(x_data[idx], labels, **kwargs) for idx in idxs)
+
+    # initialize output array by running 1 job and get the shape
+    mat = next(gen)
+    out = np.zeros((x_data.shape[axis] - window_size, *mat.shape),
+                   dtype=mat.dtype)
+    out[0] = mat
+
+    # fill in the rest of the output array
+    for i, mat in enumerate(gen):
+        out[i + 1] = mat
+
+    return out
 
 
 ###############################################################################

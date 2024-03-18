@@ -1,21 +1,20 @@
-from typing import Union
-from functools import singledispatch, cache
 from collections import Counter
+from functools import cache, singledispatch
+from typing import Union
 
 import numpy as np
-from mne.utils import verbose, fill_doc, logger, _pl
+from mne import Epochs, event, events_from_annotations
 from mne.epochs import BaseEpochs
-from mne.io import base, Raw
+from mne.io import Raw, base
 from mne.time_frequency import AverageTFR, tfr_multitaper
-from mne import events_from_annotations, Epochs, event
-import mne
+from mne.utils import _pl, fill_doc, logger, verbose
 from scipy import fft, signal, stats
 
-from ieeg.timefreq.utils import crop_pad, to_samples
+from ieeg import ListNum
 from ieeg.calc.scaling import rescale
 from ieeg.calc.stats import sine_f_test
 from ieeg.process import COLA, is_number
-from ieeg import ListNum
+from ieeg.timefreq.utils import crop_pad, to_samples
 
 
 class WindowingRemover(object):
@@ -59,9 +58,6 @@ class WindowingRemover(object):
         self.bandwidth = bandwidth
         self.logger = logger
         self.rm_freqs = list()
-        mne.set_log_file("output.log",
-                         "%(levelname)s: %(message)s - %(asctime)s")
-        mne.set_log_level("INFO")
 
     def dpss_windows(self, N: int, half_nbw: float, Kmax: int, *,
                      sym: bool = True, norm: Union[int, str] = None
@@ -172,7 +168,7 @@ class WindowingRemover(object):
         if self.adaptive and len(eigvals) < 3:
             self.logger.warn('Not adaptively combining the spectral estimators'
                              ' due to a low number of tapers (%s < 3).' % (
-                                len(eigvals),))
+                                 len(eigvals),))
             self.adaptive = False
 
         return window_fun, eigvals, self.adaptive
@@ -353,7 +349,7 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
     ----------
     line : Epochs
         The data to be processed
-     %(freqs_tfr)s
+    %(freqs_tfr)s
     baseline : Epochs
         The baseline to be used for correction
     %(n_cycles_tfr)s
@@ -366,7 +362,6 @@ def spectrogram(line: BaseEpochs, freqs: np.ndarray,
     Notes
     -----
     %(time_bandwidth_tfr_notes)s
-    %(temporal-window_tfr_notes)s
 
     Returns
     -------

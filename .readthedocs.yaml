@@ -6,21 +6,25 @@
 version: 2
 
 conda:
-  environment: envs/environment.yml
+  environment: envs/dev/server-environment.yml
 
 # Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
+  apt_packages:
+    - libgl1-mesa-glx
+    - xvfb
   tools:
-    python: "mambaforge-4.10"
+    python: "mambaforge-22.9"
     # You can also specify other tool versions:
     # nodejs: "19"
     # rust: "1.64"
     # golang: "1.19"
   jobs:
     pre_build:
-      - pip install --upgrade myst-nb sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain
-      - sphinx-apidoc -f -o docs .
+      - pip install --upgrade myst_parser sphinx_gallery SQLAlchemy sphinxcontrib-matlabdomain sphinx_rtd_theme sphinx_copybutton memory_profiler
+      - sphinx-apidoc -f -o docs/references -e -T -t docs/_templates .
+      - python -c "import mne; mne.sys_info()"
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
