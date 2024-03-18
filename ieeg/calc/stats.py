@@ -460,22 +460,35 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
 
     # Calculate the p value of difference between the two groups
     # logger.info('Permuting events in shuffle test')
-    act = stat_func(sig1, sig2, axis=axis)
-    if isinstance(act, tuple):
-        logger.warn('Given stats function has more than one output. Accepting '
-                    'only the first output')
-        act = act[0]
-        orig_func = stat_func
-
-        def stat_func(s1, s2, axis):
-            return orig_func(s1, s2, axis=axis)[0]
-    diff = shuffle_test(sig1, sig2, n_perm, axis, stat_func, seed=seed)
-
-    # contatenate the actual group statistic and concatenate with the null
-    # distribution along the observations axis
-
-    act = np.expand_dims(act, axis=axis)
-    p_act = np.mean(tail_compare(diff, act, tails), axis=0)
+    # act = stat_func(sig1, sig2, axis=axis)
+    # if isinstance(act, tuple):
+    #     logger.warn('Given stats function has more than one output. Accepting '
+    #                 'only the first output')
+    #     orig_func = stat_func
+    #
+    #     def stat_func(s1, s2, axis):
+    #         return orig_func(s1, s2, axis=axis)[0]
+    # diff = shuffle_test(sig1, sig2, n_perm, axis, stat_func, seed=seed)
+    #
+    # # contatenate the actual group statistic and concatenate with the null
+    # # distribution along the observations axis
+    #
+    # act = np.expand_dims(act, axis=axis)
+    # p_act = np.mean(tail_compare(diff, act, tails), axis=0)
+    if tails == 1:
+        alt = 'greater'
+    elif tails == -1:
+        alt = 'less'
+    else:
+        alt = 'two-sided'
+    out_mem = (sig1.size + sig2.size) * 8
+    batch_size = get_mem() // out_mem
+    res = st.permutation_test([sig1, sig2], stat_func,
+                              n_resamples=n_perm,
+                              alternative=alt,
+                              batch=batch_size)
+    p_act = res.pvalue
+    diff = res.null_distribution
 
     # all_diff = np.concatenate((act, diff), axis=axis)
 
@@ -484,8 +497,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     p_perm = proportion(diff, tail=tails, axis=0)
 
     # Create binary clusters using the p value threshold
-    b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
-    b_perm = tail_compare(1 - p_perm, 1 - p_thresh, tails)
+    b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
+    b_perm = tail_compare(1. - p_perm, 1. - p_thresh, tails)
 
     # logger.info('Finding clusters')
     if ignore_adjacency is None:
@@ -498,7 +511,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         clusters[index] = time_cluster(
             b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster, tails)
 
-    return clusters
+    return clusters, 1. - p_act
 
 
 def proportion(val: np.ndarray[float, ...] | float,
