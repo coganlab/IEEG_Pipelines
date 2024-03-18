@@ -288,12 +288,8 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             ) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
 
-    This function calculates the window averaged shuffle distribution for two
-    groups of data. The shuffle distribution is calculated by randomly
-    shuffling the data between the two groups and calculating the statistic
-    function for each window, returning a distribution of the statistic
-    corresponding to each window. The function returns the shuffle
-    distribution.
+    Essentially a wrapper for:
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html#scipy.stats.permutation_test
 
     Parameters
     ----------
@@ -339,16 +335,23 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     window_axis = window_axis + sig1.ndim if window_axis < 0 else window_axis
     obs_axis = obs_axis - 1 if window_axis < obs_axis else obs_axis
 
-    # Calculate the observed difference
-    obs_diff = stat_func(in1, in2, obs_axis)
+    if tails == 1:
+        alt = 'greater'
+    elif tails == -1:
+        alt = 'less'
+    else:
+        alt = 'two-sided'
+    out_mem = (sig1.size + sig2.size) * 8
+    batch_size = get_mem() // out_mem
 
     # Create shuffle distribution
-    diff = shuffle_test(in1, in2, n_perm, obs_axis, stat_func, seed=seed)
+    res = st.permutation_test([in1, in2], stat_func,
+                              n_resamples=n_perm,
+                              alternative=alt,
+                              batch=batch_size,
+                              axis=obs_axis)
 
-    # Calculate the p-value
-    p_act = np.mean(tail_compare(diff, obs_diff, tails), axis=0)
-
-    return p_act
+    return res.pvalue
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
@@ -356,7 +359,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = mean_diff,
                       ignore_adjacency: tuple[int] | int = None,
-                      n_jobs: int = -1, seed: int = None) -> np.ndarray[bool]:
+                      n_jobs: int = -1, seed: int = None
+                      ) -> (np.ndarray[bool], np.ndarray[float]):
     """Calculate significant clusters using permutation testing and cluster
     correction.
 
@@ -407,6 +411,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     -------
     clusters : array, shape (..., time)
         The binary array of significant clusters.
+    p_obs : array, shape (..., time)
+        The p-value of the observed difference.
 
     References
     ----------
