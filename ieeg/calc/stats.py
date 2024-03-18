@@ -426,33 +426,77 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     ... for _ in range(50)]) - rng.random((50, 15)) * 2.6
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random(
     ... (100, 15))
-    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000, seed=seed)
+    >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=10000, seed=seed)[0]
     array([False, False, False,  True,  True,  True,  True,  True,  True,
             True,  True, False, False, False, False])
-    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000, seed=seed)
+    >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=10000, seed=seed)[0]
     array([False, False, False, False,  True,  True,  True,  True,  True,
             True, False, False, False, False, False])
     """
     # check inputs
+    if tails == 1:
+        alt = 'greater'
+    elif tails == -1:
+        alt = 'less'
+    elif tails == 2:
+        alt = 'two-sided'
+    else:
+        raise ValueError('tails must be 1, 2, or -1')
     if p_cluster is None:
         p_cluster = p_thresh
-    if tails not in [1, 2, -1]:
-        raise ValueError('tails must be 1, 2, or -1')
     if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
     if isinstance(ignore_adjacency, int):
         ignore_adjacency = (ignore_adjacency,)
-    if ignore_adjacency is not None:
-        if axis in ignore_adjacency:
-            raise ValueError('observations axis is eliminated before '
-                             'clustering and so cannot be in ignore_adjacency')
+    if isinstance(ignore_adjacency, tuple):
+        assert axis not in ignore_adjacency, ValueError(
+            'observations axis is eliminated before clustering and so cannot '
+            'be in ignore_adjacency')
+        nprocs = sum(sig1.shape[i] for i in ignore_adjacency)
+    else:
+        nprocs = 1
 
-        # axes where adjacency is ignored can be computed independently in
-        # parallel
-        out_shape = list(sig1.shape)
-        out_shape.pop(axis)
+    # set process parameters
+    sig2 = make_data_same(sig2, sig1.shape, axis)
+    out_mem = (sig1.shape[axis] * sig1.itemsize +
+               sig2.shape[axis] * sig2.itemsize) // nprocs
+    batch_size = get_mem() // out_mem
+    arr_size = (sig1.size * sig1.itemsize) // sig1.shape[axis]
+    small_enough = batch_size * out_mem > arr_size * n_perm **2
+
+    # Create binary clusters using the p value threshold
+    def _proc(sig1: np.ndarray, sig2: np.ndarray
+              ) -> tuple[np.ndarray[int], np.ndarray[float]]:
+        res = st.permutation_test([sig1, sig2], stat_func,
+                                  n_resamples=n_perm,
+                                  alternative=alt,
+                                  batch=batch_size,
+                                  axis=axis)
+        p_act = 1. - res.pvalue
+        diff = res.null_distribution
+
+        # Calculate the p value of the permutation distribution
+        if small_enough:
+            p_perm = np.mean(tail_compare(diff[:, None], diff[None], tails),
+                             axis=0)
+        elif tails == 1:
+            p_perm = permgtnd(diff, axis=0)
+        else:
+            p_perm = proportion(diff, tail=tails, axis=0)
+
+        # Create binary clusters using the p value threshold
+        b_act = tail_compare(p_act, 1. - p_thresh, tails)
+        b_perm = tail_compare(1. - p_perm, 1. - p_thresh, tails)
+
+        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
+
+    # axes where adjacency is ignored can be computed independently in
+    # parallel
+    if nprocs > 1:
+        out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
         out1 = np.zeros(out_shape, dtype=int)
         out2 = np.zeros(out_shape, dtype=float)
+        axis -= sum(1 for i in ignore_adjacency if i < axis)
         ins = ((np.squeeze(sig1[:, i]), np.squeeze(sig2[:, i])) for i in
                np.ndindex(tuple(sig1.shape[j] for j in ignore_adjacency)))
         proc = Parallel(n_jobs, return_as='generator', verbose=40)(
@@ -462,63 +506,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         for i, iout in enumerate(proc):
             out1[i], out2[i] = iout
         return out1, out2
-
-    sig2 = make_data_same(sig2, sig1.shape, axis)
-
-    # Calculate the p value of difference between the two groups
-    # logger.info('Permuting events in shuffle test')
-    # act = stat_func(sig1, sig2, axis=axis)
-    # if isinstance(act, tuple):
-    #     logger.warn('Given stats function has more than one output. Accepting '
-    #                 'only the first output')
-    #     orig_func = stat_func
-    #
-    #     def stat_func(s1, s2, axis):
-    #         return orig_func(s1, s2, axis=axis)[0]
-    # diff = shuffle_test(sig1, sig2, n_perm, axis, stat_func, seed=seed)
-    #
-    # # contatenate the actual group statistic and concatenate with the null
-    # # distribution along the observations axis
-    #
-    # act = np.expand_dims(act, axis=axis)
-    # p_act = np.mean(tail_compare(diff, act, tails), axis=0)
-    if tails == 1:
-        alt = 'greater'
-    elif tails == -1:
-        alt = 'less'
     else:
-        alt = 'two-sided'
-    out_mem = (sig1.size + sig2.size) * 8
-    batch_size = get_mem() // out_mem
-    res = st.permutation_test([sig1, sig2], stat_func,
-                              n_resamples=n_perm,
-                              alternative=alt,
-                              batch=batch_size)
-    p_act = 1. - res.pvalue
-    diff = res.null_distribution
-
-    # all_diff = np.concatenate((act, diff), axis=axis)
-
-    # Calculate the p value of the permutation distribution
-    # p_act = proportion(act, diff, tails, axis=0)
-    p_perm = proportion(diff, tail=tails, axis=0)
-
-    # Create binary clusters using the p value threshold
-    b_act = tail_compare(p_act, 1. - p_thresh, tails)
-    b_perm = tail_compare(1. - p_perm, 1. - p_thresh, tails)
-
-    # logger.info('Finding clusters')
-    if ignore_adjacency is None:
-        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
-
-    # If there are axes to ignore, we need to loop over them
-    clusters = np.zeros(b_act.shape, dtype=int)
-    for i in np.ndindex(tuple(sig1.shape[i] for i in ignore_adjacency)):
-        index = tuple(j for j in i) + (slice(None),)
-        clusters[index] = time_cluster(
-            b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster, tails)
-
-    return clusters, p_act
+        return _proc(sig1, sig2)
 
 
 def proportion(val: np.ndarray[float, ...] | float,
