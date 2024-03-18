@@ -451,7 +451,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         # parallel
         out_shape = list(sig1.shape)
         out_shape.pop(axis)
-        out = np.zeros(out_shape, dtype=int)
+        out1 = np.zeros(out_shape, dtype=int)
+        out2 = np.zeros(out_shape, dtype=float)
         ins = ((np.squeeze(sig1[:, i]), np.squeeze(sig2[:, i])) for i in
                np.ndindex(tuple(sig1.shape[j] for j in ignore_adjacency)))
         proc = Parallel(n_jobs, return_as='generator', verbose=40)(
@@ -459,8 +460,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                 *i, p_thresh=p_thresh, p_cluster=p_cluster, n_perm=n_perm,
                 tails=tails, axis=axis, stat_func=stat_func) for i in ins)
         for i, iout in enumerate(proc):
-            out[i] = iout
-        return out
+            out1[i], out2[i] = iout
+        return out1, out2
 
     sig2 = make_data_same(sig2, sig1.shape, axis)
 
@@ -493,7 +494,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                               n_resamples=n_perm,
                               alternative=alt,
                               batch=batch_size)
-    p_act = res.pvalue
+    p_act = 1. - res.pvalue
     diff = res.null_distribution
 
     # all_diff = np.concatenate((act, diff), axis=axis)
@@ -503,12 +504,12 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     p_perm = proportion(diff, tail=tails, axis=0)
 
     # Create binary clusters using the p value threshold
-    b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
+    b_act = tail_compare(p_act, 1. - p_thresh, tails)
     b_perm = tail_compare(1. - p_perm, 1. - p_thresh, tails)
 
     # logger.info('Finding clusters')
     if ignore_adjacency is None:
-        return time_cluster(b_act, b_perm, 1 - p_cluster, tails)
+        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
 
     # If there are axes to ignore, we need to loop over them
     clusters = np.zeros(b_act.shape, dtype=int)
@@ -517,7 +518,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         clusters[index] = time_cluster(
             b_act[index], b_perm[(slice(None),) + index], 1 - p_cluster, tails)
 
-    return clusters, 1. - p_act
+    return clusters, p_act
 
 
 def proportion(val: np.ndarray[float, ...] | float,
