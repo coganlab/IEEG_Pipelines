@@ -55,9 +55,10 @@ arguments
     options.normFactor = [];
     options.normType = 1; % 1 - z-score, 2 - mean normalization
     options.fDown double = 200;
-    options.baseTimeRange = [-0.5 0]; 
+    options.baseTimeRange = [-0.6 -0.1]; 
     options.baseName = 'Start'
     options.respTimeThresh = -1;
+    options.respDurThresh = -1;
     options.subsetElec cell = '' % subset of electrodes to select from stats 
     options.remNoiseTrials logical = true; % true to remove all noisy trials
     options.remNoResponseTrials logical = true; % true to remove all no-response trials 
@@ -100,7 +101,7 @@ ieegFieldStruct = extractRawDataWithROI(Subject, 'Epoch', options.Epoch, ...
     'Time', [options.Time(1)-timePad options.Time(2)+timePad], ...
     'roi', options.roi, 'remFastResponseTimeTrials', options.respTimeThresh, ...
     'remNoiseTrials', options.remNoiseTrials, 'remNoResponseTrials', options.remNoResponseTrials, ...
-    'subsetElec', options.subsetElec, 'remWMchannels', options.remWMchannels);
+    'subsetElec', options.subsetElec, 'remWMchannels', options.remWMchannels,'remlongDurationTrials',options.respDurThresh);
 
 ieegHGAll = repmat(struct('ieegHGNorm', [], 'channelName', [], 'normFactor', [], 'trialInfo', []), length(Subject), 1);
 

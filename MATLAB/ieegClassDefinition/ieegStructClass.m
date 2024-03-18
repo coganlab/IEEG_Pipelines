@@ -151,12 +151,12 @@ classdef ieegStructClass
                             obj.name = strcat(obj.name, '_High-Gamma-norm-baseline-normalized');
                     end
             end
-            
+            isPower = 1;
             if size(dataTemp, 1) == 1
-                [~, ieegGammaTemp(1, :, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp)), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType); 
+                [~, ieegGammaTemp(1, :, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp)), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType,isPower); 
             else
                 for iTrial = 1:size(obj.data, 2)    
-                    [~, ieegGammaTemp(:, iTrial, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp(:, iTrial, :))), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType);
+                    [~, ieegGammaTemp(:, iTrial, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp(:, iTrial, :))), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType,isPower);
                 end
             end
             
@@ -168,10 +168,11 @@ classdef ieegStructClass
             % Extract normalization factors for ieeg (mean & standard deviation)
             
             % Calculates the mean and standard deviation normalization factors for each channel in the iEEG data
-            
+           % [NumTrials, goodtrials] = remove_bad_trials(obj.data, 10);
             normFactor = zeros(size(obj.data, 1), 2);
             for iChan = 1:size(obj.data, 1)
-                normFactor(iChan, :) = [mean(squeeze(obj.data(iChan, :)),"omitnan"), std(squeeze(obj.data(iChan, :)),"omitnan")];
+               % normFactor(iChan, :) = [mean2(squeeze(obj.data(iChan, goodtrials(iChan,:),:)),"omitnan"), std2(squeeze(obj.data(iChan,  goodtrials(iChan,:),:)),"omitnan")];
+           normFactor(iChan, :) = [mean(squeeze(obj.data(iChan, :)),"omitnan"), std(squeeze(obj.data(iChan,  :)),"omitnan")];
             end
         end
         

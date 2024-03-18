@@ -42,7 +42,8 @@ arguments
     options.isCAR logical = true; % true to perform CAR subtraction
     options.remNoiseTrials logical = true; % true to remove all noisy trials
     options.remNoResponseTrials logical = true; % true to remove all no-response trials    
-    options.remFastResponseTimeTrials double = 0; % response time threshold to remove all faster response trials    
+    options.remFastResponseTimeTrials double = 0; % response time threshold to remove all faster response trials   
+    options.remlongDurationTrials double = 0 % response duration threshold to remove longer duration trials   
     options.remNoiseThreshold double = -1; % noise threshold to remove noisy trials
     options.remWMchannels logical = true; % remove white matter channels
 end
@@ -127,21 +128,25 @@ for iSubject = 1:numSubjects
     responseTime = nan(1,length(Trials));
     responseDuration = nan(1,length(Trials));
     % Remove noisy, no-response, and fast response time trials if specified
-    if (options.remNoiseTrials || options.remNoResponseTrials || options.remFastResponseTimeTrials >= 0)
+    if (options.remNoiseTrials || options.remNoResponseTrials || options.remFastResponseTimeTrials >= 0|| options.remlongDurationTrials >= 0)
         noisyTrials = [Trials.Noisy] == 1;
         noResponseTrials = [Trials.NoResponse] == 1;
         negResponseTrials = false(1, numTrials);
+        longResponseTrials = false(1, numTrials);
         if (options.remFastResponseTimeTrials >= 0)
             for iTrials = 1:numTrials
                 if (~isempty(Trials(iTrials).ResponseStart))
                     RespTime = (Trials(iTrials).ResponseStart - Trials(iTrials).Go) ./ 30000;
-                    RespDuration = (Trials(iTrials).ResponsEnd - Trials(iTrials).ResponseStart) ./ 30000;
+                    RespDuration = (Trials(iTrials).ResponseEnd - Trials(iTrials).ResponseStart) ./ 30000;
                 else
                     RespTime = nan;
                     RespDuration = nan;
                 end
                 if (RespTime < options.remFastResponseTimeTrials)
                     negResponseTrials(iTrials) = true;
+                end
+                if (RespDuration >= options.remlongDurationTrials)
+                    longResponseTrials(iTrials) = true;
                 end
                 responseTime(iTrials) = RespTime;
                 responseDuration(iTrials) = RespDuration;
@@ -151,9 +156,9 @@ for iSubject = 1:numSubjects
         disp(['Removing Noisy trials: ' num2str(sum(noisyTrials))])
         disp(['Removing Trials with no-response: ' num2str(sum(noResponseTrials))])
         disp(['Removing Trials with negative response time: ' num2str(sum(negResponseTrials))])
-        
+        disp(['Removing Trials with longer Duration: ' num2str(sum(longResponseTrials))])
         % Combine trial indices to remove into a single array
-        trials2remove = unique([find(noisyTrials), find(noResponseTrials), find(negResponseTrials)]);
+        trials2remove = unique([find(noisyTrials), find(noResponseTrials), find(negResponseTrials), find(longResponseTrials)]);
         trials2select = setdiff(1:numTrials, trials2remove);
     else
         % If no trials are to be removed, select all trials
