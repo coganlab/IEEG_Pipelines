@@ -635,6 +635,18 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
     -------
     clusters : array, shape (..., time)
         The clusters.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> perm = np.array([[0, 1, 1, 1, 0, 1, 0, 0],
+    ...                  [0, 1, 0, 1, 1, 1, 0, 0],
+    ...                  [0, 1, 1, 0, 1, 1, 0, 0],
+    ...                  [0, 0, 1, 1, 1, 0, 0, 0]])
+    >>> time_cluster(np.array([0, 1, 1, 1, 1, 1, 0, 0]), perm)
+    array([0.  , 0.75, 0.75, 0.75, 0.75, 0.75, 0.  ])
+    >>> time_cluster(np.array([0, 0, 1, 1, 1, 0, 0, 0]), perm)
+    array([0.  , 0.  , 0.25, 0.25, 0.25, 0.  , 0.  ])
     """
 
     # Create an index of all the binary clusters in the active and permuted
