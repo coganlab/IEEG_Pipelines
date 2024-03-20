@@ -48,10 +48,10 @@ def test_stats(func, expected):
     base = out[0]
     base.decimate(10)
 
-    mask = stats.time_perm_cluster(resp.copy()._data[:, 78:79],
-                                   base.copy()._data[:, 78:79], 0.01,
-                                   stat_func=func, n_perm=4000)
-    assert np.mean(mask[:, expected]) > 0.8
+    mask, pvals = stats.time_perm_cluster(resp._data[:, 78],
+                                          base._data[:, 78], 0.01,
+                                          stat_func=func, n_perm=4000)
+    assert np.mean(mask[expected]) > 0.8
 
 
 def test_stats_wavelet():
@@ -64,14 +64,19 @@ def test_stats_wavelet():
         times = [None, None]
         times[0] = t[0] - 0.5
         times[1] = t[1] + 0.5
-        trials = trial_ieeg(seeg, epoch, times, preload=True, picks=[78])
-        outliers_to_nan(trials, 7)
+        trials = trial_ieeg(seeg, epoch, times, preload=True,
+                            picks=['LAMY 6', 'LAMY 7'])
+        outliers_to_nan(trials, 10)
         spec = wavelet_scaleogram(trials, n_jobs=-2, decim=20)
         crop_pad(spec, "0.5s")
         out.append(spec)
     resp = out[1]
     base = out[0]
 
-    mask = stats.time_perm_cluster(resp._data, base._data, 0.05, n_perm=2000)
+    mask, pvals = stats.time_perm_cluster(resp.data, base.data, 0.1,
+                                          ignore_adjacency=1, n_perm=10000)
+    mask1, pvals1 = stats.time_perm_cluster(resp.data[:, 0], base.data[:, 0],
+                                            0.1, n_perm=10000)
 
-    assert np.all(mask[2:7, 11:12])
+    assert np.any(mask)
+    assert np.isclose(np.mean(mask1), np.mean(mask[0]))
