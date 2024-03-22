@@ -326,17 +326,17 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     """
 
     # average the windows
-    in1 = np.mean(sig1, axis=window_axis)
-    in2 = np.mean(sig2, axis=window_axis)
+    samples = [np.atleast_1d(np.mean(s, axis=window_axis))
+               for s in [sig1, sig2]]
 
     # calc obs axis
     obs_axis = obs_axis + sig1.ndim if obs_axis < 0 else obs_axis
     window_axis = window_axis + sig1.ndim if window_axis < 0 else window_axis
     obs_axis = obs_axis - 1 if window_axis < obs_axis else obs_axis
 
-    if tails == 1:
+    if tails == -1:
         alt = 'greater'
-    elif tails == -1:
+    elif tails == 1:
         alt = 'less'
     else:
         alt = 'two-sided'
@@ -344,13 +344,13 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     batch_size = get_mem() // out_mem
 
     # Create shuffle distribution
-    res = st.permutation_test([in1, in2], stat_func,
+    res = st.permutation_test(samples, stat_func,
                               n_resamples=n_perm,
                               alternative=alt,
                               batch=batch_size,
                               axis=obs_axis)
 
-    return res.pvalue
+    return 1 - res.pvalue
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,

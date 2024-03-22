@@ -2,6 +2,8 @@
 #include <numpy/arrayobject.h>
 #include <numpy/ufuncobject.h>
 #include <math.h>
+#include <stdlib.h>
+#include <time.h>
 
 static PyMethodDef Meandiff_Methods[] = {
     {NULL, NULL, 0, NULL}
@@ -51,6 +53,66 @@ static void mean_diff(
     }
 }
 
+// Function to shuffle an array
+void shuffle(double* arr, npy_intp size) {
+    for (npy_intp i = size - 1; i > 0; i--) {
+        npy_intp j = rand() % (i + 1);
+        double temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
+    }
+}
+
+// Function to concatenate two arrays
+double* concatenate(double* arr1, npy_intp size1, double* arr2, npy_intp size2) {
+    double* result = malloc((size1 + size2) * sizeof(double));
+    memcpy(result, arr1, size1 * sizeof(double));
+    memcpy(result + size1, arr2, size2 * sizeof(double));
+    return result;
+}
+
+
+// Function to perform the permutation test
+static void perm_test(
+    char **args,
+    const npy_intp *dimensions,
+    const npy_intp *steps,
+    void *extra)
+{
+    char *in1 = args[0], *in2 = args[1], *in3 = args[2], *out = args[3];
+
+    npy_intp nloops = dimensions[0];  // Number of outer loops
+    npy_intp len1 = dimensions[1];    // Core dimension i
+    npy_intp len2 = dimensions[2];    // Core dimension j
+    int nperm = *((int *)in3);   // Number of permutations
+
+    npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    npy_intp step_out = steps[3];     // Outer loop step size for the output
+    npy_intp innerstep1 = steps[4];   // Step size of elements within the first input
+    npy_intp innerstep2 = steps[5];   // Step size of elements within the second input
+
+
+    for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+        // core calculation
+        double diff = avg_non_nan(in1, len1, innerstep1) - avg_non_nan(in2, len2, innerstep2);
+        double* s = concatenate(in1, len1, in2, len2);
+
+        int count = 0;
+        for (int j = 0; j < nperm; j++) {
+            shuffle(s, len1 + len2);
+            double perms = avg_non_nan(s, len1, innerstep1) - avg_non_nan(s + len1, len2, innerstep2);
+            if (perms > diff) {
+                count++;
+            }
+        }
+        *((double *)out) = (double)count / (double)nperm;
+        free(s);
+    }
+
+}
+
+
 static void _perm_gt(char **args, const npy_intp *dimensions, const npy_intp *steps, void *extra) {
 
     char *in1 = args[0], *in2 = args[1], *out = args[2];
@@ -66,7 +128,7 @@ static void _perm_gt(char **args, const npy_intp *dimensions, const npy_intp *st
     for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
 
         // core calculation
-        npy_intp count = 0;
+        int count = 0;
         double val = *((double *)in1);
         for (npy_intp j = 0; j < len; j++) {
             double compare = *((double *)(in2 + j*innerstep));
@@ -79,9 +141,27 @@ static void _perm_gt(char **args, const npy_intp *dimensions, const npy_intp *st
     }
 }
 
-PyUFuncGenericFunction funcs[2] = {&mean_diff, &_perm_gt};
+// Robert Jenkins' 96 bit Mix Function
+unsigned long seeder(void)
+{
+    unsigned long a = getpid(), b = clock(), c = time(NULL);
+    a=a-b;  a=a-c;  a=a^(c >> 13);
+    b=b-c;  b=b-a;  b=b^(a << 8);
+    c=c-a;  c=c-b;  c=c^(b >> 13);
+    a=a-b;  a=a-c;  a=a^(c >> 12);
+    b=b-c;  b=b-a;  b=b^(a << 16);
+    c=c-a;  c=c-b;  c=c^(b >> 5);
+    a=a-b;  a=a-c;  a=a^(c >> 3);
+    b=b-c;  b=b-a;  b=b^(a << 10);
+    c=c-a;  c=c-b;  c=c^(b >> 15);
+    return c;
+}
 
-static char types[6] = {NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE};
+PyUFuncGenericFunction funcs[3] = {&mean_diff, &_perm_gt, &perm_test};
+
+static char types[10] = {
+NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_INT, NPY_DOUBLE
+};
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
@@ -96,10 +176,12 @@ static struct PyModuleDef moduledef = {
 };
 
 PyMODINIT_FUNC PyInit_cstats(void) {
-    PyObject *m, *ufunc1, *ufunc2, *d;
+    PyObject *m, *ufunc1, *ufunc2, *ufunc3, *d;
     import_array();
     import_ufunc();
     import_umath();
+
+    srand(seeder());
 
     m = PyModule_Create(&moduledef);
     if (!m) {
@@ -112,12 +194,16 @@ PyMODINIT_FUNC PyInit_cstats(void) {
     ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 1, NULL, types + 3, 1, 2, 1, PyUFunc_None, "_perm_gt",
     "Calculate the proportion of elements in compare that are less than vals.", 0, "(),(m)->()");
 
+    ufunc3 = PyUFunc_FromFuncAndDataAndSignature(funcs + 2, NULL, types + 6, 1, 3, 1, PyUFunc_None, "perm_test",
+    "Calculate the proportion of permutations that are greater than the observed difference.", 0, "(i),(j),()->()");
     d = PyModule_GetDict(m);
 
     PyDict_SetItemString(d, "mean_diff", ufunc1);
     PyDict_SetItemString(d, "_perm_gt", ufunc2);
+    PyDict_SetItemString(d, "perm_test", ufunc3);
     Py_DECREF(ufunc1);
     Py_DECREF(ufunc2);
+    Py_DECREF(ufunc3);
 
     return m;
 }
