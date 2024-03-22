@@ -6,7 +6,7 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from ieeg.calc.cstats import mean_diff as _mean_diff, _perm_gt
+from ieeg.calc.cstats import mean_diff as _mean_diff, perm_test as _perm_test
 from ieeg.process import get_mem
 import psutil
 from ieeg.calc.permgt import permgtnd
@@ -280,6 +280,47 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     return _mean_diff(in1, in2)
 
 
+def perm_test(group1: np.ndarray, group2: np.ndarray, n_perm: int = 1000,
+              axis: int = 0) -> np.ndarray[float]:
+    """Calculate the p value of the observed difference.
+
+    This function is a wrapper for scipy.stats.permutation_test. It calculates
+    the p value of the observed difference between two groups of observations.
+
+    Parameters
+    ----------
+    group1 : array, shape (..., time)
+        The first group of observations.
+    group2 : array, shape (..., time)
+        The second group of observations.
+    n_perm : int, optional
+        The number of permutations to perform. Default is 1000.
+    axis : int, optional
+        The axis along which to calculate the statistic function. Default is 0.
+
+    Returns
+    -------
+    pvalue : float
+        The p value of the observed difference.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> seed = 43; rng = np.random.default_rng(seed)
+    >>> s1 = np.array([1, 2, 3, 4, 5]); s2 = np.array([7, 8, 9])
+    >>> perm_test(s1, s2, 10000)
+
+    >>> group1 = np.array([s1, s1 + 5])
+    >>> group2 = np.array([s2, s2])
+    >>> perm_test(group1, group2, 10000, axis=1)
+
+    """
+    in1 = np.moveaxis(group1, axis, -1)
+    in2 = np.moveaxis(group2, axis, -1)
+
+    return _perm_test(in1, in2, n_perm)
+
+
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 1000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
@@ -334,9 +375,9 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     window_axis = window_axis + sig1.ndim if window_axis < 0 else window_axis
     obs_axis = obs_axis - 1 if window_axis < obs_axis else obs_axis
 
-    if tails == -1:
+    if tails == 1:
         alt = 'greater'
-    elif tails == 1:
+    elif tails == -1:
         alt = 'less'
     else:
         alt = 'two-sided'
@@ -351,7 +392,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                               axis=obs_axis,
                               random_state=seed)
 
-    return np.round(1 - res.pvalue, int(np.log10(n_perm)))
+    return res.pvalue
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
