@@ -322,7 +322,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     ... for _ in range(50)])
     >>> sig2 = rng.random((100, 15)) * 3.2
     >>> window_averaged_shuffle(sig1, sig2, n_perm=10000, seed=seed)
-    0.0002
+    0.0001
     """
 
     # average the windows
@@ -348,9 +348,10 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                               n_resamples=n_perm,
                               alternative=alt,
                               batch=batch_size,
-                              axis=obs_axis)
+                              axis=obs_axis,
+                              random_state=seed)
 
-    return 1 - res.pvalue
+    return np.round(1 - res.pvalue, int(np.log10(n_perm)))
 
 
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
