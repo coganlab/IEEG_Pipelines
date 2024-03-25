@@ -310,9 +310,9 @@ def perm_test(group1: np.ndarray, group2: np.ndarray, n_perm: int = 1000,
     >>> s1 = np.array([1, 2, 3, 4, 5]); s2 = np.array([7, 8, 9])
     >>> perm_test(s1, s2, 10000)
 
-    >>> group1 = np.array([s1, s1 + 5])
-    >>> group2 = np.array([s2, s2])
-    >>> perm_test(group1, group2, 10000, axis=1)
+    >>> perm_test(s1.astype(float), s2.astype(float), 10000)
+
+    >>> perm_test(np.array([s1, s1 + 5], order='F'), np.array([s2, s2], order='F'), 10000, axis=1)
 
     """
     in1 = np.moveaxis(group1, axis, -1)

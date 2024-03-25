@@ -14,7 +14,7 @@ double avg_non_nan(char *input, npy_intp len, npy_intp innerstep) {
     npy_intp count = 0;
 
     for (npy_intp j = 0; j < len; ++j) {
-        double val = *(double *)(input + j*innerstep);
+        double val = *(double *)(input + j * innerstep);
         if (!isnan(val)) {
             sum += val;
             count++;
@@ -54,21 +54,19 @@ static void mean_diff(
 }
 
 // Function to shuffle an array
-void shuffle(double* arr, npy_intp size) {
-    for (npy_intp i = size - 1; i > 0; i--) {
-        npy_intp j = rand() % (i + 1);
-        double temp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = temp;
+void shuffle(char *array, npy_intp len, npy_intp innerstep)
+{
+    if (len > 1)
+    {
+        npy_intp i;
+        for (i = 0; i < len - 1; i++)
+        {
+          npy_intp j = i + rand() / (RAND_MAX / (len - i) + 1);
+          double t = *(double *)(array + j * innerstep);
+          *(array + j * innerstep) = *(array + i * innerstep);
+          *((double *)(array + i * innerstep)) = t;
+        }
     }
-}
-
-// Function to concatenate two arrays
-double* concatenate(double* arr1, npy_intp size1, double* arr2, npy_intp size2) {
-    double* result = malloc((size1 + size2) * sizeof(double));
-    memcpy(result, arr1, size1 * sizeof(double));
-    memcpy(result + size1, arr2, size2 * sizeof(double));
-    return result;
 }
 
 
@@ -84,7 +82,7 @@ static void perm_test(
     npy_intp nloops = dimensions[0];  // Number of outer loops
     npy_intp len1 = dimensions[1];    // Core dimension i
     npy_intp len2 = dimensions[2];    // Core dimension j
-    int nperm = *((int *)in3);   // Number of permutations
+    unsigned int nperm = *((unsigned int *)in3);   // Number of permutations
 
     npy_intp step1 = steps[0];        // Outer loop step size for the first input
     npy_intp step2 = steps[1];        // Outer loop step size for the second input
@@ -93,23 +91,29 @@ static void perm_test(
     npy_intp innerstep2 = steps[5];   // Step size of elements within the second input
 
 
+    // Allocate memory for s based on the size of double
+    char* s = malloc((len1 + len2) * sizeof(double));
     for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
         // core calculation
-        double diff = avg_non_nan(in1, len1, innerstep1) - avg_non_nan(in2, len2, innerstep2);
-        double* s = concatenate(in1, len1, in2, len2);
+        double mean1 = avg_non_nan(in1, len1, innerstep1);
+        double mean2 = avg_non_nan(in2, len2, innerstep2);
+        double diff = mean1 - mean2;
+        memcpy(s, in1, len1);
+        memcpy(s + len1, in2, len2);
 
         int count = 0;
         for (int j = 0; j < nperm; j++) {
-            shuffle(s, len1 + len2);
-            double perms = avg_non_nan(s, len1, innerstep1) - avg_non_nan(s + len1, len2, innerstep2);
+            shuffle(s, len1 + len2, innerstep1);
+            mean1 = avg_non_nan(s, len1, innerstep1);
+            mean2 = avg_non_nan(s + len1, len2, innerstep2);
+            double perms = mean1 - mean2;
             if (perms > diff) {
                 count++;
             }
         }
         *((double *)out) = (double)count / (double)nperm;
-        free(s);
     }
-
+    free(s);
 }
 
 
@@ -194,7 +198,7 @@ PyMODINIT_FUNC PyInit_cstats(void) {
     ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 1, NULL, types + 3, 1, 2, 1, PyUFunc_None, "_perm_gt",
     "Calculate the proportion of elements in compare that are less than vals.", 0, "(),(m)->()");
 
-    ufunc3 = PyUFunc_FromFuncAndDataAndSignature(funcs + 2, NULL, types + 6, 1, 3, 1, PyUFunc_None, "perm_test",
+    ufunc3 = PyUFunc_FromFuncAndDataAndSignature(funcs + 2, NULL, types + 6, 2, 3, 1, PyUFunc_None, "perm_test",
     "Calculate the proportion of permutations that are greater than the observed difference.", 0, "(i),(j),()->()");
     d = PyModule_GetDict(m);
 
