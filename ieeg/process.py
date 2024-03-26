@@ -11,6 +11,48 @@ from mne.utils import config, logger
 from scipy.signal import get_window
 
 
+def iterate_axes(arr: np.ndarray, axes: tuple[int, ...], index=(), axis=0):
+    """Iterate over all possible indices for a set of axes
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        The array to iterate over
+    axes : tuple[int]
+        The axes to iterate over
+    index : tuple[int]
+        The current index
+    axis : int
+        The current axis
+
+    Yields
+    ------
+    tuple[slice]
+        The indices for the current iteration
+
+    Examples
+    --------
+    >>> arr = np.arange(24).reshape(2, 3, 4)
+    >>> for sl in iterate_axes(arr, (0, 1)):
+    ...     print(arr[sl])
+    [0 1 2 3]
+    [4 5 6 7]
+    [ 8  9 10 11]
+    [12 13 14 15]
+    [16 17 18 19]
+    [20 21 22 23]
+    """
+    if axis < len(axes):
+        for i in range(arr.shape[axes[axis]]):
+            yield from iterate_axes(arr, axes, index + (i,), axis + 1)
+    else:
+        # Create a tuple of slices for all axes
+        slices = [slice(None)] * arr.ndim
+        for axis, i in zip(axes, index):
+            slices[axis] = i
+        yield tuple(slices)
+
+
 def ensure_int(x, name: str = 'unknown', must_be: str = 'an int', *, extra=''):
     """Ensure a variable is an integer.
 

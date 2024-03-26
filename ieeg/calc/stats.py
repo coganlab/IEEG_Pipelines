@@ -7,7 +7,7 @@ from scipy import ndimage
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
 from ieeg.calc.cstats import mean_diff as _mean_diff, perm_test as _perm_test
-from ieeg.process import get_mem
+from ieeg.process import get_mem, iterate_axes
 import psutil
 from ieeg.calc.permgt import permgtnd
 
@@ -542,9 +542,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
         out1 = np.zeros(out_shape, dtype=int)
         out2 = np.zeros(out_shape, dtype=float)
+        ins = ((sig1[i], sig2[i]) for i in iterate_axes(sig1, ignore_adjacency))
         axis -= sum(1 for i in ignore_adjacency if i < axis)
-        ins = ((np.squeeze(sig1[:, i]), np.squeeze(sig2[:, i])) for i in
-               np.ndindex(tuple(sig1.shape[j] for j in ignore_adjacency)))
         proc = Parallel(n_jobs, return_as='generator', verbose=40)(
             delayed(time_perm_cluster)(
                 *i, p_thresh=p_thresh, p_cluster=p_cluster, n_perm=n_perm,
