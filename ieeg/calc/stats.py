@@ -475,9 +475,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             True, False, False, False, False, False])
     """
     # check inputs
-    if tails == 1:
+    if tails == -1:
         alt = 'greater'
-    elif tails == -1:
+    elif tails == 1:
         alt = 'less'
     elif tails == 2:
         alt = 'two-sided'
@@ -531,10 +531,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             p_perm = proportion(diff, tail=tails, axis=0)
 
         # Create binary clusters using the p value threshold
-        b_act = tail_compare(p_act, 1. - p_thresh, tails)
-        b_perm = tail_compare(1. - p_perm, 1. - p_thresh, tails)
+        b_act = tail_compare(1 - p_act, 1. - p_thresh, tails)
+        b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
 
-        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
+        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), 1 - p_act
 
     # axes where adjacency is ignored can be computed independently in
     # parallel

@@ -5,7 +5,86 @@
 #include <stdlib.h>
 #include <time.h>
 
+void get_array_coords(PyArrayObject* array, npy_intp index, npy_intp* coords) {
+    for (int i = PyArray_NDIM(array) - 1; i >= 0; i--) {
+        coords[i] = index / PyArray_STRIDE(array, i);
+        index %= PyArray_STRIDE(array, i);
+    }
+}
+
+// Function to create a new array with the maximum shape of the input arrays, filled with NaN values
+static PyArrayObject* create_max_shape_array(PyArrayObject** arrays, int n_arrays, int axis) {
+    npy_intp* max_shape = malloc(PyArray_NDIM(arrays[0]) * sizeof(npy_intp));
+    memcpy(max_shape, PyArray_DIMS(arrays[0]), PyArray_NDIM(arrays[0]) * sizeof(npy_intp));
+
+    for (int i = 1; i < n_arrays; i++) {
+        for (int j = 0; j < PyArray_NDIM(arrays[i]); j++) {
+            if (j != axis && PyArray_DIMS(arrays[i])[j] > max_shape[j]) {
+                max_shape[j] = PyArray_DIMS(arrays[i])[j];
+            }
+        }
+    }
+
+    PyArrayObject* max_shape_array = (PyArrayObject*)PyArray_SimpleNew(PyArray_NDIM(arrays[0]), max_shape, NPY_DOUBLE);
+    double nan_value = NAN;
+    PyArray_FillWithScalar(max_shape_array, PyArray_Scalar(&nan_value, PyArray_DescrFromType(NPY_DOUBLE), NULL));
+
+    free(max_shape);
+
+    return max_shape_array;
+}
+
+// Function to copy the contents of the input arrays into the new array, leaving NaN values where the input arrays do not have elements
+static void copy_arrays_to_max_shape_array(PyArrayObject* max_shape_array, PyArrayObject** arrays, int n_arrays, int axis) {
+    for (int i = 0; i < n_arrays; i++) {
+        npy_intp* indices = calloc(PyArray_NDIM(arrays[i]), sizeof(npy_intp));
+        for (npy_intp j = 0; j < PyArray_SIZE(arrays[i]); j++) {
+            get_array_coords(arrays[i], j, indices);
+            *(double*)PyArray_GetPtr(max_shape_array, indices) = *(double*)PyArray_GetPtr(arrays[i], indices);
+        }
+        free(indices);
+    }
+}
+
+// Python wrapper function
+static PyObject* py_concatenate_and_pad(PyObject* self, PyObject* args) {
+    PyObject* list_obj;
+    int axis;
+
+    // Parse arguments
+    if (!PyArg_ParseTuple(args, "Oi", &list_obj, &axis)) {
+        return NULL;
+    }
+
+    // Convert Python list of arrays to C array of PyArrayObjects
+    Py_ssize_t n_arrays = PyList_Size(list_obj);
+    PyArrayObject** arrays = malloc(n_arrays * sizeof(PyArrayObject*));
+    for (Py_ssize_t i = 0; i < n_arrays; i++) {
+        PyObject* array_obj = PyList_GetItem(list_obj, i);
+        arrays[i] = (PyArrayObject*)PyArray_FROM_OTF(array_obj, NPY_DOUBLE, NPY_ARRAY_IN_ARRAY);
+        if (arrays[i] == NULL) {
+            return NULL;
+        }
+    }
+
+    // Call C functions
+    PyArrayObject* max_shape_array = create_max_shape_array(arrays, n_arrays, axis);
+    copy_arrays_to_max_shape_array(max_shape_array, arrays, n_arrays, axis);
+
+    // Convert result back to Python object
+    PyObject* result = PyArray_Return(max_shape_array);
+
+    // Clean up
+    for (Py_ssize_t i = 0; i < n_arrays; i++) {
+        Py_DECREF(arrays[i]);
+    }
+    free(arrays);
+
+    return result;
+}
+
 static PyMethodDef Meandiff_Methods[] = {
+    {"concatenate_and_pad", py_concatenate_and_pad, METH_VARARGS, "Concatenate arrays and pad with NaN values."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -161,10 +240,10 @@ unsigned long seeder(void)
     return c;
 }
 
-PyUFuncGenericFunction funcs[3] = {&mean_diff, &_perm_gt, &perm_test};
+PyUFuncGenericFunction funcs[2] = {&mean_diff, &perm_test};
 
-static char types[10] = {
-NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_INT, NPY_DOUBLE
+static char types[7] = {
+NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_INT, NPY_DOUBLE
 };
 
 static struct PyModuleDef moduledef = {
@@ -180,7 +259,7 @@ static struct PyModuleDef moduledef = {
 };
 
 PyMODINIT_FUNC PyInit_cstats(void) {
-    PyObject *m, *ufunc1, *ufunc2, *ufunc3, *d;
+    PyObject *m, *ufunc1, *ufunc2, *d;
     import_array();
     import_ufunc();
     import_umath();
@@ -195,19 +274,14 @@ PyMODINIT_FUNC PyInit_cstats(void) {
     ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, types, 2, 2, 1, PyUFunc_None, "mean_diff",
     "Calculate the mean difference of two numpy arrays.", 0, "(i),(j)->()");
 
-    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 1, NULL, types + 3, 1, 2, 1, PyUFunc_None, "_perm_gt",
-    "Calculate the proportion of elements in compare that are less than vals.", 0, "(),(m)->()");
-
-    ufunc3 = PyUFunc_FromFuncAndDataAndSignature(funcs + 2, NULL, types + 6, 2, 3, 1, PyUFunc_None, "perm_test",
+    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 2, NULL, types + 6, 2, 3, 1, PyUFunc_None, "perm_test",
     "Calculate the proportion of permutations that are greater than the observed difference.", 0, "(i),(j),()->()");
     d = PyModule_GetDict(m);
 
     PyDict_SetItemString(d, "mean_diff", ufunc1);
-    PyDict_SetItemString(d, "_perm_gt", ufunc2);
-    PyDict_SetItemString(d, "perm_test", ufunc3);
+    PyDict_SetItemString(d, "perm_test", ufunc2);
     Py_DECREF(ufunc1);
     Py_DECREF(ufunc2);
-    Py_DECREF(ufunc3);
 
     return m;
 }
