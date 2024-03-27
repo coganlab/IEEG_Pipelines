@@ -319,7 +319,7 @@ def get_mem() -> Union[float, int]:
         The amount of memory to use for parallelization
     """
     from psutil import virtual_memory
-    ram_per = virtual_memory().available / cpu_count()
+    ram_per = virtual_memory().available >> 0 // cpu_count()
     return ram_per
 
 
