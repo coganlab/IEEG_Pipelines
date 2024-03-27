@@ -1,7 +1,6 @@
 import numpy as np
 cimport numpy as cnp
 cimport cython
-from libc.stdlib cimport qsort
 
 DTYPE = np.float64
 ctypedef cnp.float64_t DTYPE_t
@@ -9,8 +8,6 @@ ctypedef cnp.int64_t INTLONG_t
 ctypedef cnp.uint8_t BOOL_t
 ctypedef cnp.intp_t INTP_t
 cnp.import_array()
-
-# cdef DTYPE_t[:] arr
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
