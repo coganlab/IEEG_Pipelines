@@ -475,9 +475,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             True, False, False, False, False, False])
     """
     # check inputs
-    if tails == -1:
+    if tails == 1:
         alt = 'greater'
-    elif tails == 1:
+    elif tails == -1:
         alt = 'less'
     elif tails == 2:
         alt = 'two-sided'
@@ -500,8 +500,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     # set process parameters
     sig2 = make_data_same(sig2, sig1.shape, axis)
     out_mem = (sig1.shape[axis] * sig1.itemsize +
-               sig2.shape[axis] * sig2.itemsize) // nprocs
-    batch_size = get_mem() // out_mem
+               sig2.shape[axis] * sig2.itemsize)
+    batch_size = get_mem() // (out_mem * nprocs)
     arr_size = (sig1.size * sig1.itemsize) // sig1.shape[axis]
     small_enough = batch_size * out_mem > arr_size * n_perm ** 2
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
@@ -518,7 +518,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     def _proc(sig1: np.ndarray, sig2: np.ndarray
               ) -> tuple[np.ndarray[int], np.ndarray[float]]:
         res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
-        p_act = 1. - res.pvalue
+        p_act = res.pvalue
         diff = res.null_distribution
 
         # Calculate the p value of the permutation distribution
