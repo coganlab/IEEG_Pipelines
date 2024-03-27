@@ -35,12 +35,6 @@ extensions = [
         **kwargs
     ),
     Extension(
-        "ieeg.calc.concat",  # the module name exposed to python
-        ["ieeg/calc/concat.pyx"],
-        # the Cython source file
-        **kwargs
-    ),
-    Extension(
         "ieeg.calc.permgt",  # the module name exposed to python
         ["ieeg/calc/permgt.pyx"],
         # the Cython source file
