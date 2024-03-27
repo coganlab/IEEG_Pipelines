@@ -1,5 +1,5 @@
 import numpy as np
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, cpu_count
 from mne.utils import logger
 from scipy import stats as st
 from scipy import ndimage
@@ -494,16 +494,15 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             'observations axis is eliminated before clustering and so cannot '
             'be in ignore_adjacency')
         nprocs = sum(sig1.shape[i] for i in ignore_adjacency)
+        n_jobs += cpu_count() + 1 if n_jobs < 0 else 0
     else:
         nprocs = 1
 
     # set process parameters
     sig2 = make_data_same(sig2, sig1.shape, axis)
-    out_mem = (sig1.shape[axis] * sig1.itemsize +
-               sig2.shape[axis] * sig2.itemsize)
-    batch_size = get_mem() // (out_mem * nprocs)
-    arr_size = (sig1.size * sig1.itemsize) // sig1.shape[axis]
-    small_enough = batch_size * out_mem > arr_size * n_perm ** 2
+    sample_size = sig1.nbytes + sig2.nbytes
+    batch_size = get_mem() // sample_size
+    small_enough = batch_size > n_perm ** 2
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
                   axis=axis, vectorized=True)
 
@@ -531,7 +530,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             p_perm = proportion(diff, tail=tails, axis=0)
 
         # Create binary clusters using the p value threshold
-        b_act = tail_compare(1 - p_act, 1. - p_thresh, tails)
+        b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
         b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
 
         return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
@@ -542,12 +541,11 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
         out1 = np.zeros(out_shape, dtype=int)
         out2 = np.zeros(out_shape, dtype=float)
-        ins = ((sig1[i], sig2[i]) for i in iterate_axes(sig1, ignore_adjacency))
+        ins = ((sig1[i], sig2[i]) for i in iterate_axes(
+            sig1, ignore_adjacency))
         axis -= sum(1 for i in ignore_adjacency if i < axis)
-        proc = Parallel(n_jobs, return_as='generator', verbose=40)(
-            delayed(time_perm_cluster)(
-                *i, p_thresh=p_thresh, p_cluster=p_cluster, n_perm=n_perm,
-                tails=tails, axis=axis, stat_func=stat_func) for i in ins)
+        proc = Parallel(n_jobs, return_as='generator', verbose=40,)(
+            delayed(_proc)(*i) for i in ins)
         for i, iout in enumerate(proc):
             out1[i], out2[i] = iout
         return out1, out2
