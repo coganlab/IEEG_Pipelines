@@ -534,7 +534,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         b_act = tail_compare(1 - p_act, 1. - p_thresh, tails)
         b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
 
-        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), 1 - p_act
+        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
 
     # axes where adjacency is ignored can be computed independently in
     # parallel
