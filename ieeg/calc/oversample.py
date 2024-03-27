@@ -1,4 +1,3 @@
-import itertools
 from typing import Literal, Tuple
 
 import numpy as np
@@ -11,7 +10,6 @@ from ieeg.calc.mixup import normnd as cnorm
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
-
 
 
 def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1., seed: int=-1) -> None:
@@ -68,36 +66,6 @@ def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1., seed: int=-1) -> 
     cmixup(arr, obs_axis, alpha, seed)
 
 
-# def mixup2d(arr: Array2D, alpha: float = 1.) -> None:
-#     """Oversample by mixing two random non-NaN observations
-
-#     Parameters
-#     ----------
-#     arr : array
-#         The data to oversample.
-#     alpha : float
-#         The alpha parameter for the beta distribution. If alpha is 0, then
-#         the distribution is uniform. If alpha is 1, then the distribution is
-#         symmetric. If alpha is greater than 1, then the distribution is
-#         skewed towards the first observation. If alpha is less than 1, then
-#         the distribution is skewed towards the second observation.
-
-#     Examples
-#     --------
-#     >>> from ieeg import _rand_seed
-#     >>> _rand_seed(0)
-#     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-#     ... [float("nan"), float("nan")]])
-#     >>> mixup2d(arr)
-#     >>> arr
-#     array([[1.        , 2.        ],
-#            [4.        , 5.        ],
-#            [7.        , 8.        ],
-#            [5.72901614, 6.72901614]])
-#     """
-#     cmixup2d(arr, alpha)
-
-
 class MinimumNaNSplit(RepeatedStratifiedKFold):
     """A Repeated Stratified KFold iterator that splits the data into sections
 
@@ -115,8 +83,6 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     Examples
     --------
     >>> import numpy as np
-    >>> from ieeg import _rand_seed
-    >>> _rand_seed(0)
     >>> np.random.seed(0)
     >>> X = np.vstack((np.arange(1, 9).reshape(4, 2), np.full((4, 2), np.nan)))
     >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1])
@@ -302,8 +268,6 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
 
     Examples
     --------
-    >>> from ieeg import _rand_seed
-    >>> _rand_seed(0)
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
@@ -387,29 +351,6 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
     return nan_rows, non_nan_rows
 
 
-def norm(arr: np.ndarray, obs_axis: int) -> None:
-    """A jit-less version of normnd"""
-    # Get indices of rows with NaN values
-    nan_rows, non_nan_rows = find_nan_indices(arr, obs_axis)
-
-    # Check if there are at least two non-NaN rows
-    if len(non_nan_rows) < 1:
-        raise ValueError("No test data to fit distribution")
-
-    nan_idx = (non_idx := [slice(None)] * arr.ndim).copy()
-    non_idx[obs_axis] = non_nan_rows
-    nan_idx[obs_axis] = nan_rows
-
-    # Calculate mean and standard deviation for each column
-    mean = np.mean(arr[tuple(non_idx)], axis=obs_axis, keepdims=True)
-    std = np.std(arr[tuple(non_idx)], axis=obs_axis, keepdims=True)
-
-    # Get the normal distribution of each timepoint
-    out_shape = tuple(arr.shape[i] if i != obs_axis else len(nan_rows)
-                      for i in range(arr.ndim))
-    arr[tuple(nan_idx)] = np.random.normal(mean, std, out_shape)
-
-
 def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
     """Oversample by obtaining the distribution and randomly selecting
 
@@ -422,8 +363,6 @@ def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
 
     Examples
     --------
-    >>> from ieeg import _rand_seed
-    >>> _rand_seed(0)
     >>> np.random.seed(0)
     >>> arr = np.array([1, 2, 4, 5, 7, 8,
     ... float("nan"), float("nan")])
@@ -461,66 +400,3 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
     """
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]
-
-
-# def norm1d(arr: Vector) -> None:
-#     """Oversample by obtaining the distribution and randomly selecting"""
-#     # Get indices of rows with NaN values
-#     wh = np.isnan(arr)
-#     non_nan_rows = np.flatnonzero(~wh)
-#
-#     # Check if there are at least two non-NaN rows
-#     if len(non_nan_rows) < 1:
-#         raise ValueError("No test data to fit distribution")
-#
-#     # Calculate mean and standard deviation for each column
-#     mean = np.mean(arr[non_nan_rows])
-#     std = np.std(arr[non_nan_rows])
-#
-#     # Get the normal distribution of each timepoint
-#     for i in np.flatnonzero(wh):
-#         arr[i] = np.random.normal(mean, std)
-
-
-def smote(arr: np.ndarray) -> None:
-    """Oversample by mixing two random non-NaN observations
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-
-    Notes
-    -----
-        This func assumes that the observations are the second to last axis.
-    """
-    if arr.ndim < 2:
-        raise ValueError("Cannot apply SMOTE to a 1 or 0-dimensional array")
-    elif arr.ndim > 2:
-        for i in range(arr.shape[0]):
-            smote(arr[i])
-        return
-    # Get indices of rows with NaN values
-    nan_rows, non_nan_rows = find_nan_indices(arr)
-    n_nan = len(nan_rows)
-
-    # Check if there are at least two non-NaN rows
-    if len(non_nan_rows) < 2:
-        raise ValueError("Not enough non-NaN rows to apply SMOTE algorithm")
-
-    # Construct an array of 3-length vectors for each NaN row
-    vectors = np.empty((n_nan, 3))
-
-    # First two elements of each vector are different indices of non-NaN rows
-    for i in range(n_nan):
-        vectors[:, :2] = np.random.choice(non_nan_rows, 2, replace=False)
-
-    # The last element of each vector is a random float between 0 and 1
-    vectors[:, 2] = np.random.random(n_nan)
-
-    # Compute the differences between the selected non-NaN rows
-    diffs = (arr[vectors[:, 0].astype(np.intp)] -
-             arr[vectors[:, 1].astype(np.intp)])
-
-    # Multiply the differences by the random multipliers
-    arr[nan_rows] = diffs * vectors[:, 2, None]
