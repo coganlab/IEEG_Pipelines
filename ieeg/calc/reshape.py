@@ -1,6 +1,4 @@
 import numpy as np
-from numba import njit
-from numba.extending import overload
 
 
 def concatenate_arrays(arrays: tuple[np.ndarray], axis: int = 0
@@ -59,12 +57,11 @@ def concatenate_arrays(arrays: tuple[np.ndarray], axis: int = 0
                                          )
 
     # Concatenate the modified arrays along the specified axis
-    result = concatenate(tuple(modified_arrays[:i - j + 1]), axis=axis)
+    result = np.concatenate(tuple(modified_arrays[:i - j + 1]), axis=axis)
 
     return result
 
 
-@njit(nogil=True, cache=True)
 def mod_arr(arr: np.ndarray, shape: tuple[int, ...], idx: tuple[slice]):
     # Create an array filled with nan values
     nan_array = np.full(shape, np.nan)
@@ -74,10 +71,6 @@ def mod_arr(arr: np.ndarray, shape: tuple[int, ...], idx: tuple[slice]):
 
     return nan_array
 
-
-@overload(np.concatenate, nopython=True, cache=True, nogil=True)
-def concatenate(arrs: tuple, axis: int = None):
-    return np.concatenate(arrs, axis)
 
 
 def get_homogeneous_shapes(*arrays: tuple[np.ndarray]) -> tuple[int, ...]:
