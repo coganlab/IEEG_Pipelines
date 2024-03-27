@@ -310,7 +310,7 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
             x_, **kwargs) for x_ in ins)
 
 
-def get_mem() -> Union[float, int]:
+def get_mem() -> int:
     """Get the amount of memory to use for parallelization.
 
     Returns
