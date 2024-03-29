@@ -205,7 +205,7 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
 def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
                      mask: np.ndarray = None, times: Doubles = None,
                      sig_titles: list[str] = None,
-                     colors: list[str | list[int]] = None
+                     colors: list[str | list[int]] = None, ax = None
                      ) -> (plt.Figure, plt.Axes):
     """Basic distribution plot for weighted signals
 
@@ -229,7 +229,8 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
     plt.Axes
         The axes containing the plot
     """
-    fig, ax = plt.subplots()
+    if ax is None:
+        fig, ax = plt.subplots()
     if len(label.shape) > 1:
         group = range(min(np.shape(label)))
         weighted = True
@@ -249,7 +250,7 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
         ax = plot_dist(w_sigs, 0, mode, mask, times, label=stitle,
                        ax=ax, color=color)
 
-    return fig, ax
+    return ax
 
 
 if __name__ == "__main__":
