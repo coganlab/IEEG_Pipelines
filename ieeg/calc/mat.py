@@ -2,7 +2,7 @@ import functools
 from collections.abc import Iterable
 
 import mne
-from ieeg.calc.concat import concatenate_arrays
+from ieeg.calc.reshape import concatenate_arrays
 
 import numpy as np
 from numpy.matlib import repmat
