@@ -1,9 +1,9 @@
 name: 'Tests'
 on:
   push:
-    branches: [ main cython ]
+    branches: [ main ]
   pull_request:
-    branches: [ main cython ]
+    branches: [ main, cython ]
 
 jobs:
 
