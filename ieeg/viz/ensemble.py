@@ -3,6 +3,7 @@ from functools import partial
 
 import numpy as np
 from joblib import cpu_count
+from matplotlib import gridspec
 from mne.io import Raw
 
 from ieeg import Doubles, Signal
@@ -42,12 +43,12 @@ def figure_compare(raw: list[Raw], labels: list[str], avg: bool = True,
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
                      weight='bold')
-        add_arrows(fig.axes[:2])
+        _add_arrows(fig.axes[:2])
         fig.show()
         gc.collect()
 
 
-def add_arrows(axes: plt.Axes):
+def _add_arrows(axes: plt.Axes):
     """add some arrows at 60 Hz and its harmonics"""
     for ax in axes:
         freqs = ax.lines[-1].get_xdata()
@@ -253,11 +254,71 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
     return ax
 
 
+def subgrids(rows: int, cols: int, sub_cols: int,
+             major_rows: tuple[int, ...] = (), titles: list = "",
+             ylabels: list = "", xlabels: list = "") -> (plt.Figure, plt.Axes):
+    """Create a figure with subgrids
+
+    Parameters
+    ----------
+    rows : int
+        The number of rows in the figure
+    cols : int
+        The number of columns in the figure
+    sub_cols : int
+        The number of columns in the subgrids
+    major_rows : tuple[int, ...], optional
+        The rows that have major subgrids, by default ()
+    titles : list, optional
+        The titles for the subgrids, by default ""
+    ylabels : list, optional
+        The ylabels for the subgrids, by default ""
+    xlabels : list, optional
+        The xlabels for the subgrids, by default ""
+
+    Returns
+    -------
+    (plt.Figure, plt.Axes)
+        The figure and axes containing the subgrids
+    """
+    fig = plt.figure()
+    gs = fig.add_gridspec(rows, cols)
+
+    labels = dict(title=titles, ylabel=ylabels, xlabel=xlabels)
+    for ltype, llist in labels.items():
+        if isinstance(llist, str):
+            if ltype in ("title", "xlabel"):
+                labels[ltype] = [llist] * cols
+            else:
+                labels[ltype] = [llist] * rows
+        elif len(llist) != cols and ltype in ("title", "xlabel"):
+            raise ValueError(f"Length of {ltype} must be equal to cols")
+        elif len(llist) != rows and ltype in ("ylabel",):
+            raise ValueError(f"Length of {ltype} must be equal to rows")
+
+    # Create subplots
+    axs = [[None] * cols for _ in range(rows)]
+    for r in range(rows):  # Only for the first two rows
+        if r in major_rows:
+            tc = 1
+        else:
+            tc = sub_cols
+        for c in range(cols):
+            gs0 = gs[r, c].subgridspec(1, tc, wspace=0, hspace=0)
+            axs[r][c] = gs0.subplots(sharey=True, subplot_kw=dict(frameon=True))
+
+            # axes labels
+            if r == 0:
+                gs0.figure.suptitle(labels["title"][c])
+            elif r == rows - 1:
+                gs0.figure.supxlabel(labels["xlabel"][c])
+            if c == 0:
+                gs0.figure.supylabel(labels["ylabel"][r])
+
+    return gs.figure, axs
+
+
+
 if __name__ == "__main__":
-    import numpy as np
 
-    with open("../spectra.npy", "rb") as f:
-        spectra = np.load(f, allow_pickle=True)[0]
-    # spectra2 = np.load("spectra.npy", allow_pickle=True,)['spectra']
-
-    chan_grid(spectra, vmin=0.7, vmax=1.4)
+    gs = subgrids(3, 3, 3, major_rows=(0, 1))
