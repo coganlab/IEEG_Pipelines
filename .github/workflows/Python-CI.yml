@@ -35,6 +35,7 @@ jobs:
           kind: mamba
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
+    environment: release
     steps:
       - uses: actions/checkout@v4
       # Xvfb/OpenGL
@@ -76,16 +77,15 @@ jobs:
       #   with:
       #     name: python-package-distributions
       #     path: dist/
-      - name: Download all the dists
-        uses: actions/download-artifact@v3
-        with:
-          name: python-package-distributions
-          path: dist/
+      # - name: Download all the dists
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: python-package-distributions
+      #     path: dist/
       - name: Publish package distributions to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: pypi-AgENdGVzdC5weXBpLm9yZwIkNTBkZjBjYWItNGFjOS00Y2U5LWFhMTUtZTlhY2RhYzc4ZmIwAAIqWzMsImY5Mzc2NWQ3LTljMmMtNDUyNy05NWZhLTgyZmQ1ZTUwOTVkOCJdAAAGIBBqvxdZ6FiKRKOM0yr7t26v0v4HDPjW5tG8X1NbLvqA
         if: startswith(matrix.kind, 'pip')
       # END OF PUBLISH ATTEMPT
       - name: List packages
