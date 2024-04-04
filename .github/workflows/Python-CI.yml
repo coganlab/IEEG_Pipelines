@@ -85,6 +85,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+        if: startswith(matrix.kind, 'pip')
       # END OF PUBLISH ATTEMPT
       - name: List packages
         run: |
