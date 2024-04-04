@@ -85,6 +85,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          password: pypi-AgENdGVzdC5weXBpLm9yZwIkNTBkZjBjYWItNGFjOS00Y2U5LWFhMTUtZTlhY2RhYzc4ZmIwAAIqWzMsImY5Mzc2NWQ3LTljMmMtNDUyNy05NWZhLTgyZmQ1ZTUwOTVkOCJdAAAGIBBqvxdZ6FiKRKOM0yr7t26v0v4HDPjW5tG8X1NbLvqA
         if: startswith(matrix.kind, 'pip')
       # END OF PUBLISH ATTEMPT
       - name: List packages
