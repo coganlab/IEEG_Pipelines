@@ -67,27 +67,6 @@ jobs:
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
-      # Publish attempt (moved to end of document later)
-      - name: Build source distribution
-        run: |
-          python -m pip install build --user
-          python3 -m build --sdist
-      - name: Store the distribution packages
-        uses: actions/upload-artifact@v3
-        with:
-          name: python-package-distributions
-          path: dist/
-      - name: Download all the dists
-        uses: actions/download-artifact@v3
-        with:
-          name: python-package-distributions
-          path: dist/
-      - name: Publish package distributions to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-        if: startswith(matrix.kind, 'pip')
-      # END OF PUBLISH ATTEMPT
       - name: List packages
         run: |
           conda list
@@ -102,3 +81,22 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
         if: matrix.kind == 'mamba'
+      
+      # Publish (moved to end of document later)
+      - name: Build source distribution
+        run: |
+          python -m pip install build --user
+          python3 -m build --sdist
+      - name: Store the distribution packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Download all the dists
+        uses: actions/download-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: startswith(matrix.kind, 'pip')
