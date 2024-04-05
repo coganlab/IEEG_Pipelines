@@ -16,7 +16,7 @@ jobs:
       # Python
       - uses: actions/setup-python@v4
         with:
-          python-version: 3.10
+          python-version: '3.10'
       # Publish (moved to end of document later)
       - name: Build source distribution
         run: |
