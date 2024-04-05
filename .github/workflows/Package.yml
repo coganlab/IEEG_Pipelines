@@ -2,7 +2,7 @@ name: 'Packaging'
 on:
   push:
     branches: [ main ]
-  pull-request:
+  pull_request:
     branches: [ cython ]
 
 jobs:
