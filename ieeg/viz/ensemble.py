@@ -256,7 +256,8 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
 
 def subgrids(rows: int, cols: int, sub_cols: int,
              major_rows: tuple[int, ...] = (), titles: list = "",
-             ylabels: list = "", xlabels: list = "") -> (plt.Figure, plt.Axes):
+             ylabels: list = "", xlabels: list = "", **kwargs
+             ) -> (plt.Figure, plt.Axes):
     """Create a figure with subgrids
 
     Parameters
@@ -275,6 +276,8 @@ def subgrids(rows: int, cols: int, sub_cols: int,
         The ylabels for the subgrids, by default ""
     xlabels : list, optional
         The xlabels for the subgrids, by default ""
+    kwargs : dict
+        Additional keyword arguments to pass to gridspec
 
     Returns
     -------
@@ -282,7 +285,7 @@ def subgrids(rows: int, cols: int, sub_cols: int,
         The figure and axes containing the subgrids
     """
     fig = plt.figure()
-    gs = fig.add_gridspec(rows, cols)
+    gs = fig.add_gridspec(rows, cols, **kwargs)
 
     labels = dict(title=titles, ylabel=ylabels, xlabel=xlabels)
     for ltype, llist in labels.items():
