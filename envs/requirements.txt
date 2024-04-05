@@ -17,4 +17,3 @@ h5io
 dipy
 mne-qt-browser
 cython
-numba
