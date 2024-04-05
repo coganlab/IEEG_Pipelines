@@ -85,8 +85,7 @@ jobs:
       # Publish (moved to end of document later)
       - name: Build source distribution
         run: |
-          python -m pip install build --user
-          python3 -m build --sdist
+          python -m pip install build --user --sdist
       - name: Store the distribution packages
         uses: actions/upload-artifact@v3
         with:
