@@ -3,7 +3,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main, cython ]
+    branches: [ main ]
 
 jobs:
   pytest:
@@ -24,17 +24,12 @@ jobs:
     strategy:
       matrix:
         include:
-        - os: windows-latest
-          python: '3.10'
-          kind: conda
         - os: ubuntu-latest
           python: '3.11'
           kind: pip
         - os: windows-latest
-          python: '3.11'
-          kind: mamba
-    permissions:
-      id-token: write  # IMPORTANT: mandatory for trusted publishing
+          python: '3.10'
+          kind: pip
     environment: release
     steps:
       - uses: actions/checkout@v4
@@ -50,26 +45,13 @@ jobs:
       - name: install pip requirements
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flake8 pytest tqdm pyqt5-tools
-          if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
+          python -m pip install .
         if: startswith(matrix.kind, 'pip')
-      # Python (if conda)
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
-          activate-environment: test
-          environment-file: envs/environment.yml
-          python-version: ${{ matrix.python-version }}
-          auto-activate-base: false
-          use-mamba: ${{ matrix.kind != 'conda' }}
-        if: ${{ !startswith(matrix.kind, 'pip') }}
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
       - name: List packages
         run: |
-          conda list
           python -c "import mne; mne.sys_info()"
       - name: fetch mne datasets
         run: |
@@ -80,22 +62,4 @@ jobs:
           pytest ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
-        if: matrix.kind == 'mamba'
-      
-      # Publish (moved to end of document later)
-      - name: Build source distribution
-        run: |
-          python -m pip install build --user --sdist
-      - name: Store the distribution packages
-        uses: actions/upload-artifact@v3
-        with:
-          name: python-package-distributions
-          path: dist/
-      - name: Download all the dists
-        uses: actions/download-artifact@v3
-        with:
-          name: python-package-distributions
-          path: dist/
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        if: startswith(matrix.kind, 'pip')
+        if: matrix.os == 'ubuntu-latest'
