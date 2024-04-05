@@ -2,8 +2,6 @@ name: 'Packaging'
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ cython ]
 
 jobs:
   packaging:
@@ -35,5 +33,3 @@ jobs:
           path: dist/
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
