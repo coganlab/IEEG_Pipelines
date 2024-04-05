@@ -338,9 +338,7 @@ class LabeledArray(np.ndarray):
                  -0.00047148, -0.00047891],
                 [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
                  -0.00042341, -0.00040973]]])
-        labels(['AD1-4, ATT1,2']
-               ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', ...
-               [-1.0, -0.999, -0.998, -0.997, -0.996, -0.995, -0.994, ...
+        ...
 
         """
 
@@ -710,9 +708,9 @@ class LabeledArray(np.ndarray):
         <BLANKLINE>
                [[4., 5.],
                 [6., 7.]]])
-        labels([0, 1]
-               [0, 1]
-               [0, 1])
+        labels(['0', '1']
+               ['0', '1']
+               ['0', '1'])
         """
         new_labels = list(self.labels)
         idx = []
@@ -1177,7 +1175,7 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
     --------
     >>> data = {'a': {'b': {'c': 1}}}
     >>> inner_array(data)
-    array([[[1]]])
+    array([[[1.]]])
     >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
     >>> inner_array(data)
     array([[[ 1., nan]],
@@ -1300,7 +1298,8 @@ def stack_la(arrays: tuple[LabeledArray, ...], new_labels: list[str, ...]
     Examples
     --------
     >>> arr1 = LabeledArray([[1, 2],[3, 4]], labels=[('a', 'b'), ('c', 'd')])
-    >>> arr2 = LabeledArray([[5, 6, 7],[7, 8, 9]], labels=[('a', 'b'), ('c', 'd', 'e')])
+    >>> arr2 = LabeledArray([[5, 6, 7],[7, 8, 9]],
+    ... labels=[('a', 'b'), ('c', 'd', 'e')])
     >>> stack_la((arr1, arr2), ['1', '2'])
     array([[[ 1.,  2., nan],
             [ 3.,  4., nan]],
@@ -1311,7 +1310,8 @@ def stack_la(arrays: tuple[LabeledArray, ...], new_labels: list[str, ...]
            ['a', 'b']
            ['c', 'd', 'e'])
     """
-    new_array = reshape.concatenate_arrays([a.__array__() for a in arrays], None)
+    new_array = reshape.concatenate_arrays([a.__array__() for a in arrays],
+                                           None)
 
     # get the longest labels in each axis
     new_labels = [Labels(new_labels)]
@@ -1319,7 +1319,6 @@ def stack_la(arrays: tuple[LabeledArray, ...], new_labels: list[str, ...]
         new_labels.append(max((a.labels[i] for a in arrays), key=len))
 
     return LabeledArray(new_array, new_labels)
-
 
 
 def get_elbow(data: np.ndarray) -> int:

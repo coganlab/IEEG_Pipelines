@@ -49,10 +49,10 @@ base = out[0]
 # Time Cluster Statistics
 # -----------------------
 
-mask = stats.time_perm_cluster(resp._data, base._data,
+mask, pvals = stats.time_perm_cluster(resp._data, base._data,
                                p_thresh=0.1,
                                ignore_adjacency=1,  # ignore channel adjacency
-                               n_perm=2000)
+                               n_perm=2000, n_jobs=-2)
 
 # %%
 # Plot the Time-Frequency Clusters

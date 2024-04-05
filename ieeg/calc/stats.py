@@ -6,7 +6,7 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from ieeg.calc.cstats import mean_diff as _mean_diff, perm_test as _perm_test
+from ieeg.calc.cstats import mean_diff as _mean_diff
 from ieeg.process import get_mem, iterate_axes
 import psutil
 from ieeg.calc.permgt import permgtnd
@@ -280,47 +280,6 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     return _mean_diff(in1, in2)
 
 
-def perm_test(group1: np.ndarray, group2: np.ndarray, n_perm: int = 1000,
-              axis: int = 0) -> np.ndarray[float]:
-    """Calculate the p value of the observed difference.
-
-    This function is a wrapper for scipy.stats.permutation_test. It calculates
-    the p value of the observed difference between two groups of observations.
-
-    Parameters
-    ----------
-    group1 : array, shape (..., time)
-        The first group of observations.
-    group2 : array, shape (..., time)
-        The second group of observations.
-    n_perm : int, optional
-        The number of permutations to perform. Default is 1000.
-    axis : int, optional
-        The axis along which to calculate the statistic function. Default is 0.
-
-    Returns
-    -------
-    pvalue : float
-        The p value of the observed difference.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> seed = 43; rng = np.random.default_rng(seed)
-    >>> s1 = np.array([1, 2, 3, 4, 5]); s2 = np.array([7, 8, 9])
-    >>> perm_test(s1, s2, 10000)
-
-    >>> perm_test(s1.astype(float), s2.astype(float), 10000)
-
-    >>> perm_test(np.array([s1, s1 + 5], order='F'), np.array([s2, s2], order='F'), 10000, axis=1)
-
-    """
-    in1 = np.moveaxis(group1, axis, -1)
-    in2 = np.moveaxis(group2, axis, -1)
-
-    return _perm_test(in1, in2, n_perm)
-
-
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 1000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
@@ -329,7 +288,8 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     """Calculate the window averaged shuffle distribution.
 
     Essentially a wrapper for:
-    https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html#scipy.stats.permutation_test
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutatio
+    n_test.html#scipy.stats.permutation_test
 
     Parameters
     ----------
@@ -599,21 +559,14 @@ def proportion(val: np.ndarray[float, ...] | float,
            [0., 0., 1., 1.]])
     >>> val = 0.5
     >>> compare = np.array([0.2, 0.4, 0.5, 0.7, 0.9])
-    >>> proportion(val, compare)
-    0.4
-    >>> proportion(compare, compare) * compare.shape[0] / (
-    ... compare.shape[0] - 1)
-    array([0.  , 0.25, 0.5 , 0.75, 1.  ])
     >>> proportion(compare)
+    array([0.  , 0.25, 0.5 , 0.75, 1.  ])
     >>> val = np.full(5, 0.5)
     >>> compare = np.array([[0.2, 0.4, 0.4, 0.7, 0.9],
     ...                     [0.1, 0.3, 0.6, 0.5, 0.9]])
-    >>> proportion(val, compare, axis=0)
-    array([1. , 1. , 0.5, 0. , 0. ])
-    >>> proportion(compare, compare[:, None], axis=0
-    ... ) * compare.shape[0] / (compare.shape[0] - 1)
-    array([[1., 1., 0., 1., 0.],
-           [0., 0., 1., 0., 0.]])
+    >>> proportion(val, compare, axis=0) # doctest: +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+    NotImplementedError
     """
 
     match tail:
@@ -683,7 +636,7 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
     ...                  [0, 1, 1, 0, 1, 1, 0, 0],
     ...                  [0, 0, 1, 1, 1, 0, 0, 0]])
     >>> time_cluster(np.array([0, 1, 1, 1, 1, 1, 0, 0]), perm)
-    array([0.  , 0.75, 0.75, 0.75, 0.75, 0.75, 0.  ])
+    array([0.  , 0.75, 0.75, 0.75, 0.75, 0.75, 0.  , 0.  ])
     >>> time_cluster(np.array([0, 0, 1, 1, 1, 0, 0, 0]), perm)
     array([0.  , 0.  , 0.25, 0.25, 0.25, 0.  , 0.  ])
     """

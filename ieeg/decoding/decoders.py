@@ -1784,7 +1784,7 @@ class PcaLdaClassification(BaseEstimator):
             ('pca', PCA(**PCA_kwargs)),
             ('discriminant', da_model)])
 
-        #set default outputs to numpy
+        # set default outputs to numpy
         self.model.set_output(transform="default")
 
     def fit(self, X_flat_train, y_train):

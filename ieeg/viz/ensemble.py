@@ -206,7 +206,7 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
 def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
                      mask: np.ndarray = None, times: Doubles = None,
                      sig_titles: list[str] = None,
-                     colors: list[str | list[int]] = None, ax = None
+                     colors: list[str | list[int]] = None, ax=None
                      ) -> (plt.Figure, plt.Axes):
     """Basic distribution plot for weighted signals
 
@@ -216,12 +216,18 @@ def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
         The data to plot
     label : np.ndarray
         The labels for the data
+    mode : str, optional
+        The mode to use for the distribution, by default 'sem'
     mask : np.ndarray, optional
         The mask to use for the distribution, by default None
+    times : Doubles, optional
+        The times to use for the x-axis
     sig_titles : list[str], optional
         The titles for the signals, by default None
     colors : list[str | list[int]], optional
         The colors for the signals, by default None
+    ax : plt.Axes, optional
+        The axes to plot on, by default None
 
     Returns
     -------
@@ -308,7 +314,8 @@ def subgrids(rows: int, cols: int, sub_cols: int,
             tc = sub_cols
         for c in range(cols):
             gs0 = gs[r, c].subgridspec(1, tc, wspace=0, hspace=0)
-            axs[r][c] = gs0.subplots(sharey=True, subplot_kw=dict(frameon=True))
+            axs[r][c] = gs0.subplots(sharey=True, subplot_kw=dict(frameon=True)
+                                     )
 
             # axes labels
             if r == 0:
@@ -319,7 +326,6 @@ def subgrids(rows: int, cols: int, sub_cols: int,
                 gs0.figure.supylabel(labels["ylabel"][r])
 
     return gs.figure, axs
-
 
 
 if __name__ == "__main__":

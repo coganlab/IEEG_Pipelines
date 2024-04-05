@@ -72,7 +72,6 @@ def mod_arr(arr: np.ndarray, shape: tuple[int, ...], idx: tuple[slice]):
     return nan_array
 
 
-
 def get_homogeneous_shapes(*arrays: tuple[np.ndarray]) -> tuple[int, ...]:
     """Get the shapes of the input arrays with a homogeneous number of
     dimensions.

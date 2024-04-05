@@ -12,7 +12,8 @@ Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
 
 
-def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1., seed: int=-1) -> None:
+def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
+            seed: int = -1) -> None:
     """Oversample by mixing two random non-NaN observations
 
     Parameters
@@ -128,12 +129,15 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         if len(where) == 0:
             yield from super(MinimumNaNSplit, self).split(X, y, groups)
             return
-        elif (n_non_nan := not_where.shape[0]) < (n_min := self.min_non_nan + 1):
+        elif (n_non_nan := not_where.shape[0]) < (n_min := self.min_non_nan +
+                                                  1):
             raise ValueError(f"Need at least {n_min} non-nan values, but only"
                              f" have {n_non_nan}")
 
-        check = {'train': lambda t: np.setdiff1d(not_where, t, assume_unique=True),
-                 'test': lambda t: np.intersect1d(not_where, t, assume_unique=True)}
+        check = {'train': lambda t: np.setdiff1d(not_where, t,
+                                                 assume_unique=True),
+                 'test': lambda t: np.intersect1d(not_where, t,
+                                                  assume_unique=True)}
 
         splits = super().split(X, y, groups)
 

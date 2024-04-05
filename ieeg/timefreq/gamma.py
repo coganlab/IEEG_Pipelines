@@ -4,14 +4,12 @@ import numpy as np
 from mne import Epochs
 from mne.io import Raw, base
 from tqdm import tqdm
-from numpy.typing import NDArray
-from scipy.fft import fft, ifft
-from tqdm.auto import trange
 from joblib import Parallel, delayed
 
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
 from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
-from ieeg.timefreq.hilbert import filterbank_hilbert_first_half_wrapper, extract_channel_wrapper
+from ieeg.timefreq.hilbert import (filterbank_hilbert_first_half_wrapper,
+                                   extract_channel_wrapper)
 
 
 @singledispatch
@@ -106,7 +104,7 @@ def extract(data: np.ndarray, fs: int = None,
                 trials = tqdm(trials)
             for trial in trials:
                 out = filterbank_hilbert(in_data[trial, :, :].T, fs,
-                                               passband, 1)
+                                         passband, 1)
                 env[trial, :, :] = np.sum(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
         out = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
@@ -238,7 +236,7 @@ def get_centers(Wn):
 
 
 def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
-    '''
+    """
     Compute the phase and amplitude (envelope) of a signal for a single
     frequency band, as in [#edwards]_. This is done using a filter bank of
     gaussian shaped filters with center frequencies linearly spaced until 4Hz
@@ -282,21 +280,22 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
     >>> x_envelope.shape # 3rd dimension is one for each filter in filterbank
     (1000, 3, 42)
 
-    '''
+    """
 
     x = x.astype('float32')
     minf, maxf = Wn
-    
+
     if minf >= maxf:
         raise ValueError(
             (f'Upper bound of frequency range must be greater than lower bound'
              f', but got lower bound of {minf} and upper bound of {maxf}'))
-    
-    Xf, freqs, cfs, N, sds, h = filterbank_hilbert_first_half_wrapper(x, fs, minf, maxf)
+
+    Xf, freqs, cfs, N, sds, h = filterbank_hilbert_first_half_wrapper(
+        x, fs, minf, maxf)
 
     def extract_channel(Xf):
         return extract_channel_wrapper(Xf, freqs, cfs, N, sds, h, minf, maxf)
-    
+
     # pre-allocate
     hilb_amp = np.zeros((*x.shape, len(cfs)), dtype='float32')
 
@@ -312,4 +311,3 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
             hilb_amp[:, chn] = amp
 
     return hilb_amp
-
