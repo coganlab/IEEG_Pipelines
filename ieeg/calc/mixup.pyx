@@ -2,6 +2,7 @@ import numpy as np
 cimport numpy as cnp
 cimport cython
 from libc.stdlib cimport rand, RAND_MAX, srand
+from libc.math cimport sqrt
 from numpy.random cimport bitgen_t
 from numpy.random import SFC64
 from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
@@ -77,25 +78,35 @@ cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0,
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef inline void norm1d(DTYPE_t [:] arr):
+cdef inline void norm1d(double[:] arr):
     cdef Py_ssize_t i
     cdef cnp.ndarray[cnp.uint8_t, ndim = 1, cast=True] wh
-    cdef DTYPE_t mean, std
+    cdef Py_ssize_t[::1] wh_iter
+    cdef double mean, std, sum, var
 
     # Get indices of rows with NaN values
     wh = np.isnan(arr)
+    wh_iter = np.flatnonzero(~wh)
 
     # Check if there are at least two non-NaN rows
-    if np.sum(~wh) < 1:
+    if wh_iter.shape[0] < 1:
         raise ValueError("No test data to fit distribution")
 
     # Calculate mean and standard deviation for each column
-    mean = np.mean(arr[~wh])
-    std = np.std(arr[~wh])
+    sum = 0
+    var = 0
+    for i in wh_iter:
+        sum += arr[i]
+    mean = sum / wh_iter.shape[0]
+    for i in wh_iter:
+        var += (arr[i] - mean) ** 2
+    std = sqrt(var / wh_iter.shape[0])
 
     # Get the normal distribution of each timepoint
-    for i in np.flatnonzero(wh):
-        arr[i] = np.random.normal(mean, std)
+    for i in range(arr.shape[0]):
+        if wh[i]:
+            arr[i] = np.random.normal(mean, std)
+
 
 @cython.boundscheck(False)
 cpdef void normnd(cnp.ndarray arr, int obs_axis=-1):
