@@ -322,8 +322,9 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)])
     >>> sig2 = rng.random((100, 15)) * 3.2
-    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000, seed=seed)
-    0.0001
+    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000, seed=seed
+    ... ) # doctest: +ELLIPSIS
+    0.99...
     """
 
     # average the windows
@@ -335,9 +336,9 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     window_axis = window_axis + sig1.ndim if window_axis < 0 else window_axis
     obs_axis = obs_axis - 1 if window_axis < obs_axis else obs_axis
 
-    if tails == 1:
+    if tails == -1:
         alt = 'greater'
-    elif tails == -1:
+    elif tails == 1:
         alt = 'less'
     else:
         alt = 'two-sided'
@@ -638,7 +639,7 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
     >>> time_cluster(np.array([0, 1, 1, 1, 1, 1, 0, 0]), perm)
     array([0.  , 0.75, 0.75, 0.75, 0.75, 0.75, 0.  , 0.  ])
     >>> time_cluster(np.array([0, 0, 1, 1, 1, 0, 0, 0]), perm)
-    array([0.  , 0.  , 0.25, 0.25, 0.25, 0.  , 0.  ])
+    array([0.  , 0.  , 0.25, 0.25, 0.25, 0.  , 0.  , 0.  ])
     """
 
     # Create an index of all the binary clusters in the active and permuted
@@ -739,94 +740,97 @@ def tail_compare(diff: np.ndarray | float | int,
     return temp
 
 
-def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
-                 axis: int = 0, func: callable = mean_diff, seed: int = None,
-                 n_jobs: int = -3) -> np.ndarray:
-    """Time permutation shuffle test between two set of observations.
-
-    The test is performed by shuffling the trials and calculating the test
-    statistic (the group difference by default). The shuffling together of
-    groups should create a null distribution of values to compare against for
-    statistical significance. The number of trials in each group does not need
-    to be the same, but all other dimensions must be.
-
-    Parameters
-    ----------
-    sig1 : array, shape (trials1, ...)
-        Active signal. The first dimension is assumed to be the trials
-    sig2 : array, shape (trials2, ...)
-        Passive signal. The first dimension is assumed to be the trials
-    n_perm : int, optional
-        The number of permutations to perform.
-    axis : int, optional
-        The axis to perform the permutation test across (trials).
-    func :
-        The statistical function to use to compare populations. Requires an
-        axis keyword input to denote observations (trials, for example).
-    seed : int, optional
-        The seed for the random number generator.
-    n_jobs : int, optional
-        The number of jobs to run in parallel. Only used if the permutation
-        test will exceed memory. Default is -3.
-
-    Returns
-    -------
-    p : np.ndarray, shape (...)
-        The p-values
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> seed = 42; rng = np.random.default_rng(seed)
-    >>> sig1 = np.mean(np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]]), axis=1)
-    >>> sig2 = np.mean(rng.random((100, 15)) * 2.4, axis=1)
-    >>> round(np.mean(sig1 - sig2), 3)
-    0.534
-    >>> np.mean(np.mean(sig1 - sig2) > shuffle_test(sig1, sig2, n_perm=1000000,
-    ... seed=seed))
-    0.993
-    """
-
-    rng = np.random.default_rng(seed)
-    axis = axis + sig1.ndim if axis < 0 else axis
-
-    # Concatenate the two signals for trial shuffling
-    all_trial = np.concatenate((sig1, sig2), axis=axis)
-    shape = sig1.shape
-
-    # Generate all permutations at once
-    idx = np.tile(np.arange(all_trial.shape[axis]), (n_perm, 1))
-    rng.permuted(idx, axis=1, out=idx)
-    idx1 = idx[:, :shape[axis]]
-    idx2 = idx[:, shape[axis]:]
-
-    # Check if the permutation will exceed memory
-    out_mem = all_trial.size * n_perm * 8
-    if out_mem > get_mem() * psutil.cpu_count():
-        logger.warning(f"Permutation test will exceed memory ({out_mem} bytes)"
-                       f", using a generator instead. This may take longer.")
-
-        def _shuffle_test(idx_1, idx_2):
-            fake_sig1 = np.take(all_trial, idx_1, axis=axis)
-            fake_sig2 = np.take(all_trial, idx_2, axis=axis)
-            return func(fake_sig1, fake_sig2, axis=axis)
-
-        diff = np.zeros((n_perm, *shape[:axis], *shape[axis + 1:]))
-        proc = Parallel(n_jobs=n_jobs, verbose=40)(delayed(_shuffle_test)(
-            idx1[i], idx2[i]) for i in range(n_perm))
-        for i, out in enumerate(proc):
-            diff[i] = out
-    else:
-
-        # Split the permuted trials into fake_sig1 and fake_sig2
-        fake_sig1 = np.take(all_trial, idx1, axis=axis)
-        fake_sig2 = np.take(all_trial, idx2, axis=axis)
-
-        # Calculate the average difference between the two groups averaged
-        # across trials
-        diff = func(fake_sig1, fake_sig2, axis=axis + 1)
-
-    return diff
+# def shuffle_test(sig1: np.ndarray, sig2: np.ndarray, n_perm: int = 1000,
+#                  axis: int = 0, func: callable = mean_diff, seed: int = None,
+#                  n_jobs: int = -3) -> np.ndarray:
+#     """Time permutation shuffle test between two set of observations.
+#
+#     The test is performed by shuffling the trials and calculating the test
+#     statistic (the group difference by default). The shuffling together of
+#     groups should create a null distribution of values to compare against for
+#     statistical significance. The number of trials in each group does not nee
+#     to be the same, but all other dimensions must be.
+#
+#     Parameters
+#     ----------
+#     sig1 : array, shape (trials1, ...)
+#         Active signal. The first dimension is assumed to be the trials
+#     sig2 : array, shape (trials2, ...)
+#         Passive signal. The first dimension is assumed to be the trials
+#     n_perm : int, optional
+#         The number of permutations to perform.
+#     axis : int, optional
+#         The axis to perform the permutation test across (trials).
+#     func :
+#         The statistical function to use to compare populations. Requires an
+#         axis keyword input to denote observations (trials, for example).
+#     seed : int, optional
+#         The seed for the random number generator.
+#     n_jobs : int, optional
+#         The number of jobs to run in parallel. Only used if the permutation
+#         test will exceed memory. Default is -3.
+#
+#     Returns
+#     -------
+#     p : np.ndarray, shape (...)
+#         The p-values
+#
+#     Examples
+#     --------
+#     >>> import numpy as np
+#     >>> seed = 42; rng = np.random.default_rng(seed)
+#     >>> sig1 = np.mean(np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]]),
+#     axis=1)
+#     >>> sig2 = np.mean(rng.random((100, 15)) * 2.4, axis=1)
+#     >>> round(np.mean(sig1 - sig2), 3)
+#     0.534
+#     >>> np.mean(np.mean(sig1 - sig2) > shuffle_test(sig1, sig2,
+#     n_perm=1000000,
+#     ... seed=seed))
+#     0.993
+#     """
+#
+#     rng = np.random.default_rng(seed)
+#     axis = axis + sig1.ndim if axis < 0 else axis
+#
+#     # Concatenate the two signals for trial shuffling
+#     all_trial = np.concatenate((sig1, sig2), axis=axis)
+#     shape = sig1.shape
+#
+#     # Generate all permutations at once
+#     idx = np.tile(np.arange(all_trial.shape[axis]), (n_perm, 1))
+#     rng.permuted(idx, axis=1, out=idx)
+#     idx1 = idx[:, :shape[axis]]
+#     idx2 = idx[:, shape[axis]:]
+#
+#     # Check if the permutation will exceed memory
+#     out_mem = all_trial.size * n_perm * 8
+#     if out_mem > get_mem() * psutil.cpu_count():
+#         logger.warning(f"Permutation test will exceed memory ({out_mem}
+#         bytes)"
+#                        f", using a generator instead. This may take longer.")
+#
+#         def _shuffle_test(idx_1, idx_2):
+#             fake_sig1 = np.take(all_trial, idx_1, axis=axis)
+#             fake_sig2 = np.take(all_trial, idx_2, axis=axis)
+#             return func(fake_sig1, fake_sig2, axis=axis)
+#
+#         diff = np.zeros((n_perm, *shape[:axis], *shape[axis + 1:]))
+#         proc = Parallel(n_jobs=n_jobs, verbose=40)(delayed(_shuffle_test)(
+#             idx1[i], idx2[i]) for i in range(n_perm))
+#         for i, out in enumerate(proc):
+#             diff[i] = out
+#     else:
+#
+#         # Split the permuted trials into fake_sig1 and fake_sig2
+#         fake_sig1 = np.take(all_trial, idx1, axis=axis)
+#         fake_sig2 = np.take(all_trial, idx2, axis=axis)
+#
+#         # Calculate the average difference between the two groups averaged
+#         # across trials
+#         diff = func(fake_sig1, fake_sig2, axis=axis + 1)
+#
+#     return diff
 
 
 def sum_squared(x: np.ndarray) -> np.ndarray | float:
@@ -948,8 +952,8 @@ if __name__ == '__main__':
 
     # p_perm1 = _perm_gt(diff, diff)
     p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
-    p_perm3 = (_perm_gt(diff, diff[:, None], axis=0) * diff.shape[0] /
-               (diff.shape[0] - 1))
+    # p_perm3 = (_perm_gt(diff, diff[:, None], axis=0) * diff.shape[0] /
+    #            (diff.shape[0] - 1))
     p_perm4 = proportion(diff, axis=0)
 
     # Time the functions
@@ -957,11 +961,11 @@ if __name__ == '__main__':
     # time1 = timeit('_perm_gt(diff, diff)', globals=globals(), number=runs)
     time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
                    '(diff.shape[0] - 1)', globals=globals(), number=runs)
-    time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
-                   '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
+    # time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
+    #                '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
     time4 = timeit('proportion(diff, axis=0)', globals=globals(), number=runs)
 
     # print(f'Time for _perm_gt_2: {time1 / runs:.6f} seconds per run')
     print(f'Time for sum method: {time2 / runs:.6f} seconds per run')
-    print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
+    # print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
     print(f'Time for perm_gt: {time4 / runs:.6f} seconds per run')

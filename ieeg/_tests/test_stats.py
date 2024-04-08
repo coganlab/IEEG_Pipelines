@@ -32,7 +32,7 @@ def test_dist(mat, axis, expected):
     (scipy.stats.f_oneway, np.arange(46, 50)),
     (scipy.stats.ttest_ind, np.arange(38, 56))
 ])
-def test_stats(func, expected):
+def test_permclust(func, expected):
     from ieeg.navigate import trial_ieeg
     from ieeg.calc import stats
 
@@ -52,6 +52,17 @@ def test_stats(func, expected):
                                           base._data[:, 78], 0.01,
                                           stat_func=func, n_perm=4000)
     assert np.mean(mask[expected]) > 0.8
+
+
+def test_permclust2():
+    from ieeg.calc.stats import time_perm_cluster
+    base = np.load("ieeg/_tests/d100_basefield.npy")
+    field = base[1]
+    base = base[0]
+    mask, pvals = time_perm_cluster(field, base, 0.1,
+                                    0.1, 10000, 1, 1)
+    assert np.any(mask)
+    assert np.min(pvals[1]) < 0.05
 
 
 def test_stats_wavelet():
@@ -80,3 +91,13 @@ def test_stats_wavelet():
 
     assert np.any(mask)
     assert np.isclose(np.mean(mask1), np.mean(mask[0]))
+
+
+def test_window_averaged_shuffle():
+    from ieeg.calc.stats import window_averaged_shuffle
+    base = np.load("ieeg/_tests/d100_basefield.npy")
+    field = base[1]
+    base = base[0]
+    p = window_averaged_shuffle(field, base, 10000, 1, 1)
+    t = np.isclose(np.array([0.51315, 0.99920, 6.9993e-04]), p, 0, 0.05)
+    assert np.all(t)
