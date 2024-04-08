@@ -183,6 +183,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         Examples
         --------
+        >>> np.random.seed(0)
         >>> arr = np.array([[1, 2], [4, 5], [7, 8],
         ... [float("nan"), float("nan")]])
         >>> MinimumNaNSplit.oversample(arr, normnd, 0)
@@ -194,7 +195,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         array([[1.        , 2.        ],
                [4.        , 5.        ],
                [7.        , 8.        ],
-               [1.58503983, 2.58503983]])
+               [5.65262421, 6.65262421]])
         """
         if copy:
             arr = arr.copy()
@@ -256,7 +257,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
 
 def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
-                   copy: bool = True) -> np.ndarray:
+                   copy: bool = True, seed: int = None) -> np.ndarray:
     """Oversample nan rows using func
 
     Parameters
@@ -280,17 +281,17 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
            [4.        , 5.        ],
            [7.        , 8.        ],
            [8.32102813, 5.98018098]])
-    >>> oversample_nan(arr, mixupnd, 0)
+    >>> oversample_nan(arr, mixupnd, 0, seed=42)
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
-           [3.13990284, 4.13990284]])
+           [5.65262421, 6.65262421]])
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
-    >>> oversample_nan(arr3, mixupnd, 1)
+    >>> oversample_nan(arr3, mixupnd, 1, seed=42)
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ 0.61989218,  1.61989218,  2.61989218,  3.61989218]],
+            [ 0.09482876,  1.09482876,  2.09482876,  3.09482876]],
     <BLANKLINE>
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
@@ -298,7 +299,7 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
     >>> oversample_nan(arr3, normnd, 1)
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [-2.85190914,  2.0938884 ,  3.05845799,  6.94603199]],
+            [ 2.88772647,  3.66734865,  6.98815815,  4.58968347]],
     <BLANKLINE>
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
@@ -312,6 +313,8 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
 
     if arr.ndim <= 0:
         raise ValueError("Cannot apply func to a 0-dimensional array")
+    elif func is mixupnd and seed is not None:
+        func(arr, axis, seed=seed)
     else:
         func(arr, axis)
     return arr
