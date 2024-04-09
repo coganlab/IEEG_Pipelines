@@ -43,8 +43,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: 'pip'
-          cache-dependency-path: setup.py
-      - run: pip install -e .
+          cache-dependency-path: |
+            **/setup.py
+            **/requirements.txt
+            **/pyproject.toml
+      - run: pip install -e . -v
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
