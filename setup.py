@@ -8,10 +8,9 @@ import sys
 
 _numpy_abs = np.get_include()  # get the numpy include path
 
-npymath_path = op.relpath(op.join(_numpy_abs, '..', 'lib'), _numpy_abs)
-npyrandom_path = op.relpath(op.join(_numpy_abs, '..', '..', 'random', 'lib'),
-                            _numpy_abs)
-lib_path = [npymath_path,  op.relpath(_numpy_abs), npyrandom_path]
+npymath_path = op.join(_numpy_abs, '..', 'lib')
+npyrandom_path = op.join(_numpy_abs, '..', '..', 'random', 'lib')
+lib_path = [npymath_path, npyrandom_path]
 if sys.platform == 'win32':
     compile_args = ["/O2"]
 elif sys.platform == 'linux':
@@ -22,7 +21,9 @@ else:
 # Read requirements.txt
 # with open(op.join('envs', 'requirements.txt')) as f:
 #     requirements = f.read().splitlines()
-kwargs = dict(include_dirs=['ieeg/calc'] + lib_path,  # includes for numpy
+kwargs = dict(include_dirs=['ieeg/calc'] + [op.relpath(_numpy_abs)],  # includes for numpy
+              library_dirs=lib_path,  # libraries to link
+              libraries=["npyrandom", "npymath"],  # math library
               extra_compile_args=compile_args,  # compile optimization flag
               language="c",  # can be "c" or "c++"
               define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
