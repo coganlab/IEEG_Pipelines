@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <time.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 void get_array_coords(PyArrayObject* array, npy_intp index, npy_intp* coords) {
     for (int i = PyArray_NDIM(array) - 1; i >= 0; i--) {
         coords[i] = index / PyArray_STRIDE(array, i);
@@ -224,6 +228,58 @@ static void _perm_gt(char **args, const npy_intp *dimensions, const npy_intp *st
     }
 }
 
+double rand_normal(double mean, double stddev)
+{
+    double u = (double)rand() / RAND_MAX;
+    double v = (double)rand() / RAND_MAX;
+    double x = sqrt(-2.0 * log(u)) * cos(2.0 * M_PI * v);
+    return mean + stddev * x;
+}
+
+static void norm_fill(char **args, const npy_intp *dimensions, const npy_intp *steps, void *extra) {
+
+    char *in1 = args[0], *out = args[1];
+
+    npy_intp nloops = dimensions[0];  // Number of outer loops
+    npy_intp len = dimensions[1];    // Core dimension m
+
+    npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    npy_intp step_out = steps[1];     // Outer loop step size for the output
+    npy_intp innerstep = steps[2];   // Step size of elements within dimension m
+
+    for (npy_intp i = 0; i < nloops; i++, in1 += step1, out += step_out) {
+
+        // core calculation
+
+        double sum = 0.0;
+        double sum_of_squares = 0.0;
+        npy_intp count = 0;
+
+        for (npy_intp j = 0; j < len; ++j) {
+            double val = *(double *)(in1 + j * innerstep);
+            if (!isnan(val)) {
+                sum += val;
+                sum_of_squares += val * val;
+                count++;
+            }
+        }
+
+        double avg = (count > 0) ? sum / count : 0.0;
+        double variance = (count > 1) ? (sum_of_squares - ((sum * sum) / count)) / (count - 1) : 0.0;
+        double std = sqrt(variance);
+
+        // fill in the missing values
+        for (npy_intp j = 0; j < len; ++j) {
+            double val = *(double *)(in1 + j * innerstep);
+            if (isnan(val)) {
+                *(double *)(out + j * innerstep) = rand_normal(avg, std);
+            } else {
+                *(double *)(out + j * innerstep) = val;
+            }
+        }
+    }
+}
+
 // Robert Jenkins' 96 bit Mix Function
 unsigned long seeder(void)
 {
@@ -240,11 +296,13 @@ unsigned long seeder(void)
     return c;
 }
 
-PyUFuncGenericFunction funcs[2] = {&mean_diff, &perm_test};
+PyUFuncGenericFunction funcs[3] = {&mean_diff, &perm_test, &norm_fill};
 
-static char types[7] = {
-NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE, NPY_INT, NPY_DOUBLE
-};
+static char md_types[3] = {NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE};
+
+static char pt_types[4] = {NPY_DOUBLE, NPY_DOUBLE, NPY_INT, NPY_DOUBLE};
+
+static char nf_types[2] = {NPY_DOUBLE, NPY_DOUBLE};
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
@@ -259,7 +317,7 @@ static struct PyModuleDef moduledef = {
 };
 
 PyMODINIT_FUNC PyInit_cstats(void) {
-    PyObject *m, *ufunc1, *ufunc2, *d;
+    PyObject *m, *ufunc1, *ufunc2, *ufunc3, *d;
     import_array();
     import_ufunc();
     import_umath();
@@ -271,17 +329,23 @@ PyMODINIT_FUNC PyInit_cstats(void) {
         return NULL;
     }
 
-    ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, types, 2, 2, 1, PyUFunc_None, "mean_diff",
+    ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, md_types, 1, 2, 1, PyUFunc_None, "mean_diff",
     "Calculate the mean difference of two numpy arrays.", 0, "(i),(j)->()");
 
-    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 2, NULL, types + 6, 2, 3, 1, PyUFunc_None, "perm_test",
+    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 1, NULL, pt_types, 1, 3, 1, PyUFunc_None, "perm_test",
     "Calculate the proportion of permutations that are greater than the observed difference.", 0, "(i),(j),()->()");
+
+    ufunc3 = PyUFunc_FromFuncAndDataAndSignature(funcs + 2, NULL, nf_types, 1, 1, 1, PyUFunc_None, "norm_fill",
+    "Fill in missing values with random values from a normal distribution.", 0, "(i)->(i)");
+
     d = PyModule_GetDict(m);
 
     PyDict_SetItemString(d, "mean_diff", ufunc1);
     PyDict_SetItemString(d, "perm_test", ufunc2);
+    PyDict_SetItemString(d, "norm_fill", ufunc3);
     Py_DECREF(ufunc1);
     Py_DECREF(ufunc2);
+    Py_DECREF(ufunc3);
 
     return m;
 }

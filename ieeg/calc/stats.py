@@ -6,9 +6,8 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from ieeg.calc.cstats import mean_diff as _mean_diff
+from ieeg.calc.cstats import mean_diff as _mean_diff, perm_test as _perm_test
 from ieeg.process import get_mem, iterate_axes
-import psutil
 from ieeg.calc.permgt import permgtnd
 
 
@@ -280,8 +279,50 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     return _mean_diff(in1, in2)
 
 
+# def perm_test(group1: np.ndarray, group2: np.ndarray, n_perm: int = 1000,
+#               axis: int=-1):
+#     """Calculate the permutation test.
+#
+#     This function calculates the permutation test between two groups of
+#     observations. The permutation test is a non-parametric test that compares
+#     the mean difference between two groups of observations to the mean
+#     difference between two groups of observations that have been randomly
+#     permuted. The function returns the p-value of the observed difference.
+#
+#     Parameters
+#     ----------
+#     group1 : array, shape (..., time)
+#         The first group of observations.
+#     group2 : array, shape (..., time)
+#         The second group of observations.
+#     n_perm : int, optional
+#         The number of permutations to perform.
+#     axis : int, optional
+#         The axis along which to calculate the statistic function.
+#
+#     Returns
+#     -------
+#     p : float
+#         The p-value of the observed difference.
+#
+#     Examples
+#     --------
+#     >>> import numpy as np
+#     >>> seed = 43; rng = np.random.default_rng(seed)
+#     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
+#     ... for _ in range(50)])
+#     >>> sig2 = rng.random((100, 15)) * 2
+#     >>> perm_test(sig1, sig2, n_perm=1000000, axis=0) # doctest: +ELLIPSIS
+#     0.0
+#     """
+#     in1 = np.moveaxis(group1, axis, -1).astype('double')
+#     in2 = np.moveaxis(group2, axis, -1).astype('double')
+#
+#     return _perm_test(in1, in2, n_perm)
+
+
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
-                            n_perm: int = 1000, tails: int = 1,
+                            n_perm: int = 100000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
                             stat_func: callable = mean_diff, seed: int = None,
                             ) -> np.ndarray[bool]:
@@ -322,7 +363,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)])
     >>> sig2 = rng.random((100, 15)) * 3.2
-    >>> window_averaged_shuffle(sig1, sig2, n_perm=10000, seed=seed
+    >>> window_averaged_shuffle(sig1, sig2, n_perm=1000000, seed=seed
     ... ) # doctest: +ELLIPSIS
     0.99...
     """
