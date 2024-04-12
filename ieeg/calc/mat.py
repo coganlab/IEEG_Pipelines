@@ -10,7 +10,6 @@ from numpy.typing import ArrayLike
 from numpy.core.numeric import normalize_axis_tuple
 
 import ieeg
-import ieeg.calc.reshape as reshape
 
 
 def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
@@ -629,7 +628,7 @@ class LabeledArray(np.ndarray):
                     range(self.ndim)] for sl in range(self.shape[levels[0]]))
 
         arrs = [self.__array__()[*idx] for idx in all_idx]
-        new_array = reshape.concatenate_arrays(arrs, axis=levels[1] - 1)
+        new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
 
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
 
@@ -1186,9 +1185,10 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         return data
     elif isinstance(data, dict):
         gen_arr = (inner_array(d) for d in data.values())
-        arr = [a for a in gen_arr if a is not None]
+        arr = [np.array([a]) if np.isscalar(a) else a[None] for a in gen_arr if
+               a is not None]
         if len(arr) > 0:
-            return reshape.concatenate_arrays(arr, axis=None)
+            return concatenate_arrays(arr, axis=0)
 
     # Call np.atleast_1d once and store the result in a variable
     data_1d = np.atleast_1d(data)
@@ -1310,7 +1310,7 @@ def stack_la(arrays: tuple[LabeledArray, ...], new_labels: list[str, ...]
            ['a', 'b']
            ['c', 'd', 'e'])
     """
-    new_array = reshape.concatenate_arrays([a.__array__() for a in arrays],
+    new_array = concatenate_arrays([a.__array__() for a in arrays],
                                            None)
 
     # get the longest labels in each axis
