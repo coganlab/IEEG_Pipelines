@@ -1,7 +1,8 @@
 import numpy as np
+from ieeg.calc.concat import nan_concatinate
 
 
-def concatenate_arrays(arrays: tuple[np.ndarray], axis: int = 0
+def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
                        ) -> np.ndarray:
     """Concatenate arrays along a specified axis, filling in empty arrays with
     nan values.
@@ -20,105 +21,33 @@ def concatenate_arrays(arrays: tuple[np.ndarray], axis: int = 0
 
     Examples
     --------
-    >>> arrays = (np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10
+    >>> arrays = (np.array([[1., 2], [3, 4]]), np.array([[5., 6, 7], [8, 9, 10
     ... ]]))
     >>> concatenate_arrays(arrays)
     array([[ 1.,  2., nan],
            [ 3.,  4., nan],
            [ 5.,  6.,  7.],
            [ 8.,  9., 10.]])
+    >>> concatenate_arrays(arrays, axis=1)
+    array([[ 1.,  2.,  5.,  6.,  7.],
+           [ 3.,  4.,  8.,  9., 10.]])
+    >>> concatenate_arrays(arrays, axis=None)
+    array([[[ 1.,  2., nan],
+            [ 3.,  4., nan]],
+    <BLANKLINE>
+           [[ 5.,  6.,  7.],
+            [ 8.,  9., 10.]]])
     """
 
     if axis is None:
         # raise NotImplementedError("Concatenating along a new axis is not "
         #                           "implemented yet")
         axis = 0
-        arrays = tuple([np.expand_dims(ar, axis) for ar in arrays])
+        arrays = [np.expand_dims(ar, axis) for ar in arrays]
 
-    while axis < 0:
-        axis += max([ar.ndim for ar in arrays])
+    arrays = [ar for ar in arrays]
 
-    # Determine the maximum shape along the specified axis
-    max_shape = get_homogeneous_shapes(*arrays)
-    modified_arrays = [None for _ in range(len(arrays))]
-    arr_shape = max_shape.copy()
-    j = 0
-    for i, arr in enumerate(arrays):
-        if len(arr) == 0:
-            j += 1
-            continue
-        arr_shape[axis] = arr.shape[axis]
-        indexing = [slice(None)] * arr.ndim
-        for ax in range(arr.ndim):
-            if ax == axis:
-                continue
-            indexing[ax] = slice(0, arr.shape[ax])
-        modified_arrays[i - j] = mod_arr(arr, tuple(arr_shape), tuple(indexing)
-                                         )
-
-    # Concatenate the modified arrays along the specified axis
-    result = np.concatenate(tuple(modified_arrays[:i - j + 1]), axis=axis)
-
-    return result
-
-
-def mod_arr(arr: np.ndarray, shape: tuple[int, ...], idx: tuple[slice]):
-    # Create an array filled with nan values
-    nan_array = np.full(shape, np.nan)
-
-    # Fill in the array with the original values
-    nan_array[idx] = arr
-
-    return nan_array
-
-
-def get_homogeneous_shapes(*arrays: tuple[np.ndarray]) -> tuple[int, ...]:
-    """Get the shapes of the input arrays with a homogeneous number of
-    dimensions.
-
-    Parameters
-    ----------
-    arrays
-        A list of arrays
-
-    Returns
-    -------
-    homogeneous_shapes
-        A list of shapes with a homogeneous number of dimensions
-
-    Examples
-    --------
-    >>> arrays = (np.array([[1, 2], [3, 4]]), np.array([[5, 6, 7], [8, 9, 10
-    ... ]]))
-    >>> get_homogeneous_shapes(*arrays)
-    [2, 3]
-    """
-    # Determine the maximum number of dimensions among the input arrays
-    max_dims = max([arrays[i].ndim for i in range(len(arrays))])
-
-    # Create a list to store the shapes with a homogeneous number of dimensions
-    homogeneous_shapes = [0 for _ in range(max_dims)]
-
-    # Iterate over the arrays
-    for arr in arrays:
-        # Get the shape of the array
-        # Handle the case of an empty array
-        if arr.ndim == 0 or len(arr.shape) == 0:
-            shape = [0]
-            dims = 1
-        else:
-            shape = list(arr.shape)
-            dims = arr.ndim
-
-        # Pad the shape tuple with additional dimensions if necessary
-        num_dims_to_pad = max_dims - dims
-        shape += [1] * num_dims_to_pad
-
-        # Add the shape to the list
-        for i in range(max_dims):
-            homogeneous_shapes[i] = max(homogeneous_shapes[i], shape[i])
-
-    return homogeneous_shapes
+    return nan_concatinate(arrays, axis)
 
 
 def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
