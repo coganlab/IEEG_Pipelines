@@ -42,6 +42,12 @@ extensions = [
         **kwargs
     ),
     Extension(
+        "ieeg.calc.concat",  # the module name exposed to python
+        ["ieeg/calc/concat.pyx"],
+        # the Cython source file
+        **kwargs
+    ),
+    Extension(
         "ieeg.timefreq.hilbert",  # the module name exposed to python
         ["ieeg/timefreq/hilbert.pyx"],
         # the Cython source file
