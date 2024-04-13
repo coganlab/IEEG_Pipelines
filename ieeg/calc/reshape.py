@@ -21,22 +21,27 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
 
     Examples
     --------
-    >>> arrays = (np.array([[1., 2], [3, 4]]), np.array([[5., 6, 7], [8, 9, 10
-    ... ]]))
-    >>> concatenate_arrays(arrays)
-    array([[ 1.,  2., nan],
-           [ 3.,  4., nan],
-           [ 5.,  6.,  7.],
-           [ 8.,  9., 10.]])
-    >>> concatenate_arrays(arrays, axis=1)
-    array([[ 1.,  2.,  5.,  6.,  7.],
-           [ 3.,  4.,  8.,  9., 10.]])
-    >>> concatenate_arrays(arrays, axis=None)
-    array([[[ 1.,  2., nan],
-            [ 3.,  4., nan]],
+    >>> arr1 = np.arange(6, dtype=float).reshape(1, 2, 3)
+    >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
+    >>> concatenate_arrays((arr1[0], arr2[0]), axis=0)
+    array([[ 0.,  1.,  2., nan],
+           [ 3.,  4.,  5., nan],
+           [ 0.,  1.,  2.,  3.],
+           [ 4.,  5.,  6.,  7.],
+           [ 8.,  9., 10., 11.]])
+    >>> concatenate_arrays((arr2[0], arr1[0]), axis=1)
+    array([[ 0.,  1.,  2.,  3.,  0.,  1.,  2.],
+           [ 4.,  5.,  6.,  7.,  3.,  4.,  5.],
+           [ 8.,  9., 10., 11., nan, nan, nan]])
+    >>> arr = concatenate_arrays((arr1[0], arr2[0]), axis=None)
+    >>> arr
+    array([[[ 0.,  1.,  2., nan],
+            [ 3.,  4.,  5., nan],
+            [nan, nan, nan, nan]],
     <BLANKLINE>
-           [[ 5.,  6.,  7.],
-            [ 8.,  9., 10.]]])
+           [[ 0.,  1.,  2.,  3.],
+            [ 4.,  5.,  6.,  7.],
+            [ 8.,  9., 10., 11.]]])
     """
 
     if axis is None:
