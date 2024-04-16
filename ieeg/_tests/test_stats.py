@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import scipy
 
-from ieeg.calc.stats import mean_diff
+from ieeg.calc.fast import mean_diff
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 seeg = mne.io.read_raw(mne.datasets.misc.data_path() /

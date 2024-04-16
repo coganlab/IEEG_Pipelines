@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from ieeg.calc.mat import LabeledArray, Labels, combine, iter_nest_dict
-from ieeg.calc.reshape import concatenate_arrays, get_homogeneous_shapes
+from ieeg.calc.fast import concatenate_arrays
 
 
 @pytest.mark.parametrize("arrays, axis, expected_output", [
@@ -64,10 +64,6 @@ def test_concatenate_arrays(arrays, axis, expected_output):
             arrays = tuple(np.expand_dims(arr, axis) for arr in arrays)
         while axis < 0:
             axis += new.ndim
-        congruency = new.shape == np.max(get_homogeneous_shapes(*arrays),
-                                         axis=0)
-        print(congruency)
-        assert all([con for i, con in enumerate(congruency) if i != axis])
         assert np.array_equal(new, expected_output, True)
     except ValueError as e:
         try:

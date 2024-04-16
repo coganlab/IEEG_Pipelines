@@ -6,9 +6,8 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from ieeg.calc.cstats import mean_diff as _mean_diff, perm_test as _perm_test
+from ieeg.calc.fast import mean_diff, permgt as permgtnd
 from ieeg.process import get_mem, iterate_axes
-from ieeg.calc.permgt import permgtnd
 
 
 def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
@@ -239,45 +238,6 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
     for msg in disp:
         logger.info(msg)
     return np.mean(data, axis=0, where=keep[..., np.newaxis])
-
-
-def mean_diff(group1: np.ndarray, group2: np.ndarray,
-              axis: int = -1) -> np.ndarray | float:
-    """Calculate the mean difference between two groups.
-
-    This function is the default statistic function for time_perm_cluster. It
-    calculates the mean difference between two groups along the specified axis.
-
-    Parameters
-    ----------
-    group1 : array, shape (..., time)
-        The first group of observations.
-    group2 : array, shape (..., time)
-        The second group of observations.
-    axis : int or tuple of ints, optional
-        The axis or axes along which to compute the mean difference. If None,
-        compute the mean difference over all axes.
-
-    Returns
-    -------
-    avg1 - avg2 : array or float
-        The mean difference between the two groups.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]], order='F').T
-    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]], order='F').T
-    >>> mean_diff(group1, group2, axis=0)
-    array([ 0., 14.])
-    >>> mean_diff(group1, group2, axis=1)
-    array([ 0., 30.,  0.,  5.,  0.])
-    """
-    in1 = np.moveaxis(group1, axis, -1)
-    in2 = np.moveaxis(group2, axis, -1)
-
-    return _mean_diff(in1, in2)
-
 
 # def perm_test(group1: np.ndarray, group2: np.ndarray, n_perm: int = 1000,
 #               axis: int=-1):

@@ -5,66 +5,10 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
-from ieeg.calc.mixup import mixupnd as cmixup
-from ieeg.calc.mixup import normnd as cnorm
+from ieeg.calc.fast import mixup, norm
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
-
-
-def mixupnd(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
-            seed: int = -1) -> None:
-    """Oversample by mixing two random non-NaN observations
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    obs_axis : int
-        The axis along which to apply func.
-    alpha : float
-        The alpha parameter for the beta distribution. If alpha is 0, then
-        the distribution is uniform. If alpha is 1, then the distribution is
-        symmetric. If alpha is greater than 1, then the distribution is
-        skewed towards the first observation. If alpha is less than 1, then
-        the distribution is skewed towards the second observation.
-
-    Examples
-    --------
-    >>> from ieeg.calc.oversample import mixupnd
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
-    >>> mixupnd(arr, 0, seed=42)
-    >>> arr # doctest: +NORMALIZE_WHITESPACE
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [5.24946679, 6.24946679]])
-    >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
-    >>> arr2[0, 2, :] = [float("nan")] * 4
-    >>> mixupnd(arr2, 1, seed=42)
-    >>> arr2 # doctest: +NORMALIZE_WHITESPACE
-    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
-            [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ 2.33404428,  3.33404428,  4.33404428,  5.33404428]],
-    <BLANKLINE>
-           [[12.        , 13.        , 14.        , 15.        ],
-            [16.        , 17.        , 18.        , 19.        ],
-            [20.        , 21.        , 22.        , 23.        ]]])
-    >>> arr3 = np.arange(24, dtype=float).reshape(3, 2, 4)
-    >>> arr3[0, :, :] = float("nan")
-    >>> mixupnd(arr3, 0, seed=42)
-    >>> arr3 # doctest: +NORMALIZE_WHITESPACE
-    array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
-            [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
-    <BLANKLINE>
-           [[ 8.        ,  9.        , 10.        , 11.        ],
-            [12.        , 13.        , 14.        , 15.        ]],
-    <BLANKLINE>
-           [[16.        , 17.        , 18.        , 19.        ],
-            [20.        , 21.        , 22.        , 23.        ]]])
-    """
-    cmixup(arr, obs_axis, alpha, seed)
 
 
 class MinimumNaNSplit(RepeatedStratifiedKFold):
@@ -166,7 +110,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 yield from kfold_set
 
     @staticmethod
-    def oversample(arr: np.ndarray, func: callable = cmixup,
+    def oversample(arr: np.ndarray, func: callable = mixup,
                    axis: int = 1, copy: bool = True, seed=None) -> np.ndarray:
         """Oversample nan rows using func
 
@@ -186,12 +130,12 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         >>> np.random.seed(0)
         >>> arr = np.array([[1, 2], [4, 5], [7, 8],
         ... [float("nan"), float("nan")]])
-        >>> MinimumNaNSplit.oversample(arr, normnd, 0)
+        >>> MinimumNaNSplit.oversample(arr, norm, 0)
         array([[1.        , 2.        ],
                [4.        , 5.        ],
                [7.        , 8.        ],
                [8.32102813, 5.98018098]])
-        >>> MinimumNaNSplit.oversample(arr, cmixup, 0, seed=42)
+        >>> MinimumNaNSplit.oversample(arr, mixup, 0, seed=42)
         array([[1.        , 2.        ],
                [4.        , 5.        ],
                [7.        , 8.        ],
@@ -276,19 +220,19 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> oversample_nan(arr, normnd, 0)
+    >>> oversample_nan(arr, norm, 0)
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
            [8.32102813, 5.98018098]])
-    >>> oversample_nan(arr, mixupnd, 0, seed=42)
+    >>> oversample_nan(arr, mixup, 0, seed=42)
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
            [5.24946679, 6.24946679]])
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
-    >>> oversample_nan(arr3, mixupnd, 1, seed=42)
+    >>> oversample_nan(arr3, mixup, 1, seed=42)
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
             [ 2.33404428,  3.33404428,  4.33404428,  5.33404428]],
@@ -296,7 +240,7 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
-    >>> oversample_nan(arr3, normnd, 1)
+    >>> oversample_nan(arr3, norm, 1)
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
             [ 3.95747597,  7.4817864 ,  7.73511598,  3.04544424]],
@@ -313,7 +257,7 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
 
     if arr.ndim <= 0:
         raise ValueError("Cannot apply func to a 0-dimensional array")
-    elif func is mixupnd and seed is not None:
+    elif func is mixup and seed is not None:
         func(arr, axis, seed=seed)
     else:
         func(arr, axis)
@@ -356,29 +300,6 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
     non_nan_rows = np.flatnonzero(~nan)
 
     return nan_rows, non_nan_rows
-
-
-def normnd(arr: np.ndarray, obs_axis: int = -1) -> None:
-    """Oversample by obtaining the distribution and randomly selecting
-
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    obs_axis : int
-        The axis along which to apply func.
-
-    Examples
-    --------
-    >>> np.random.seed(0)
-    >>> arr = np.array([1, 2, 4, 5, 7, 8,
-    ... float("nan"), float("nan")])
-    >>> normnd(arr)
-    >>> arr
-    array([1.        , 2.        , 4.        , 5.        , 7.        ,
-           8.        , 8.91013086, 5.50039302])
-    """
-    cnorm(arr, obs_axis)
 
 
 def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):

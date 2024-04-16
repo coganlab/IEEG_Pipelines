@@ -57,7 +57,11 @@ cpdef cnp.ndarray nan_concatinate(list[cnp.ndarray] arrs, int axis=0):
         elif n_dim == 7:
             fill7d(arrs[i], arr_out, size, axis)
         else:
-            raise ValueError("Only up to 7D arrays are supported.")
+            arr_iter = np.ndindex(arrs[i].shape[7:])
+            for idx in arr_iter:
+                fill7d(arrs[i][:,:,:,:,:,:,:,*idx],
+                       arr_out[:,:,:,:,:,:,:,*idx], size, axis)
+
         size += arrs[i].shape[axis]
 
     return arr_out

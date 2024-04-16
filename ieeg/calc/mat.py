@@ -2,7 +2,7 @@ import functools
 from collections.abc import Iterable
 
 import mne
-from ieeg.calc.reshape import concatenate_arrays
+from ieeg.calc.fast import concatenate_arrays
 
 import numpy as np
 from numpy.matlib import repmat
@@ -1180,15 +1180,18 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
     array([[[ 1., nan]],
     <BLANKLINE>
            [[ 2.,  3.]]])
+    >>> data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
+    >>> inner_array(data)
+    array([[[ 1.,  2.,  3.],
+            [ 4.,  5., nan]]])
     """
     if np.isscalar(data):
         return data
     elif isinstance(data, dict):
         gen_arr = (inner_array(d) for d in data.values())
-        arr = [np.array([a]) if np.isscalar(a) else a[None] for a in gen_arr if
-               a is not None]
+        arr = [a for a in gen_arr if a is not None]
         if len(arr) > 0:
-            return concatenate_arrays(arr, axis=0)
+            return concatenate_arrays(arr, axis=None)
 
     # Call np.atleast_1d once and store the result in a variable
     data_1d = np.atleast_1d(data)
@@ -1310,8 +1313,7 @@ def stack_la(arrays: tuple[LabeledArray, ...], new_labels: list[str, ...]
            ['a', 'b']
            ['c', 'd', 'e'])
     """
-    new_array = concatenate_arrays([a.__array__() for a in arrays],
-                                           None)
+    new_array = concatenate_arrays([a.__array__() for a in arrays], None)
 
     # get the longest labels in each axis
     new_labels = [Labels(new_labels)]
