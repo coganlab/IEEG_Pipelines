@@ -4,34 +4,13 @@ requires = ["setuptools", "wheel", "Cython", "numpy"]
 
 [project]
 name = "ieeg"
-version = "0.2"
+version = "0.1"
 description = "A Python package for iEEG data processing."
 authors = [
     {name = "Aaron Earle-Richardson", email = "ae166@duke.edu"}
 ]
 dynamic = ["dependencies"]
 readme = "README.md"
-#dependencies = ["bids >= 0.0",
-#"EDFlib-Python",
-#"mne",
-#"mne-bids",
-#"numpy",
-#"matplotlib",
-#"scipy",
-#"scikit-learn",
-#"pandas",
-#"joblib >= 1.3",
-#"psutil",
-#"pyvistaqt",
-#"pytz",
-#"pyqt5",
-#"tqdm",
-#"h5io",
-#"dipy",
-#"mne-qt-browser",
-#"cython",
-#"numba"]
-
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -43,9 +22,5 @@ file = "LICENSE"
 [project.urls]
 Source = "https://github.com/coganlab/IEEG_Pipelines"
 
-
 [tool.setuptools.dynamic]
 dependencies = {file = ["envs/requirements.txt"]}
-
-#[tool.meson-python.args]
-#setup = ['-Doptimization=3']

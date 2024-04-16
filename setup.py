@@ -21,7 +21,7 @@ else:
 # Read requirements.txt
 # with open(op.join('envs', 'requirements.txt')) as f:
 #     requirements = f.read().splitlines()
-kwargs = dict(include_dirs=['ieeg/calc'] + [op.relpath(_numpy_abs)],  # includes for numpy
+kwargs = dict(include_dirs=[op.relpath(_numpy_abs)],  # includes for numpy
               library_dirs=lib_path,  # libraries to link
               libraries=["npyrandom", "npymath"],  # math library
               extra_compile_args=compile_args,  # compile optimization flag
@@ -31,32 +31,18 @@ kwargs = dict(include_dirs=['ieeg/calc'] + [op.relpath(_numpy_abs)],  # includes
 
 extensions = [
     Extension(
-        "ieeg.calc.mixup",  # the module name exposed to python
-        ["ieeg/calc/mixup.pyx"],  # the Cython source file
+        "ieeg.calc.fast.*",  # the module name exposed to python
+        ["ieeg/calc/fast/*.pyx"],  # the Cython source file
         **kwargs
     ),
     Extension(
-        "ieeg.calc.permgt",  # the module name exposed to python
-        ["ieeg/calc/permgt.pyx"],
-        # the Cython source file
-        **kwargs
-    ),
-    Extension(
-        "ieeg.calc.concat",  # the module name exposed to python
-        ["ieeg/calc/concat.pyx"],
-        # the Cython source file
+        "ieeg.calc.fast.stats",  # the module name exposed to python
+        ["ieeg/calc/fast/stats.c"],  # the C source file
         **kwargs
     ),
     Extension(
         "ieeg.timefreq.hilbert",  # the module name exposed to python
-        ["ieeg/timefreq/hilbert.pyx"],
-        # the Cython source file
-        **kwargs
-    ),
-    Extension(
-        "ieeg.calc.cstats",  # the module name exposed to python
-        ["ieeg/calc/stats.c"],
-        # the Cython source file
+        ["ieeg/timefreq/hilbert.pyx"],  # the Cython source file
         **kwargs
     ),
 ]

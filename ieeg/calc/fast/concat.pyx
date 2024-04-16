@@ -80,7 +80,7 @@ cdef void fill2d(double[:, ::1] arr, double[:, ::1] arr_out, const int start, in
         for i in range(arr.shape[0]):
             fill1d(arr[i], arr_out[start + i], 0)
             for j in range(arr.shape[1], arr_out.shape[1]):
-                arr_out[i, j] = NAN
+                arr_out[start + i, j] = NAN
 
     else:
         for i in range(arr.shape[0]):
@@ -91,8 +91,8 @@ cdef void fill2d(double[:, ::1] arr, double[:, ::1] arr_out, const int start, in
                 arr_out[i, start + j] = NAN
 
 
-cdef void _3shape(const int shape1, const int shape2, const int shape3,
-                  const int shape4, Py_ssize_t[3][4] shapes) noexcept nogil:
+cdef void _3shape(const Py_ssize_t shape1, const Py_ssize_t shape2, const Py_ssize_t shape3,
+                  const Py_ssize_t shape4, Py_ssize_t[3][4] shapes) noexcept nogil:
 
     shapes[0][0] = shape1; shapes[0][1] = shape2
     shapes[0][2] = shape3; shapes[0][3] = shape4
@@ -144,8 +144,8 @@ cdef void fill3d(double[:, :, ::1] arr, double[:, :, ::1] arr_out, const int sta
                         arr_out[i, j, start + k] = NAN
 
 
-cdef void _4shape(const int shape1, const int shape2, const int shape3,
-                  const int shape4, const int shape5, const int shape6,
+cdef void _4shape(const Py_ssize_t shape1, const Py_ssize_t shape2, const Py_ssize_t shape3,
+                  const Py_ssize_t shape4, const Py_ssize_t shape5, const Py_ssize_t shape6,
                   Py_ssize_t[4][6] shapes) noexcept nogil:
 
     shapes[0][0] = shape1; shapes[0][1] = shape2
@@ -224,9 +224,9 @@ cdef void fill4d(double[:, :, :, ::1] arr, double[:, :, :, ::1] arr_out, const i
                             arr_out[i, j, k, l] = NAN
 
 
-cdef void _5shape(const int shape1, const int shape2, const int shape3,
-                  const int shape4, const int shape5, const int shape6,
-                  const int shape7, const int shape8, Py_ssize_t[5][8] shapes) noexcept nogil:
+cdef void _5shape(const Py_ssize_t shape1, const Py_ssize_t shape2, const Py_ssize_t shape3,
+                  const Py_ssize_t shape4, const Py_ssize_t shape5, const Py_ssize_t shape6,
+                  const Py_ssize_t shape7, const Py_ssize_t shape8, Py_ssize_t[5][8] shapes) noexcept nogil:
 
     shapes[0][0] = shape1; shapes[0][1] = shape2
     shapes[0][2] = shape3; shapes[0][3] = shape4
@@ -333,10 +333,10 @@ cdef void fill5d(double[:, :, :, :, ::1] arr, double[:, :, :, :, ::1] arr_out, c
                                 arr_out[i, j, k, l, m] = NAN
 
 
-cdef void _6shape(const int shape1, const int shape2, const int shape3,
-                  const int shape4, const int shape5, const int shape6,
-                  const int shape7, const int shape8, const int shape9,
-                  const int shape10, Py_ssize_t[6][10] shapes) noexcept nogil:
+cdef void _6shape(const Py_ssize_t shape1, const Py_ssize_t shape2, const Py_ssize_t shape3,
+                  const Py_ssize_t shape4, const Py_ssize_t shape5, const Py_ssize_t shape6,
+                  const Py_ssize_t shape7, const Py_ssize_t shape8, const Py_ssize_t shape9,
+                  const Py_ssize_t shape10, Py_ssize_t[6][10] shapes) noexcept nogil:
 
     shapes[0][0] = shape1; shapes[0][1] = shape2
     shapes[0][2] = shape3; shapes[0][3] = shape4
@@ -483,10 +483,10 @@ cdef void fill6d(double[:, :, :, :, :, ::1] arr, double[:, :, :, :, :, ::1] arr_
                                     arr_out[i, j, k, l, m, n] = NAN
                                     
                                     
-cdef void _7shape(const int shape1, const int shape2, const int shape3,
-                    const int shape4, const int shape5, const int shape6,
-                    const int shape7, const int shape8, const int shape9,
-                    const int shape10, const int shape11, const int shape12,
+cdef void _7shape(const Py_ssize_t shape1, const Py_ssize_t shape2, const Py_ssize_t shape3,
+                    const Py_ssize_t shape4, const Py_ssize_t shape5, const Py_ssize_t shape6,
+                    const Py_ssize_t shape7, const Py_ssize_t shape8, const Py_ssize_t shape9,
+                    const Py_ssize_t shape10, const Py_ssize_t shape11, const Py_ssize_t shape12,
                     Py_ssize_t[7][12] shapes) noexcept nogil:
     
         shapes[0][0] = shape1; shapes[0][1] = shape2
