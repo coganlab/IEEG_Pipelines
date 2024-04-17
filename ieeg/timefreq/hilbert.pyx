@@ -1,7 +1,9 @@
+from libc.math cimport sqrtf, log10f, log2, e
+from libc.stdlib cimport malloc
+from cython.parallel import prange
 import numpy as np
-from numpy.fft import fft, ifft
 cimport numpy as cnp
-from libc.math cimport sqrtf, log10f
+from scipy.fft import fft, ifft
 cimport cython
 
 cnp.import_array()
@@ -86,3 +88,93 @@ cdef cnp.ndarray[DTYPE_t] extract_channel_inner(cnp.ndarray[DTYPE_C_t, ndim=1] X
     cdef cnp.ndarray[BOOL_t, ndim=1, cast=True] band_locator = np.logical_and(cfs >= minf, cfs <= maxf)
     cdef cnp.ndarray[DTYPE_t, ndim=2] hilb_amp = np.abs(hilb_channel[:, band_locator])
     return hilb_amp
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+cdef double complex[:, ::1] extract_H(const int N, double[::1] freqs, double[::1] cfs, double[::1] sds, double[::1] h):
+    cdef double complex[:, ::1] H = np.empty((N, cfs.shape[0]), dtype='complex64')
+    cdef Py_ssize_t i, j
+
+    with nogil:
+        for j in range(cfs.shape[0]):
+            H[0, j] = 0.
+        for i in range(1, freqs.shape[0]):
+            for j in range(cfs.shape[0]):
+                H[i, j] = e ** (-0.5 * ((freqs[i] - cfs[j]) / sds[j]) ** 2) * h[i]
+        for i in range(freqs.shape[0], N):
+            for j in range(cfs.shape[0]):
+                H[i, j] = H[freqs.shape[0] - i, j] * h[i]
+
+    return H
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef void extract_channel(double complex[:, ::1] Xf, const int nch, double complex[:, ::1] H, const int N, double complex[:, :, ::1] temp_f, const int n_freq):
+    cdef Py_ssize_t i, j, k
+    for i in prange(nch, nogil=True):
+        for j in range(N):
+            for k in range(n_freq):
+                temp_f[i, j, k] = Xf[i, j] * H[j, k]
+
+
+@cython.cdivision(True)
+cpdef float[:, ::1] filterbank_hilbert(float[:, ::1] x, const int fs, const float minf, const float maxf):
+    cdef float f0 = 0.018, octSpace = 1./7, cfo
+    cdef float[2] a = [log10f(0.39), 0.5]
+    cdef float maxfo = log2(maxf / f0), sigma_f = 10**(log10f(0.39)+0.5*log10f(0.018))
+    cdef cnp.ndarray[double, ndim=1] cfs, exponent, sds, freqs
+    cdef Py_ssize_t len_cfs = 1, i = 1, N = x.shape[-1], nch = x.shape[0]
+    cdef float[:, ::1] out
+    cdef double complex[:, :, ::1] temp_f
+    cdef double complex[:, ::1] Xf, H
+
+    # create filter bank
+    while f0 < maxf:
+        if f0 < 4:
+            f0 += sigma_f
+            sigma_f = 0.39 * sqrtf(f0)
+        else:
+            f0 *= 2 ** octSpace
+        len_cfs += 1
+    f0 = 0.018
+    sigma_f = 0.39 * sqrtf(f0)
+    cfs = np.zeros(len_cfs, dtype='float32')
+    cfs[0] = f0
+    while f0 < maxf:
+        if f0 < 4:
+            f0 += sigma_f
+            sigma_f = 0.39 * sqrtf(f0)
+        else:
+            f0 *= 2 ** octSpace
+        cfs[i] = f0
+        i += 1
+
+    if len_cfs == 1 or cfs[len_cfs - 2] < minf:
+        raise ValueError(
+            f'Frequency band [{minf}, {maxf}] is too narrow, so no filters in filterbank are placed inside. Try a wider frequency band.')
+
+    cfs = np.array([c for c in cfs if minf <= c <= maxf], dtype='float32')
+
+    exponent = np.concatenate((np.ones((cfs.shape[0],1)), np.log10(cfs)[:,np.newaxis]), axis=1) @ a
+    sds = 10**exponent * sqrtf(2)
+    freqs  = np.arange(0, N//2+1)*(fs*1.0/N)
+    Xf = fft(x, N).astype('complex64')
+
+    h = np.zeros(N, dtype='complex64')
+    h[0] = 1
+    h[1:(N + 1) // 2] = 2
+    if N % 2 == 0:
+        h[N // 2] = 1
+
+    H = extract_H(N, freqs, cfs, sds, h)
+    temp_f = np.empty((nch, N, cfs.shape[0]), dtype='complex64')
+    extract_channel(Xf, nch, H, N, temp_f, cfs.shape[0])
+    out = np.abs(ifft(temp_f, N).astype('complex64'))
+
+    return out
+
+
+
