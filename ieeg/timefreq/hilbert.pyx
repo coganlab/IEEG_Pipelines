@@ -112,41 +112,39 @@ cdef double complex[:, ::1] extract_H(const int N, double[::1] freqs, double[::1
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef void extract_channel(double complex[:, ::1] Xf, const int nch, double complex[:, ::1] H, const int N, double complex[:, :, ::1] temp_f, const int n_freq):
+cdef void extract_channel(double complex[:, ::1] Xf, double complex[:, ::1] H, double complex[:, :, ::1] temp_f):
     cdef Py_ssize_t i, j, k
-    for i in prange(nch, nogil=True):
-        for j in range(N):
-            for k in range(n_freq):
+    for i in prange(temp_f.shape[0], nogil=True):
+        for j in range(temp_f.shape[1]):
+            for k in range(temp_f.shape[2]):
                 temp_f[i, j, k] = Xf[i, j] * H[j, k]
 
 
 @cython.cdivision(True)
-cpdef float[:, ::1] filterbank_hilbert(float[:, ::1] x, const int fs, const float minf, const float maxf):
-    cdef float f0 = 0.018, octSpace = 1./7, cfo
-    cdef float[2] a = [log10f(0.39), 0.5]
-    cdef float maxfo = log2(maxf / f0), sigma_f = 10**(log10f(0.39)+0.5*log10f(0.018))
+cpdef double[:, ::1] filterbank_hilbert(double[:, ::1] x, const int fs, const float minf, const float maxf):
+    cdef double f0 = 0.018, octSpace = 1./7, sigma_f
+    cdef double[2] a = [log10f(0.39), 0.5]
     cdef cnp.ndarray[double, ndim=1] cfs, exponent, sds, freqs
     cdef Py_ssize_t len_cfs = 1, i = 1, N = x.shape[-1], nch = x.shape[0]
-    cdef float[:, ::1] out
+    cdef double[:, ::1] out
     cdef double complex[:, :, ::1] temp_f
     cdef double complex[:, ::1] Xf, H
 
     # create filter bank
     while f0 < maxf:
         if f0 < 4:
-            f0 += sigma_f
             sigma_f = 0.39 * sqrtf(f0)
+            f0 += sigma_f
         else:
             f0 *= 2 ** octSpace
         len_cfs += 1
     f0 = 0.018
-    sigma_f = 0.39 * sqrtf(f0)
-    cfs = np.zeros(len_cfs, dtype='float32')
+    cfs = np.zeros(len_cfs, dtype='double')
     cfs[0] = f0
     while f0 < maxf:
         if f0 < 4:
-            f0 += sigma_f
             sigma_f = 0.39 * sqrtf(f0)
+            f0 += sigma_f
         else:
             f0 *= 2 ** octSpace
         cfs[i] = f0
@@ -156,23 +154,23 @@ cpdef float[:, ::1] filterbank_hilbert(float[:, ::1] x, const int fs, const floa
         raise ValueError(
             f'Frequency band [{minf}, {maxf}] is too narrow, so no filters in filterbank are placed inside. Try a wider frequency band.')
 
-    cfs = np.array([c for c in cfs if minf <= c <= maxf], dtype='float32')
+    cfs = np.array([c for c in cfs if minf <= c <= maxf], dtype='double')
 
-    exponent = np.concatenate((np.ones((cfs.shape[0],1)), np.log10(cfs)[:,np.newaxis]), axis=1) @ a
+    exponent = np.concatenate((np.ones((cfs.shape[0],1)), np.log10(cfs)[:,np.newaxis]), axis=1, dtype='double') @ a
     sds = 10**exponent * sqrtf(2)
-    freqs  = np.arange(0, N//2+1)*(fs*1.0/N)
-    Xf = fft(x, N).astype('complex64')
+    freqs  = np.arange(0, N//2+1, dtype='double')*(fs*1.0/N)
+    Xf = fft(x, N, axis=-1).astype('complex128')
 
-    h = np.zeros(N, dtype='complex64')
+    h = np.zeros(N, dtype='complex128')
     h[0] = 1
     h[1:(N + 1) // 2] = 2
     if N % 2 == 0:
         h[N // 2] = 1
 
     H = extract_H(N, freqs, cfs, sds, h)
-    temp_f = np.empty((nch, N, cfs.shape[0]), dtype='complex64')
-    extract_channel(Xf, nch, H, N, temp_f, cfs.shape[0])
-    out = np.abs(ifft(temp_f, N).astype('complex64'))
+    temp_f = np.empty((nch, N, cfs.shape[0]), dtype='complex128')
+    extract_channel(Xf, H, temp_f)
+    out = np.abs(ifft(temp_f, N).astype('complex128'))
 
     return out
 
