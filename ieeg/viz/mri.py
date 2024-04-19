@@ -269,7 +269,7 @@ def get_grey_matter(subjects: Sequence[str]) -> set[str]:
 
 
 def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
-                    subj_dir: PathLike = None, rm_wm: bool = True,
+                    subj_dir: PathLike = None, rm_wm: bool = False,
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None,
@@ -552,8 +552,26 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     pos = {k: v for k, v in montage.get_positions()['ch_pos'].items()}
 
     # Default montage positions are in m, whereas plotting functions assume mm
-    left = {k: p for k, p in pos.items() if k.startswith('L')}
-    right = {k: p for k, p in pos.items() if k.startswith('R')}
+    left = {}
+    right = {}
+    homeless = {}
+    for k, v in pos.items():
+        if k.startswith('L'):
+            left[k] = v
+        elif k.startswith('R'):
+            right[k] = v
+        else:
+            homeless[k] = v
+    if homeless:
+        if not right and left:
+            left.update(homeless)
+        elif not left and right:
+            right.update(homeless)
+        else:
+            raise ValueError(f"Some electrodes are not labeled as left or "
+                             f"right \n {homeless.keys()}\n This is only "
+                             f"allowed if all other electrodes are in one "
+                             f"hemisphere")
 
     if left and hemi != 'rh':
         _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())),
