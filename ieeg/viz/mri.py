@@ -554,24 +554,15 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     # Default montage positions are in m, whereas plotting functions assume mm
     left = {}
     right = {}
-    homeless = {}
     for k, v in pos.items():
         if k.startswith('L'):
             left[k] = v
         elif k.startswith('R'):
             right[k] = v
+        elif v[0] < 0:
+            left[k] = v
         else:
-            homeless[k] = v
-    if homeless:
-        if not right and left:
-            left.update(homeless)
-        elif not left and right:
-            right.update(homeless)
-        else:
-            raise ValueError(f"Some electrodes are not labeled as left or "
-                             f"right \n {homeless.keys()}\n This is only "
-                             f"allowed if all other electrodes are in one "
-                             f"hemisphere")
+            right[k] = v
 
     if left and hemi != 'rh':
         _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())),
@@ -810,13 +801,13 @@ if __name__ == "__main__":
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
 
-    # brain = plot_subj("D29")
+    brain = plot_subj("D5")
     # fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
     #                       transparency=0.4,
     #                       picks=list(range(28)) + list(range(52, 176)),
     #                       color=None,
     #                       average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)
-    plot_on_average(["D22", "D28", "D64"],
-                    picks=["D22-LPIF4", "D28-LPIO7", "D64-LAI6"],
-                    label_every=1, hemi='lh', rm_wm=False, color='red', size=1)
+    # plot_on_average(["D22", "D28", "D64"],
+    #                 picks=["D22-LPIF4", "D28-LPIO7", "D64-LAI6"],
+    #                 label_every=1, hemi='lh', rm_wm=False, color='red', size=1)
