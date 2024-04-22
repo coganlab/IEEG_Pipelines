@@ -302,7 +302,7 @@ def _(inst: mne.io.base.BaseRaw,
 
 
 @update.register
-def _(inst: mne.time_frequency._BaseTFR,
+def _(inst: mne.time_frequency.BaseTFR,
       layout: BIDSLayout, description: list[str] | str = None, verbose=None):
     if not hasattr(inst, 'filenames'):
         inst.filenames = inst.info['subject_info'].get('files', None)
