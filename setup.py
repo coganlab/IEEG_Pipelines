@@ -20,10 +20,11 @@ elif sys.platform == 'linux':
 else:
     raise NotImplementedError(f"Platform {sys.platform} not supported.")
 
+try:
+    _numpy_abs = op.relpath(_numpy_abs, getcwd())
+except ValueError:
+    pass
 
-_numpy_abs = op.relpath(_numpy_abs, getcwd())
-if op.ismount(_numpy_abs):
-    _numpy_abs = np.get_include()
 
 kwargs = dict(include_dirs=[_numpy_abs],
               # includes for numpy
