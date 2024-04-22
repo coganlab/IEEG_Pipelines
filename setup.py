@@ -3,7 +3,7 @@ from Cython.Build import cythonize
 import numpy as np
 from setuptools import setup, find_packages
 import os.path as op
-from os import getcwd, sep
+from os import getcwd
 import sys
 
 
@@ -56,7 +56,11 @@ extensions = [
 setup(
     name='ieeg',
     version='0.1',
-    packages=find_packages() + ['ieeg.calc.fast'],
+    packages=find_packages(
+        where='ieeg',
+        exclude=['*_tests*'],  # alternatively: `exclude=['additional*']`
+    ),
+    package_dir={"": "ieeg"},
     description='A Python package for iEEG data processing.',
     author='Aaron Earle-Richardson',
     author_email='ae166@duke.edu',

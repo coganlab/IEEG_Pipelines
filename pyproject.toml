@@ -13,8 +13,8 @@ dynamic = ["dependencies"]
 readme = "README.md"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["ieeg*"]
+where = ["ieeg"]
+exclude = ["_tests*"]
 
 [project.license]
 file = "LICENSE"
