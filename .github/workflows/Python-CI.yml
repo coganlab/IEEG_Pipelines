@@ -47,7 +47,14 @@ jobs:
             **/setup.py
             **/requirements.txt
             **/pyproject.toml
-      - run: pip install . -v
+      - if: matrix.os != 'windows-latest'
+        run: |
+          python -m pip install --upgrade pip
+          pip install . -v
+      - if: matrix.os == 'windows-latest'
+        run: |
+          python -m pip install --upgrade pip setuptools cython numpy wheel
+          python ./setup.py install -v
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
