@@ -57,10 +57,11 @@ setup(
     name='ieeg',
     version='0.1',
     packages=find_packages(
-        where='ieeg',
+        where='.',
+        include=['ieeg*'],
         exclude=['*_tests*'],  # alternatively: `exclude=['additional*']`
     ),
-    package_dir={"": "ieeg"},
+    package_dir={"": "."},
     description='A Python package for iEEG data processing.',
     author='Aaron Earle-Richardson',
     author_email='ae166@duke.edu',
