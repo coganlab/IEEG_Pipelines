@@ -47,7 +47,7 @@ jobs:
             **/setup.py
             **/requirements.txt
             **/pyproject.toml
-      - run: pip install -e . -v
+      - run: pip install . -v
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}

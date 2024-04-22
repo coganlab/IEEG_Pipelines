@@ -810,4 +810,5 @@ if __name__ == "__main__":
     # plot_gamma(raw)
     # plot_on_average(["D22", "D28", "D64"],
     #                 picks=["D22-LPIF4", "D28-LPIO7", "D64-LAI6"],
-    #                 label_every=1, hemi='lh', rm_wm=False, color='red', size=1)
+    #                 label_every=1, hemi='lh', rm_wm=False, color='red',
+    #                 size=1)
