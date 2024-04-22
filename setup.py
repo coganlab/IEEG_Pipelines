@@ -3,13 +3,30 @@ from Cython.Build import cythonize
 import numpy as np
 from setuptools import setup, find_packages
 import os.path as op
+from os import getcwd, sep
 import sys
 
 
 _numpy_abs = np.get_include()  # get the numpy include path
 
-npymath_path = op.join(_numpy_abs, '..', 'lib')
-npyrandom_path = op.join(_numpy_abs, '..', '..', 'random', 'lib')
+
+def fix_path(path):
+    dirs = list(reversed(path.split(sep)))
+    i = 0
+    j = 0
+    while i + j < len(dirs):
+        if dirs[i + j] == "..":
+            j += 1
+        elif j > 0:
+            dirs.pop(i + j)
+            dirs.pop(i)
+            j -= 1
+        else:
+            i += 1
+    return sep.join(reversed(dirs))
+
+npymath_path = fix_path(op.join(_numpy_abs, '..', 'lib'))
+npyrandom_path = fix_path(op.join(_numpy_abs, '..', '..', 'random', 'lib'))
 lib_path = [npymath_path, npyrandom_path]
 if sys.platform == 'win32':
     compile_args = ["/O2"]
@@ -18,10 +35,13 @@ elif sys.platform == 'linux':
 else:
     raise NotImplementedError(f"Platform {sys.platform} not supported.")
 
-# Read requirements.txt
-# with open(op.join('envs', 'requirements.txt')) as f:
-#     requirements = f.read().splitlines()
-kwargs = dict(include_dirs=[op.relpath(_numpy_abs)],  # includes for numpy
+
+_numpy_abs = op.relpath(_numpy_abs, getcwd())
+if op.ismount(_numpy_abs):
+    _numpy_abs = np.get_include()
+
+kwargs = dict(include_dirs=[_numpy_abs],
+              # includes for numpy
               library_dirs=lib_path,  # libraries to link
               libraries=["npyrandom", "npymath"],  # math library
               extra_compile_args=compile_args,  # compile optimization flag
@@ -50,7 +70,7 @@ extensions = [
 setup(
     name='ieeg',
     version='0.1',
-    packages=find_packages(),
+    packages=find_packages() + ['ieeg.calc.fast'],
     description='A Python package for iEEG data processing.',
     author='Aaron Earle-Richardson',
     author_email='ae166@duke.edu',
