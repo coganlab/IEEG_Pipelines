@@ -33,6 +33,11 @@ jobs:
     environment: release
     steps:
       - uses: actions/checkout@v4
+      - name: Cache data
+        uses: actions/cache@v2
+        with:
+        path: ${{ HOME }}/mne_data
+        key: "${{ runner.os }}-data-${{ hashFiles('**/lockfile') }}"
       # Xvfb/OpenGL
       - uses: pyvista/setup-headless-display-action@main
         with:
@@ -50,11 +55,11 @@ jobs:
       - if: matrix.os != 'windows-latest'
         run: |
           python -m pip install --upgrade pip
-          pip install . -v
+          pip install -e . -v
       - if: matrix.os == 'windows-latest'
         run: |
           python -m pip install --upgrade pip setuptools cython numpy wheel
-          python ./setup.py install -v
+          python ./setup.py install -e -v
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
