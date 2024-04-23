@@ -67,13 +67,8 @@ cpdef void mixupnd(cnp.ndarray arr, int obs_axis, float alpha=1.0,
     else:
         arr_in = arr
 
-    if seed == -1:
-        rng = RNG()
-        seed = rng.rng.next_uint32(rng.rng.state)
-    elif seed >= 0:
+    if seed >= 0:
         rng = RNG(seed)
-
-    if seed != -2:
         srand(seed)
 
     if arr.ndim == 2:
