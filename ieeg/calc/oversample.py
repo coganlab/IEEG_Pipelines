@@ -135,7 +135,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                [4.        , 5.        ],
                [7.        , 8.        ],
                [8.32102813, 5.98018098]])
-        >>> MinimumNaNSplit.oversample(arr, mixup, 0, seed=42) # doctest: +SKIP
+        >>> MinimumNaNSplit.oversample(arr, mixup, 0, seed=42)
         array([[1.        , 2.        ],
                [4.        , 5.        ],
                [7.        , 8.        ],
@@ -225,7 +225,7 @@ def oversample_nan(arr: np.ndarray, func: callable, axis: int = 1,
            [4.        , 5.        ],
            [7.        , 8.        ],
            [8.32102813, 5.98018098]])
-    >>> oversample_nan(arr, mixup, 0, seed=42) # doctest: +SKIP
+    >>> oversample_nan(arr, mixup, 0, seed=42)
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],

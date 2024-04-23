@@ -88,7 +88,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> mixup(arr, 0, seed=42)
-    >>> arr # doctest: +NORMALIZE_WHITESPACE +SKIP
+    >>> arr # doctest: +NORMALIZE_WHITESPACE
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],

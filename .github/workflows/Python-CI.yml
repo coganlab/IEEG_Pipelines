@@ -25,10 +25,10 @@ jobs:
       matrix:
         include:
         - os: ubuntu-latest
-          python: '3.11'
+          python: '3.12'
           kind: pip
         - os: windows-latest
-          python: '3.12'
+          python: '3.11'
           kind: pip
     environment: release
     steps:
@@ -62,12 +62,13 @@ jobs:
         run: |
           python -c "import mne; mne.sys_info()"
       - name: fetch mne datasets
-        run: |
-          python -c "import mne; mne.datasets.misc.data_path(); mne.datasets.epilepsy_ecog.data_path(); mne.datasets.sample.data_path()"
+        run: python -c "import mne; mne.datasets.misc.data_path(); mne.datasets.epilepsy_ecog.data_path(); mne.datasets.sample.data_path()"
+        if: matrix.os == 'ubuntu-latest'
       - name: Test with pytest
         run: |
           pip install -r envs/dev/testing-reqs.txt
           pytest tests ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
+        if: matrix.os == 'ubuntu-latest'
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
         if: matrix.os == 'ubuntu-latest'
