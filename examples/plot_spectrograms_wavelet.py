@@ -49,7 +49,7 @@ for epoch, t in zip(
     trials = trial_ieeg(good, epoch, times, preload=True)
     outliers_to_nan(trials, outliers=10)
     spec = wavelet_scaleogram(trials, n_jobs=1, decim=int(
-        good.info['sfreq'] / 100))
+        good.info['sfreq'] / 200))
     crop_pad(spec, "0.5s")
     if epoch == "onset":
         base = spec.copy()
@@ -61,4 +61,4 @@ for epoch, t in zip(
 # %%
 # Plot data
 # ---------
-chan_grid(spec_a, vmin=-2, vmax=20, cmap=parula_map)
+chan_grid(spec_a, vlim=(-2, 20), cmap=parula_map)
