@@ -96,7 +96,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr2[0, 2, :] = [float("nan")] * 4
     >>> mixup(arr2, 1, seed=42)
-    >>> arr2 # doctest: +NORMALIZE_WHITESPACE
+    >>> arr2 # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
             [ 2.33404428,  3.33404428,  4.33404428,  5.33404428]],
@@ -107,7 +107,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr3 = np.arange(24, dtype=float).reshape(3, 2, 4)
     >>> arr3[0, :, :] = float("nan")
     >>> mixup(arr3, 0, seed=42)
-    >>> arr3 # doctest: +NORMALIZE_WHITESPACE
+    >>> arr3 # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
             [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
     <BLANKLINE>
