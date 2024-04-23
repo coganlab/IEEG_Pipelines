@@ -37,7 +37,7 @@ for epoch, t in zip(('Fixation', 'Response'),  # epochs to extract
     # values greater than 10 standard deviations from the mean are set to NaN
     outliers_to_nan(trials, 10)
     spec = wavelet_scaleogram(trials,
-                              n_jobs=-2,
+                              n_jobs=1,
                               decim=20)
     # trim 0.5 seconds on the beginning and end of the data (edge artifacts)
     crop_pad(spec, "0.5s")
@@ -52,7 +52,7 @@ base = out[0]
 mask, pvals = time_perm_cluster(resp._data, base._data,
                                p_thresh=0.1,
                                ignore_adjacency=1,  # ignore channel adjacency
-                               n_perm=2000, n_jobs=-2)
+                               n_perm=2000, n_jobs=1)
 
 # %%
 # Plot the Time-Frequency Clusters

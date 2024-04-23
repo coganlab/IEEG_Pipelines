@@ -42,7 +42,7 @@ raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif', preload=True)
 # 180Hz, 240Hz)
 filt = line_filter(raw,
                    mt_bandwidth=10.,
-                   n_jobs=6,
+                   n_jobs=1,
                    filter_length='700ms',
                    verbose=10,
                    freqs=[60],
@@ -53,7 +53,7 @@ filt = line_filter(raw,
 figure_compare([raw, filt],
                labels=["Un", ""],
                avg=True,
-               n_jobs=6,
+               n_jobs=1,
                verbose=10,
                proj=True,
                fmax=250)

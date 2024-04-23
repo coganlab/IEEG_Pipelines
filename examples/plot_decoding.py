@@ -32,7 +32,7 @@ raw = mne.io.read_raw(misc_path / 'seeg' / 'sample_seeg_ieeg.fif',
 # Filter the data to remove line noise
 # ------------------------------------
 
-line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
+line_filter(raw, mt_bandwidth=10., n_jobs=1, copy=False, verbose=10,
             filter_length='700ms', freqs=[60], notch_widths=20)
 # line_filter(raw, mt_bandwidth=10., n_jobs=-1, copy=False, verbose=10,
 #             filter_length='7s', freqs=[60, 120, 180, 240],

@@ -48,7 +48,7 @@ for epoch, t in zip(
     times[1] = t[1] + 0.5
     trials = trial_ieeg(good, epoch, times, preload=True)
     outliers_to_nan(trials, outliers=10)
-    spec = wavelet_scaleogram(trials, n_jobs=-2, decim=int(
+    spec = wavelet_scaleogram(trials, n_jobs=1, decim=int(
         good.info['sfreq'] / 100))
     crop_pad(spec, "0.5s")
     if epoch == "onset":
