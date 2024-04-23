@@ -33,11 +33,6 @@ jobs:
     environment: release
     steps:
       - uses: actions/checkout@v4
-      - name: Cache data
-        uses: actions/cache@v2
-        with:
-        path: ${{ HOME }}/mne_data
-        key: "${{ runner.os }}-data-${{ hashFiles('**/lockfile') }}"
       # Xvfb/OpenGL
       - uses: pyvista/setup-headless-display-action@main
         with:
