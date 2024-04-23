@@ -7,4 +7,4 @@ dependencies:
   - pyvistaqt
   - ipympl
   - pip:
-    - ../../.
+    - -e ../../.
