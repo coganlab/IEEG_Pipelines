@@ -56,7 +56,7 @@ def test_line_filter(n_jobs):
 if os.path.isfile("spec.npy"):
     spec_check = np.load("spec.npy")
 else:
-    spec_check = np.load("ieeg/_tests/spec.npy")
+    spec_check = np.load("tests/spec.npy")
 
 
 def test_spect_1():

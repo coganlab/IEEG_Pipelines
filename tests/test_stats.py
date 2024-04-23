@@ -56,7 +56,7 @@ def test_permclust(func, expected):
 
 def test_permclust2():
     from ieeg.calc.stats import time_perm_cluster
-    base = np.load("ieeg/_tests/d100_basefield.npy")
+    base = np.load("tests/d100_basefield.npy")
     field = base[1]
     base = base[0]
     mask, pvals = time_perm_cluster(field, base, 0.1,
@@ -95,7 +95,7 @@ def test_stats_wavelet():
 
 def test_window_averaged_shuffle():
     from ieeg.calc.stats import window_averaged_shuffle
-    base = np.load("ieeg/_tests/d100_basefield.npy")
+    base = np.load("tests/d100_basefield.npy")
     field = base[1]
     base = base[0]
     p = window_averaged_shuffle(field, base, 10000, 1, 1)

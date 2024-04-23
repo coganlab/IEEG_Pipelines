@@ -1,8 +1,8 @@
 import numpy as np
-from ieeg.calc.fast.stats import mean_diff as _md
-from ieeg.calc.fast.mixup import mixupnd as cmixup, normnd as cnorm
-from ieeg.calc.fast.permgt import permgtnd as permgt
-from ieeg.calc.fast.concat import nan_concatinate
+from ieeg.calc._fast.ufuncs import mean_diff as _md
+from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
+from ieeg.calc._fast.permgt import permgtnd as permgt
+from ieeg.calc._fast.concat import nan_concatinate
 
 __all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays"]
 

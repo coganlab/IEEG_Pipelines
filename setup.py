@@ -37,13 +37,13 @@ kwargs = dict(include_dirs=[_numpy_abs],
 
 extensions = [
     Extension(
-        "ieeg.calc.fast.*",  # the module name exposed to python
-        ["ieeg/calc/fast/*.pyx"],  # the Cython source file
+        "ieeg.calc._fast.*",  # the module name exposed to python
+        ["ieeg/calc/_fast/*.pyx"],  # the Cython source file
         **kwargs
     ),
     Extension(
-        "ieeg.calc.fast.stats",  # the module name exposed to python
-        ["ieeg/calc/fast/stats.c"],  # the C source file
+        "ieeg.calc._fast.ufuncs",  # the module name exposed to python
+        ["ieeg/calc/_fast/ufuncs.c"],  # the C source file
         **kwargs
     ),
     Extension(
@@ -58,13 +58,12 @@ setup(
     version='0.1',
     packages=find_packages(
         where='.',
-        include=['ieeg*'],
-        exclude=['*_tests*'],  # alternatively: `exclude=['additional*']`
+        include=['ieeg', 'ieeg*'],
     ),
     package_dir={"": "."},
     description='A Python package for iEEG data processing.',
     author='Aaron Earle-Richardson',
     author_email='ae166@duke.edu',
     url='https://github.com/coganlab/IEEG_Pipelines',
-    ext_modules=cythonize(extensions, build_dir="build"),
+    ext_modules=cythonize(extensions),
 )

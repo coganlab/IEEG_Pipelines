@@ -306,7 +306,7 @@ static char nf_types[2] = {NPY_DOUBLE, NPY_DOUBLE};
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
-    "stats",
+    "ufuncs",
     NULL,
     -1,
     Meandiff_Methods,
@@ -316,7 +316,7 @@ static struct PyModuleDef moduledef = {
     NULL
 };
 
-PyMODINIT_FUNC PyInit_stats(void) {
+PyMODINIT_FUNC PyInit_ufuncs(void) {
     PyObject *m, *ufunc1, *ufunc2, *ufunc3, *d;
     import_array();
     import_ufunc();
