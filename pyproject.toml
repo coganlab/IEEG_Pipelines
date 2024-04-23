@@ -4,14 +4,14 @@ requires = ["setuptools", "wheel", "Cython", "numpy"]
 
 [project]
 name = "ieeg"
-version = "0.1"
+version = "0.2"
 description = "A Python package for iEEG data processing."
 authors = [
     {name = "Aaron Earle-Richardson", email = "ae166@duke.edu"}
 ]
 dynamic = ["dependencies"]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
 where = ["."]
