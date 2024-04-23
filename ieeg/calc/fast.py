@@ -118,7 +118,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     """
     if seed is None:
-        seed = np.random.randint(0, 2**32 - 1)
+        seed = np.random.randint(0, 2**16 - 1)
 
     cmixup(arr, obs_axis, alpha, seed)
 
