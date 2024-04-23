@@ -20,7 +20,13 @@ function ieegfilt = filt60(ieeg, fs)
     Wo = (f60 / (fs/2)); % bandwidth
     
     % Design the notch filter
-    [filtb, filta] = designNotchPeakIIR(CenterFrequency=Wo, QualityFactor=q,Response='notch');
+    if fs == 2048
+        filta = [1, -1.9483, 0.9818];
+        filtb = [0.9909, -1.9483, 0.9909];
+    else
+        [filtb, filta] = designNotchPeakIIR(CenterFrequency=Wo, ...
+            QualityFactor=q, Response='notch');
+    end
     
     % Apply the notch filter to each channel of the EEG signal
     ieegfilt = zeros(size(ieeg));
