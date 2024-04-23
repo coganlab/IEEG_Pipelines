@@ -67,7 +67,7 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
 
 
 def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
-          seed: int = -1) -> None:
+          seed: int = None) -> None:
     """Oversample by mixing two random non-NaN observations
 
     Parameters
@@ -88,7 +88,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
     >>> mixup(arr, 0, seed=42)
-    >>> arr # doctest: +NORMALIZE_WHITESPACE +SKIP
+    >>> arr # doctest: +NORMALIZE_WHITESPACE
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
@@ -117,6 +117,9 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
            [[16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
     """
+    if seed is None:
+        seed = np.random.randint(0, 2**32 - 1)
+
     cmixup(arr, obs_axis, alpha, seed)
 
 
