@@ -2,6 +2,20 @@
 
 import numpy as np
 from numpy.linalg import inv as inv  # Used in kalman filter
+from scipy.spatial.distance import pdist
+from scipy.spatial.distance import squareform
+from scipy.stats import norm
+from scipy.spatial.distance import cdist
+import math
+from sklearn.pipeline import Pipeline
+from sklearn import linear_model  # For Wiener Filter and Wiener Cascade
+from sklearn.svm import SVR  # For support vector regression (SVR)
+from sklearn.svm import SVC  # For support vector classification (SVM)
+from sklearn.decomposition import PCA  # For PCA decomposition (PCA - LDA)
+from sklearn import \
+    discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
+from sklearn.base import BaseEstimator
+from sklearn.metrics import accuracy_score
 
 # Used for naive bayes decoder
 try:
@@ -11,41 +25,17 @@ except ImportError:
         "\nWARNING: statsmodels is not installed. You will be unable to use "
         "the Naive Bayes Decoder")
     pass
-try:
-    import math
-except ImportError:
-    print(
-        "\nWARNING: math is not installed. You will be unable to use the Naive"
-        " Bayes Decoder")
-    pass
-try:
-    from scipy.spatial.distance import pdist
-    from scipy.spatial.distance import squareform
-    from scipy.stats import norm
-    from scipy.spatial.distance import cdist
-except ImportError:
-    print(
-        "\nWARNING: scipy is not installed. You will be unable to use the "
-        "Naive Bayes Decoder")
-    pass
 
-# Import scikit-learn (sklearn) if it is installed
 try:
-    from sklearn.pipeline import Pipeline
-    from sklearn import linear_model  # For Wiener Filter and Wiener Cascade
-    from sklearn.svm import SVR  # For support vector regression (SVR)
-    from sklearn.svm import SVC  # For support vector classification (SVM)
-    from sklearn.decomposition import PCA  # For PCA decomposition (PCA - LDA)
-    from sklearn import \
-        discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
-    from sklearn.base import BaseEstimator
-    from sklearn.metrics import accuracy_score
+    from sklearnex import patch_sklearn
+
+    # The names match scikit-learn estimators
+    patch_sklearn(["PCA"])
 except ImportError:
     print(
-        "\nWARNING: scikit-learn is not installed. You will be unable to use"
-        "the Wiener Filter or Wiener Cascade Decoders")
+        "\nWARNING: sklearnex is not installed. You will be unable to use the"
+        "PCA decoder acceleration")
     pass
-
 # Import XGBoost if the package is installed
 try:
     import xgboost as xgb  # For xgboost
@@ -70,14 +60,6 @@ except ImportError:
     print(
         "\nWARNING: Keras package is not installed. You will be unable to use"
         "all neural net decoders")
-    pass
-
-try:
-    from sklearn.preprocessing import OneHotEncoder
-except ImportError:
-    print(
-        "\nWARNING: Sklearn OneHotEncoder not installed. You will be unable to"
-        " use XGBoost for Classification")
     pass
 
 
@@ -1789,10 +1771,21 @@ class PcaLdaClassification(BaseEstimator):
 
     def __init__(self, explained_variance=0.8, da_type='lda', PCA_kwargs={},
                  DA_kwargs={}):
-        self.da_type = da_type
-        self.PCA_kwargs = PCA_kwargs
-        self.PCA_kwargs['n_components'] = explained_variance
-        self.DA_kwargs = DA_kwargs
+        # choose discriminant type
+        if (da_type == 'lda'):
+            # linear discriminant analysis
+            da_model = da.LinearDiscriminantAnalysis(**DA_kwargs)
+        else:
+            # Quadratic discriminant analysis
+            da_model = da.QuadraticDiscriminantAnalysis(**DA_kwargs)
+        PCA_kwargs['n_components'] = explained_variance
+        # Create a pipeline classifier
+        self.model = Pipeline(steps=[
+            ('pca', PCA(**PCA_kwargs)),
+            ('discriminant', da_model)])
+
+        # set default outputs to numpy
+        self.model.set_output(transform="default")
 
     def fit(self, X_flat_train, y_train):
 
@@ -1810,23 +1803,8 @@ class PcaLdaClassification(BaseEstimator):
             This is the outputs that are being predicted
         """
 
-        # choose discriminant type
-        if (self.da_type == 'lda'):
-            # linear discriminant analysis
-            da_model = da.LinearDiscriminantAnalysis(**self.DA_kwargs)
-        else:
-            # Quadratic discriminant analysis
-            da_model = da.QuadraticDiscriminantAnalysis(**self.DA_kwargs)
-
-        # Create a pipeline classifier
-        pca_lda = Pipeline(steps=[
-            ('pca', PCA(**self.PCA_kwargs)),
-            ('discriminant', da_model)])
-
         # Fit the model
-        pca_lda.fit(X_flat_train, y_train)
-
-        self.model = pca_lda
+        self.model.fit(X_flat_train, y_train)
 
     def predict(self, X_flat_test):
 

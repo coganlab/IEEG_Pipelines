@@ -269,7 +269,7 @@ def get_grey_matter(subjects: Sequence[str]) -> set[str]:
 
 
 def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
-                    subj_dir: PathLike = None, rm_wm: bool = True,
+                    subj_dir: PathLike = None, rm_wm: bool = False,
                     picks: list[int | str, ...] = None, surface: str = 'pial',
                     hemi: str = 'split', color: matplotlib.colors = (1, 1, 1),
                     size: float = 0.35, fig: Brain = None,
@@ -368,8 +368,12 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
                 picks = [p - len(new.ch_names) for p in
                          picks[len(these_picks):]]
             elif isinstance(picks[0], str):
-                these_picks = [s[6:] for s in picks if s[:5] in
-                               new['subject_info']['his_id']]
+                if '-' in picks[0]:
+                    these_picks = [s.split('-')[1] for s in picks if
+                                   s.split('-')[0] in new[
+                                       'subject_info']['his_id']]
+                else:
+                    these_picks = [s for s in picks if s in new.ch_names]
         elif picks is not None:
             raise TypeError(picks)
 
@@ -525,6 +529,9 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
                     alpha=transparency, background=background, surf=surface,
                     hemi=hemi, show=show, units=units)
 
+    if isinstance(color, str):
+        color = matplotlib.colors.to_rgb(color)
+
     # Set the title if provided
     if title is not None:
         mne.viz.set_3d_title(fig, title, size=40)
@@ -545,8 +552,17 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     pos = {k: v for k, v in montage.get_positions()['ch_pos'].items()}
 
     # Default montage positions are in m, whereas plotting functions assume mm
-    left = {k: p for k, p in pos.items() if k.startswith('L')}
-    right = {k: p for k, p in pos.items() if k.startswith('R')}
+    left = {}
+    right = {}
+    for k, v in pos.items():
+        if k.startswith('L'):
+            left[k] = v
+        elif k.startswith('R'):
+            right[k] = v
+        elif v[0] < 0:
+            left[k] = v
+        else:
+            right[k] = v
 
     if left and hemi != 'rh':
         _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())),
@@ -618,7 +634,7 @@ def _group_channels(info, groups: dict = None) -> dict:
 
 
 def _add_labels(fig, info, sub, every, hemi, lr, **kwargs):
-    names = info.ch_names[slice(every - 1, -1, every)]
+    names = info.ch_names[slice(every - 1, None, every)]
 
     if not hemi == 'both':
         for hems, pos in enumerate(lr):
@@ -759,7 +775,7 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
 
 
 if __name__ == "__main__":
-    from ieeg.io import get_data
+    from ieeg.io import get_data, raw_from_layout
     from os import path
 
     HOME = path.expanduser("~")
@@ -772,7 +788,7 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 59
+    sub_num = 22
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
     sub_pad = "D" + str(sub_num).zfill(4)
@@ -785,10 +801,14 @@ if __name__ == "__main__":
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
 
-    # brain = plot_subj("D29")
-    fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
-                          transparency=0.4,
-                          picks=list(range(28)) + list(range(52, 176)),
-                          color=None,
-                          average="D79", background=(0, 0.4, 0.5))
+    brain = plot_subj("D5")
+    # fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
+    #                       transparency=0.4,
+    #                       picks=list(range(28)) + list(range(52, 176)),
+    #                       color=None,
+    #                       average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)
+    # plot_on_average(["D22", "D28", "D64"],
+    #                 picks=["D22-LPIF4", "D28-LPIO7", "D64-LAI6"],
+    #                 label_every=1, hemi='lh', rm_wm=False, color='red',
+    #                 size=1)

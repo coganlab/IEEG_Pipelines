@@ -6,7 +6,6 @@ on:
     branches: [ main ]
 
 jobs:
-
   pytest:
     name: '${{ matrix.os }} / ${{ matrix.kind }} / ${{ matrix.python }}'
     timeout-minutes: 70
@@ -25,15 +24,13 @@ jobs:
     strategy:
       matrix:
         include:
-        - os: windows-latest
-          python: '3.10'
-          kind: conda
         - os: ubuntu-latest
-          python: '3.11'
+          python: '3.12'
           kind: pip
         - os: windows-latest
           python: '3.11'
-          kind: mamba
+          kind: pip
+    environment: release
     steps:
       - uses: actions/checkout@v4
       # Xvfb/OpenGL
@@ -42,40 +39,36 @@ jobs:
           qt: true
           pyvista: false
       # Python (if pip)
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: install pip requirements
+          cache: 'pip'
+          cache-dependency-path: |
+            **/setup.py
+            **/requirements.txt
+            **/pyproject.toml
+      - if: matrix.os != 'windows-latest'
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flake8 pytest tqdm pyqt5-tools
-          if [ -f envs/requirements.txt ]; then pip install -r envs/requirements.txt; fi
-        if: startswith(matrix.kind, 'pip')
-      # Python (if conda)
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
-          activate-environment: test
-          environment-file: envs/environment.yml
-          python-version: ${{ matrix.python-version }}
-          auto-activate-base: false
-          use-mamba: ${{ matrix.kind != 'conda' }}
-        if: ${{ !startswith(matrix.kind, 'pip') }}
+          pip install -e . -v
+      - if: matrix.os == 'windows-latest'
+        run: |
+          python -m pip install --upgrade pip setuptools cython numpy wheel
+          python ./setup.py develop -v
       # Check Qt on non-notebook
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
       - name: List packages
         run: |
-          conda list
           python -c "import mne; mne.sys_info()"
       - name: fetch mne datasets
-        run: |
-          python -c "import mne; mne.datasets.misc.data_path(); mne.datasets.epilepsy_ecog.data_path(); mne.datasets.sample.data_path()"
+        run: python -c "import mne; mne.datasets.misc.data_path(); mne.datasets.epilepsy_ecog.data_path(); mne.datasets.sample.data_path()"
+        if: matrix.os == 'ubuntu-latest'
       - name: Test with pytest
         run: |
           pip install -r envs/dev/testing-reqs.txt
-          pytest ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
+          pytest tests ieeg -v --cov=. --doctest-modules --pycodestyle --cov-report xml
+        if: matrix.os == 'ubuntu-latest'
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
-        if: matrix.kind == 'mamba'
+        if: matrix.os == 'ubuntu-latest'

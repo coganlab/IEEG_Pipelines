@@ -10,7 +10,7 @@ import mne
 import os
 from ieeg.io import save_derivative, raw_from_layout
 from ieeg.mt_filter import line_filter
-from ieeg.viz.utils import figure_compare
+from ieeg.viz.ensemble import figure_compare
 from bids import BIDSLayout
 
 # %%

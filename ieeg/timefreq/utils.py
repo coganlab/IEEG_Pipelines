@@ -145,8 +145,7 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
         Getting epoch for 90760-93761
     0 bad epochs dropped
     Data is self data: False
-    Not setting metadata
-    <EpochsTFR | time : [-1.000000, 2.000000], freq : [2.079716, 1064.814640...
+    <TFR from Epochs, unknown method | 2 epochs × 98 channels × 46 freqs × ...
 
     """
     data = inst.get_data(copy=False)
