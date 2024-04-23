@@ -17,7 +17,7 @@ function ieegfilt = filt60(ieeg, fs)
 %
     f60 = 60; % Power line frequency
     q = 10; % Quality factor
-    bw = (f60 / (fs/2)) / q; % bandwidth
+    bw = round((f60 / (fs/2)) / q); % bandwidth
     
     % Design the notch filter
     [filtb, filta] = iircomb(round(fs / f60), bw, 'notch');
