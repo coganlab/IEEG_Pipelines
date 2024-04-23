@@ -4,7 +4,7 @@ Multitaper spectrogram plot
 
 Below is a code sample for plotting spectrograms
 """
-from ieeg.viz import utils
+from ieeg.viz.ensemble import chan_grid
 from ieeg.timefreq.multitaper import spectrogram
 from ieeg.timefreq.utils import crop_pad
 from ieeg.navigate import channel_outlier_marker
@@ -44,4 +44,4 @@ crop_pad(spectra, "0.5s")
 # %%
 # Plot data
 # ---------
-utils.chan_grid(spectra, vmin=0, vmax=2, cmap=parula_map)
+chan_grid(spectra, vmin=0, vmax=2, cmap=parula_map)

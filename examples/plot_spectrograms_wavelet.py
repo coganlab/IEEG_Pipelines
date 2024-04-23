@@ -4,7 +4,7 @@ Morlet Wavelet spectrogram plot
 
 Below is a code sample for plotting wavelet spectrograms
 """
-from ieeg.viz import utils
+from ieeg.viz.ensemble import chan_grid
 from bids import BIDSLayout
 from ieeg.navigate import channel_outlier_marker, trial_ieeg, outliers_to_nan
 from ieeg.io import raw_from_layout
@@ -61,4 +61,4 @@ for epoch, t in zip(
 # %%
 # Plot data
 # ---------
-utils.chan_grid(spec_a, vmin=-2, vmax=20, cmap=parula_map)
+chan_grid(spec_a, vmin=-2, vmax=20, cmap=parula_map)
