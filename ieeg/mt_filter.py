@@ -124,7 +124,7 @@ def line_filter(raw: mt_utils.Signal, fs: float = None, freqs: ListNum = 60.,
     else:
         filt = raw
 
-    x = filt.get_data("data").copy()
+    x = filt.get_data("data")
     x = mt_utils._check_filterable(x, 'notch filtered', 'notch_filter')
     if freqs is not None:
         freqs = np.atleast_1d(freqs)

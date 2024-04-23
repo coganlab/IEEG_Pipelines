@@ -323,12 +323,12 @@ def spectra(x: np.ndarray, dpss: np.ndarray, sfreq: float,
     freqs = fft.rfftfreq(n_fft, 1. / sfreq)
 
     # The following is equivalent to this, but uses less memory:
-    # x_mt = fftpack.fft(x[:, np.newaxis, :] * dpss, n=n_fft)
-    n_tapers = dpss.shape[0] if dpss.ndim > 1 else 1
-    x_mt = np.zeros(x.shape[:-1] + (n_tapers, len(freqs)),
-                    dtype=np.complex128)
-    for idx, sig in enumerate(x):
-        x_mt[idx] = fft.rfft(sig[..., np.newaxis, :] * dpss, n=n_fft)
+    x_mt = fft.rfft(x[:, np.newaxis, :] * dpss, n=n_fft, workers=1)
+    # n_tapers = dpss.shape[0] if dpss.ndim > 1 else 1
+    # x_mt = np.zeros(x.shape[:-1] + (n_tapers, len(freqs)),
+    #                 dtype=np.complex128)
+    # for idx, sig in enumerate(x):
+    #     x_mt[idx] = fft.rfft(sig[..., np.newaxis, :] * dpss, n=n_fft)
     # Adjust DC and maybe Nyquist, depending on one-sided transform
     x_mt[..., 0] /= np.sqrt(2.)
     if n_fft % 2 == 0:
