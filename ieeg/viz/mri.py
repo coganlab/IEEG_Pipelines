@@ -722,36 +722,38 @@ def _(info: mne.Info, frame: str):
     info.set_montage(montage)
 
 
-def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
-               picks: list[str] = None) -> OrderedDict[str, list[str]]:
+def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
+               atlas: str = ".a2009s", picks: list[str] = None
+               ) -> OrderedDict[str, list[str]]:
     """Generates the labels for the electrodes
 
     Parameters
     ----------
     info : mne.Info
         The subject to get the labels for
+    sub : str, optional
+        The subject to get the labels for, by default None
     subj_dir : PathLike, optional
         The subjects directory, by default None
     picks : list[str | int], optional
         The channels to plot, by default None
+    atlas : str, optional
+        The atlas to use, by default ".a2009s"
 
     Returns
     -------
     dict[str, list]
         The labels for the electrodes
     """
-
     sub = get_sub(info) if sub is None else sub
     subj_dir = get_sub_dir(subj_dir)
     montage = info.get_montage()
     force2frame(montage, 'mri')
     # aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
-    labels = get_elec_volume_labels(sub, subj_dir, 10)
-
+    labels = get_elec_volume_labels(sub, subj_dir, 10, atlas)
     new_labels = OrderedDict()
     if picks is None:
         picks = info.ch_names
-
     bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
     for p in picks:
         i = 2
@@ -759,7 +761,6 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: PathLike = None,
         if label[0] not in bad_words:
             new_labels[p] = label[0]
             continue
-
         while not ((not any(w in label[i] for w in bad_words)) and
                    label[i + 1] > 0.05):
             if (i + 2) <= len(label.T):  # end of labels

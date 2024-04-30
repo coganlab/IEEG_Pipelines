@@ -61,8 +61,8 @@ Version 3.10 supported
 2. Run:
 
     ```bash
-    python -m venv <PATH TO VENV>/preprocess
-    source activate <PATH TO VENV>/preprocess
+    python -m venv <PATH TO VENV>/<YOUR_NAME>
+    source activate <PATH TO VENV>/<YOUR_NAME>
     python -m pip install ieeg
     ```
    

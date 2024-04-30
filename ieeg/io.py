@@ -314,10 +314,28 @@ def _(inst: mne.time_frequency.BaseTFR,
         update(fname, channels=goods, status='good', verbose=None)
 
 
-def get_elec_volume_labels(subj: str, subj_dir: PathLike, radius: int = 3
-                           ) -> pd.DataFrame:
+def get_elec_volume_labels(subj: str, subj_dir: str, radius: int = 10,
+                           atlas: str = ".a2009s") -> pd.DataFrame:
+    """Gets the electrode volume labels for a subject.
+
+    Parameters
+    ----------
+    subj : str
+        The subject to get the labels for.
+    subj_dir : str
+        The directory of the subject.
+    radius : int, optional
+        The radius of the volume, by default 10
+    atlas : str, optional
+        The atlas to use, by default ".a2009s"
+
+    Returns
+    -------
+    pd.DataFrame
+        The labels of the electrode volume.
+    """
     filename = op.join(subj_dir, subj, "elec_recon",
-                       f"{subj}_elec_location_radius_{radius}mm_aparc.a2009s+"
+                       f"{subj}_elec_location_radius_{radius}mm_aparc{atlas}+"
                        f"aseg.mgz")
     if op.exists(filename + "_brainshifted.csv"):
         filename += "_brainshifted.csv"
