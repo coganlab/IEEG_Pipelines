@@ -24,6 +24,8 @@ if sys.platform == 'win32':
     compile_args = ["/O2"]
 elif sys.platform == 'linux':
     compile_args = ["-O3"]
+elif sys.platform == 'darwin':
+    compile_args = ["-O3"]
 else:
     raise NotImplementedError(f"Platform {sys.platform} not supported.")
 
@@ -77,7 +79,7 @@ extensions += [
 
 setup(
     name='ieeg',
-    version='0.4',
+    version='0.5',
     packages=find_packages(
         where='.',
         include=['ieeg*'],

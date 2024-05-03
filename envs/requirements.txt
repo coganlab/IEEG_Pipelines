@@ -1,5 +1,4 @@
 bids>=0.0
-EDFlib-Python
 mne
 mne-bids
 numpy

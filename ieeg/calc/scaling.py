@@ -6,8 +6,6 @@ from mne.epochs import BaseEpochs
 from mne.time_frequency import AverageTFR, EpochsTFR
 from mne.utils import logger, verbose
 
-TFR = EpochsTFR | AverageTFR
-
 
 def _log_rescale(baseline, mode='mean'):
     """Log the rescaling method."""
@@ -126,7 +124,7 @@ def _(line: BaseEpochs, baseline: BaseEpochs,
 
 @rescale.register
 @verbose
-def _(line: TFR, baseline: TFR,
+def _(line: EpochsTFR, baseline: EpochsTFR,
       mode: str = 'mean', copy: bool = False, picks: list = 'data',
       verbose=None) -> Epochs:
     """Rescale (baseline correct) Epochs"""
@@ -138,18 +136,32 @@ def _(line: TFR, baseline: TFR,
 
     # Average the baseline across epochs
     basedata = baseline.pick(picks)._data
-    axes = list(range(basedata.ndim))
-
-    # within channels
-    axes.pop(1)
 
     # If time frequency then within frequency
-    if isinstance(line, EpochsTFR):
-        axes = (0, 3)
-    elif isinstance(line, AverageTFR):
-        axes = 2
-    else:
-        axes = tuple(axes)
+    axes = (0, 3)
+
+    line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
+                                     False, axes)
+    return line
+
+
+@rescale.register
+@verbose
+def _(line: AverageTFR, baseline: AverageTFR,
+      mode: str = 'mean', copy: bool = False, picks: list = 'data',
+      verbose=None) -> Epochs:
+    """Rescale (baseline correct) Epochs"""
+    if copy:
+        line: Epochs = line.copy()
+    if verbose is not False:
+        msg = _log_rescale(baseline, mode)
+        logger.info(msg)
+
+    # Average the baseline across epochs
+    basedata = baseline.pick(picks)._data
+
+    # If time frequency then within frequency
+    axes = 2
 
     line.pick(picks)._data = rescale(line.pick(picks)._data, basedata, mode,
                                      False, axes)
