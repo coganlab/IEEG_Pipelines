@@ -15,41 +15,50 @@ raw = mne.io.read_raw(misc_path / "seeg" / "sample_seeg_ieeg.fif")
 
 import pytest
 
-@pytest.mark.parametrize(
-    'args, expected', [
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'labels_every': 1}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'hemi': 'split'}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'hemi': 'lh'}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'size': 0.2}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'background': 'red'}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'transparency': 0.2}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'color': (1, 0, 0)}, None),
-    # Generates a plot when show=True but yields error
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'picks':[0,1,2,3,4]}, None),
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'hemi': 'rh'}, None),
-    # Fails ompletely
-    ({'inst': raw, 'subj_dir': subjects_dir, 'show': False, 'no_wm': True}, None),
-])
-def test_plot_seeg_inst(args, expected):
-    from ieeg.viz.mri import plot_subj
-    plot_subj(**args)
 
 @pytest.mark.parametrize(
     'args, expected', [
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'label_every': 1}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'hemi': 'both'}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'hemi': 'split'}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'hemi': 'lh'}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'size': 0.2}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'background': 'red'}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'transparency': 0.2}, None),
-    ({'sigs': raw, 'subj_dir': subjects_dir, 'show': False, 'color': (1, 0, 0)}, None),
+    ({}, None),
+    ({'labels_every': 1}, None),
+    ({'hemi': 'split'}, None),
+    ({'hemi': 'lh'}, None),
+    ({'size': 0.2}, None),
+    ({'background': 'red'}, None),
+    ({'transparency': 0.2}, None),
+    ({'color': (1, 0, 0)}, None),
+    ({'picks':['LSTG 1', 'LSTG 2', 'LSTG 3', 'LSTG 4', 'RAHP 1', 'RAHP 2', 'RAHP 3', 'RAHP 4', 'RAHP 5', 'RAHP 6']}, None),
+    ({'picks':['LSTG 1', 'LSTG 2', 'LSTG 3', 'LSTG 4'], 'hemi':'rh'}, None),
+    # Generates a plot when show=True but yields error in labeling
+    ({'picks':[0,1,2,3,4]}, None),
+    ({'hemi': 'rh'}, None),
+    # Fails bc no wm parcellation file
+    # ({'no_wm': True}, None),
+])
+def test_plot_seeg_inst(args, expected):
+    from ieeg.viz.mri import plot_subj
+    plot_subj(inst=raw, subj_dir=subjects_dir, show=False, **args)
+
+
+@pytest.mark.parametrize(
+    'args, expected', [
+    ({}, None),
+    ({'label_every': 1}, None),
+    ({'hemi': 'both'}, None),
+    ({'hemi': 'split'}, None),
+    ({'hemi': 'lh'}, None),
+    ({'size': 0.2}, None),
+    ({'background': 'red'}, None),
+    ({'transparency': 0.2}, None),
+    ({'color': (1, 0, 0)}, None),
+    ({'picks':['LSTG 1', 'LSTG 2', 'LSTG 3', 'LSTG 4', 'RAHP 1', 'RAHP 2', 'RAHP 3', 'RAHP 4', 'RAHP 5', 'RAHP 6']}, None),
+    ({'picks':['LSTG 1', 'LSTG 2', 'LSTG 3', 'LSTG 4'], 'hemi':'rh'}, None),
+    # Works surprisingly
+    ({'picks':[0,1,2,3,4]}, None),
+    ({'hemi': 'rh'}, None),
 ])
 def test_plot_avg(args, expected):
     from ieeg.viz.mri import plot_on_average
-    plot_on_average(**args)
+    plot_on_average(sigs=raw, subj_dir=subjects_dir, show=False, **args)
 
 
 # if on windows, finalize closing the vtk window
