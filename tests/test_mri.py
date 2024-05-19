@@ -11,6 +11,7 @@ os.environ["MNE_3D_OPTION_ANTIALIAS"] = "false"
 if not os.path.exists(os.path.join(subjects_dir, "1")):
     os.symlink(os.path.join(subjects_dir, 'sample'),
                os.path.join(subjects_dir, '1'))
+
 raw = mne.io.read_raw(misc_path / "seeg" / "sample_seeg_ieeg.fif")
 
 import pytest
@@ -29,7 +30,7 @@ import pytest
     ({'picks':['LSTG 1', 'LSTG 2', 'LSTG 3', 'LSTG 4', 'RAHP 1', 'RAHP 2', 'RAHP 3', 'RAHP 4', 'RAHP 5', 'RAHP 6']}, None),
     ({'picks':['LSTG 1', 'LSTG 2', 'LSTG 3', 'LSTG 4'], 'hemi':'rh'}, None),
     # Generates a plot when show=True but yields error in labeling
-    ({'picks':[0,1,2,3,4]}, None),
+    ({'picks':[0,1,2,3,4,5,6,7,8]}, None),
     ({'hemi': 'rh'}, None),
     # Fails bc no wm parcellation file
     # ({'no_wm': True}, None),
