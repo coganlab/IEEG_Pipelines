@@ -24,11 +24,14 @@ jobs:
     strategy:
       matrix:
         include:
-        - os: ubuntu-latest
+        - os: windows-latest
           python: '3.12'
           kind: pip
-        - os: windows-latest
+        - os: macos-latest
           python: '3.11'
+          kind: pip
+        - os: ubuntu-latest
+          python: '3.10'
           kind: pip
     environment: release
     steps:

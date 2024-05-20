@@ -38,30 +38,34 @@ Version 3.10 supported
 #### Conda
 
 1. Install Anaconda
-2. Clone this repository
-3. Open a terminal and `cd` into this repo's `Python` directory
-4. Run this command:
+2. Create an anaconda environment with python and pip packages installed
+    
+     ```bash
+     conda create -n <YOUR_NAME> python<3.13 pip
+     ```
+3. Activate the environment
 
     ```bash
-    conda env create -f envs/environment.yml
+    conda activate <YOUR_NAME>
+    ```
+   
+4. Run
+
+    ```bash
+    pip install ieeg
     ```
 
-5. When it is finished installing run `conda activate preprocess` to activate the environment
-
-#### Pip
+#### [Pip](https://pypi.org/project/ieeg/)
 
 1. Install Python
-2. Clone this repository
-3. Open a terminal and `cd` into this repo's `Python` directory
-4. Run:
+2. Run:
 
     ```bash
-    python -m venv <PATH TO VENV>/preprocess
-    python -m pip install -r envs/requirements.txt -e <PATH TO VENV>/preprocess
+    python -m venv <PATH TO VENV>/<YOUR_NAME>
+    source activate <PATH TO VENV>/<YOUR_NAME>
+    python -m pip install ieeg
     ```
-
-5. When it is finished installing run `source activate <PATH TO VENV>/preprocess` to activate the environment
-
+   
 ## Usage
 
 ### MATLAB (INCOMPLETE)
@@ -72,12 +76,12 @@ Version 3.10 supported
 
 ### Python ([INCOMPLETE](https://github.com/orgs/coganlab/projects/7))
 
-1. Load BIDS files from BIDS directory using `pybids`
+1. Load BIDS files from BIDS directory using [`pybids`](https://bids-standard.github.io/pybids/)
     
     ```python
     from bids import BIDSLayout
     import ieeg
-    layout = BIDSLayout(BIDS_root)
+    layout = BIDSLayout(<BIDS_root>)
     data = ieeg.io.raw_from_layout(layout)
     ```
 2. [Perform line noise filtering](https://ieeg-pipelines.readthedocs.io/en/latest/auto_examples/plot_clean.html)

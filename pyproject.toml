@@ -4,18 +4,18 @@ requires = ["setuptools", "wheel", "Cython", "numpy"]
 
 [project]
 name = "ieeg"
-version = "0.2"
 description = "A Python package for iEEG data processing."
 authors = [
-    {name = "Aaron Earle-Richardson", email = "ae166@duke.edu"}
+    {name = "Aaron Earle-Richardson", email = "ae166@duke.edu"},
+    {name = "Raymond Xiong", email = "raymond.xiong@duke.edu"}
 ]
-dynamic = ["dependencies"]
+dynamic = ["dependencies", "version"]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ieeg", "ieeg*"]
+include = ["ieeg*"]
 
 [project.license]
 file = "LICENSE"

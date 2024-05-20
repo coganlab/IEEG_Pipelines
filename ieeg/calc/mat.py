@@ -627,7 +627,7 @@ class LabeledArray(np.ndarray):
         all_idx = ([slice(None) if i != levels[0] else sl for i in
                     range(self.ndim)] for sl in range(self.shape[levels[0]]))
 
-        arrs = [self.__array__()[*idx] for idx in all_idx]
+        arrs = [self.__array__()[tuple(idx)] for idx in all_idx]
         new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
 
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
