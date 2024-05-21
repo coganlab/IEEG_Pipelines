@@ -634,30 +634,30 @@ def _group_channels(info, groups: dict = None) -> dict:
 
 
 def _add_labels(fig, info, sub, every, hemi, lr, **kwargs):
-    if len(info.ch_names) >= every:
-        names = info.ch_names[slice(every - 1, None, every)]
+    if len(info.ch_names) < every:
+        return
+    names = info.ch_names[slice(every - 1, None, every)]
+    if not hemi == 'both':
+        for hems, pos in enumerate(lr):
+            if (not pos) or \
+                    (hemi == 'lh' and hems == 1) or \
+                    (hemi == 'rh' and hems == 0):
+                continue
 
-        if not hemi == 'both':
-            for hems, pos in enumerate(lr):
-                if (not pos) or \
-                        (hemi == 'lh' and hems == 1) or \
-                        (hemi == 'rh' and hems == 0):
-                    continue
-                
-                plt_names = filter(lambda x: x.startswith(['L', 'R'][hems]), names)
-                plt_names = [f'{sub}-{n}' for n in plt_names]
-                positions = np.array([pos[n.split("-")[1]] for n in plt_names])
-                if hemi == 'split':
-                    fig.plotter.subplot(0, hems)
-                fig.plotter.add_point_labels(positions, plt_names, **kwargs)
-        else:
-            pos = {}
-            for hem in lr:
-                if hem:
-                    pos.update(hem)
-            plt_names = [f'{sub}-{n}' for n in names]
-            positions = np.array([pos[name] for name in names])
+            plt_names = filter(lambda x: x.startswith(['L', 'R'][hems]), names)
+            plt_names = [f'{sub}-{n}' for n in plt_names]
+            positions = np.array([pos[n.split("-")[1]] for n in plt_names])
+            if hemi == 'split':
+                fig.plotter.subplot(0, hems)
             fig.plotter.add_point_labels(positions, plt_names, **kwargs)
+    else:
+        pos = {}
+        for hem in lr:
+            if hem:
+                pos.update(hem)
+        plt_names = [f'{sub}-{n}' for n in names]
+        positions = np.array([pos[name] for name in names])
+        fig.plotter.add_point_labels(positions, plt_names, **kwargs)
 
 
 def subject_to_info(subject: str, subjects_dir: PathLike = None,
