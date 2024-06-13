@@ -37,8 +37,13 @@ def figure_compare(raw: list[Raw], labels: list[str], avg: bool = True,
     for title, data in zip(labels, raw):
         title: str
         data: Raw
-        psd = data.compute_psd(n_jobs=n_jobs, **kwargs,
-                               n_fft=int(data.info['sfreq']))
+        kwargs['method'] = kwargs.get('method', 'welch')
+        if kwargs['method'] == 'multitaper':
+            kwargs['adaptive'] = kwargs.get('adaptive', True)
+            kwargs['bandwidth'] = kwargs.get('bandwidth', 10)
+        elif kwargs['method'] == 'welch':
+            kwargs['n_fft'] = kwargs.get('n_fft', int(data.info['sfreq']))
+        psd = data.compute_psd(n_jobs=n_jobs, **kwargs)
         fig = psd.plot(average=avg, spatial_colors=avg)
         fig.subplots_adjust(top=0.85)
         fig.suptitle('{}filtered'.format(title), size='xx-large',
