@@ -764,8 +764,8 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
             new_labels[p] = label[0]
             continue
         while not ((not any(w in label[i] for w in bad_words)) and
-                   label[i + 1] > 0.05):
-            if (i + 2) <= len(label.T):  # end of labels
+                   float(label[i + 1]) > 0.05):
+            if (i + 2) >= len(label.T):  # end of labels
                 i = 0
                 break
             elif label[i + 2].isspace():  # empty label
@@ -791,10 +791,15 @@ if __name__ == "__main__":
                      overwrite=True)
     mne.set_log_level("INFO")
     TASK = "SentenceRep"
-    sub_num = 22
+    sub_num = 29
     layout = get_data(TASK, root=LAB_root)
-    subj_dir = op.join(LAB_root, "ECoG_Recon_Full")
+    subj_dir = op.join(LAB_root,"..", "ECoG_Recon")
     sub_pad = "D" + str(sub_num).zfill(4)
+    info = subject_to_info(f"D{sub_num}", subj_dir)
+    labels = gen_labels(info, sub=f"D{sub_num}", subj_dir=subj_dir, atlas=".BN_atlas")
+    import scipy.io as sio
+    mat = sio.loadmat('d29ChanInfo')['d29chanInfo'][0]
+
     # sub = "D{}".format(sub_num)
 
     # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
@@ -804,7 +809,7 @@ if __name__ == "__main__":
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
 
-    brain = plot_subj("D5")
+    # brain = plot_subj("D5")
     # fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
     #                       transparency=0.4,
     #                       picks=list(range(28)) + list(range(52, 176)),
