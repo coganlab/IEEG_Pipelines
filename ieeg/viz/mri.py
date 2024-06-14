@@ -382,7 +382,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
 
         if rm_wm:
             these_picks = pick_no_wm(these_picks, gen_labels(
-                new, subj, subj_dir, new.ch_names))
+                new, subj, subj_dir, picks=new.ch_names))
 
         if len(these_picks) == 0:
             continue
