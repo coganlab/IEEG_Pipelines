@@ -793,12 +793,11 @@ if __name__ == "__main__":
     TASK = "SentenceRep"
     sub_num = 29
     layout = get_data(TASK, root=LAB_root)
-    subj_dir = op.join(LAB_root,"..", "ECoG_Recon")
+    subj_dir = op.join(LAB_root, "..", "ECoG_Recon")
     sub_pad = "D" + str(sub_num).zfill(4)
     info = subject_to_info(f"D{sub_num}", subj_dir)
-    labels = gen_labels(info, sub=f"D{sub_num}", subj_dir=subj_dir, atlas=".BN_atlas")
-    import scipy.io as sio
-    mat = sio.loadmat('d29ChanInfo')['d29chanInfo'][0]
+    labels = gen_labels(info, sub=f"D{sub_num}", subj_dir=subj_dir,
+                        atlas=".BN_atlas")
 
     # sub = "D{}".format(sub_num)
 
