@@ -7,6 +7,7 @@ from functools import singledispatch
 import mne
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from mne.viz import Brain
 
 from ieeg import PathLike, Signal
@@ -753,28 +754,30 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
     force2frame(montage, 'mri')
     # aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
     labels = get_elec_volume_labels(sub, subj_dir, 10, atlas)
-    new_labels = OrderedDict()
     if picks is None:
         picks = info.ch_names
     bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
+    new_labels = OrderedDict()
     for p in picks:
-        i = 2
-        label = labels.T[p].T
-        if label[0] not in bad_words:
-            new_labels[p] = label[0]
-            continue
-        while not ((not any(w in label[i] for w in bad_words)) and
-                   float(label[i + 1]) > 0.05):
-            if (i + 2) >= len(label.T):  # end of labels
-                i = 0
-                break
-            elif label[i + 2].isspace():  # empty label
-                i = 0
-                break
-            else:
-                i += 2
-        new_labels[p] = label[i]
+        new_labels[p] = _pick_label(labels.T[p], 0.05, bad_words)
     return new_labels
+
+
+def _pick_label(label: pd.Series, percent_thresh: float,
+                bad_words: list[str] = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')):
+
+    i = 2
+    if label[0] not in bad_words:
+        return label[0]
+    while not ((not any(w in label[i] for w in bad_words)) and
+               float(label[i + 1]) > percent_thresh):
+        if (i + 2) >= len(label.T):  # end of labels
+            return label[0]
+        elif label[i + 2].isspace():  # empty label
+            return label[0]
+        else:
+            i += 2
+    return label[i]
 
 
 if __name__ == "__main__":
