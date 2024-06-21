@@ -464,8 +464,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               hemi: str = 'both', fig: Brain = None,
               trans=None, color: matplotlib.colors = None,
               size: float = 0.35, show: bool = True, background: str = 'white',
-              title: str = None, units: str = 'm', transparency: float = 0.5
-              ) -> Brain:
+              title: str = None, units: str = 'm', transparency: float = 0.5,
+              cortex: str = 'low_contrast') -> Brain:
     """Plots the electrodes on the subject's brain
 
     Parameters
@@ -502,6 +502,8 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
         Units of the electrodes
     transparency: float, optional
         Transparency of the brain
+    cortex: str, optional
+        The cortex to plot
 
     Returns
     -------
@@ -526,7 +528,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     if trans is None:
         trans = mne.transforms.Transform(fro='head', to='mri')
     if fig is None:
-        fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
+        fig = Brain(sub, subjects_dir=subj_dir, cortex=cortex,
                     alpha=transparency, background=background, surf=surface,
                     hemi=hemi, show=show, units=units)
 
