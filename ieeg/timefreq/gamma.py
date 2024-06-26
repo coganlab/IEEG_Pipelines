@@ -15,7 +15,6 @@ from ieeg.timefreq.hilbert import (filterbank_hilbert_first_half_wrapper,
 
 @singledispatch
 def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
-                        spacing: str = 'log', f_smooth: int = 2,
                         decim: int = 1, n_jobs=-1):
     """
     Compute the phase and amplitude (envelope) of a signal for a single
@@ -35,16 +34,10 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
     """
 
     centers = get_centers(Wn)
-    additional = f_smooth - 1
-
-    if spacing == 'log':
-        bands = [(centers[i] - 0.1, centers[i + additional] + 0.1) for i in range(len(centers) - additional)]
-    elif spacing == 'linear':
-        freqs = np.linspace(centers[0], centers[-1], len(centers))
-        bands = [(freqs[i], freqs[i + 1]) for i in range(len(freqs) - 1)]
-    else:
-        raise ValueError("spacing must be either 'linear' or 'log'")
-
+    whole = get_centers((0.018, 10000))
+    center_start = np.argmin(np.abs(whole - centers[0]))
+    bands = [(whole[center_start + i - 1], whole[center_start + i + 1])
+                for i in range(len(centers))]
 
     # pre-allocate
     out_shape = data.shape[:-1] + (data.shape[-1]//decim + 1, len(bands))
@@ -61,12 +54,10 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
 
 
 @hilbert_spectrogram.register
-def _(inst: Epochs, Wn=(1, 150),
-      spacing: str = 'log', f_smooth: int = 2, decim: int = 1, n_jobs=-1):
+def _(inst: Epochs, Wn=(1, 150), decim: int = 1, n_jobs=-1):
     """Extract gamma band envelope from Raw object."""
     array, freqs = hilbert_spectrogram(inst.get_data(copy=False),
-                                       inst.info['sfreq'], Wn, spacing,
-                                       f_smooth, decim, n_jobs)
+                                       inst.info['sfreq'], Wn, decim, n_jobs)
     return EpochsTFR(inst.info, array, inst.times[::decim], freqs)
 
 
