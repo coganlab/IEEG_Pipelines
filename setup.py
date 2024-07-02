@@ -41,7 +41,7 @@ kwargs = dict(include_dirs=[_numpy_abs],
               libraries=["npyrandom", "npymath"],  # math library
               extra_compile_args=compile_args,  # compile optimization flag
               language="c",  # can be "c" or "c++"
-              define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
+              define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_22_API_VERSION")]
               )
 
 try:

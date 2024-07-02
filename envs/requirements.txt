@@ -1,7 +1,7 @@
 bids>=0.0
 mne
 mne-bids<=0.14
-numpy
+numpy<2.0
 matplotlib
 scipy
 scikit-learn
