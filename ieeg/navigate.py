@@ -134,7 +134,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     """
 
     tmp = input_raw.copy()
-    data = detrend(tmp.get_data('data'))  # channels X time
+    data = detrend(tmp.get_data('data', copy=False))  # channels X time
     names = tmp.pick('data').ch_names
     bads = []  # output for bad channel names
     desc = []  # output for bad channel descriptions
