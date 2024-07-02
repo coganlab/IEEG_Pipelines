@@ -585,7 +585,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
 def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
                     pos: np.ndarray, colors: matplotlib.colors = None,
-                    size: float = 0.35):
+                    size: float | list = 0.35):
     groups = _group_channels(info)
     n_groups = len(set(groups.values()))
     if colors is None:
@@ -596,14 +596,20 @@ def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
     else:
         colors = list(colors)
 
-    i = 0
     vals = list(groups.values())
-    while i < n_groups:
-        start, end = vals.index(i), len(vals) - vals[::-1].index(i)
-        shank_pos = pos[start:end]
-        fig.add_foci(shank_pos, hemi=hemi, color=colors[i],
-                     scale_factor=size)
-        i += 1
+    if not np.isscalar(size):
+        while len(colors) < len(size):
+            colors.append(colors[-1])
+        assert len(size) == len(vals), "Size must be the same length as vals"
+        for i, v in enumerate(vals):
+            fig.add_foci(pos[i], hemi=hemi, color=colors[i],
+                         scale_factor=size[i])
+    else:
+        for i in range(n_groups):
+            start, end = vals.index(i), len(vals) - vals[::-1].index(i)
+            shank_pos = pos[start:end]
+            fig.add_foci(shank_pos, hemi=hemi, color=colors[i],
+                         scale_factor=size)
 
 
 def _group_channels(info, groups: dict = None) -> dict:
@@ -813,7 +819,7 @@ if __name__ == "__main__":
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
 
-    # brain = plot_subj("D5")
+    # brain = plot_subj("D5", size=np.arange(48) / 48)
     # fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
     #                       transparency=0.4,
     #                       picks=list(range(28)) + list(range(52, 176)),
