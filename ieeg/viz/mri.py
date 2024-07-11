@@ -399,9 +399,14 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         else:
             this_color = color
 
+        if not np.isscalar(size):
+            this_size = [size.pop(0) for p in these_picks]
+        else:
+            this_size = [size] * len(these_picks)
+
         # plot the data
         plot_subj(new, subj_dir, these_picks, False, fig=fig,
-                  trans=trans, color=this_color, size=size,
+                  trans=trans, color=this_color, size=this_size,
                   labels_every=label_every, hemi=hemi, background=background,
                   show=show)
 
@@ -557,22 +562,33 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     # Default montage positions are in m, whereas plotting functions assume mm
     left = {}
     right = {}
+    if np.isscalar(size):
+        size = [size] * len(pos)
+    else:
+        size = list(size)
+
+    lsize = []
+    rsize = []
     for k, v in pos.items():
         if k.startswith('L'):
             left[k] = v
+            lsize.append(size.pop(0))
         elif k.startswith('R'):
             right[k] = v
+            rsize.append(size.pop(0))
         elif v[0] < 0:
             left[k] = v
+            lsize.append(size.pop(0))
         else:
             right[k] = v
+            rsize.append(size.pop(0))
 
     if left and hemi != 'rh':
         _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())),
-                        color, size)
+                        color, lsize)
     if right and hemi != 'lh':
         _add_electrodes(fig, info, 'rh', np.vstack(list(right.values())),
-                        color, size)
+                        color, rsize)
 
     if labels_every is not None:
         settings = dict(shape=None, always_visible=True,
@@ -600,9 +616,9 @@ def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
     if not np.isscalar(size):
         while len(colors) < len(size):
             colors.append(colors[-1])
-        assert len(size) == len(vals), "Size must be the same length as vals"
-        for i, v in enumerate(vals):
-            fig.add_foci(pos[i], hemi=hemi, color=colors[i],
+        assert len(size) == len(pos), "Size must be the same length as vals"
+        for i, p in enumerate(pos):
+            fig.add_foci(p, hemi=hemi, color=colors[i],
                          scale_factor=size[i])
     else:
         for i in range(n_groups):
