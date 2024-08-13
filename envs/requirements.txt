@@ -1,6 +1,6 @@
 bids>=0.0
 mne
-mne-bids<=0.14
+mne-bids @ git+https://github.com/Aaronearlerichardson/mne-bids.git
 numpy<2.0
 matplotlib
 scipy
