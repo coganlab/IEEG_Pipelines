@@ -13,6 +13,7 @@ from mne.viz import Brain
 from ieeg import PathLike, Signal
 from ieeg.io import get_elec_volume_labels
 from ieeg.viz import _qt_backend, parula
+from pyvistaqt import BackgroundPlotter
 
 _qt_backend()
 
@@ -335,9 +336,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
     if isinstance(sigs, Iterable):
         sigs = {get_sub(v): v for v in sigs}
 
-    default_c = parula.mat_colors.copy()
+    all_channel_name = []
     for subj, inst in sigs.items():
-
         if isinstance(inst, mne.Info):
             new = inst.copy()
         elif isinstance(inst, Signal):
@@ -347,6 +347,24 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
             new['subject_info'] = dict(his_id=f"sub-{inst}")
         else:
             raise TypeError(type(inst))
+        sigs[subj] = new
+        for ch in new.ch_names:
+            all_channel_name.append(f"{subj}-{ch}")
+
+    if picks is None:
+        picks = all_channel_name
+    elif isinstance(picks[0], int):
+        picks = [all_channel_name[p] for p in picks]
+    elif isinstance(picks[0], str):
+        if len(sigs) == 1 and not picks[0].startswith(list(sigs.keys())[0]):
+            picks = [subj + '-' + p for p in picks]
+        picks_in = [p in all_channel_name for p in picks]
+        assert all(picks_in), f"Channel not found: {picks[picks_in.index(False)]}"
+    else:
+        raise TypeError(f"picks must be list of str or int, not {type(picks[0])}")
+
+    default_c = parula.mat_colors.copy()
+    for subj, new in sigs.items():
 
         to_fsaverage = mne.read_talxfm(subj, subj_dir)
         if average == 'fsaverage':
@@ -359,27 +377,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
             trans = mne.transforms.Transform(fro='head', to='mri',
                                              trans=to_average)
 
-        these_picks = range(len(new.ch_names))
-        if isinstance(picks, Iterable):
-            if len(picks) == 0:
-                continue
-            elif isinstance(picks[0], int):
-                these_picks = [new.ch_names[pick] for pick in these_picks if
-                               pick in picks]
-                picks = [p - len(new.ch_names) for p in
-                         picks[len(these_picks):]]
-            elif isinstance(picks[0], str):
-                if '-' in picks[0]:
-                    these_picks = [s.split('-')[1] for s in picks if
-                                   s.split('-')[0] in new[
-                                       'subject_info']['his_id']]
-                else:
-                    these_picks = [s for s in picks if s in new.ch_names]
-        elif picks is not None:
-            raise TypeError(picks)
-
-        if len(these_picks) == 0:
-            continue
+        pick_gen = (p.split('-') for p in picks)
+        these_picks = [p[1] for p in pick_gen if p[0] == subj]
 
         if rm_wm:
             these_picks = pick_no_wm(these_picks, gen_labels(
@@ -396,10 +395,15 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
             n_groups = len(set(groups.values()))
             while len(this_color) < n_groups:
                 this_color += [default_c.pop(0)]
+        elif np.isscalar(color) or color is None:
+            this_color = color
+        elif len(color) == len(picks):
+            this_color = [color[picks.index(subj + '-' + p)] for p in these_picks]
         else:
             this_color = color
 
         if not np.isscalar(size):
+            size = list(size)
             this_size = [size.pop(0) for p in these_picks]
         else:
             this_size = [size] * len(these_picks)
@@ -429,7 +433,8 @@ def pick_no_wm(picks: list[str], labels: OrderedDict[str: list[str]]) -> list:
         The channels that are not in the white matter
     """
     bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
-
+    if len(picks) == 0:
+        return []
     # remove corresponding picks with either 'White-Matter' in the left most
     # entry or empty lists
     if isinstance(picks[0], int):
@@ -553,6 +558,20 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
     info: mne.Info = mne.pick_info(info, picks)
 
+    groups = _group_channels(info)
+    n_groups = len(set(groups.values()))
+    vals = list(groups.values())
+    if color is None:
+        color = []
+        for i in range(n_groups):
+            start, end = vals.index(i), len(vals) - vals[::-1].index(i)
+            col = parula.mat_colors[i]
+            color += [col] * (end - start)
+    elif np.isscalar(color) or isinstance(color, tuple):
+        color = [color] * len(vals)
+    else:
+        color = list(color)
+
     # fig.add_sensors(info, trans)
     montage = info.get_montage()
     force2frame(montage, trans.from_str)
@@ -569,26 +588,32 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
     lsize = []
     rsize = []
+    lcolor = []
+    rcolor = []
     for k, v in pos.items():
         if k.startswith('L'):
             left[k] = v
             lsize.append(size.pop(0))
+            lcolor.append(color.pop(0))
         elif k.startswith('R'):
             right[k] = v
             rsize.append(size.pop(0))
+            rcolor.append(color.pop(0))
         elif v[0] < 0:
             left[k] = v
             lsize.append(size.pop(0))
+            lcolor.append(color.pop(0))
         else:
             right[k] = v
             rsize.append(size.pop(0))
+            rcolor.append(color.pop(0))
 
     if left and hemi != 'rh':
-        _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())),
-                        color, lsize)
+        _add_electrodes(fig, 'lh', np.vstack(list(left.values())),
+                        lcolor, lsize)
     if right and hemi != 'lh':
-        _add_electrodes(fig, info, 'rh', np.vstack(list(right.values())),
-                        color, rsize)
+        _add_electrodes(fig, 'rh', np.vstack(list(right.values())),
+                        rcolor, rsize)
 
     if labels_every is not None:
         settings = dict(shape=None, always_visible=True,
@@ -599,21 +624,69 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
     return fig
 
 
-def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
+def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
+                       idx: list[int], colors: list,
+                       mode: str = 'both', max_size: float = 2):
+    """Plots the electrodes with a gradient of colors
+
+    """
+    min_size = int(np.ceil(np.sqrt(W.shape[0])))
+    min_size = [int(np.ceil(np.sqrt(W.shape[0] / min_size))), min_size]
+    plotter = BackgroundPlotter(shape=min_size)
+    scale = W.copy()
+    scale[scale > max_size] = max_size
+
+    if mode in ['size', 'both']:
+        size = scale
+    else:
+        size = np.ones_like(scale)
+
+    if mode in ['fade', 'both']:
+        colors = _create_color_alpha_matrix(colors, scale / scale.max())
+
+    for i in range(W.shape[0]):
+        j, k = divmod(i, min_size[1])
+        plotter.subplot(j, k)
+        brain = plot_on_average(subjects, picks=list(idx), size=size[i],
+                                hemi='both', color=colors[i], show=False,
+                                transparency=0.2)
+        for actor in brain.plotter.actors.values():
+            plotter.add_actor(actor, reset_camera=False)
+        plotter.camera = brain.plotter.camera
+        plotter.camera_position = brain.plotter.camera_position
+    plotter.link_views()
+
+
+def _create_color_alpha_matrix(colors: list, alphas: np.ndarray) -> np.ndarray:
+    n = len(colors)
+    m = alphas.shape[1]
+    color_alpha_matrix = np.empty((n, m), dtype=object)  # 4 for RGBA
+
+    for i, color in enumerate(colors):
+        rgba_color = matplotlib.colors.to_rgba(color)
+        for j, alpha in enumerate(alphas[i]):
+            color_alpha_matrix[i, j] = rgba_color[:3] + (alpha,)
+
+    return color_alpha_matrix
+
+
+def _add_electrodes(fig: mne.viz.Brain, hemi: str,
                     pos: np.ndarray, colors: matplotlib.colors = None,
                     size: float | list = 0.35):
-    groups = _group_channels(info)
-    n_groups = len(set(groups.values()))
-    if colors is None:
-        colors = parula.mat_colors[:n_groups]
-    elif (not np.isscalar(colors) and len(colors) != n_groups) \
-            or isinstance(colors, tuple):
-        colors = [colors] * n_groups
-    else:
-        colors = list(colors)
 
-    vals = list(groups.values())
-    if not np.isscalar(size):
+    if not np.isscalar(size) and len(colors[0]) == 4:
+        assert len(size) == len(pos), "Size must be the same length as vals"
+        assert len(colors) == len(pos), "Colors must be the same length as vals"
+        for i, p in enumerate(pos):
+            fig.add_foci(p, hemi=hemi, color=colors[i][:3],
+                         scale_factor=size[i], alpha=colors[i][3])
+    elif len(colors[0]) == 4:
+        assert len(colors) == len(
+            pos), "Colors must be the same length as vals"
+        for i, p in enumerate(pos):
+            fig.add_foci(p, hemi=hemi, color=colors[i][:3],
+                         scale_factor=size, alpha=colors[i][3])
+    elif not np.isscalar(size):
         while len(colors) < len(size):
             colors.append(colors[-1])
         assert len(size) == len(pos), "Size must be the same length as vals"
@@ -621,11 +694,8 @@ def _add_electrodes(fig: mne.viz.Brain, info: mne.Info, hemi: str,
             fig.add_foci(p, hemi=hemi, color=colors[i],
                          scale_factor=size[i])
     else:
-        for i in range(n_groups):
-            start, end = vals.index(i), len(vals) - vals[::-1].index(i)
-            shank_pos = pos[start:end]
-            fig.add_foci(shank_pos, hemi=hemi, color=colors[i],
-                         scale_factor=size)
+        for i, p in enumerate(pos):
+            fig.add_foci(p, hemi=hemi, color=colors, scale_factor=size)
 
 
 def _group_channels(info, groups: dict = None) -> dict:
@@ -832,14 +902,19 @@ if __name__ == "__main__":
     #                        extension='.edf', desc='clean', preload=False)
 
     ##
+    fig = electrode_gradient(["D5"], np.random.random((2, 48)), list(range(48)),
+                             [[1,0,0], [0,1,0]], mode='both')
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
-
-    # brain = plot_subj("D5", size=np.arange(48) / 48)
-    # fig = plot_on_average(["D24", "D81"], rm_wm=False, hemi='both',
-    #                       transparency=0.4,
-    #                       picks=list(range(28)) + list(range(52, 176)),
-    #                       color=None,
+    # plot_subj("D5")
+    # colors = np.concatenate([np.array([[1,0,0]] * 48), (np.arange(48) / 48)[:, None]], axis=1)
+    # brain = plot_subj("D5", color=colors)
+    # colors = np.concatenate([colors, np.random.random((124, 4))], axis=0)
+    # fig = plot_on_average(["D5", "D81"], rm_wm=False, hemi='both',
+    #                       transparency=0.1,
+    #                       picks=list(range(48)) + list(range(52, 176)),
+    #                       color=colors,
+    #                       size=colors[:, 3],
     #                       average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)
     # plot_on_average(["D22", "D28", "D64"],
