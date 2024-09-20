@@ -404,7 +404,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
 
         if not np.isscalar(size):
             size = list(size)
-            this_size = [size.pop(0) for p in these_picks]
+            this_size = [size[picks.index(subj + '-' + p)] for p in these_picks]
         else:
             this_size = [size] * len(these_picks)
 
@@ -647,9 +647,9 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
     for i in range(W.shape[0]):
         j, k = divmod(i, min_size[1])
         plotter.subplot(j, k)
-        brain = plot_on_average(subjects, picks=list(idx), size=size[i],
-                                hemi='both', color=colors[i], show=False,
-                                transparency=0.2)
+        brain = plot_on_average(subjects, picks=list(idx),
+                                size=size[i], hemi='both', color=colors[i],
+                                show=False, transparency=0.2)
         for actor in brain.plotter.actors.values():
             plotter.add_actor(actor, reset_camera=False)
         plotter.camera = brain.plotter.camera
@@ -893,8 +893,8 @@ if __name__ == "__main__":
     subj_dir = op.join(LAB_root, "..", "ECoG_Recon")
     sub_pad = "D" + str(sub_num).zfill(4)
     info = subject_to_info(f"D{sub_num}", subj_dir)
-    labels = gen_labels(info, sub=f"D{sub_num}", subj_dir=subj_dir,
-                        atlas=".BN_atlas")
+    labels = pd.Series(gen_labels(info, sub=f"D{sub_num}", subj_dir=subj_dir,))
+                        # atlas=".BN_atlas")
 
     # sub = "D{}".format(sub_num)
 
@@ -902,7 +902,11 @@ if __name__ == "__main__":
     #                        extension='.edf', desc='clean', preload=False)
 
     ##
-    fig = electrode_gradient(["D5"], np.random.random((2, 48)), list(range(48)),
+    # weights = np.random.random((2, 48))
+    weights = np.arange(200).reshape(2, 100) / 200
+    chans = np.array([f"D{sub_num}-{i}" for i in
+                      subject_to_info(f"D{sub_num}", subj_dir).ch_names])
+    fig = electrode_gradient(["D5", "D7"], weights, list(range(0,100)),
                              [[1,0,0], [0,1,0]], mode='both')
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
