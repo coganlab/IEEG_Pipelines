@@ -73,6 +73,7 @@ class LabeledArray(np.ndarray):
     Examples
     --------
     >>> import numpy as np
+    >>> np.set_printoptions(legacy='1.25')
     >>> from ieeg.calc.mat import LabeledArray
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
@@ -909,7 +910,7 @@ class Labels(np.char.chararray):
         return result
 
     def __add__(self, other):
-        result = super().__add__(self.delimiter).__add__(other)
+        result = self.view(np.char.chararray).__add__(self.delimiter).__add__(other.view(np.char.chararray))
         return Labels(result)
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
@@ -1410,6 +1411,7 @@ def _cat_test():
     Examples
     --------
     >>> import numpy as np
+    >>> np.set_printoptions(legacy='1.25')
     >>> a = np.array([[1, 2, 3]])
     >>> b = np.array([[4, 5]])
     >>> c = np.array([[6, 7, 8, 9]])
