@@ -637,7 +637,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
     scale[scale > max_size] = max_size
 
     if mode in ['size', 'both']:
-        size = scale
+        size = scale /2
     else:
         size = np.ones_like(scale)
 
@@ -649,7 +649,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         plotter.subplot(j, k)
         brain = plot_on_average(subjects, picks=list(idx),
                                 size=size[i], hemi='both', color=colors[i],
-                                show=False, transparency=0.2)
+                                show=False, transparency=0.15)
         for actor in brain.plotter.actors.values():
             plotter.add_actor(actor, reset_camera=False)
         plotter.camera = brain.plotter.camera
