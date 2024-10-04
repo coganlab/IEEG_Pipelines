@@ -910,7 +910,8 @@ class Labels(np.char.chararray):
         return result
 
     def __add__(self, other):
-        result = self.view(np.char.chararray).__add__(self.delimiter).__add__(other.view(np.char.chararray))
+        result = self.view(np.char.chararray).__add__(
+            self.delimiter).__add__(other.view(np.char.chararray))
         return Labels(result)
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
