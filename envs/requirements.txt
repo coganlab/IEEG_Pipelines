@@ -1,7 +1,7 @@
 bids>=0.0
 mne
 mne-bids @ git+https://github.com/Aaronearlerichardson/mne-bids.git
-numpy<2.0
+numpy
 matplotlib
 scipy
 scikit-learn
