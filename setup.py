@@ -79,7 +79,7 @@ extensions += [
 
 setup(
     name='ieeg',
-    version='0.5.2',
+    version='0.5.2.1',
     packages=find_packages(
         where='.',
         include=['ieeg*'],
