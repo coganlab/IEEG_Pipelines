@@ -117,10 +117,16 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
            [[16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
     """
-    if seed is None:
-        seed = np.random.randint(0, 2**16 - 1)
 
-    cmixup(arr, obs_axis, alpha, seed)
+    if arr.ndim > 3:
+        for i in range(arr.shape[0]):
+            mixup(arr[i], obs_axis - 1, alpha, seed)
+    else:
+        if seed is None:
+            seed = np.random.randint(0, 2 ** 16 - 1)
+        if obs_axis == 0:
+            arr = arr.swapaxes(1, obs_axis)
+        cmixup(arr, 1, alpha, seed)
 
 
 def norm(arr: np.ndarray, obs_axis: int = -1) -> None:

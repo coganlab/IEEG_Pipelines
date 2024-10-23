@@ -2,7 +2,8 @@ import os
 import mne
 import vtk
 import pytest
-from ieeg.viz.mri import plot_subj, plot_on_average
+from ieeg.viz.mri import plot_subj, plot_on_average, _pick_label
+import pandas as pd
 
 misc_path = mne.datasets.misc.data_path()
 sample_path = mne.datasets.sample.data_path()
@@ -14,6 +15,25 @@ if not os.path.exists(os.path.join(subjects_dir, "1")):
                os.path.join(subjects_dir, '1'))
 
 raw = mne.io.read_raw(misc_path / "seeg" / "sample_seeg_ieeg.fif")
+
+
+@pytest.mark.parametrize(
+    'label, expected', [
+        [['a', 'a', 0.06], 'a'],
+        [['a', 'a', 0.01], 'a'],
+        [['a', 'Unknown', 0.06], 'a'],
+        [['a', 'Unknown', 0.01], 'a'],
+        [['Unknown', 'a', 0.06], 'a'],
+        [['Unknown', 'a', 0.01], 'Unknown'],
+        [['Unknown', 'a', 0.06, 'b', '0.06'], 'a'],
+        [['Unknown', 'a', 0.01, 'b', '0.06'], 'b'],
+        [['Unknown', 'a', 0.04, 'b', '0.01', 'c', '0.01'], 'Unknown'],
+        [['Unknown', 'unknown', 0.7004, 'a', '0.1593'], 'a'],
+        [['Unknown', 'unknown', 0.7004, 'a', '0.1593', 'b', '0.1593'], 'a'],
+    ])
+def test_pick_label(label, expected):
+    label_in = pd.Series(label, index=[0] + list(range(2, len(label)+1)))
+    assert _pick_label(label_in, 0.05) == expected
 
 
 @pytest.mark.parametrize(

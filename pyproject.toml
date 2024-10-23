@@ -28,3 +28,6 @@ Documentation = "https://ieeg-pipelines.readthedocs.io/en/latest/"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["envs/requirements.txt"]}
+
+[tool.ruff.lint]
+select = ["NPY201"]

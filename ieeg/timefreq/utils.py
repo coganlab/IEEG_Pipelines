@@ -9,6 +9,7 @@ from mne.utils import fill_doc, verbose
 
 from ieeg import Signal
 from ieeg.process import ensure_int, parallelize, validate_type
+from joblib import delayed, Parallel
 
 
 def to_samples(time_length: Union[str, int], sfreq: float) -> int:
@@ -164,8 +165,13 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
         np.abs(np.fft.ifft(x * np.tile(daughter, (
             f.shape[0], 1, 1)))[..., ::decim], out=wave[:, i])
 
-    parallelize(_ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
-                verbose=verbose)
+    proc = Parallel(n_jobs=n_jobs, verbose=verbose, require="sharedmem",
+                    return_as="generator_unordered")(delayed(_ifft_abs)(x, i)
+                                                     for x, i in ins)
+    for _ in proc:
+        pass
+    # parallelize(_ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
+    #             verbose=verbose)
 
     return EpochsTFR(inst.info, wave, inst.times[::decim], 1 / period)
 

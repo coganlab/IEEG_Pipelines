@@ -10,3 +10,9 @@ docs/auto_examples/*
 docs/ieeg*
 docs/modules.rst
 docs/sg_execution_times.rst
+
+# Files compiled and built upon installing ieeg
+ieeg.egg-info/*
+ieeg/**/*.pyd
+ieeg/**/*.c
+!ieeg/calc/_fast/ufuncs.c
