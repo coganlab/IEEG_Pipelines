@@ -1,0 +1,18 @@
+bids>=0.0
+mne
+mne-bids@ git+https://github.com/Aaronearlerichardson/mne-bids.git
+numpy<2.0
+matplotlib
+scipy
+scikit-learn
+pandas
+joblib>=1.3
+psutil
+pyvistaqt
+pytz
+pyqt5
+tqdm
+h5io
+dipy
+mne-qt-browser
+edfio
