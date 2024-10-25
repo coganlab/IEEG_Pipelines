@@ -56,7 +56,7 @@ end
          title([num2str(round(timeSelect(iTime),2)) ' s'])
            M(iTime)=getframe(gcf);
         end
-        cmap=colormap('jet');
+        
         close
         vname = strcat(movTitle,'.avi');
         vidObj=VideoWriter(vname, 'Motion JPEG AVI');

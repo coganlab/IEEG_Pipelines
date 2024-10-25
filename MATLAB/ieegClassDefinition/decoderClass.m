@@ -97,16 +97,16 @@ classdef decoderClass
             % Initialize variables
             CmatAll = zeros(length(decodeUnitUnique), length(decodeUnitUnique));
             ytestall = [];
-            
+            aucAll = zeros(1,length(decodeUnitUnique));
             % Performclassification for nIter iterations
             for iTer = 1:obj.nIter
                 if(trainTestDiff == 0)
                     % Call pcaLinearDecoderWrap function for classification
-                    [~, ytest, ypred, optimVarAll, ~, modelWeightsAll] = pcaLinearDecoderWrap(ieegInput, decoderUnit, ieegStruct.tw, d_time_window, obj.varExplained, obj.numFold, isAuc);
+                    [~, ytest, ypred, optimVarAll, aucMod, modelWeightsAll] = pcaLinearDecoderWrap(ieegInput, decoderUnit, ieegStruct.tw, d_time_window, obj.varExplained, obj.numFold, isAuc);
                     %[~, ytest, ypred] = stmfDecodeWrap(ieegInput, decoderUnit, ieegStruct.tw, d_time_window, obj.numFold, isauc);
                 else
                     % Call pcaLinearDecoderWrapTrainTest function for classification with separate train and test time windows
-                    [~, ytest, ypred, optimVarAll, ~, modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegInput, decoderUnit, ieegStruct.tw, d_time_window(1,:), d_time_window(2,:), obj.varExplained, obj.numFold, isAuc);
+                    [~, ytest, ypred, optimVarAll, aucMod, modelWeightsAll] = pcaLinearDecoderWrapTrainTest(ieegInput, decoderUnit, ieegStruct.tw, d_time_window(1,:), d_time_window(2,:), obj.varExplained, obj.numFold, isAuc);
                 end
                 
                 % Accumulate test labels and predictions
@@ -115,8 +115,10 @@ classdef decoderClass
                 % Compute confusion matrix and accumulate
                 Cmat = confusionmat(ytest, ypred);
                 CmatAll = CmatAll + Cmat;
+                aucAll = aucAll + mean(aucMod);
+
             end
-            
+            aucAll = aucAll./obj.nIter;
             % Compute normalized confusion matrix
             CmatCatNorm = CmatAll ./ sum(CmatAll, 2);
             
@@ -129,6 +131,7 @@ classdef decoderClass
             decodeResultStruct.p = StatThInv(ytestall, decodeResultStruct.accPhoneme * 100);
             decodeResultStruct.modelWeights = modelWeightsAll;
             decodeResultStruct.optimVarAll = optimVarAll;
+            decodeResultStruct.aucAll = aucAll;
         end
 
         function decodeResultStruct = baseRegress(obj, ieegStruct, decoderUnit, d_time_window, selectChannel, selectTrial)
@@ -198,7 +201,7 @@ classdef decoderClass
                 ieegStruct {mustBeA(ieegStruct, 'ieegStructClass')} % ieeg class object
                 decoderUnit double {mustBeVector} % Decoder labels
                 options.timeRes double = 0.02; % Decoder time resolution; Defaults to 0.02
-                options.timeWin double; % Time window size for analysis
+                options.timeWin double = 0.25; % Time window size for analysis
                 options.selectChannels double = 1:size(ieegStruct.data,1); % Select number of electrodes for analysis; Defaults to all
                 options.selectTrials double = 1:size(ieegStruct.data,2); % Select number of trials for analysis; Defaults to all
                 options.isModelWeight logical  = 1 % Extract model weights if true;
@@ -383,6 +386,21 @@ classdef decoderClass
             decodeTimeStruct.r2Time = r2Time;
             decodeTimeStruct.pValTime = pValTime;
             decodeTimeStruct.timeRange = timeRange;
+        end
+
+
+        function decoderChanStruct = indChanClassify(obj,ieegStruct,decoderUnit,options)
+            arguments
+                obj {mustBeA(obj, 'decoderClass')} % Decoder class object
+                ieegStruct {mustBeA(ieegStruct, 'ieegStructClass')} % ieeg class object
+                decoderUnit double {mustBeVector} % Decoder labels
+                options.d_time_window double = ieegStruct.tw; % Decoder time window; Defaults to epoch time-window
+            end
+
+            parfor iChan = 1:size(ieegStruct.data,1)
+                iChan
+                decoderChanStruct{iChan} = baseClassify(obj,ieegStruct,decoderUnit,d_time_window=options.d_time_window,selectChannel=iChan,isAuc=1);
+            end
         end
         
     end

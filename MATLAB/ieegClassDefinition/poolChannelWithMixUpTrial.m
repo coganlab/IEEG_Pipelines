@@ -1,4 +1,4 @@
-function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTrial(ieegHGStruct, trialInfoStruct)
+function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMixUpTrial(ieegHGStruct, trialInfoStruct)
     % Combines channels with maximum trials for a specific token across subjects.
     %
     % Arguments:
@@ -55,23 +55,42 @@ function [ieegStructAll, phonemeTrialAll, channelNameAll] = poolChannelWithMaxTr
         phonoTacticToken = trialInfoStruct(maxRepeatId).phonemeTrial.phonoTactic(repeatIds{maxRepeatId}(1:maxRepeat), :);
         
         dataToken = [];
-        totalnanpad = 0;
+        totalTrialPadded = 0;
         
         % Combine the ephys data for the current token across subjects
         for iSubject = 1:length(trialInfoStruct)
+            
             repeatIdsShuffle = shuffle(repeatIds{iSubject});
             dataTemp = ieegHGStruct(iSubject).ieegHGNorm.data(:, repeatIdsShuffle, :);
             
             if maxRepeat - length(repeatIdsShuffle) > 0
-                numtrials2zeropad = maxRepeat - length(repeatIdsShuffle);
-                dataTemp = cat(2, dataTemp, nan(size(dataTemp, 1), numtrials2zeropad, size(dataTemp, 3)));
-                totalnanpad = totalnanpad + numtrials2zeropad;
+                numtrials2pad = maxRepeat - length(repeatIdsShuffle);
+                betaP = betarnd(2,2,[1 numtrials2pad]);
+                dataTempGen = [];
+                for iGen = 1:numtrials2pad
+                    iPick = randsample(length(repeatIdsShuffle),2);
+                    % temporary fix
+                    switch(length(iPick))
+                        case 0
+                            size(dataTemp)
+                            dataTempGen(:,iGen,:) = nan(size(dataTemp,1),1,size(dataTemp,3));
+                        case 1
+                            dataTempGen(:,iGen,:) = nan(size(dataTemp,1),1,size(dataTemp,3));
+                        otherwise
+                            dataTempGen(:,iGen,:) = betaP(iGen)*dataTemp(:,iPick(1),:)+(1-betaP(iGen))*dataTemp(:,iPick(2),:);
+                                            
+                        
+                    end
+                        %YTrainNew(iGen,:,:) = betaP(iGen)*YTrainSequence(iPick(1),:,:)+(1-betaP(iGen))*YTrainSequence(iPick(2),:,:);
+                end
+                dataTemp = cat(2, dataTemp, dataTempGen);
+                totalTrialPadded = totalTrialPadded + numtrials2pad;
             end
             
             dataToken = cat(1, dataToken, dataTemp);
         end
         
-        disp(['Number of NaN padded trials: ' num2str(totalnanpad)])
+        disp(['Number of generated trials: ' num2str(totalTrialPadded)])
         
         % Append the trial information and ephys data for the current token
         phonemeTrialAll.syllableUnit = cat(1, phonemeTrialAll.syllableUnit, syllableToken);

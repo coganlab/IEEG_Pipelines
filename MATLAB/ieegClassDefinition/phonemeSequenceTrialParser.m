@@ -25,18 +25,24 @@ classdef phonemeSequenceTrialParser
             obj.tokenIdentity = nan(length(trialInfo), 1);
             obj.tokenName = cell(length(trialInfo), 1);
             
-            if iscell(trialInfo)
+            if (iscell(trialInfo)||isfield(trialInfo,'sound'))
                 % Parsing for cell array input (multiple trials)
                 
                 for iTrial = 1:length(trialInfo)
                     % Extract trial names and preprocess
-                    trialNames = trialInfo{iTrial}.sound(1:end-4);
+                    if(iscell(trialInfo))
+                        trialNames = trialInfo{iTrial}.sound(1:end-4);
+                        trigger = trialInfo{iTrial}.Trigger;
+                    else
+                        trialNames = trialInfo(iTrial).sound(1:end-4);
+                         trigger = trialInfo(iTrial).Trigger;
+                    end
                     trialNamesTemp = strrep(trialNames, 'ae', 'z');
                     trialNamesTemp = num2cell(trialNamesTemp);
                     trialNamesTemp = strrep(trialNamesTemp, 'z', 'ae');
                     
                     % Store token identity and token name
-                    obj.tokenIdentity(iTrial) = trialInfo{iTrial}.Trigger;
+                    obj.tokenIdentity(iTrial) = trigger;
                     obj.tokenName{iTrial} = trialNames;
                     
                     % Encode phonemes and syllables
