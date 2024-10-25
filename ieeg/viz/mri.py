@@ -873,6 +873,49 @@ def _pick_label(label: pd.Series, percent_thresh: float,
             i += 2
     return label[i]
 
+def find_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
+               atlas: str = ".a2009s", hot_words: list[str] = None,
+                pct_thresh: float = 0.1) -> OrderedDict[str, list[str]]:
+    """Prioritize labels that contain hot_words, otherwise use _pick_label to find most probable GM
+
+    Parameters
+    ----------
+    info : mne.Info
+        The subject to get the labels for
+    sub : str, optional
+        The subject to get the labels for, by default None
+    subj_dir : PathLike, optional
+        The subjects directory, by default None
+    atlas : str, optional
+        The atlas to use, by default ".a2009s"
+    hot_words : list[str], optional
+    pct_thresh : float, optional
+
+    Returns
+    -------
+    dict[str, list]
+        The labels for the electrodes
+    """
+    sub = get_sub(info) if sub is None else sub
+    subj_dir = get_sub_dir(subj_dir)
+    labels = get_elec_volume_labels(sub, subj_dir, 10, atlas)
+    chlist = info.ch_names
+    new_labels = OrderedDict()
+    for c in chlist:
+        new_labels[c] = _find_label(labels.T[c], pct_thresh, hot_words)
+    return new_labels
+
+def _find_label(label: pd.Series, percent_thresh: float,
+                hot_words: list[str] = None):
+
+    i = 2
+    if any(w in label[0] for w in hot_words):
+        return label[0]
+    while not((any(w in label[i] for w in hot_words)) and (float(label[i + 1]) > percent_thresh)):
+        if ((i + 2) >= len(label.T)) or (label[i + 2].isspace()):  # end of label or empty label
+            return _pick_label(label, 0.05)
+        i += 2
+    return label[i]
 
 if __name__ == "__main__":
     from ieeg.io import get_data, raw_from_layout
@@ -887,8 +930,8 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    TASK = "SentenceRep"
-    sub_num = 29
+    TASK = "Phoneme_sequencing"
+    sub_num = 35
     layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "..", "ECoG_Recon")
     sub_pad = "D" + str(sub_num).zfill(4)
@@ -902,20 +945,27 @@ if __name__ == "__main__":
     #                        extension='.edf', desc='clean', preload=False)
 
     ##
-    fig = electrode_gradient(["D5"], np.random.random((2, 48)), list(range(48)),
-                             [[1,0,0], [0,1,0]], mode='both')
+    # fig = electrode_gradient(["D5"], np.random.random((2, 48)), list(range(48)),
+    #                          [[1,0,0], [0,1,0]], mode='both')
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
     # plot_subj("D5")
     # colors = np.concatenate([np.array([[1,0,0]] * 48), (np.arange(48) / 48)[:, None]], axis=1)
     # brain = plot_subj("D5", color=colors)
     # colors = np.concatenate([colors, np.random.random((124, 4))], axis=0)
-    # fig = plot_on_average(["D5", "D81"], rm_wm=False, hemi='both',
-    #                       transparency=0.1,
-    #                       picks=list(range(48)) + list(range(52, 176)),
-    #                       color=colors,
-    #                       size=colors[:, 3],
-    #                       average="D79", background=(0, 0.4, 0.5))
+
+    substring = "D35"
+    sublist = substring.split()
+
+    elec_label_tofind = 'LPI6'
+    elec_list = list(labels.keys())
+    elec_picks = elec_list.index(elec_label_tofind)
+    plot_on_average(sublist, rm_wm=False, hemi='both', picks=[elec_picks])
+                          # transparency=0.1,
+                          # picks=list(range(48)) + list(range(52, 176)),
+                          # color=colors,
+                          # size=colors[:, 3],
+                          # average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)
     # plot_on_average(["D22", "D28", "D64"],
     #                 picks=["D22-LPIF4", "D28-LPIO7", "D64-LAI6"],
