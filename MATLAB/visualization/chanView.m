@@ -8,7 +8,7 @@ arguments
     options.titl {mustBeTextScalar} = 'channel map activation'
     options.cval double = []
     options.pixRange double = []
-    options.isSmooth logical = 0
+    options.isSmooth double = 0
 end
 %selectedChannels = sort(chanMap(~isnan(chanMap)))';
 %val2disp(~ismember(chanMap(:),options.selectedChannels)) = [];

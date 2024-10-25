@@ -47,7 +47,7 @@ for iChan = 1:length(channelOfInterest)
     elseif iscell(goodtrials)
         trials_g = goodtrials{iChan};
     else
-        trials_g = goodtrials;
+        trials_g = find(goodtrials(iChan,:));
     end
     
     [spec{iChan}, F] = extract_spectrograms_channel(squeeze(ieeg(iChan, trials_g, :)), AnaParams);
@@ -67,7 +67,7 @@ for iChan = 1:length(channelOfInterest)
         
         pPerc(iChan) = permtest(meanOnsetPercept, meanBase, numPerm);
     else
-        pPerc(iChan) = 0;
+        pPerc(iChan) = nan;
     end
     
     etspec = tspec >= etw(1) & tspec <= etw(2);
