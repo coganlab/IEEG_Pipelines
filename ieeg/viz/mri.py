@@ -821,7 +821,7 @@ def _(info: mne.Info, frame: str):
 
 def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
                atlas: str = ".a2009s", picks: list[str] = None
-               ) -> OrderedDict[str, list[str]]:
+               radius: int = 10) -> OrderedDict[str, list[str]]:
     """Generates the labels for the electrodes
 
     Parameters
@@ -847,7 +847,7 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
     montage = info.get_montage()
     force2frame(montage, 'mri')
     # aseg = 'aparc.a2009s+aseg'  # parcellation/anatomical segmentation atlas
-    labels = get_elec_volume_labels(sub, subj_dir, 10, atlas)
+    labels = get_elec_volume_labels(sub, subj_dir, radius, atlas)
     if picks is None:
         picks = info.ch_names
     bad_words = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')
