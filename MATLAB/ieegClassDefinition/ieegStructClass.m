@@ -151,7 +151,7 @@ classdef ieegStructClass
                             obj.name = strcat(obj.name, '_High-Gamma-norm-baseline-normalized');
                     end
             end
-            isPower = 1;
+            isPower = 0;
             if size(dataTemp, 1) == 1
                 [~, ieegGammaTemp(1, :, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp)), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType,isPower); 
             else

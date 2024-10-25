@@ -40,12 +40,13 @@ arguments
     options.roi = '' % anatomical extraction; e.g., {'precentral', 'superiortemporal'}
     options.subsetElec cell = '' % subset of electrodes to select from stats 
     options.isCAR logical = true; % true to perform CAR subtraction
-    options.remNoiseTrials logical = true; % true to remove all noisy trials
-    options.remNoResponseTrials logical = true; % true to remove all no-response trials    
+    options.remNoiseTrials logical = false; % true to remove all noisy trials
+    options.remNoResponseTrials logical = false; % true to remove all no-response trials    
     options.remFastResponseTimeTrials double = 0; % response time threshold to remove all faster response trials   
-    options.remlongDurationTrials double = 0 % response duration threshold to remove longer duration trials   
+    options.remlongDurationTrials double = inf % response duration threshold to remove longer duration trials   
     options.remNoiseThreshold double = -1; % noise threshold to remove noisy trials
     options.remWMchannels logical = true; % remove white matter channels
+    options.isiGap double = 1;
 end
 
 % Precompute subject-specific data that does not depend on the options
@@ -128,42 +129,59 @@ for iSubject = 1:numSubjects
     responseTime = nan(1,length(Trials));
     responseDuration = nan(1,length(Trials));
     % Remove noisy, no-response, and fast response time trials if specified
-    if (options.remNoiseTrials || options.remNoResponseTrials || options.remFastResponseTimeTrials >= 0|| options.remlongDurationTrials >= 0)
-        noisyTrials = [Trials.Noisy] == 1;
-        noResponseTrials = [Trials.NoResponse] == 1;
-        negResponseTrials = false(1, numTrials);
-        longResponseTrials = false(1, numTrials);
-        if (options.remFastResponseTimeTrials >= 0)
-            for iTrials = 1:numTrials
-                if (~isempty(Trials(iTrials).ResponseStart))
-                    RespTime = (Trials(iTrials).ResponseStart - Trials(iTrials).Go) ./ 30000;
-                    RespDuration = (Trials(iTrials).ResponseEnd - Trials(iTrials).ResponseStart) ./ 30000;
-                else
-                    RespTime = nan;
-                    RespDuration = nan;
+    negResponseTrials = false(1, numTrials);
+    longResponseTrials = false(1, numTrials);
+    noisyTrials = false(1, numTrials);
+    noResponseTrials = false(1, numTrials);
+    if (options.remNoiseTrials)
+         noisyTrials = [Trials.Noisy] == 1;
+    end
+    if (options.remNoResponseTrials)
+         noResponseTrials = [Trials.Noisy] == 1;
+    end
+     baseRemoveTrials = [];
+     for iTrials = 1:numTrials
+        if (~isempty(Trials(iTrials).ResponseStart))
+            RespTime = (Trials(iTrials).ResponseStart - Trials(iTrials).Go) ./ 30000;
+            RespDuration = (Trials(iTrials).ResponseEnd - Trials(iTrials).ResponseStart) ./ 30000;
+        else
+            RespTime = nan;
+            RespDuration = nan;
+        end
+        if (RespTime < options.remFastResponseTimeTrials)
+            negResponseTrials(iTrials) = true;
+        end
+        if (RespDuration >= options.remlongDurationTrials)
+            longResponseTrials(iTrials) = true;
+        end
+        responseTime(iTrials) = RespTime;
+        responseDuration(iTrials) = RespDuration;
+
+         if(strcmp(options.Epoch,'Start'))
+            if(iTrials>1)
+                startTrial = Trials(iTrials).Start./30000;
+                prevEndTrial = Trials(iTrials-1).ResponseEnd./30000;
+                if(~isempty(prevEndTrial)&&((startTrial-prevEndTrial)<options.isiGap))
+                    baseRemoveTrials = [baseRemoveTrials iTrials];
                 end
-                if (RespTime < options.remFastResponseTimeTrials)
-                    negResponseTrials(iTrials) = true;
-                end
-                if (RespDuration >= options.remlongDurationTrials)
-                    longResponseTrials(iTrials) = true;
-                end
-                responseTime(iTrials) = RespTime;
-                responseDuration(iTrials) = RespDuration;
             end
         end
-        
-        disp(['Removing Noisy trials: ' num2str(sum(noisyTrials))])
-        disp(['Removing Trials with no-response: ' num2str(sum(noResponseTrials))])
-        disp(['Removing Trials with negative response time: ' num2str(sum(negResponseTrials))])
-        disp(['Removing Trials with longer Duration: ' num2str(sum(longResponseTrials))])
-        % Combine trial indices to remove into a single array
-        trials2remove = unique([find(noisyTrials), find(noResponseTrials), find(negResponseTrials), find(longResponseTrials)]);
-        trials2select = setdiff(1:numTrials, trials2remove);
-    else
-        % If no trials are to be removed, select all trials
-        trials2select = 1:numTrials;
-    end
+     end
+
+   
+    
+
+    
+   
+    disp(['Removing Noisy trials: ' num2str(sum(noisyTrials))])
+    disp(['Removing Trials with no-response: ' num2str(sum(noResponseTrials))])
+    disp(['Removing Trials with negative response time: ' num2str(sum(negResponseTrials))])
+    disp(['Removing Trials with longer Duration: ' num2str(sum(longResponseTrials))])
+    disp(['Removing Trials with shorter baseline ISI: ' num2str(length(baseRemoveTrials))])
+    % Combine trial indices to remove into a single array
+    trials2remove = unique([find(noisyTrials), find(noResponseTrials), find(negResponseTrials), find(longResponseTrials), baseRemoveTrials]);
+    trials2select = setdiff(1:numTrials, trials2remove);
+    
     
     % Extract epoch data for selected trials and channels
     ieegEpoch = trialIEEG(Trials(trials2select), find(chanIdx), options.Epoch, options.Time .* 1000);
@@ -180,7 +198,7 @@ for iSubject = 1:numSubjects
     
     % Removing noisy trials
     if options.remNoiseThreshold > 0
-        [~, goodtrialIds] = remove_bad_trials(ieegStruct.data, options.remNoiseThreshold);
+        [~, goodtrialIds] = remove_bad_trials(ieegStruct.data, threshold = options.remNoiseThreshold);
         %goodTrialsCommon = extractCommonTrials(goodtrials);
     else
         goodtrialIds = ones(size(ieegEpoch,1),size(ieegEpoch,2));

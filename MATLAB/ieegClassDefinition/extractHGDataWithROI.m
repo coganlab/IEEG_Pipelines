@@ -57,12 +57,13 @@ arguments
     options.fDown double = 200;
     options.baseTimeRange = [-0.6 -0.1]; 
     options.baseName = 'Start'
-    options.respTimeThresh = -1;
-    options.respDurThresh = -1;
+    options.respTimeThresh = 0.1;
+    options.respDurThresh = 2;
     options.subsetElec cell = '' % subset of electrodes to select from stats 
     options.remNoiseTrials logical = true; % true to remove all noisy trials
     options.remNoResponseTrials logical = true; % true to remove all no-response trials 
     options.remWMchannels logical = true;
+    options.remNoiseThreshold double = 10;
 end
 
 % Extract normalization type and time padding
@@ -77,7 +78,7 @@ if(isempty(options.normFactor))
     ieegBaseStruct = extractRawDataWithROI(Subject, 'Epoch', options.baseName, ...
         'Time', [options.baseTimeRange(1)-timePad options.baseTimeRange(2)+timePad], ...
         'roi', options.roi, 'remFastResponseTimeTrials', -1, ...
-        'remNoiseTrials', false, 'remNoResponseTrials', false, ...
+        'remNoiseTrials', false, 'remNoResponseTrials', false,  ...
         'subsetElec', options.subsetElec, 'remWMchannels', options.remWMchannels);
     
     % Extracting normalization parameters for each subject
@@ -110,6 +111,18 @@ parfor iSubject = 1:length(Subject)
     if(~isempty(ieegFieldStruct(iSubject).ieegStruct))
         ieegFieldHG = extractHiGamma(ieegFieldStruct(iSubject).ieegStruct, ...
             options.fDown, options.Time, normFactorSubject{iSubject}, normType);
+         % Removing noisy trials
+%         if options.remNoiseThreshold > 0
+%             [~, goodtrialIds] = remove_bad_trials(ieegFieldHG.data, threshold = options.remNoiseThreshold, method=2);
+%             %goodTrialsCommon = extractCommonTrials(goodtrials);
+%         else
+%             goodtrialIds = ones(size(ieegEpoch,1),size(ieegEpoch,2));
+%         end
+% 
+%         for iChan = 1:size(ieegFieldHG.data,1)
+%             % Assigning noisy trials to values of 0
+%             ieegFieldHG.data(iChan,~goodtrialIds(iChan,:),:) = nan;
+%         end
         ieegHGAll(iSubject).ieegHGNorm = ieegFieldHG;
         ieegHGAll(iSubject).channelName = ieegFieldStruct(iSubject).channelName;
         ieegHGAll(iSubject).trialInfo = ieegFieldStruct(iSubject).trialInfo;
