@@ -215,8 +215,10 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
     if not op.isdir(save_dir):
         mkdir(save_dir)
     bounds = inst.annotations.copy()
+    starttime = bounds[0]
+    endtime = bounds[-1]
     bounds = bounds[np.where(bounds.description == 'BAD boundary')[0]]
-    bounds = [0] + list(bounds.onset) + [inst.times[-1]]
+    bounds = [starttime] + list(bounds.onset) + [endtime]
     for i, file in enumerate(inst.filenames):
         entities = parse_file_entities(file)
         if 'desc' in entities.keys():
