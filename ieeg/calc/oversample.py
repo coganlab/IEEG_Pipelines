@@ -328,3 +328,58 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
     """
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]
+
+def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int, alpha: float = 1.,
+          seed: int = None) -> None:
+    """Mixup the data using the labels
+
+    Parameters
+    ----------
+    arr : array
+        The data to mixup.
+    labels : array
+        The labels to use for mixing.
+    obs_axis : int
+        The axis along which to apply func.
+    alpha : float
+        The alpha value for the beta distribution.
+    seed : int
+        The seed for the random number generator.
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+    ... [float("nan"), float("nan")]])
+    >>> labels = np.array([0, 0, 1, 1])
+    >>> mixup2(arr, labels, 0)
+    >>> arr
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [6.03943491, 7.03943491]])
+           """
+    if arr.ndim > 2:
+        arr = arr.swapaxes(obs_axis, -2)
+        for i in range(arr.shape[0]):
+            mixup2(arr[i], labels, obs_axis, alpha, seed)
+    else:
+        if seed is not None:
+            np.random.seed(seed)
+        if obs_axis == 1:
+            arr = arr.T
+
+        is_nan = np.isnan(arr).any(axis=1)
+        n_nan = np.where(is_nan)[0]
+        n_non_nan = np.where(~is_nan)[0]
+
+        for i in n_nan:
+            l_class = labels[i]
+            possible_choices = np.nonzero(np.logical_and(
+                ~is_nan, labels == l_class))[0]
+            choice1 = np.random.choice(possible_choices)
+            choice2 = np.random.choice(n_non_nan)
+            l = np.random.beta(alpha, alpha)
+            if l < .5:
+                l = 1 - l
+            arr[i] = l * arr[choice1] + (1 - l) * arr[choice2]
