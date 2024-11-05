@@ -231,7 +231,7 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
-        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i + 1])
+        run = inst.copy().crop(tmin=bounds[i]-inst.first_time, tmax=bounds[i + 1]-inst.first_time) #account for cropping
         if anonymize:
             if isinstance(run, Signal):
                 run.anonymize()
