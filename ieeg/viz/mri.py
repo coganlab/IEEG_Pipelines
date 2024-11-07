@@ -917,6 +917,87 @@ def _find_label(label: pd.Series, percent_thresh: float,
         i += 2
     return label[i]
 
+
+def roi_2_BN(roiName: str):
+    match roiName:
+        case 'mtg':
+            roiLabels = ['A21c', 'A21r', 'A37dl']
+        # case 'stg':
+        #     roiLabels = ['A38m', 'TE1.0', 'TE1.2', 'A38l', 'A22r', 'A22c']
+        case 'astg':
+            roiLabels = ['A38m', 'TE1.0', 'TE1.2', 'TE1.0/TE1.2', 'A38l', 'A22r']
+        case 'pstg':
+            roiLabels = ['A22c']
+        case 'heschl':
+            roiLabels = ['A41/42']
+        case 'sts':
+            roiLabels = ['aSTS', 'rpSTS', 'cpSTS']
+        case 'itg':
+            roiLabels = ['A20r', 'A20iv', 'A37elv', 'A20il', 'A37vl', 'A20cl', 'A20cv']
+        case 'ipc':
+            roiLabels = ['A39c', 'A39rd', 'A40rd', 'A40c', 'A39rv', 'A40rv']
+        case 'angular':
+            roiLabels = ['A39c', 'A39rd']
+        case 'supramarginal':
+            roiLabels = ['A40rd', 'A40c', 'A40rv']
+        case 'ifg':
+            roiLabels = ['A45r', 'A45c', 'A44d', 'A44op', 'A44v']
+        case 'opercular':
+            roiLabels = ['A44op', 'A44d', 'A44v']
+        case 'triangular':
+            roiLabels = ['A45c', 'A45r']
+        case 'ifs':
+            roiLabels = ['IFS']
+        case 'ifj':
+            roiLabels = ['IFJ']  # inferior frontal junction!!!
+        case 'mfg':
+            roiLabels = ['A46', 'A10l', 'A9/46v', 'A9/46d', 'A8vl', 'A6vl']
+        case 'sfg':
+            roiLabels = ['A8dl', 'A8m', 'A9m', 'A10m']
+        case 'bg':
+            roiLabels = ['dlPu', 'dCa']
+        # case 'rmfg':
+        #     roiLabels = ['A46', 'A10l', 'A9/46v', 'A9/46d']
+        # case 'cmfg':
+        #     roiLabels = ['A8vl', 'A6vl']
+        case 'insula':
+            roiLabels = ['G', 'vIa', 'dIa', 'vId/vIg', 'dIg', 'dId']
+        case 'sma':
+            roiLabels = ['A6m', 'A6dl']
+        case 'smc':
+            roiLabels = ['A2', 'A4ul', 'A6cdl', 'A4hf', 'A4tl', 'A6cvl','A1/2/3ulhf', 'A1/2/3/tonla', 'A1/2/3tonIa', 'A1/2/3tru', 'A4t']
+        case 'thalmus':
+            roiLabels = ['cTtha']
+        case 'fusiform gyrus':
+            roiLabels = ['A37lv', 'A37mv', 'A20rv']
+        case 'cingulate gyrus':
+            roiLabels = ['A23c','A24cd']
+        # case 'precentral':
+        #     roiLabels = ['A4hf', 'A4tl', 'A6cvl', 'A4t', 'A6cdl', 'A4ul']
+        # case 'postcentral':
+        #     roiLabels = ['A1/2/3ulhf', 'A1/2/3/tonla', 'A1/2/3tru', 'A2']
+        case 'spl':
+            roiLabels = ['A7pc', 'A7r']
+        case 'pcl':
+            roiLabels = ['A4ll']
+        case 'occ':
+            roiLabels = ['rLinG', 'lsOccG', 'mOccG', 'OPC', 'iOccG']
+        case 'hipp':
+            roiLabels = ['rHipp', 'cHipp']
+        case _:
+            raise ValueError(f"{roiName} isn't an option!")
+    return roiLabels
+
+def BN_2_roi(label: str):
+    rois = ['mtg', 'astg', 'pstg', 'heschl', 'sts', 'itg', 'ipc', 'angular', 'supramarginal', 'ifg', 'opercular',
+            'triangular', 'ifs', 'ifj', 'mfg', 'insula', 'sma', 'smc', 'spl', 'pcl', 'occ', 'hipp', 'cingulate gyrus',
+            'fusiform gyrus', 'bg', 'sfg']
+    for r in rois:
+        if label in roi_2_BN(r):
+            return r
+    print(f"{label} not found in any ROI")
+    return 'other'
+
 if __name__ == "__main__":
     from ieeg.io import get_data, raw_from_layout
     from os import path
