@@ -820,8 +820,8 @@ def _(info: mne.Info, frame: str):
 
 
 def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
-               atlas: str = ".a2009s", picks: list[str] = None
-               radius: int = 10) -> OrderedDict[str, list[str]]:
+               atlas: str = ".a2009s", picks: list[str] = None,
+               radius: int = 9) -> OrderedDict[str, list[str]]:
     """Generates the labels for the electrodes
 
     Parameters
@@ -836,6 +836,8 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
         The channels to plot, by default None
     atlas : str, optional
         The atlas to use, by default ".a2009s"
+    radius: int, optional
+        The radius to use for atlas parcellation, by default 9
 
     Returns
     -------

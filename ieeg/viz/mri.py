@@ -820,7 +820,7 @@ def _(info: mne.Info, frame: str):
 
 
 def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
-               atlas: str = ".a2009s", picks: list[str] = None
+               atlas: str = ".a2009s", picks: list[str] = None,
                radius: int = 9) -> OrderedDict[str, list[str]]:
     """Generates the labels for the electrodes
 
