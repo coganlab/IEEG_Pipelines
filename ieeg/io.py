@@ -1,6 +1,6 @@
 import re
 from functools import singledispatch
-from os import listdir, mkdir, path as op, walk
+from os import scandir, mkdir, path as op, walk
 
 import mne
 import numpy as np
@@ -178,15 +178,19 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
     layout : BIDSLayout
         The BIDSLayout for the subject.
     """
-    BIDS_root = None
-    for dir in listdir(root):
-        if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(
-                root, dir)):
-            BIDS_root = op.join(root, dir, "BIDS")
-            break
-    if BIDS_root is None:
-        raise FileNotFoundError("Could not find BIDS directory in {} for task "
-                                "{}".format(root, task))
+    # scan data directory
+    scan = scandir(root)
+
+    # keep only matching BIDS directories
+    matches = filter(lambda x: re.match(r"BIDS-\d\.\d_" + task, x.name), scan)
+
+    # check that there is at least one match
+    ordered = sorted(matches, key=lambda x: x.name)
+    assert len(ordered) > 0, FileNotFoundError(
+        "Could not find BIDS directory in {} for task {}".format(root, task))
+
+    # grab the last match
+    BIDS_root = op.join(root, ordered[-1].name, "BIDS")
     layout = BIDSLayout(BIDS_root, derivatives=True)
     return layout
 
