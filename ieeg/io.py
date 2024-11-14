@@ -163,26 +163,38 @@ def open_dat_file(file_path: str, channels: list[str], sfreq: int = 2048,
     return raw
 
 
-def get_data(task: str, root: PathLike) -> BIDSLayout:
+def get_data(task: str, root: PathLike,
+             prefix: str = r"BIDS-\d\.\d_") -> BIDSLayout:
     """Gets the data for a subject and task.
 
     Parameters
     ----------
-    task : str, optional
+    task : str
         The task to get the data for, by default "SentenceRep"
-    root : PathLike, optional
+    root : PathLike
         The path to the lab directory, by default LAB_root
+    prefix : str, optional
+        The prefix of the BIDS directory, by default 'BIDS'
 
     Returns
     -------
     layout : BIDSLayout
         The BIDSLayout for the subject.
+
+    Examples
+    --------
+
+    >>> import mne
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
+    >>> parent = op.dirname(bids_root)
+    >>> get_data('epilepsy-ecog-data', parent, "MNE-") # doctest: +ELLIPSIS
+    BIDS Layout: ... | Subjects: 1 | Sessions: 1 | Runs: 0
     """
     # scan data directory
     scan = scandir(root)
 
     # keep only matching BIDS directories
-    matches = filter(lambda x: re.match(r"BIDS-\d\.\d_" + task, x.name), scan)
+    matches = filter(lambda x: re.match(prefix + task, x.name), scan)
 
     # check that there is at least one match
     ordered = sorted(matches, key=lambda x: x.name)
@@ -190,9 +202,13 @@ def get_data(task: str, root: PathLike) -> BIDSLayout:
         "Could not find BIDS directory in {} for task {}".format(root, task))
 
     # grab the last match
-    BIDS_root = op.join(root, ordered[-1].name, "BIDS")
-    layout = BIDSLayout(BIDS_root, derivatives=True)
-    return layout
+    BIDS_root = op.join(root, ordered[-1].name)
+
+    # check for BIDS subfolder
+    if op.isdir(alt_root := op.join(BIDS_root, "BIDS")):
+        return BIDSLayout(alt_root, derivatives=True)
+    else:
+        return BIDSLayout(BIDS_root, derivatives=True)
 
 
 @fill_doc
@@ -235,7 +251,10 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
-        run = inst.copy().crop(tmin=bounds[i]-inst.first_time, tmax=bounds[i + 1]-inst.first_time) #account for cropping
+
+        # account for cropping
+        run = inst.copy().crop(tmin=bounds[i] - inst.first_time,
+                               tmax=bounds[i + 1] - inst.first_time)
         if anonymize:
             if isinstance(run, Signal):
                 run.anonymize()
