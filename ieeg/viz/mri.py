@@ -1,6 +1,6 @@
 import csv
 import os.path as op
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from collections.abc import Iterable, Sequence
 from functools import singledispatch
 
@@ -191,7 +191,7 @@ def get_sub_dir(subj_dir: PathLike = None):
     Parameters
     ----------
     subj_dir : PathLike, optional
-        The subjects directory, by default LAB_root / 'ECoG_Recon_Full'
+        The subjects directory, by default LAB_root / 'ECoG_Recon'
 
     Returns
     -------
@@ -918,84 +918,68 @@ def _find_label(label: pd.Series, percent_thresh: float,
     return label[i]
 
 
-def roi_2_BN(roiName: str):
-    match roiName:
-        case 'mtg':
-            roiLabels = ['A21c', 'A21r', 'A37dl']
-        case 'stg':
-            roiLabels = ['A38m', 'TE1.0', 'TE1.2', 'TE1.0/TE1.2', 'A38l', 'A22r', 'A22c']
-        case 'astg':
-            roiLabels = ['A38m', 'TE1.0', 'TE1.2', 'TE1.0/TE1.2', 'A38l', 'A22r']
-        case 'pstg':
-            roiLabels = ['A22c']
-        case 'heschl':
-            roiLabels = ['A41/42']
-        case 'sts':
-            roiLabels = ['aSTS', 'rpSTS', 'cpSTS']
-        case 'itg':
-            roiLabels = ['A20r', 'A20iv', 'A37elv', 'A20il', 'A37vl', 'A20cl', 'A20cv']
-        case 'ipc':
-            roiLabels = ['A39c', 'A39rd', 'A40rd', 'A40c', 'A39rv', 'A40rv']
-        case 'angular':
-            roiLabels = ['A39c', 'A39rd']
-        case 'supramarginal':
-            roiLabels = ['A40rd', 'A40c', 'A40rv']
-        case 'ifg':
-            roiLabels = ['A45r', 'A45c', 'A44d', 'A44op', 'A44v']
-        case 'opercular':
-            roiLabels = ['A44op', 'A44d', 'A44v']
-        case 'triangular':
-            roiLabels = ['A45c', 'A45r']
-        case 'ifs':
-            roiLabels = ['IFS']
-        case 'mfg':
-            roiLabels = ['A46', 'A10l', 'A9/46v', 'A9/46d', 'A8vl', 'A6vl', 'IFJ']
-        case 'sfg':
-            roiLabels = ['A8dl', 'A8m', 'A9m', 'A10m', 'A9l']
-        case 'bg':
-            roiLabels = ['dlPu', 'dCa']
-        case 'rmfg':
-            roiLabels = ['A46', 'A10l', 'A9/46v', 'A9/46d']
-        case 'cmfg':
-            roiLabels = ['A8vl', 'A6vl']
-        case 'insula':
-            roiLabels = ['G', 'vIa', 'dIa', 'vId/vIg', 'dIg', 'dId']
-        case 'sma':
-            roiLabels = ['A6m', 'A6dl']
-        case 'smc':
-            roiLabels = ['A2', 'A4ul', 'A6cdl', 'A4hf', 'A4tl', 'A6cvl','A1/2/3ulhf', 'A1/2/3/tonla', 'A1/2/3tonIa', 'A1/2/3tru', 'A4t']
-        case 'thalamus':
-            roiLabels = ['cTtha']
-        case 'fusiform gyrus':
-            roiLabels = ['A37lv', 'A37mv', 'A20rv']
-        case 'cingulate gyrus':
-            roiLabels = ['A23c','A24cd', 'A32p', 'A24rv', 'A32sg', 'A23v']
-        case 'precentral':
-            roiLabels = ['A4hf', 'A4tl', 'A6cvl', 'A4t', 'A6cdl', 'A4ul']
-        case 'postcentral':
-            roiLabels = ['A1/2/3ulhf', 'A1/2/3/tonla', 'A1/2/3tru', 'A2']
-        case 'spl':
-            roiLabels = ['A7pc', 'A7r']
-        case 'pcl':
-            roiLabels = ['A4ll']
-        case 'occ':
-            roiLabels = ['rLinG', 'lsOccG', 'mOccG', 'OPC', 'iOccG']
-        case 'hipp':
-            roiLabels = ['rHipp', 'cHipp']
-        case _:
-            raise ValueError(f"{roiName} isn't an option!")
-    return roiLabels
+class Atlas:
+    def __init__(self, subjects_dir: PathLike = None,
+                 atlas: str = 'BNA_subregions.xlsx',
+                 delim: str = ','):
+        subjects_dir = get_sub_dir(subjects_dir)
+        ref = pd.ExcelFile(op.join(subjects_dir, atlas))
+        data = ref.parse(ref.sheet_names[0])
+        self.entries = []
+        self.abbreviations = {}
+        lobe = None
+        gyrus = None
+        entry = namedtuple('Entry', ['lobe', 'gyrus', 'subregion', 'MNI'])
+        for row in data.iterrows():
+            lobe = row[1]['Lobe'].split(' ')[0] if not isinstance(
+                row[1]['Lobe'], float) else lobe
+            gyrus = self.parse_abbrev(row[1]['Gyrus'], delim) if not isinstance(
+                row[1]['Gyrus'], float) else gyrus
+            subregion = self.parse_abbrev(row[1].iloc[5], delim)
+            lh = tuple(int(coord) for coord in row[1].iloc[7].split(delim))
+            rh = tuple(int(coord) for coord in row[1].iloc[8].split(delim))
+            self.entries.append(entry(lobe, gyrus, subregion, {'lh': lh, 'rh': rh}))
 
+    def __getitem__(self, key):
+        out = [entry for entry in self.entries if entry.subregion == key]
+        if len(out) == 0:
+            if key in self.abbreviations.values():
+                key = [k for k, v in self.abbreviations.items() if v == key][0]
+                return self[key]
+            else:
+                raise KeyError(f"Subregion {key} not found")
+        elif len(out) == 1:
+            return out[0]
+        else:
+            return out
 
-def BN_2_roi(label: str):
-    rois = ['mtg', 'stg', 'heschl', 'sts', 'itg', 'ipc', 'angular', 'supramarginal', 'ifg', 'opercular',
-            'triangular', 'ifs', 'mfg', 'insula', 'sma', 'smc', 'spl', 'pcl', 'occ', 'hipp', 'cingulate gyrus',
-            'fusiform gyrus', 'bg', 'sfg', 'thalamus', 'precentral', 'postcentral']
-    for r in rois:
-        if label in roi_2_BN(r):
-            return r
-    print(f"{label} not found in any ROI")
-    return 'other'
+    @property
+    def gyri(self):
+        gyri = (entry.gyrus for entry in self.entries)
+        expanded = (self.abbreviations[g]
+                    if g in self.abbreviations else g
+                    for g in gyri)
+        return set(expanded)
+
+    @property
+    def lobes(self):
+        lobes = (entry.lobe for entry in self.entries)
+        expanded = (self.abbreviations[l]
+                    if l in self.abbreviations else l
+                    for l in lobes)
+        return set(expanded)
+
+    def __repr__(self):
+        num_gyri = len(self.gyri)
+        num_lobes = len(self.lobes)
+        num_subregions = len(self.entries)
+        return f"Atlas with {num_gyri} gyri, {num_lobes} lobes, and {num_subregions} subregions"
+
+    def parse_abbrev(self, abbrev: str, delim: str = ','):
+        short, *long = abbrev.split(delim)
+        self.abbreviations[short] = delim.join(long).lstrip().rstrip()
+        return short
+
 
 if __name__ == "__main__":
     from ieeg.io import get_data, raw_from_layout
@@ -1012,12 +996,13 @@ if __name__ == "__main__":
     mne.set_log_level("INFO")
     TASK = "Phoneme_sequencing"
     sub_num = 35
-    layout = get_data(TASK, root=LAB_root)
+    # layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "..", "ECoG_Recon")
     sub_pad = "D" + str(sub_num).zfill(4)
     info = subject_to_info(f"D{sub_num}", subj_dir)
     labels = gen_labels(info, sub=f"D{sub_num}", subj_dir=subj_dir,
                         atlas=".BN_atlas")
+    bn_atlas = Atlas()
 
     # sub = "D{}".format(sub_num)
 
@@ -1034,13 +1019,13 @@ if __name__ == "__main__":
     # brain = plot_subj("D5", color=colors)
     # colors = np.concatenate([colors, np.random.random((124, 4))], axis=0)
 
-    substring = "D35"
-    sublist = substring.split()
-
-    elec_label_tofind = 'LPI6'
-    elec_list = list(labels.keys())
-    elec_picks = elec_list.index(elec_label_tofind)
-    plot_on_average(sublist, rm_wm=False, hemi='both', picks=[elec_picks])
+    # substring = "D35"
+    # sublist = substring.split()
+    #
+    # elec_label_tofind = 'LPI6'
+    # elec_list = list(labels.keys())
+    # elec_picks = elec_list.index(elec_label_tofind)
+    # plot_on_average(sublist, rm_wm=False, hemi='both', picks=[elec_picks])
                           # transparency=0.1,
                           # picks=list(range(48)) + list(range(52, 176)),
                           # color=colors,
