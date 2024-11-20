@@ -45,6 +45,56 @@ def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
             yield _coords + (k,), v
 
 
+def lcs(*strings: str) -> str:
+    """Find the longest common substring in a list of strings.
+
+    Parameters
+    ----------
+    *strings : str
+        The strings to find the longest common substring of.
+
+    Returns
+    -------
+    str
+        The longest common substring in the list of strings.
+
+    Examples
+    --------
+    >>> lcs('ABAB')
+    'ABAB'
+    >>> lcs('ABAB', 'BABA')
+    'ABA'
+    >>> lcs('ABAB', 'BABA', 'ABBA')
+    'AB'
+    """
+    if not strings:
+        return ""
+
+    def _lcs_two_strings(s1, s2):
+        n, m = len(s1), len(s2)
+        dp = [[0] * (m + 1) for _ in range(n + 1)]
+        max_len = 0
+        end_pos = 0
+
+        for i in range(1, n + 1):
+            for j in range(1, m + 1):
+                if s1[i - 1] == s2[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                    if dp[i][j] > max_len:
+                        max_len = dp[i][j]
+                        end_pos = i
+
+        return s1[end_pos - max_len:end_pos]
+
+    common_substr = strings[0]
+    for string in strings[1:]:
+        common_substr = _lcs_two_strings(common_substr, string)
+        if not common_substr:
+            break
+
+    return common_substr
+
+
 class LabeledArray(np.ndarray):
     """ A numpy array with labeled dimensions, acting like a dictionary.
 

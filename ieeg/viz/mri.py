@@ -637,7 +637,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
     scale[scale > max_size] = max_size
 
     if mode in ['size', 'both']:
-        size = scale
+        size = scale / 2
     else:
         size = np.ones_like(scale)
 
@@ -649,7 +649,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         plotter.subplot(j, k)
         brain = plot_on_average(subjects, picks=list(idx), size=size[i],
                                 hemi='both', color=colors[i], show=False,
-                                transparency=0.2)
+                                transparency=0.15)
         for actor in brain.plotter.actors.values():
             plotter.add_actor(actor, reset_camera=False)
         plotter.camera = brain.plotter.camera
@@ -923,7 +923,7 @@ def roi_2_BN(roiName: str):
         case 'mtg':
             roiLabels = ['A21c', 'A21r', 'A37dl']
         case 'stg':
-            roiLabels = ['A38m', 'TE1.0', 'TE1.2', 'A38l', 'A22r', 'A22c']
+            roiLabels = ['A38m', 'TE1.0', 'TE1.2', 'TE1.0/TE1.2', 'A38l', 'A22r', 'A22c']
         case 'astg':
             roiLabels = ['A38m', 'TE1.0', 'TE1.2', 'TE1.0/TE1.2', 'A38l', 'A22r']
         case 'pstg':
@@ -951,7 +951,7 @@ def roi_2_BN(roiName: str):
         case 'mfg':
             roiLabels = ['A46', 'A10l', 'A9/46v', 'A9/46d', 'A8vl', 'A6vl', 'IFJ']
         case 'sfg':
-            roiLabels = ['A8dl', 'A8m', 'A9m', 'A10m']
+            roiLabels = ['A8dl', 'A8m', 'A9m', 'A10m', 'A9l']
         case 'bg':
             roiLabels = ['dlPu', 'dCa']
         case 'rmfg':
@@ -964,12 +964,12 @@ def roi_2_BN(roiName: str):
             roiLabels = ['A6m', 'A6dl']
         case 'smc':
             roiLabels = ['A2', 'A4ul', 'A6cdl', 'A4hf', 'A4tl', 'A6cvl','A1/2/3ulhf', 'A1/2/3/tonla', 'A1/2/3tonIa', 'A1/2/3tru', 'A4t']
-        case 'thalmus':
+        case 'thalamus':
             roiLabels = ['cTtha']
         case 'fusiform gyrus':
             roiLabels = ['A37lv', 'A37mv', 'A20rv']
         case 'cingulate gyrus':
-            roiLabels = ['A23c','A24cd']
+            roiLabels = ['A23c','A24cd', 'A32p', 'A24rv', 'A32sg', 'A23v']
         case 'precentral':
             roiLabels = ['A4hf', 'A4tl', 'A6cvl', 'A4t', 'A6cdl', 'A4ul']
         case 'postcentral':
@@ -990,7 +990,7 @@ def roi_2_BN(roiName: str):
 def BN_2_roi(label: str):
     rois = ['mtg', 'stg', 'heschl', 'sts', 'itg', 'ipc', 'angular', 'supramarginal', 'ifg', 'opercular',
             'triangular', 'ifs', 'mfg', 'insula', 'sma', 'smc', 'spl', 'pcl', 'occ', 'hipp', 'cingulate gyrus',
-            'fusiform gyrus', 'bg', 'sfg']
+            'fusiform gyrus', 'bg', 'sfg', 'thalamus', 'precentral', 'postcentral']
     for r in rois:
         if label in roi_2_BN(r):
             return r
