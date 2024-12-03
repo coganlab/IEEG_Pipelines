@@ -25,16 +25,13 @@ jobs:
       matrix:
         include:
         - os: windows-latest
-          python: '3.12'
+          python: '3.13'
           kind: pip
         - os: macos-latest
-          python: '3.11'
+          python: '3.12'
           kind: pip
         - os: ubuntu-latest
           python: '3.10'
-          kind: pip
-        - os: ubuntu-latest
-          python: '3.13'
           kind: pip
     environment: release
     steps:

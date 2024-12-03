@@ -363,8 +363,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         assert all(picks_in), (f"Channel not found: "
                                f"{picks[picks_in.index(False)]}")
     else:
-        raise TypeError(f"picks must be list of str or int, not {type(
-            picks[0])}")
+        raise TypeError(f"picks must be list of str or int, not "
+                        f"{type(picks[0])}")
 
     default_c = parula.mat_colors.copy()
     for subj, new in sigs.items():
