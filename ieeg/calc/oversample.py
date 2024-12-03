@@ -329,8 +329,9 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]
 
-def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int, alpha: float = 1.,
-          seed: int = None) -> None:
+
+def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
+           alpha: float = 1., seed: int = None) -> None:
     """Mixup the data using the labels
 
     Parameters
@@ -379,7 +380,7 @@ def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int, alpha: float = 1.
                 ~is_nan, labels == l_class))[0]
             choice1 = np.random.choice(possible_choices)
             choice2 = np.random.choice(n_non_nan)
-            l = np.random.beta(alpha, alpha)
-            if l < .5:
-                l = 1 - l
-            arr[i] = l * arr[choice1] + (1 - l) * arr[choice2]
+            lam = np.random.beta(alpha, alpha)
+            if lam < .5:
+                lam = 1 - lam
+            arr[i] = lam * arr[choice1] + (1 - lam) * arr[choice2]

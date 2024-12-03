@@ -37,15 +37,16 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
     whole = get_centers((0.018, 10000))
     center_start = np.argmin(np.abs(whole - centers[0]))
     bands = [(whole[center_start + i - 1], whole[center_start + i + 1])
-                for i in range(len(centers))]
+             for i in range(len(centers))]
 
     # pre-allocate
     out_shape = data.shape[:-1] + (data.shape[-1]//decim + 1, len(bands))
     hilb_amp = np.zeros(out_shape, dtype='float32')
 
-    decim_extract = lambda *args: extract(*args)[..., ::decim]
-    proc = Parallel(n_jobs, verbose=10, return_as="generator")(delayed(
-        decim_extract)(data, fs, band, True, 1, False) for band in bands)
+    # run in parallel
+    proc = Parallel(n_jobs, verbose=10, return_as="generator")(
+        delayed(extract)(data, fs, band, True, 1, False)[..., ::decim]
+        for band in bands)
     for i, out in enumerate(proc):
         hilb_amp[..., i] = out
 

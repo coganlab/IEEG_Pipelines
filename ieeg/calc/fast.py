@@ -6,6 +6,7 @@ from ieeg.calc._fast.concat import nan_concatinate
 
 __all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays"]
 
+
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
                        ) -> np.ndarray:
     """Concatenate arrays along a specified axis, filling in empty arrays with

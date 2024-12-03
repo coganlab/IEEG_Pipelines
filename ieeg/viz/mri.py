@@ -242,7 +242,8 @@ def plot_gamma(evoked: mne.Evoked, subjects_dir: PathLike = None, **kwargs):
     for i, pos in enumerate(xy_pts):
         x, y = pos
         color = cmap(i / xy_pts.shape[0])
-        ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5, color=color)
+        ax.plot(x_line + x, gamma_power[i] + y, linewidth=0.5,
+                color=color)
 
 
 def get_grey_matter(subjects: Sequence[str]) -> set[str]:
@@ -359,9 +360,11 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         if len(sigs) == 1 and not picks[0].startswith(list(sigs.keys())[0]):
             picks = [subj + '-' + p for p in picks]
         picks_in = [p in all_channel_name for p in picks]
-        assert all(picks_in), f"Channel not found: {picks[picks_in.index(False)]}"
+        assert all(picks_in), f"Channel not found: {picks[
+            picks_in.index(False)]}"
     else:
-        raise TypeError(f"picks must be list of str or int, not {type(picks[0])}")
+        raise TypeError(f"picks must be list of str or int, not {type(
+            picks[0])}")
 
     default_c = parula.mat_colors.copy()
     for subj, new in sigs.items():
@@ -398,7 +401,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         elif np.isscalar(color) or color is None:
             this_color = color
         elif len(color) == len(picks):
-            this_color = [color[picks.index(subj + '-' + p)] for p in these_picks]
+            this_color = [color[picks.index(subj + '-' + p)]
+                          for p in these_picks]
         else:
             this_color = color
 
@@ -676,7 +680,8 @@ def _add_electrodes(fig: mne.viz.Brain, hemi: str,
 
     if not np.isscalar(size) and len(colors[0]) == 4:
         assert len(size) == len(pos), "Size must be the same length as vals"
-        assert len(colors) == len(pos), "Colors must be the same length as vals"
+        assert len(colors) == len(pos), ("Colors must be the same length as"
+                                         " vals")
         for i, p in enumerate(pos):
             fig.add_foci(p, hemi=hemi, color=colors[i][:3],
                          scale_factor=size[i], alpha=colors[i][3])
@@ -858,7 +863,8 @@ def gen_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
 
 
 def _pick_label(label: pd.Series, percent_thresh: float,
-                bad_words: list[str] = ('Unknown', 'unknown', 'hypointensities', 'White-Matter')):
+                bad_words: list[str] = ('Unknown', 'unknown',
+                                        'hypointensities', 'White-Matter')):
 
     i = 2
     if label[0] not in bad_words:
@@ -873,10 +879,12 @@ def _pick_label(label: pd.Series, percent_thresh: float,
             i += 2
     return label[i]
 
+
 def find_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
-               atlas: str = ".a2009s", hot_words: list[str] = None,
+                atlas: str = ".a2009s", hot_words: list[str] = None,
                 pct_thresh: float = 0.1) -> OrderedDict[str, list[str]]:
-    """Prioritize labels that contain hot_words, otherwise use _pick_label to find most probable GM
+    """Prioritize labels that contain hot_words, otherwise use _pick_label
+     to find most probable GM
 
     Parameters
     ----------
@@ -905,14 +913,17 @@ def find_labels(info: mne.Info, sub: str = None, subj_dir: str = None,
         new_labels[c] = _find_label(labels.T[c], pct_thresh, hot_words)
     return new_labels
 
+
 def _find_label(label: pd.Series, percent_thresh: float,
                 hot_words: list[str] = None):
 
     i = 2
     if any(w in label[0] for w in hot_words):
         return label[0]
-    while not((any(w in label[i] for w in hot_words)) and (float(label[i + 1]) > percent_thresh)):
-        if ((i + 2) >= len(label.T)) or (label[i + 2].isspace()):  # end of label or empty label
+    while not ((any(w in label[i] for w in hot_words)) and (float(label[i + 1])
+                                                            > percent_thresh)):
+        # end of label or empty label
+        if ((i + 2) >= len(label.T)) or (label[i + 2].isspace()):
             return _pick_label(label, 0.05)
         i += 2
     return label[i]
@@ -929,16 +940,19 @@ class Atlas:
         self.abbreviations = {}
         lobe = None
         gyrus = None
-        entry = namedtuple('Entry', ['lobe', 'gyrus', 'subregion', 'MNI'])
+        entry = namedtuple('Entry', ['lobe', 'gyrus',
+                                     'subregion', 'MNI'])
         for row in data.iterrows():
             lobe = row[1]['Lobe'].split(' ')[0] if not isinstance(
                 row[1]['Lobe'], float) else lobe
-            gyrus = self.parse_abbrev(row[1]['Gyrus'], delim) if not isinstance(
+            gyrus = self.parse_abbrev(row[1]['Gyrus'], delim
+                                      ) if not isinstance(
                 row[1]['Gyrus'], float) else gyrus
             subregion = self.parse_abbrev(row[1].iloc[5], delim)
             lh = tuple(int(coord) for coord in row[1].iloc[7].split(delim))
             rh = tuple(int(coord) for coord in row[1].iloc[8].split(delim))
-            self.entries.append(entry(lobe, gyrus, subregion, {'lh': lh, 'rh': rh}))
+            self.entries.append(entry(lobe, gyrus, subregion,
+                                      {'lh': lh, 'rh': rh}))
 
     def __getitem__(self, key):
         out = [entry for entry in self.entries if entry.subregion == key]
@@ -964,16 +978,17 @@ class Atlas:
     @property
     def lobes(self):
         lobes = (entry.lobe for entry in self.entries)
-        expanded = (self.abbreviations[l]
-                    if l in self.abbreviations else l
-                    for l in lobes)
+        expanded = (self.abbreviations[lobe]
+                    if lobe in self.abbreviations else lobe
+                    for lobe in lobes)
         return set(expanded)
 
     def __repr__(self):
         num_gyri = len(self.gyri)
         num_lobes = len(self.lobes)
         num_subregions = len(self.entries)
-        return f"Atlas with {num_gyri} gyri, {num_lobes} lobes, and {num_subregions} subregions"
+        return (f"Atlas with {num_gyri} gyri, {num_lobes} lobes, and"
+                f" {num_subregions} subregions")
 
     def parse_abbrev(self, abbrev: str, delim: str = ','):
         short, *long = abbrev.split(delim)
@@ -1005,20 +1020,22 @@ if __name__ == "__main__":
     bn_atlas = Atlas()
 
     # sub = "D{}".format(sub_num)
-
+    #
     # filt = raw_from_layout(layout.derivatives['clean'], subject=sub_pad,
     #                        extension='.edf', desc='clean', preload=False)
-
-    ##
-    # fig = electrode_gradient(["D5"], np.random.random((2, 48)), list(range(48)),
-    #                          [[1,0,0], [0,1,0]], mode='both')
+    #
+    # #
+    # electrode_gradient(["D5"], np.random.random((2, 48)),
+    #                    list(range(48)),
+    #                    [[1, 0, 0], [0, 1, 0]], mode='both')
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
     # plot_subj("D5")
-    # colors = np.concatenate([np.array([[1,0,0]] * 48), (np.arange(48) / 48)[:, None]], axis=1)
+    # colors = np.concatenate([np.array([[1,0,0]] * 48), (np.arange(48) / 48)[
+    # :, None]], axis=1)
     # brain = plot_subj("D5", color=colors)
     # colors = np.concatenate([colors, np.random.random((124, 4))], axis=0)
-
+    #
     # substring = "D35"
     # sublist = substring.split()
     #
@@ -1026,11 +1043,6 @@ if __name__ == "__main__":
     # elec_list = list(labels.keys())
     # elec_picks = elec_list.index(elec_label_tofind)
     # plot_on_average(sublist, rm_wm=False, hemi='both', picks=[elec_picks])
-                          # transparency=0.1,
-                          # picks=list(range(48)) + list(range(52, 176)),
-                          # color=colors,
-                          # size=colors[:, 3],
-                          # average="D79", background=(0, 0.4, 0.5))
     # plot_gamma(raw)
     # plot_on_average(["D22", "D28", "D64"],
     #                 picks=["D22-LPIF4", "D28-LPIO7", "D64-LAI6"],
