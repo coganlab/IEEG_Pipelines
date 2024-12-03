@@ -997,8 +997,8 @@ class Labels(np.char.chararray):
         for i, dim in enumerate(self.shape):
             for j in range(dim):
                 row = np.take(self, j, axis=i).flatten().astype(str)
-                splitted = (set(x.split(self.delimiter)) for x in row)
-                common = set.intersection(*splitted)
+                splitted = row.split(self.delimiter)
+                common = functools.reduce(np.intersect1d, splitted)
                 if len(common) == 0:
                     common = np.unique(row).tolist()
                 new_labels[i][j] = self.delimiter.join(common)
