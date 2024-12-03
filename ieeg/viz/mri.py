@@ -360,8 +360,8 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         if len(sigs) == 1 and not picks[0].startswith(list(sigs.keys())[0]):
             picks = [subj + '-' + p for p in picks]
         picks_in = [p in all_channel_name for p in picks]
-        assert all(picks_in), f"Channel not found: {picks[
-            picks_in.index(False)]}"
+        assert all(picks_in), (f"Channel not found: "
+                               f"{picks[picks_in.index(False)]}")
     else:
         raise TypeError(f"picks must be list of str or int, not {type(
             picks[0])}")
