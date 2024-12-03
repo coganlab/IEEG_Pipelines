@@ -66,6 +66,7 @@ jobs:
       - run: ./.github/check_qt_import.sh $MNE_QT_BACKEND
         if: ${{ env.MNE_QT_BACKEND != '' }}
       - name: List packages
+        shell: bash {0}
         run: |
           python -c "import mne; mne.sys_info()"
       - name: fetch mne datasets
