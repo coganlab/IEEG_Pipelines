@@ -123,7 +123,7 @@ class LabeledArray(np.ndarray):
     Examples
     --------
     >>> import numpy as np
-    >>> np.set_printoptions(legacy='1.25')
+    >>> np.set_printoptions(legacy='1.21')
     >>> from ieeg.calc.mat import LabeledArray
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
@@ -997,8 +997,8 @@ class Labels(np.char.chararray):
         for i, dim in enumerate(self.shape):
             for j in range(dim):
                 row = np.take(self, j, axis=i).flatten().astype(str)
-                common = _longest_common_substring(tuple(map(
-                    lambda x: tuple(x.split(self.delimiter, )), row)))
+                splitted = (set(x.split(self.delimiter)) for x in row)
+                common = set.intersection(*splitted)
                 if len(common) == 0:
                     common = np.unique(row).tolist()
                 new_labels[i][j] = self.delimiter.join(common)
@@ -1091,25 +1091,29 @@ def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     return out
 
 
-def _longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
-    matrix = [[] for _ in range(len(strings))]
-    for i in range(len(strings) - 1):
-        matrix[i] = _lcs(strings[i], strings[i + 1])
-    else:
-        matrix[-1] = [True for _ in range(len(strings[-1]))]
-    return np.array(strings[0])[np.all(matrix, axis=0)].tolist()
-
-
-@functools.lru_cache(None)
-def _lcs(s1: tuple, s2: tuple) -> list[bool]:
-    matrix = [False for _ in range(len(s1))]
-    for i in range(len(s1)):
-        if s1[i] == s2[i]:
-            matrix[i] = True
-    return matrix
-
-
 def is_broadcastable(shp1: tuple[int, ...], shp2: tuple[int, ...]):
+    """Check if two shapes are broadcastable.
+
+    Parameters
+    ----------
+    shp1 : tuple[int, ...]
+        The first shape.
+    shp2 : tuple[int, ...]
+        The second shape.
+
+    Returns
+    -------
+    bool
+
+    Examples
+    --------
+    >>> is_broadcastable((2, 3), (2, 3))
+    True
+    >>> is_broadcastable((2, 3), (3, 2))
+    False
+    >>> is_broadcastable((2, 3), (2, 1))
+    True
+    """
 
     ndim1 = len(shp1)
     ndim2 = len(shp2)
@@ -1462,7 +1466,7 @@ def _cat_test():
     Examples
     --------
     >>> import numpy as np
-    >>> np.set_printoptions(legacy='1.25')
+    >>> np.set_printoptions(legacy='1.21')
     >>> a = np.array([[1, 2, 3]])
     >>> b = np.array([[4, 5]])
     >>> c = np.array([[6, 7, 8, 9]])
