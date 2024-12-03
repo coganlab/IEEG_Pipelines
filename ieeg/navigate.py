@@ -133,9 +133,8 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3', 'PD4']
     """
 
-    tmp = input_raw.copy()
-    data = detrend(tmp.get_data('data'))  # channels X time
-    names = tmp.pick('data').ch_names
+    names = input_raw.copy().pick('data').ch_names
+    data = detrend(input_raw.get_data('data'))  # channels X time
     bads = []  # output for bad channel names
     desc = []  # output for bad channel descriptions
 
@@ -148,10 +147,10 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
             mne.utils.logger.info(f'outlier round {i} channels: {bads}')
 
     if save:
-        if not hasattr(tmp, 'filenames'):
+        if not hasattr(input_raw, 'filenames'):
             raise ValueError("Raw instance must have filenames attribute to "
                              "save bad channels")
-        for file in tmp.filenames:
+        for file in input_raw.filenames:
             update(file, bads, desc)
 
     return bads

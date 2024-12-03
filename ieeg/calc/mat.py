@@ -5,9 +5,7 @@ import mne
 from ieeg.calc.fast import concatenate_arrays
 
 import numpy as np
-from numpy.matlib import repmat
 from numpy.typing import ArrayLike
-from numpy.core.numeric import normalize_axis_tuple
 
 import ieeg
 
@@ -45,6 +43,56 @@ def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
             yield _coords + (k,), v
 
 
+def lcs(*strings: str) -> str:
+    """Find the longest common substring in a list of strings.
+
+    Parameters
+    ----------
+    *strings : str
+        The strings to find the longest common substring of.
+
+    Returns
+    -------
+    str
+        The longest common substring in the list of strings.
+
+    Examples
+    --------
+    >>> lcs('ABAB')
+    'ABAB'
+    >>> lcs('ABAB', 'BABA')
+    'ABA'
+    >>> lcs('ABAB', 'BABA', 'ABBA')
+    'AB'
+    """
+    if not strings:
+        return ""
+
+    def _lcs_two_strings(s1, s2):
+        n, m = len(s1), len(s2)
+        dp = [[0] * (m + 1) for _ in range(n + 1)]
+        max_len = 0
+        end_pos = 0
+
+        for i in range(1, n + 1):
+            for j in range(1, m + 1):
+                if s1[i - 1] == s2[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                    if dp[i][j] > max_len:
+                        max_len = dp[i][j]
+                        end_pos = i
+
+        return s1[end_pos - max_len:end_pos]
+
+    common_substr = strings[0]
+    for string in strings[1:]:
+        common_substr = _lcs_two_strings(common_substr, string)
+        if not common_substr:
+            break
+
+    return common_substr
+
+
 class LabeledArray(np.ndarray):
     """ A numpy array with labeled dimensions, acting like a dictionary.
 
@@ -73,6 +121,7 @@ class LabeledArray(np.ndarray):
     Examples
     --------
     >>> import numpy as np
+    >>> np.set_printoptions(legacy='1.21')
     >>> from ieeg.calc.mat import LabeledArray
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
@@ -240,7 +289,7 @@ class LabeledArray(np.ndarray):
         return LabeledArray(arr, new)
 
     def transpose(self, axes):
-        axes = normalize_axis_tuple(axes, self.ndim)
+        axes = np._core.numeric.normalize_axis_tuple(axes, self.ndim)
         new_labels = [self.labels[i] for i in axes]
         arr_t = super(LabeledArray, self).transpose(axes)
         return LabeledArray(arr_t, new_labels)
@@ -909,7 +958,8 @@ class Labels(np.char.chararray):
         return result
 
     def __add__(self, other):
-        result = super().__add__(self.delimiter).__add__(other)
+        result = self.view(np.char.chararray).__add__(
+            self.delimiter).__add__(other.view(np.char.chararray))
         return Labels(result)
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
@@ -945,8 +995,8 @@ class Labels(np.char.chararray):
         for i, dim in enumerate(self.shape):
             for j in range(dim):
                 row = np.take(self, j, axis=i).flatten().astype(str)
-                common = _longest_common_substring(tuple(map(
-                    lambda x: tuple(x.split(self.delimiter, )), row)))
+                splitted = row.split(self.delimiter)
+                common = functools.reduce(np.intersect1d, splitted)
                 if len(common) == 0:
                     common = np.unique(row).tolist()
                 new_labels[i][j] = self.delimiter.join(common)
@@ -1039,25 +1089,29 @@ def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     return out
 
 
-def _longest_common_substring(strings: tuple[tuple[str]]) -> tuple[str]:
-    matrix = [[] for _ in range(len(strings))]
-    for i in range(len(strings) - 1):
-        matrix[i] = _lcs(strings[i], strings[i + 1])
-    else:
-        matrix[-1] = [True for _ in range(len(strings[-1]))]
-    return np.array(strings[0])[np.all(matrix, axis=0)].tolist()
-
-
-@functools.lru_cache(None)
-def _lcs(s1: tuple, s2: tuple) -> list[bool]:
-    matrix = [False for _ in range(len(s1))]
-    for i in range(len(s1)):
-        if s1[i] == s2[i]:
-            matrix[i] = True
-    return matrix
-
-
 def is_broadcastable(shp1: tuple[int, ...], shp2: tuple[int, ...]):
+    """Check if two shapes are broadcastable.
+
+    Parameters
+    ----------
+    shp1 : tuple[int, ...]
+        The first shape.
+    shp2 : tuple[int, ...]
+        The second shape.
+
+    Returns
+    -------
+    bool
+
+    Examples
+    --------
+    >>> is_broadcastable((2, 3), (2, 3))
+    True
+    >>> is_broadcastable((2, 3), (3, 2))
+    False
+    >>> is_broadcastable((2, 3), (2, 1))
+    True
+    """
 
     ndim1 = len(shp1)
     ndim2 = len(shp2)
@@ -1348,13 +1402,12 @@ def get_elbow(data: np.ndarray) -> int:
     """
     nPoints = len(data)
     allCoord = np.vstack((range(nPoints), data)).T
-    np.array([range(nPoints), data])
     firstPoint = allCoord[0]
     lineVec = allCoord[-1] - allCoord[0]
     lineVecNorm = lineVec / np.sqrt(np.sum(lineVec ** 2))
     vecFromFirst = allCoord - firstPoint
-    scalarProduct = np.sum(vecFromFirst * repmat(
-        lineVecNorm, nPoints, 1), axis=1)
+    scalarProduct = np.sum(vecFromFirst * np.tile(lineVecNorm,
+                                                  (nPoints, 1)), axis=1)
     vecFromFirstParallel = np.outer(scalarProduct, lineVecNorm)
     vecToLine = vecFromFirst - vecFromFirstParallel
     distToLine = np.sqrt(np.sum(vecToLine ** 2, axis=1))
@@ -1410,6 +1463,7 @@ def _cat_test():
     Examples
     --------
     >>> import numpy as np
+    >>> np.set_printoptions(legacy='1.21')
     >>> a = np.array([[1, 2, 3]])
     >>> b = np.array([[4, 5]])
     >>> c = np.array([[6, 7, 8, 9]])

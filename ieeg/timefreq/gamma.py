@@ -2,18 +2,68 @@ from functools import singledispatch
 
 import numpy as np
 from mne import Epochs
+from mne.time_frequency import EpochsTFR
 from mne.io import Raw, base
 from tqdm import tqdm
 from joblib import Parallel, delayed
 
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
-from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal
+from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal, calculate_wavelets
 from ieeg.timefreq.hilbert import (filterbank_hilbert_first_half_wrapper,
                                    extract_channel_wrapper)
 
 
 @singledispatch
-def extract(data: np.ndarray, fs: int = None,
+def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
+                        decim: int = 1, n_jobs=-1):
+    """
+    Compute the phase and amplitude (envelope) of a signal for a single
+    frequency band, as in [#edwards]_. This is done using a filter bank of
+    gaussian shaped filters with center frequencies linearly spaced until 4Hz
+    and then logarithmically spaced. The Hilbert Transform of each filter's
+    output is computed and the amplitude and phase are computed from the
+    complex values. See [#edwards]_ for details on the filter bank used.
+
+    See Also
+    --------
+    filter_hilbert
+
+    Parameters
+    ----------
+
+    """
+
+    centers = get_centers(Wn)
+    whole = get_centers((0.018, 10000))
+    center_start = np.argmin(np.abs(whole - centers[0]))
+    bands = [(whole[center_start + i - 1], whole[center_start + i + 1])
+             for i in range(len(centers))]
+
+    # pre-allocate
+    out_shape = data.shape[:-1] + (data.shape[-1]//decim + 1, len(bands))
+    hilb_amp = np.zeros(out_shape, dtype='float32')
+
+    # run in parallel
+    proc = Parallel(n_jobs, verbose=10, return_as="generator")(
+        delayed(extract)(data, fs, band, True, 1, False)[..., ::decim]
+        for band in bands)
+    for i, out in enumerate(proc):
+        hilb_amp[..., i] = out
+
+    freqs = [np.mean(band) for band in bands]
+    return hilb_amp.transpose(0, 1, 3, 2), freqs
+
+
+@hilbert_spectrogram.register
+def _(inst: Epochs, Wn=(1, 150), decim: int = 1, n_jobs=-1):
+    """Extract gamma band envelope from Raw object."""
+    array, freqs = hilbert_spectrogram(inst.get_data(copy=False),
+                                       inst.info['sfreq'], Wn, decim, n_jobs)
+    return EpochsTFR(inst.info, array, inst.times[::decim], freqs)
+
+
+@singledispatch
+def extract(data: np.ndarray, fs: float = None,
             passband: tuple[int, int] = (70, 150), copy: bool = True,
             n_jobs=-1, verbose: bool = True) -> np.ndarray:
     """Extract gamma band envelope from data.
@@ -64,10 +114,10 @@ def extract(data: np.ndarray, fs: int = None,
     ... preload=True, verbose=False, picks=['AD2'])
     >>> gamma = extract(trials, n_jobs=1)
     >>> crop_pad(gamma, "0.5s") # doctest: +ELLIPSIS
-    <Epochs |  1 events (all good), 0 – 0.5 s, baseline off, ...
+    <Epochs | 1 events (all good), 0 – 0.5 s (baseline off), ...
      'AD1-4, ATT1,2': 1>
     >>> gamma.resample(100, verbose=50) # doctest: +ELLIPSIS
-    <Epochs |  1 events (all good), 0 – 0.49 s, baseline off, ...
+    <Epochs | 1 events (all good), 0 – 0.49 s (baseline off), ...
      'AD1-4, ATT1,2': 1>
     >>> expected = np.array([
     ... 3.5729, 3.8323, 4.0820, 5.4100, 8.0623, 12.579, 20.280, 31.027, 43.918,

@@ -1,6 +1,6 @@
 bids>=0.0
 mne
-mne-bids<=0.14
+mne-bids>=0.16
 numpy
 matplotlib
 scipy

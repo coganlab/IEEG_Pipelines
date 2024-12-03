@@ -1,6 +1,6 @@
 import re
 from functools import singledispatch
-from os import listdir, mkdir, path as op, walk
+from os import scandir, mkdir, path as op, walk
 
 import mne
 import numpy as np
@@ -163,32 +163,52 @@ def open_dat_file(file_path: str, channels: list[str], sfreq: int = 2048,
     return raw
 
 
-def get_data(task: str, root: PathLike) -> BIDSLayout:
+def get_data(task: str, root: PathLike,
+             prefix: str = r"BIDS-\d\.\d_") -> BIDSLayout:
     """Gets the data for a subject and task.
 
     Parameters
     ----------
-    task : str, optional
+    task : str
         The task to get the data for, by default "SentenceRep"
-    root : PathLike, optional
+    root : PathLike
         The path to the lab directory, by default LAB_root
+    prefix : str, optional
+        The prefix of the BIDS directory, by default 'BIDS'
 
     Returns
     -------
     layout : BIDSLayout
         The BIDSLayout for the subject.
+
+    Examples
+    --------
+
+    >>> import mne
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path(verbose=False)
+    >>> parent = op.dirname(bids_root)
+    >>> get_data('epilepsy-ecog-data', parent, "MNE-") # doctest: +ELLIPSIS
+    BIDS Layout: ... | Subjects: 1 | Sessions: 1 | Runs: 0
     """
-    BIDS_root = None
-    for dir in listdir(root):
-        if re.match(r"BIDS-\d\.\d_" + task, dir) and "BIDS" in listdir(op.join(
-                root, dir)):
-            BIDS_root = op.join(root, dir, "BIDS")
-            break
-    if BIDS_root is None:
-        raise FileNotFoundError("Could not find BIDS directory in {} for task "
-                                "{}".format(root, task))
-    layout = BIDSLayout(BIDS_root, derivatives=True)
-    return layout
+    # scan data directory
+    scan = scandir(root)
+
+    # keep only matching BIDS directories
+    matches = filter(lambda x: re.match(prefix + task, x.name), scan)
+
+    # check that there is at least one match
+    ordered = sorted(matches, key=lambda x: x.name)
+    assert len(ordered) > 0, FileNotFoundError(
+        "Could not find BIDS directory in {} for task {}".format(root, task))
+
+    # grab the last match
+    BIDS_root = op.join(root, ordered[-1].name)
+
+    # check for BIDS subfolder
+    if op.isdir(alt_root := op.join(BIDS_root, "BIDS")):
+        return BIDSLayout(alt_root, derivatives=True)
+    else:
+        return BIDSLayout(BIDS_root, derivatives=True)
 
 
 @fill_doc
@@ -215,8 +235,10 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
     if not op.isdir(save_dir):
         mkdir(save_dir)
     bounds = inst.annotations.copy()
+    starttime = inst.first_time
+    endtime = inst.times[-1]+inst.first_time
     bounds = bounds[np.where(bounds.description == 'BAD boundary')[0]]
-    bounds = [0] + list(bounds.onset) + [inst.times[-1]]
+    bounds = [starttime] + list(bounds.onset) + [endtime]
     for i, file in enumerate(inst.filenames):
         entities = parse_file_entities(file)
         if 'desc' in entities.keys():
@@ -229,7 +251,10 @@ def save_derivative(inst: Signal, layout: BIDSLayout, pipeline: str = None,
         if pipeline:
             entities['description'] = pipeline
         bids_path = BIDSPath(**entities, root=save_dir)
-        run = inst.copy().crop(tmin=bounds[i], tmax=bounds[i + 1])
+
+        # account for cropping
+        run = inst.copy().crop(tmin=bounds[i] - inst.first_time,
+                               tmax=bounds[i + 1] - inst.first_time)
         if anonymize:
             if isinstance(run, Signal):
                 run.anonymize()

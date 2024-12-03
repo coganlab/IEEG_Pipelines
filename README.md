@@ -12,7 +12,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 ## Pipeline Functionality
 
-[![Python (3.10) on Windows/Linux](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Python-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Python-CI.yml)
+[![Python (3.10 - 3.13) on Windows/Linux/Mac](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Python-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/Python-CI.yml)
 
 [![MATLAB latest](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml/badge.svg)](https://github.com/coganlab/IEEG_Pipelines/actions/workflows/MATLAB-CI.yml)
 
@@ -33,7 +33,7 @@ A repo of current preprocessing pipelines for the [Cogan Lab](https://www.coganl
 
 ### Python
 
-Version 3.10 supported
+Version 3.10 - 3.13 supported
 
 #### Conda
 
@@ -41,7 +41,7 @@ Version 3.10 supported
 2. Create an anaconda environment with python and pip packages installed
     
      ```bash
-     conda create -n <YOUR_NAME> python<3.13 pip
+     conda create -n <YOUR_NAME> python<3.14 pip
      ```
 3. Activate the environment
 
