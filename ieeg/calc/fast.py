@@ -121,6 +121,8 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     if arr.ndim > 3:
         for i in range(arr.shape[0]):
             mixup(arr[i], obs_axis - 1, alpha, seed)
+    elif arr.ndim == 1:
+        raise ValueError("Array must have at least 2 dimensions")
     else:
         if seed is None:
             seed = np.random.randint(0, 2 ** 16 - 1)
@@ -184,7 +186,12 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     >>> mean_diff(group1, group2, axis=1)
     array([ 0., 30.,  0.,  5.,  0.])
     """
-    in1 = np.moveaxis(group1, axis, -1)
-    in2 = np.moveaxis(group2, axis, -1)
+    assert group1.ndim == group2.ndim, ("Arrays must have the same number of"
+                                        "dimensions")
+    if group1.ndim > 1 and axis not in (group1.ndim - 1, -1):
+        in1 = np.moveaxis(group1, axis, -1)
+        in2 = np.moveaxis(group2, axis, -1)
+    else:
+        in1, in2 = group1, group2
 
     return _md(in1, in2)

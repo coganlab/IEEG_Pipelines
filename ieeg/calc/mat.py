@@ -5,9 +5,7 @@ import mne
 from ieeg.calc.fast import concatenate_arrays
 
 import numpy as np
-from numpy.matlib import repmat
 from numpy.typing import ArrayLike
-from numpy.core.numeric import normalize_axis_tuple
 
 import ieeg
 
@@ -291,7 +289,7 @@ class LabeledArray(np.ndarray):
         return LabeledArray(arr, new)
 
     def transpose(self, axes):
-        axes = normalize_axis_tuple(axes, self.ndim)
+        axes = np._core.numeric.normalize_axis_tuple(axes, self.ndim)
         new_labels = [self.labels[i] for i in axes]
         arr_t = super(LabeledArray, self).transpose(axes)
         return LabeledArray(arr_t, new_labels)
@@ -1404,13 +1402,12 @@ def get_elbow(data: np.ndarray) -> int:
     """
     nPoints = len(data)
     allCoord = np.vstack((range(nPoints), data)).T
-    np.array([range(nPoints), data])
     firstPoint = allCoord[0]
     lineVec = allCoord[-1] - allCoord[0]
     lineVecNorm = lineVec / np.sqrt(np.sum(lineVec ** 2))
     vecFromFirst = allCoord - firstPoint
-    scalarProduct = np.sum(vecFromFirst * repmat(
-        lineVecNorm, nPoints, 1), axis=1)
+    scalarProduct = np.sum(vecFromFirst * np.tile(lineVecNorm,
+                                                  (nPoints, 1)), axis=1)
     vecFromFirstParallel = np.outer(scalarProduct, lineVecNorm)
     vecToLine = vecFromFirst - vecFromFirstParallel
     distToLine = np.sqrt(np.sum(vecToLine ** 2, axis=1))

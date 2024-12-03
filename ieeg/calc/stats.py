@@ -468,7 +468,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
                   axis=axis, vectorized=True)
 
-    if isinstance(stat_func([1], [1], axis), tuple):
+    if isinstance(stat_func(np.array([1]), np.array([1]), axis), tuple):
         logger.warning('stat_func returns a tuple. Taking the first element')
         func = stat_func
 
