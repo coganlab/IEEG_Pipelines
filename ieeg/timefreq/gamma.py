@@ -15,7 +15,7 @@ from ieeg.timefreq.hilbert import (filterbank_hilbert_first_half_wrapper,
 
 @singledispatch
 def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
-                        decim: int = 1, n_jobs=-1):
+                        decim: int = 1, spacing: float = 1/7, n_jobs=-1):
     """
     Compute the phase and amplitude (envelope) of a signal for a single
     frequency band, as in [#edwards]_. This is done using a filter bank of
@@ -33,8 +33,8 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
 
     """
 
-    centers = get_centers(Wn)
-    whole = get_centers((0.018, 10000))
+    centers = get_centers(Wn, spacing)
+    whole = get_centers((0.018, 10000), spacing)
     center_start = np.argmin(np.abs(whole - centers[0]))
     bands = [(whole[center_start + i - 1], whole[center_start + i + 1])
              for i in range(len(centers))]
@@ -55,10 +55,12 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
 
 
 @hilbert_spectrogram.register
-def _(inst: Epochs, Wn=(1, 150), decim: int = 1, n_jobs=-1):
+def _(inst: Epochs, Wn=(1, 150), decim: int = 1, spacing: float = 1/7,
+      n_jobs=-1):
     """Extract gamma band envelope from Raw object."""
     array, freqs = hilbert_spectrogram(inst.get_data(copy=False),
-                                       inst.info['sfreq'], Wn, decim, n_jobs)
+                                       inst.info['sfreq'], Wn, decim,
+                                       spacing, n_jobs)
     return EpochsTFR(inst.info, array, inst.times[::decim], freqs)
 
 
@@ -234,7 +236,8 @@ def _my_hilt(x: np.ndarray, fs, Wn=(1, 150), n_jobs=-1):
     return x_out, cfs
 
 
-def get_centers(Wn):
+def get_centers(Wn, octSpace = 1. / 7, f0 = 0.018,
+                a1 = np.log10(0.39), a2 = 0.5):
     """Get center frequencies for filter bank.
 
     Parameters
@@ -249,9 +252,6 @@ def get_centers(Wn):
         """
 
     # create filter bank
-    a = np.array([np.log10(0.39), 0.5])
-    f0 = 0.018
-    octSpace = 1. / 7
     minf, maxf = Wn
     if minf >= maxf:
         raise ValueError(
@@ -260,7 +260,7 @@ def get_centers(Wn):
     maxfo = np.log2(maxf / f0)  # octave of max freq
 
     cfs = [f0]
-    sigma_f = 10 ** (a[0] + a[1] * np.log10(cfs[-1]))
+    sigma_f = 10 ** (a1 + a2 * np.log10(f0))
 
     while np.log2(cfs[-1] / f0) < maxfo:
 
@@ -271,7 +271,7 @@ def get_centers(Wn):
             cfo += octSpace  # new freq octave
             cfs.append(f0 * (2 ** (cfo)))
 
-        sigma_f = 10 ** (a[0] + a[1] * np.log10(cfs[-1]))
+        sigma_f = 10 ** (a1 + a2 * np.log10(cfs[-1]))
 
     cfs = np.array(cfs)
     if np.logical_and(cfs >= minf, cfs <= maxf).sum() == 0:
@@ -279,10 +279,8 @@ def get_centers(Wn):
             f'Frequency band is too narrow, so no filters in filterbank are '
             f'placed inside. Try a wider frequency band.')
 
-    cfs = cfs[np.logical_and(cfs >= minf,
-                             cfs <= maxf)]  # choose those that lie in the
-    # input freqRange
-    return cfs
+    # choose those that lie in the input freqRange
+    return cfs[np.logical_and(cfs >= minf, cfs <= maxf)]
 
 
 def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
