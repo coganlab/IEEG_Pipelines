@@ -45,10 +45,10 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
 
     # run in parallel
     proc = Parallel(n_jobs, verbose=10, return_as="generator")(
-        delayed(extract)(data, fs, band, True, 1, False)[..., ::decim]
+        delayed(extract)(data, fs, band, True, 1, False)
         for band in bands)
     for i, out in enumerate(proc):
-        hilb_amp[..., i] = out
+        hilb_amp[..., i] = out[..., ::decim]
 
     freqs = [np.mean(band) for band in bands]
     return hilb_amp.transpose(0, 1, 3, 2), freqs
