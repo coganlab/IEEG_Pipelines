@@ -476,8 +476,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
             return func(*args, **kwargs)[0]
 
     # Create binary clusters using the p value threshold
-    def _proc(sig1: np.ndarray, sig2: np.ndarray
-              ) -> tuple[np.ndarray[int], np.ndarray[float]]:
+    def _proc(pid: int, sig1: np.ndarray, sig2: np.ndarray
+              ) -> tuple[int, np.ndarray[int], np.ndarray[float]]:
         res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
         p_act = res.pvalue
         diff = res.null_distribution
@@ -495,7 +495,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
         b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
 
-        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
+        return pid, time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
 
     # axes where adjacency is ignored can be computed independently in
     # parallel
@@ -503,16 +503,16 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
         out1 = np.zeros(out_shape, dtype=int)
         out2 = np.zeros(out_shape, dtype=float)
-        ins = ((sig1[i], sig2[i]) for i in iterate_axes(
-            sig1, ignore_adjacency))
-        axis -= sum(1 for i in ignore_adjacency if i < axis)
-        proc = Parallel(n_jobs, return_as='generator', verbose=40,)(
+        ins = ((i[:axis] + i[axis + 1:], sig1[i], sig2[i]
+                ) for i in iterate_axes(sig1, ignore_adjacency))
+        # axis -= sum(1 for i in ignore_adjacency if i < axis)
+        proc = Parallel(n_jobs, "threading", 'generator_unordered', 40,)(
             delayed(_proc)(*i) for i in ins)
-        for i, iout in enumerate(proc):
-            out1[i], out2[i] = iout
+        for idx, iout1, iout2 in proc:
+            out1[idx], out2[idx] = iout1, iout2
         return out1, out2
     else:
-        return _proc(sig1, sig2)
+        return _proc(0, sig1, sig2)[1:]
 
 
 def proportion(val: np.ndarray[float, ...] | float,
@@ -945,7 +945,7 @@ if __name__ == '__main__':
     sig1 = np.array([[0, 1, 2, 3, 3] for _ in range(50)]) - rng.random(
         (50, 5)) * 5
     sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
-    diff = shuffle_test(sig1, sig2, 3000, 0)
+    diff = window_averaged_shuffle(sig1, sig2, 3000, 0)
     act = mean_diff(sig1, sig2, axis=0)
 
     # Calculate the p value of the permutation distribution and compare
