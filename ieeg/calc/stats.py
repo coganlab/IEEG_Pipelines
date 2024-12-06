@@ -506,7 +506,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         ins = ((i[:axis] + i[axis + 1:], sig1[i], sig2[i]
                 ) for i in iterate_axes(sig1, ignore_adjacency))
         # axis -= sum(1 for i in ignore_adjacency if i < axis)
-        proc = Parallel(n_jobs, "threading", 'generator_unordered', 40,)(
+        proc = Parallel(n_jobs, "loky", 'generator_unordered', 40,)(
             delayed(_proc)(*i) for i in ins)
         for idx, iout1, iout2 in proc:
             out1[idx], out2[idx] = iout1, iout2
