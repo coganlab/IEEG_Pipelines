@@ -137,7 +137,7 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
         out = np.take(out, idx, axis=stack_ax)
     elif out.shape[stack_ax] < shape[stack_ax]:
         n = shape[stack_ax] - out.shape[stack_ax]
-        idx = np.random.choice(out.shape[stack_ax], (n,), False)
+        idx = np.random.choice(out.shape[stack_ax], (n,), True)
         out = np.concatenate((out, np.take(out, idx, axis=stack_ax)), axis=stack_ax)
 
     return out
