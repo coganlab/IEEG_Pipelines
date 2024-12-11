@@ -69,7 +69,8 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
 
 
 def make_data_same(data_fix: np.ndarray, shape: tuple | list,
-                   stack_ax: int = 0, pad_ax: int = -1) -> np.ndarray:
+                   stack_ax: int = 0, pad_ax: int = -1,
+                   make_stacks_same: bool = True) -> np.ndarray:
     """Force the last dimension of data_fix to match the last dimension of
     shape.
 
@@ -110,19 +111,36 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
            [6, 7]])
     """
 
-    stack_ax, pad_ax = list(range(len(shape)))[stack_ax], \
-        list(range(len(shape)))[pad_ax]
+    stack_ax = list(range(len(shape)))[stack_ax]
+    pad_ax = list(range(len(shape)))[pad_ax]
+    while data_fix.shape[pad_ax] < shape[pad_ax] and \
+        data_fix.shape[stack_ax] > shape[stack_ax]:
+        if data_fix.shape[stack_ax] % 2 == 0:
+            data_fix = np.concatenate(np.split(data_fix, 2, axis=stack_ax), axis=pad_ax)
+        else:
+            idx = np.arange(data_fix.shape[stack_ax] - 1)
+            data_fix = np.take(data_fix, idx, axis=stack_ax)
 
     # Check if the pad dimension of data_fix is smaller than the pad
     # dimension of shape
     if data_fix.shape[pad_ax] <= shape[pad_ax]:
-        return pad_to_match(np.zeros(shape), data_fix, stack_ax)
+        out = pad_to_match(np.zeros(shape), data_fix, stack_ax)
 
     # When the pad dimension of data_fix is larger than the pad dimension of
     # shape, take subsets of data_fix and stack them together on the stack
     # dimension
     else:
-        return rand_offset_reshape(data_fix, shape, stack_ax, pad_ax)
+        out = rand_offset_reshape(data_fix, shape, stack_ax, pad_ax)
+
+    if out.shape[stack_ax] > shape[stack_ax] and make_stacks_same:
+        idx = np.random.choice(out.shape[stack_ax], (shape[stack_ax],), False)
+        out = np.take(out, idx, axis=stack_ax)
+    elif out.shape[stack_ax] < shape[stack_ax]:
+        n = shape[stack_ax] - out.shape[stack_ax]
+        idx = np.random.choice(out.shape[stack_ax], (n,), False)
+        out = np.concatenate((out, np.take(out, idx, axis=stack_ax)), axis=stack_ax)
+
+    return out
 
 
 def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
