@@ -100,7 +100,7 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     >>> make_data_same(data_fix, (2, 8))
     array([[ 1,  2,  3,  4,  5,  4,  3,  2],
            [ 6,  7,  8,  9, 10,  9,  8,  7]])
-    >>> (newarr := make_data_same(data_fix, (2, 2)))
+    >>> (newarr := make_data_same(data_fix, (2, 2), make_stacks_same=False))
     array([[1, 2],
            [3, 4],
            [6, 7],
@@ -113,6 +113,9 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
 
     stack_ax = list(range(len(shape)))[stack_ax]
     pad_ax = list(range(len(shape)))[pad_ax]
+
+    # Attempt to stack trials along the pad axis so long as there are more
+    # trials and fewer timepoints
     while data_fix.shape[pad_ax] < shape[pad_ax] and \
         data_fix.shape[stack_ax] > shape[stack_ax]:
         if data_fix.shape[stack_ax] % 2 == 0:
@@ -132,10 +135,12 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     else:
         out = rand_offset_reshape(data_fix, shape, stack_ax, pad_ax)
 
-    if out.shape[stack_ax] > shape[stack_ax] and make_stacks_same:
+    if not make_stacks_same:
+        return out
+    elif out.shape[stack_ax] > shape[stack_ax]: # sub-sample stacks if too many
         idx = np.random.choice(out.shape[stack_ax], (shape[stack_ax],), False)
         out = np.take(out, idx, axis=stack_ax)
-    elif out.shape[stack_ax] < shape[stack_ax]:
+    elif out.shape[stack_ax] < shape[stack_ax]: # oversample stacks if too few
         n = shape[stack_ax] - out.shape[stack_ax]
         idx = np.random.choice(out.shape[stack_ax], (n,), True)
         out = np.concatenate((out, np.take(out, idx, axis=stack_ax)), axis=stack_ax)
