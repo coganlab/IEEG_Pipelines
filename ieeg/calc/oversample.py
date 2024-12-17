@@ -5,6 +5,7 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
+from functools import partial
 from ieeg.calc.fast import mixup, norm
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
@@ -384,3 +385,89 @@ def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
             if lam < .5:
                 lam = 1 - lam
             arr[i] = lam * arr[choice1] + (1 - lam) * arr[choice2]
+
+
+
+def resample(arr: np.ndarray, sfreq: int, new_sfreq: int, axis: int = -1
+             ) -> np.ndarray:
+    """Resample an array through linear interpolation.
+
+    Parameters
+    ----------
+    arr : array
+        The array to resample.
+    sfreq : int
+        The original sampling frequency.
+    new_sfreq : int
+        The new sampling frequency.
+
+    Returns
+    -------
+    resampled : array
+        The resampled array.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> np.random.seed(0)
+    >>> arr = np.random.rand(10)
+    >>> resample(arr, 10, 5)
+    array([0.5488135 , 0.60276338, 0.4236548 , 0.43758721, 0.96366276])
+    >>> arr = np.arange(10)
+    >>> resample(arr, 10, 20)
+    array([0.        , 0.47368421, 0.94736842, 1.42105263, 1.89473684,
+           2.36842105, 2.84210526, 3.31578947, 3.78947368, 4.26315789,
+           4.73684211, 5.21052632, 5.68421053, 6.15789474, 6.63157895,
+           7.10526316, 7.57894737, 8.05263158, 8.52631579, 9.        ])
+    >>> resample(arr, 10, 7)
+    array([0.        , 1.30434783, 2.60869565, 3.91304348, 5.2173913 ,
+           6.52173913, 7.82608696])
+    >>> arr = np.arange(30).reshape(5, 6)
+    >>> resample(arr, 6, 10)
+    array([[ 0.        ,  0.55555556,  1.11111111,  1.66666667,  2.22222222,
+             2.77777778,  3.33333333,  3.88888889,  4.44444444,  5.        ],
+           [ 6.        ,  6.55555556,  7.11111111,  7.66666667,  8.22222222,
+             8.77777778,  9.33333333,  9.88888889, 10.44444444, 11.        ],
+           [12.        , 12.55555556, 13.11111111, 13.66666667, 14.22222222,
+            14.77777778, 15.33333333, 15.88888889, 16.44444444, 17.        ],
+           [18.        , 18.55555556, 19.11111111, 19.66666667, 20.22222222,
+            20.77777778, 21.33333333, 21.88888889, 22.44444444, 23.        ],
+           [24.        , 24.55555556, 25.11111111, 25.66666667, 26.22222222,
+            26.77777778, 27.33333333, 27.88888889, 28.44444444, 29.        ]])
+    """
+    while axis < 0:
+        axis += arr.ndim
+    if sfreq == new_sfreq:
+        return arr
+    elif sfreq > new_sfreq and sfreq % new_sfreq == 0: # simple downsample
+        idx = [slice(None)] * arr.ndim
+        idx[axis] = slice(None, None, sfreq // new_sfreq)
+        return arr[tuple(idx)]
+    elif sfreq < new_sfreq: # Upsample
+        seconds = arr.shape[axis] / sfreq
+        o_indices = np.arange(arr.shape[axis])
+        new_samps = int(round(new_sfreq * seconds))
+        indices = np.linspace(0, arr.shape[axis] - 1, new_samps)
+        if arr.ndim == 1:
+            return np.interp(indices, o_indices, arr)
+
+        # for multi-dimensional arrays, we flatten non-axis dimensions, then
+        # apply the 1d interpolation, then reshape
+        func = partial(np.interp, indices, o_indices)
+        arr_in = np.swapaxes(arr, axis, -1).reshape(-1, arr.shape[axis])
+        out_flat = np.apply_along_axis(func, 1, arr_in)
+        out_shape = arr.shape[:axis] + (new_samps,) + arr.shape[axis + 1:]
+        return out_flat.reshape(out_shape)
+    else:
+        # for speed, halve the data until we get close to the desired sfreq
+        while sfreq > 2 * new_sfreq and sfreq % 2 == 0:
+            arr = resample(arr, sfreq, sfreq // 2, axis)
+            sfreq //= 2
+
+        # find freq such that sfreq * freq / new_sfreq is an integer
+        freq = int(np.lcm(sfreq, new_sfreq))
+
+        # upsample then downsample
+        arr = resample(arr, sfreq, freq, axis)
+        return resample(arr, freq, new_sfreq, axis)
+
