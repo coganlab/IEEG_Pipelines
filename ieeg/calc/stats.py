@@ -464,6 +464,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     sig2 = make_data_same(sig2, sig1.shape, axis)
     sample_size = sig1.nbytes + sig2.nbytes
     batch_size = get_mem() // sample_size
+    batch_size //= 4
     small_enough = batch_size > n_perm ** 2
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
                   axis=axis, vectorized=True)
