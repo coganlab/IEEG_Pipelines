@@ -6,7 +6,7 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from ieeg.calc.fast import mean_diff, permgt as permgtnd
+from ieeg.calc.fast import mean_diff, permgt as permgtnd, _md
 from ieeg.process import get_mem, iterate_axes
 
 
@@ -461,13 +461,14 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         nprocs = 1
 
     # set process parameters
-    sig2 = make_data_same(sig2, sig1.shape, axis)
+    rng = np.random.default_rng(seed)
+    sig2 = make_data_same(sig2, sig1.shape, axis, -1, True, rng)
     sample_size = sig1.nbytes + sig2.nbytes
     batch_size = get_mem() // sample_size
     batch_size //= 4
-    small_enough = batch_size > n_perm ** 2
+    # small_enough = batch_size > n_perm ** 2
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
-                  axis=axis, vectorized=True)
+                  axis=axis, vectorized=True, random_state=rng)
 
     if isinstance(stat_func(np.array([1]), np.array([1]), axis), tuple):
         logger.warning('stat_func returns a tuple. Taking the first element')
@@ -484,13 +485,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         diff = res.null_distribution
 
         # Calculate the p value of the permutation distribution
-        if small_enough:
-            p_perm = np.mean(tail_compare(diff[:, None], diff[None], tails),
-                             axis=0)
-        elif tails == 1:
-            p_perm = permgtnd(diff, axis=0)
-        else:
-            p_perm = proportion(diff, tail=tails, axis=0)
+        p_perm = proportion(diff, tail=tails, axis=axis)
 
         # Create binary clusters using the p value threshold
         b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
@@ -574,7 +569,8 @@ def proportion(val: np.ndarray[float, ...] | float,
 
     match tail:
         case 1:
-            pass
+            if comp is None:
+                return permgtnd(val, axis=axis)
         case 2:
             val = np.abs(val)
             if comp is not None:
@@ -587,20 +583,19 @@ def proportion(val: np.ndarray[float, ...] | float,
             raise ValueError('tail must be 1, 2, or -1')
 
     if axis is None and comp is None:
-        return _perm_gt_1d(val)
+        return _comp_by_sort(val)
     elif comp is None:
-        return _perm_gt_1d(val, axis=axis)
+        return _comp_by_sort(val, axis=axis)
     else:
         raise NotImplementedError()
 
 
-# @guvectorize(['void(f8[::1], f8[::1])'], '(n)->(n)', nopython=True)
-def _perm_gt_1d(diff, axis=0):
+def _comp_by_sort(diff, axis=0):
     m = diff.shape[axis] - 1
-    sorted_indices = diff.argsort(axis=axis)  # Get sorted indices
+    sorted_indices = diff.argsort(axis=axis, stable=False)  # Get sorted indices
     proportions = np.arange(diff.shape[axis]) / m  # Create proportions array
     # Rearrange to match original order
-    return proportions[sorted_indices.argsort(axis=axis)]
+    return proportions[sorted_indices.argsort(axis=axis, stable=False)]
 
 
 def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
@@ -943,31 +938,34 @@ if __name__ == '__main__':
     from timeit import timeit
 
     rng = np.random.default_rng(seed=42)
-    sig1 = np.array([[0, 1, 2, 3, 3] for _ in range(50)]) - rng.random(
-        (50, 5)) * 5
-    sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
-    diff = window_averaged_shuffle(sig1, sig2, 3000, 0)
+    n = 1000
+    orig = np.array([0, 1, 2, 3, 3])
+    interped = np.interp(np.linspace(0, 4, n), np.arange(5), orig)
+    sig1 = np.array([[interped for _ in range(50)] for _ in range(100)]) - rng.random(
+        (100, 50, n)) * 5
+    sig1 = sig1.transpose(1, 2, 0)
+    sig2 = np.array([[[0] * n for _ in range(100)] for _ in range(100)]) + rng.random((100, 100, n))
+    sig2 = sig2.transpose(1, 2, 0)
+    diff = window_averaged_shuffle(sig1, sig2, 30000, 0)
     act = mean_diff(sig1, sig2, axis=0)
 
     # Calculate the p value of the permutation distribution and compare
     # execution times
 
-    # p_perm1 = _perm_gt(diff, diff)
+    # p_perm1 = calculate_p_perm(diff, 1, 0)
     p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
-    # p_perm3 = (_perm_gt(diff, diff[:, None], axis=0) * diff.shape[0] /
-    #            (diff.shape[0] - 1))
+    p_perm3 = permgtnd(diff, axis=0)
     p_perm4 = proportion(diff, axis=0)
 
     # Time the functions
-    runs = 20
-    # time1 = timeit('_perm_gt(diff, diff)', globals=globals(), number=runs)
+    runs = 2000
+    # time1 = timeit('calculate_p_perm(diff, 1, 0)', globals=globals(), number=runs)
     time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
                    '(diff.shape[0] - 1)', globals=globals(), number=runs)
-    # time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
-    #                '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
+    time3 = timeit('permgtnd(diff, axis=0)', globals=globals(), number=runs)
     time4 = timeit('proportion(diff, axis=0)', globals=globals(), number=runs)
 
-    # print(f'Time for _perm_gt_2: {time1 / runs:.6f} seconds per run')
+    # print(f'Time for calculate_p_perm: {time1 / runs:.6f} seconds per run')
     print(f'Time for sum method: {time2 / runs:.6f} seconds per run')
-    # print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
+    print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
     print(f'Time for perm_gt: {time4 / runs:.6f} seconds per run')

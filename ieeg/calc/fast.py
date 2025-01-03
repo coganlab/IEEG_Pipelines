@@ -186,12 +186,21 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     >>> mean_diff(group1, group2, axis=1)
     array([ 0., 30.,  0.,  5.,  0.])
     """
-    assert group1.ndim == group2.ndim, ("Arrays must have the same number of"
-                                        "dimensions")
-    if group1.ndim > 1 and axis not in (group1.ndim - 1, -1):
-        in1 = np.moveaxis(group1, axis, -1)
-        in2 = np.moveaxis(group2, axis, -1)
-    else:
-        in1, in2 = group1, group2
+    return _md(group1, group2, axes=[axis, axis])
 
-    return _md(in1, in2)
+
+if __name__ == "__main__":
+    import numpy as np
+    from timeit import timeit
+
+    np.random.seed(0)
+    n = 10000
+    group1 = np.random.rand(100, 100, 100)
+    group2 = np.random.rand(100, 100, 100)
+
+    kwargs = dict(globals=globals(), number=n)
+    time1 = timeit('mean_diff(group1, group2, axis=0)', **kwargs)
+    time2 = timeit('_md(group1, group2, axes=[0, 0])', **kwargs)
+
+    print(f"mean_diff: {time1 / n:.3g} per run")
+    print(f"md: {time2 / n:.3g} per run")
