@@ -70,7 +70,8 @@ def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
 
 def make_data_same(data_fix: np.ndarray, shape: tuple | list,
                    stack_ax: int = 0, pad_ax: int = -1,
-                   make_stacks_same: bool = True) -> np.ndarray:
+                   make_stacks_same: bool = True,
+                   rng: np.random.Generator = None) -> np.ndarray:
     """Force the last dimension of data_fix to match the last dimension of
     shape.
 
@@ -111,6 +112,8 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
            [6, 7]])
     """
 
+    if not isinstance(rng, np.random.Generator):
+        rng = np.random.default_rng(rng)
     stack_ax = list(range(len(shape)))[stack_ax]
     pad_ax = list(range(len(shape)))[pad_ax]
 
@@ -119,8 +122,17 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     while data_fix.shape[pad_ax] < shape[pad_ax] and \
         data_fix.shape[stack_ax] > shape[stack_ax]:
         if data_fix.shape[stack_ax] % 2 == 0:
-            data_fix = np.concatenate(np.split(data_fix, 2, axis=stack_ax), axis=pad_ax)
-        else:
+
+            # Split then stack
+            segments = np.split(data_fix, 2, axis=stack_ax)
+            data_fix = np.concatenate(segments, axis=pad_ax)
+
+            # roll each entry in the stack axis along the pad axis
+            rolls = rng.choice(data_fix.shape[pad_ax], data_fix.shape[stack_ax])
+            for i, roll in enumerate(rolls):
+                data_fix[:, i] = np.roll(data_fix[:, i], roll)
+
+        else: # drop the last trial to make it divisible by 2
             idx = np.arange(data_fix.shape[stack_ax] - 1)
             data_fix = np.take(data_fix, idx, axis=stack_ax)
 
@@ -133,16 +145,16 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     # shape, take subsets of data_fix and stack them together on the stack
     # dimension
     else:
-        out = rand_offset_reshape(data_fix, shape, stack_ax, pad_ax)
+        out = rand_offset_reshape(data_fix, shape, stack_ax, pad_ax, rng)
 
     if not make_stacks_same:
         return out
-    elif out.shape[stack_ax] > shape[stack_ax]: # sub-sample stacks if too many
-        idx = np.random.choice(out.shape[stack_ax], (shape[stack_ax],), False)
+    elif out.shape[stack_ax] > shape[stack_ax]: # subsample stacks if too many
+        idx = rng.choice(out.shape[stack_ax], (shape[stack_ax],), False)
         out = np.take(out, idx, axis=stack_ax)
     elif out.shape[stack_ax] < shape[stack_ax]: # oversample stacks if too few
         n = shape[stack_ax] - out.shape[stack_ax]
-        idx = np.random.choice(out.shape[stack_ax], (n,), True)
+        idx = rng.choice(out.shape[stack_ax], (n,), True)
         out = np.concatenate((out, np.take(out, idx, axis=stack_ax)), axis=stack_ax)
 
     return out
@@ -190,7 +202,8 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
 
 
 def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
-                        pad_ax: int) -> np.ndarray:
+                        pad_ax: int, rng: np.random.Generator = None
+                        ) -> np.ndarray:
     """Take subsets of data_fix and stack them together on the stack dimension
 
     This function takes the data and reshapes it to match the shape by taking
@@ -242,11 +255,14 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
             18, 38, 19, 39]])
     """
 
+    if not isinstance(rng, np.random.Generator):
+        rng = np.random.default_rng(rng)
+
     # Randomly offset the start of the first subset
     num_stack = data_fix.shape[pad_ax] // shape[pad_ax]
     if data_fix.shape[pad_ax] % shape[pad_ax] == 0:
         num_stack -= 1
-    offset = np.random.randint(0, data_fix.shape[pad_ax] - shape[
+    offset = rng.integers(0, data_fix.shape[pad_ax] - shape[
         pad_ax] * num_stack)
 
     # Create an array to store the output
