@@ -307,10 +307,10 @@ if __name__ == "__main__":
     sub_num = 29
     subj = "D" + str(sub_num).zfill(4)
     # layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
-    bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
+    bids_root = LAB_root + "/BIDS-1.4_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root, derivatives=True)
-    filt = raw_from_layout(layout.derivatives['filt'], subject=subj,
-                           extension='.edf', desc='filt', preload=True)
+    filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
+                           extension='.edf', desc='clean', preload=True)
     raw = raw_from_layout(layout, subject=subj, extension='.edf', desc=None,
                           preload=True)
     events, event_id = mne.events_from_annotations(filt)

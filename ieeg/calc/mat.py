@@ -977,6 +977,35 @@ class Labels(np.char.chararray):
         # Return the result as a Labels object
         return Labels(out)
 
+    def split(
+        self,
+        sep = None,
+        maxsplit = -1,
+    ):
+        """
+        Return a list of the words in the string, using sep as the delimiter string.
+
+        sep
+            The delimiter according which to split the string.
+            None (the default value) means split according to the given
+            delimiter
+        maxsplit
+            Maximum number of splits to do.
+            -1 (the default value) means no limit.
+
+        Examples
+        --------
+        >>> Labels(['a-b-c', 'd-e-f']).split('-')
+        array([['a', 'b', 'c'],
+               ['d', 'e', 'f']], dtype='<U1')
+        >>> Labels(['a-b-c', 'd-e-f'], '-').split()
+        array([['a', 'b', 'c'],
+               ['d', 'e', 'f']], dtype='<U1')
+        """
+        if sep is None:
+            sep = self.delimiter
+        return np.array(super(Labels, self).split(sep, maxsplit).tolist())
+
     def decompose(self) -> list['Labels', ...]:
         """Decompose a Labels object into a list of 1d Labels objects.
 
@@ -1423,31 +1452,36 @@ def events_in_order(inst: mne.BaseEpochs) -> list[str]:
 
 
 if __name__ == "__main__":
-    import os
-    from ieeg.io import get_data
-    import mne
+    # import os
+    # from ieeg.io import get_data
+    # import mne
+    #
+    # conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5),
+    #                                                       "Audio/LS"),
+    #          "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),
+    #                                                          "Audio/JL"),
+    #          "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
+    #          "go_jl": ((-0.5, 1.5), "Go/JL")}
+    # task = "SentenceRep"
+    # root = os.path.expanduser("~/Box/CoganLab")
+    # # layout = get_data(task, root=root)
+    # folder = 'stats_old'
+    # mne.set_log_level("ERROR")
+    #
+    # arr = np.arange(24).reshape((2, 3, 4))
+    # labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+    # ad = LabeledArray(arr, labels)
+    # Labels(['a', 'b', 'c']) @ Labels(['d', 'e', 'f'])
+    #
+    # labels = Labels(np.arange(1000))
+    # l2d = labels @ labels
+    # x = l2d.reshape((10, -1)).decompose()
+    # x = np.moveaxis(ad, 0, 1)
 
-    conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5),
-                                                          "Audio/LS"),
-             "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),
-                                                             "Audio/JL"),
-             "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
-             "go_jl": ((-0.5, 1.5), "Go/JL")}
-    task = "SentenceRep"
-    root = os.path.expanduser("~/Box/CoganLab")
-    # layout = get_data(task, root=root)
-    folder = 'stats_old'
-    mne.set_log_level("ERROR")
-
-    arr = np.arange(24).reshape((2, 3, 4))
-    labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
-    ad = LabeledArray(arr, labels)
-    Labels(['a', 'b', 'c']) @ Labels(['d', 'e', 'f'])
-
-    labels = Labels(np.arange(1000))
-    l2d = labels @ labels
-    x = l2d.reshape((10, -1)).decompose()
-    x = np.moveaxis(ad, 0, 1)
+    test_list = ["delay/word/5", "delay/word/6", "delay/word/7",
+                 "stim/word/5", "stim/word/6", "stim/word/7",]
+    labels = Labels(test_list, delim="/")
+    functools.reduce(np.setdiff1d, labels.split())
 
 
 def _cat_test():
