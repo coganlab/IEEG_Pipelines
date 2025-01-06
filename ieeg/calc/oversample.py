@@ -7,6 +7,7 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 import itertools
 from functools import partial
 from ieeg.calc.fast import mixup, norm
+from decimal import Decimal
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -388,8 +389,8 @@ def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
 
 
 
-def resample(arr: np.ndarray, sfreq: int, new_sfreq: int, axis: int = -1
-             ) -> np.ndarray:
+def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
+             axis: int = -1) -> np.ndarray:
     """Resample an array through linear interpolation.
 
     Parameters
@@ -412,6 +413,8 @@ def resample(arr: np.ndarray, sfreq: int, new_sfreq: int, axis: int = -1
     >>> np.random.seed(0)
     >>> arr = np.random.rand(10)
     >>> resample(arr, 10, 5)
+    array([0.5488135 , 0.60276338, 0.4236548 , 0.43758721, 0.96366276])
+    >>> resample(arr, 10.2, 5.1)
     array([0.5488135 , 0.60276338, 0.4236548 , 0.43758721, 0.96366276])
     >>> arr = np.arange(10)
     >>> resample(arr, 10, 20)
@@ -439,6 +442,12 @@ def resample(arr: np.ndarray, sfreq: int, new_sfreq: int, axis: int = -1
         axis += arr.ndim
     if sfreq == new_sfreq:
         return arr
+    elif not sfreq.is_integer():
+        num, denom = Decimal(str(sfreq)).as_integer_ratio()
+        return resample(arr, num, new_sfreq * denom, axis)
+    elif not new_sfreq.is_integer():
+        num, denom = Decimal(str(new_sfreq)).as_integer_ratio()
+        return resample(arr, sfreq * denom, num, axis)
     elif sfreq > new_sfreq and sfreq % new_sfreq == 0: # simple downsample
         idx = [slice(None)] * arr.ndim
         idx[axis] = slice(None, None, sfreq // new_sfreq)
@@ -459,6 +468,8 @@ def resample(arr: np.ndarray, sfreq: int, new_sfreq: int, axis: int = -1
         out_shape = arr.shape[:axis] + (new_samps,) + arr.shape[axis + 1:]
         return out_flat.reshape(out_shape)
     else:
+        sfreq = int(sfreq)
+        new_sfreq = int(new_sfreq)
         # for speed, halve the data until we get close to the desired sfreq
         while sfreq > 2 * new_sfreq and sfreq % 2 == 0:
             arr = resample(arr, sfreq, sfreq // 2, axis)
