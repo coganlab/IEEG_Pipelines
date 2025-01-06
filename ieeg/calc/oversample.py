@@ -410,21 +410,18 @@ def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
     Examples
     --------
     >>> import numpy as np
-    >>> np.random.seed(0)
-    >>> arr = np.random.rand(10)
-    >>> resample(arr, 10, 5)
-    array([0.5488135 , 0.60276338, 0.4236548 , 0.43758721, 0.96366276])
-    >>> resample(arr, 10.2, 5.1)
-    array([0.5488135 , 0.60276338, 0.4236548 , 0.43758721, 0.96366276])
     >>> arr = np.arange(10)
+    >>> resample(arr, 10, 5)
+    array([0.  , 2.25, 4.5 , 6.75, 9.  ])
+    >>> resample(arr, 10.2, 5.1)
+    array([0.  , 2.25, 4.5 , 6.75, 9.  ])
     >>> resample(arr, 10, 20)
     array([0.        , 0.47368421, 0.94736842, 1.42105263, 1.89473684,
            2.36842105, 2.84210526, 3.31578947, 3.78947368, 4.26315789,
            4.73684211, 5.21052632, 5.68421053, 6.15789474, 6.63157895,
            7.10526316, 7.57894737, 8.05263158, 8.52631579, 9.        ])
     >>> resample(arr, 10, 7)
-    array([0.        , 1.30434783, 2.60869565, 3.91304348, 5.2173913 ,
-           6.52173913, 7.82608696])
+    array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ])
     >>> arr = np.arange(30).reshape(5, 6)
     >>> resample(arr, 6, 10)
     array([[ 0.        ,  0.55555556,  1.11111111,  1.66666667,  2.22222222,
@@ -448,11 +445,8 @@ def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
     elif not new_sfreq.is_integer():
         num, denom = Decimal(str(new_sfreq)).as_integer_ratio()
         return resample(arr, sfreq * denom, num, axis)
-    elif sfreq > new_sfreq and sfreq % new_sfreq == 0: # simple downsample
-        idx = [slice(None)] * arr.ndim
-        idx[axis] = slice(None, None, sfreq // new_sfreq)
-        return arr[tuple(idx)]
-    elif sfreq < new_sfreq: # Upsample
+    else:
+        # Directly calculate the new sample points
         seconds = arr.shape[axis] / sfreq
         o_indices = np.arange(arr.shape[axis])
         new_samps = int(round(new_sfreq * seconds))
@@ -467,18 +461,3 @@ def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
         out_flat = np.apply_along_axis(func, 1, arr_in)
         out_shape = arr.shape[:axis] + (new_samps,) + arr.shape[axis + 1:]
         return out_flat.reshape(out_shape)
-    else:
-        sfreq = int(sfreq)
-        new_sfreq = int(new_sfreq)
-        # for speed, halve the data until we get close to the desired sfreq
-        while sfreq > 2 * new_sfreq and sfreq % 2 == 0:
-            arr = resample(arr, sfreq, sfreq // 2, axis)
-            sfreq //= 2
-
-        # find freq such that sfreq * freq / new_sfreq is an integer
-        freq = int(np.lcm(sfreq, new_sfreq))
-
-        # upsample then downsample
-        arr = resample(arr, sfreq, freq, axis)
-        return resample(arr, freq, new_sfreq, axis)
-
