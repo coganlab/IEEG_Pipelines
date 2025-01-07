@@ -125,14 +125,82 @@ static void mean_diff(
     npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
     npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
 
-    for (npy_intp i = 0; i < nloops;
-         i++, in1 += step1, in2 += step2, out += step_out) {
+    if (len1 > len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
 
-        // core calculation
-        double mean1 = avg_non_nan(in1, len1, innerstep1);
-        double mean2 = avg_non_nan(in2, len2, innerstep2);
+            for (npy_intp j = 0; j < len1; ++j) {
+                double val1 = *(double *)(in1 + j * innerstep1);
+                if (val1 == val1) {
+                    sum1 += val1;
+                    count1++;
+                }
+                if (j < len2) {
+                    double val2 = *(double *)(in2 + j * innerstep2);
+                    if (val2 == val2) {
+                        sum2 += val2;
+                        count2++;
+                    }
+                }
+            }
 
-        *((double *)out) = mean1 - mean2;
+            double mean1 = (count1 > 0) ? sum1 / count1 : 0.0;
+            double mean2 = (count2 > 0) ? sum2 / count2 : 0.0;
+
+            // Calculate the difference
+            *((double *)out) = mean1 - mean2;
+        }
+    } else if (len1 < len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            for (npy_intp j = 0; j < len2; ++j) {
+                if (j < len1) {
+                    double val1 = *(double *)(in1 + j * innerstep1);
+                    if (val1 == val1) {
+                        sum1 += val1;
+                        count1++;
+                    }
+                }
+                double val2 = *(double *)(in2 + j * innerstep2);
+                if (val2 == val2) {
+                    sum2 += val2;
+                    count2++;
+                }
+            }
+
+            double mean1 = (count1 > 0) ? sum1 / count1 : 0.0;
+            double mean2 = (count2 > 0) ? sum2 / count2 : 0.0;
+
+            // Calculate the difference
+            *((double *)out) = mean1 - mean2;
+        }
+    } else {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            for (npy_intp j = 0; j < len2; ++j) {
+                double val1 = *(double *)(in1 + j * innerstep1);
+                if (val1 == val1) {
+                    sum1 += val1;
+                    count1++;
+                }
+                double val2 = *(double *)(in2 + j * innerstep2);
+                if (val2 == val2) {
+                    sum2 += val2;
+                    count2++;
+                }
+            }
+
+            double mean1 = (count1 > 0) ? sum1 / count1 : 0.0;
+            double mean2 = (count2 > 0) ? sum2 / count2 : 0.0;
+
+            // Calculate the difference
+            *((double *)out) = mean1 - mean2;
+        }
     }
 }
 

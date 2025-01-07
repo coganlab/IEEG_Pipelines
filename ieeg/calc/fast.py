@@ -179,12 +179,15 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]], order='F').T
-    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]], order='F').T
-    >>> mean_diff(group1, group2, axis=0)
-    array([ 0., 14.])
+    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]])
+    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
     >>> mean_diff(group1, group2, axis=1)
+    array([ 0., 14.])
+    >>> mean_diff(group1, group2, axis=0)
     array([ 0., 30.,  0.,  5.,  0.])
+    >>> group3 = np.arange(100000, dtype=float).reshape(20000, 5)
+    >>> mean_diff(group3, group1, axis=0)
+    array([49997., 49968., 49999., 49995., 50001.])
     """
     return _md(group1, group2, axes=[axis, axis])
 
@@ -196,11 +199,11 @@ if __name__ == "__main__":
     np.random.seed(0)
     n = 10000
     group1 = np.random.rand(100, 100, 100)
-    group2 = np.random.rand(100, 100, 100)
+    group2 = np.random.rand(500, 100, 100)
 
     kwargs = dict(globals=globals(), number=n)
     time1 = timeit('mean_diff(group1, group2, axis=0)', **kwargs)
-    time2 = timeit('_md(group1, group2, axes=[0, 0])', **kwargs)
+    # time2 = timeit('_md(group1, group2, axes=[0, 0])', **kwargs)
 
     print(f"mean_diff: {time1 / n:.3g} per run")
-    print(f"md: {time2 / n:.3g} per run")
+    # print(f"md: {time2 / n:.3g} per run")
