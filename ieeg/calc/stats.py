@@ -6,7 +6,7 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.calc.reshape import make_data_same
-from ieeg.calc.fast import mean_diff, permgt as permgtnd, _md
+from ieeg.calc.fast import mean_diff, _md, permgt
 from ieeg.process import get_mem, iterate_axes
 
 
@@ -570,7 +570,7 @@ def proportion(val: np.ndarray[float, ...] | float,
     match tail:
         case 1:
             if comp is None:
-                return permgtnd(val, axis=axis)
+                return permgt(val, axis=axis)
         case 2:
             val = np.abs(val)
             if comp is not None:
@@ -954,7 +954,7 @@ if __name__ == '__main__':
 
     # p_perm1 = calculate_p_perm(diff, 1, 0)
     p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
-    p_perm3 = permgtnd(diff, axis=0)
+    p_perm3 = permgt(diff, axis=0)
     p_perm4 = proportion(diff, axis=0)
 
     # Time the functions

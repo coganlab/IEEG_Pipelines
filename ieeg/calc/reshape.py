@@ -129,8 +129,13 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
 
             # roll each entry in the stack axis along the pad axis
             rolls = rng.choice(data_fix.shape[pad_ax], data_fix.shape[stack_ax])
+
             for i, roll in enumerate(rolls):
-                data_fix[:, i] = np.roll(data_fix[:, i], roll)
+                idx = tuple(slice(None) if j != stack_ax else i
+                            for j in range(data_fix.ndim))
+                this_ax = pad_ax if pad_ax < stack_ax else pad_ax - 1
+                rolled = np.roll(data_fix[idx], roll, axis=this_ax)
+                data_fix[idx] = rolled
 
         else: # drop the last trial to make it divisible by 2
             idx = np.arange(data_fix.shape[stack_ax] - 1)
