@@ -117,29 +117,30 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     stack_ax = list(range(len(shape)))[stack_ax]
     pad_ax = list(range(len(shape)))[pad_ax]
 
-    # Attempt to stack trials along the pad axis so long as there are more
-    # trials and fewer timepoints
-    while data_fix.shape[pad_ax] < shape[pad_ax] and \
-        data_fix.shape[stack_ax] > shape[stack_ax]:
-        if data_fix.shape[stack_ax] % 2 == 0:
-
-            # Split then stack
-            segments = np.split(data_fix, 2, axis=stack_ax)
-            data_fix = np.concatenate(segments, axis=pad_ax)
-
-            # roll each entry in the stack axis along the pad axis
-            rolls = rng.choice(data_fix.shape[pad_ax], data_fix.shape[stack_ax])
-
-            for i, roll in enumerate(rolls):
-                idx = tuple(slice(None) if j != stack_ax else i
-                            for j in range(data_fix.ndim))
-                this_ax = pad_ax if pad_ax < stack_ax else pad_ax - 1
-                rolled = np.roll(data_fix[idx], roll, axis=this_ax)
-                data_fix[idx] = rolled
-
-        else: # drop the last trial to make it divisible by 2
-            idx = np.arange(data_fix.shape[stack_ax] - 1)
-            data_fix = np.take(data_fix, idx, axis=stack_ax)
+    # # Attempt to stack trials along the pad axis so long as there are more
+    # # trials and fewer timepoints
+    # while data_fix.shape[pad_ax] < shape[pad_ax] and \
+    #     data_fix.shape[stack_ax] > shape[stack_ax]:
+    #     if data_fix.shape[stack_ax] % 2 == 0:
+    #
+    #         # Split then stack
+    #         segments = np.split(data_fix, 2, axis=stack_ax)
+    #         data_fix = np.concatenate(segments, axis=pad_ax)
+    #
+    #         # roll each entry in the stack axis along the pad axis
+    #         rolls = rng.choice(data_fix.shape[pad_ax],
+    #                            data_fix.shape[stack_ax])
+    #
+    #         for i, roll in enumerate(rolls):
+    #             idx = tuple(slice(None) if j != stack_ax else i
+    #                         for j in range(data_fix.ndim))
+    #             this_ax = pad_ax if pad_ax < stack_ax else pad_ax - 1
+    #             rolled = np.roll(data_fix[idx], roll, axis=this_ax)
+    #             data_fix[idx] = rolled
+    #
+    #     else: # drop the last trial to make it divisible by 2
+    #         idx = np.arange(data_fix.shape[stack_ax] - 1)
+    #         data_fix = np.take(data_fix, idx, axis=stack_ax)
 
     # Check if the pad dimension of data_fix is smaller than the pad
     # dimension of shape
@@ -166,7 +167,7 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
 
 
 def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
-                 axis: int | tuple[int, ...] = 0) -> np.ndarray:
+                 axis: int | tuple[int, ...] = ()) -> np.ndarray:
     """Pad the second signal to match the first signal along all axes not
     specified.
 
@@ -187,6 +188,19 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
     -------
     sig2 : array
         The padded data.
+
+    Examples
+    ________
+    >>> sig1 = np.arange(48).reshape(2, 3, 8)
+    >>> sig2 = np.arange(24).reshape(2, 3, 4)
+    >>> pad_to_match(sig1, sig2)
+    array([[[ 0,  1,  2,  3,  2,  1,  0,  1],
+            [ 4,  5,  6,  7,  6,  5,  4,  5],
+            [ 8,  9, 10, 11, 10,  9,  8,  9]],
+    <BLANKLINE>
+           [[12, 13, 14, 15, 14, 13, 12, 13],
+            [16, 17, 18, 19, 18, 17, 16, 17],
+            [20, 21, 22, 23, 22, 21, 20, 21]]])
     """
     # Make sure the data is the same shape
     if np.isscalar(axis):

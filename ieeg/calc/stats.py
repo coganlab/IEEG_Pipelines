@@ -5,8 +5,8 @@ from scipy import stats as st
 from scipy import ndimage
 
 from ieeg import Doubles
-from ieeg.calc.reshape import make_data_same
-from ieeg.calc.fast import mean_diff, _md, permgt
+from ieeg.arrays.reshape import make_data_same
+from ieeg.calc.fast import mean_diff, permgt
 from ieeg.process import get_mem, iterate_axes
 
 
