@@ -21,6 +21,54 @@ from packaging.version import parse as parse_version
 _NUMPY_NAMESPACE_NAMES = {"numpy", "array_api_compat.numpy"}
 _threadlocal = threading.local()
 
+_global_config = {
+    "assume_finite": bool(os.environ.get("SKLEARN_ASSUME_FINITE", False)),
+    "working_memory": int(os.environ.get("SKLEARN_WORKING_MEMORY", 1024)),
+    "print_changed_only": True,
+    "display": "diagram",
+    "pairwise_dist_chunk_size": int(
+        os.environ.get("SKLEARN_PAIRWISE_DIST_CHUNK_SIZE", 256)
+    ),
+    "enable_cython_pairwise_dist": True,
+    "array_api_dispatch": False,
+    "transform_output": "default",
+    "enable_metadata_routing": False,
+    "skip_parameter_validation": False,
+}
+_threadlocal = threading.local()
+
+
+def _get_threadlocal_config():
+    """Get a threadlocal **mutable** configuration. If the configuration
+    does not exist, copy the default global configuration."""
+    if not hasattr(_threadlocal, "global_config"):
+        _threadlocal.global_config = _global_config.copy()
+    return _threadlocal.global_config
+
+
+def get_config():
+    """Retrieve current values for configuration set by :func:`set_config`.
+
+    Returns
+    -------
+    config : dict
+        Keys are parameter names that can be passed to :func:`set_config`.
+
+    See Also
+    --------
+    config_context : Context manager for global scikit-learn configuration.
+    set_config : Set global scikit-learn configuration.
+
+    Examples
+    --------
+    >>> import sklearn
+    >>> config = sklearn.get_config()
+    >>> config.keys()
+    dict_keys([...])
+    """
+    # Return a copy of the threadlocal configuration so that users will
+    # not be able to modify the configuration with the returned dict.
+    return _get_threadlocal_config().copy()
 
 def yield_namespaces(include_numpy_namespaces=True):
     """Yield supported namespace.
@@ -141,7 +189,7 @@ def _single_array_device(array):
         # CPU. In this case, scikit-learn should stay as device neutral as possible,
         # hence the use of `device=None` which is accepted by all libraries, before
         # and after the expected conversion to NumPy via np.asarray.
-        or not _threadlocal["array_api_dispatch"]
+        or not get_config()["array_api_dispatch"]
     ):
         return None
     else:
@@ -542,7 +590,7 @@ def get_namespace(*arrays, remove_none=True, remove_types=(str,), xp=None):
         https://data-apis.org/array-api/latest/index.html).
         Always False when array_api_dispatch=False.
     """
-    array_api_dispatch = _threadlocal["array_api_dispatch"]
+    array_api_dispatch = get_config()["array_api_dispatch"]
     if not array_api_dispatch:
         if xp is not None:
             return xp, False
