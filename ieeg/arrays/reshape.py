@@ -1,5 +1,6 @@
 # Checked
 import numpy as np
+from numpy.lib.stride_tricks import as_strided
 
 
 def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
@@ -304,5 +305,24 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
 
         # Fill in the subset
         out[tuple(sl_out)] = data_fix[tuple(sl_in)]
+
+    return out
+
+
+def windower(x_data: np.ndarray, window_size: int, axis: int = -1,
+             insert_at: int = 0):
+    """Create a sliding window view of the array with the given window size."""
+    # Compute the shape and strides for the sliding window view
+    shape = list(x_data.shape)
+    shape[axis] = x_data.shape[axis] - window_size + 1
+    shape.insert(axis, window_size)
+    strides = list(x_data.strides)
+    strides.insert(axis, x_data.strides[axis])
+
+    # Create the sliding window view
+    out = as_strided(x_data, shape=shape, strides=strides)
+
+    # Move the window size dimension to the front
+    out = np.moveaxis(out, axis, insert_at)
 
     return out
