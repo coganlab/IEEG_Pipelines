@@ -33,7 +33,7 @@ else
     cvp = cvpartition(labels,'LeaveOut');
 end
     for nCv = 1:cvp.NumTestSets
-        
+        nCv
         train = cvp.training(nCv);
         test = cvp.test(nCv);
         ieegTrain = ieegModel(:,train,:);
@@ -43,13 +43,26 @@ end
         matTest = size(ieegTest);
         gTest = reshape(permute(ieegTest,[2 1 3]),[matTest(2) matTest(1)*matTest(3)]);
 
-        pTrain = labels(train);
-        pTest = labels(test);
+        labelTrain = labels(train);
+        labelTest = labels(test);
+
+        % Perform SMOTE on training and testing
+        gTrainGen = genTrials4Nan(gTrain,labelTrain,genType = 2);
+        %[gTrainGen,labelTrain] = balanceSmoteTrials(gTrainGen,labelTrain,genType = 2);
+        %size(gTrainSmote)
+        %size(labelTrain)
+        gTestGen = gTest;
+        noiseMatrix = -1 + 2.*rand(size(gTest));
+        
+        nanMask = isnan(gTest);
+        gTestGen(nanMask) = noiseMatrix(nanMask);
+%         gTestSmote = gTest;
+%         gTestSmote(isnan(gTest)) = 0;
         if(length(varVector)>1)
             if(numFolds>0)
-                [lossVect] = scoreSelect(gTrain,pTrain,varVector,1,numFolds); % Hyper parameter tuning
+                [lossVect] = scoreSelect(gTrainGen,labelTrain,varVector,1,numFolds); % Hyper parameter tuning
             else
-                [lossVect] = scoreSelect(gTrain,pTrain,varVector,0,numFolds);
+                [lossVect] = scoreSelect(gTrainGen,labelTrain,varVector,0,numFolds);
             end
 
              lossVectAll(nCv,:) = mean(lossVect,1);
@@ -60,12 +73,12 @@ end
             optimVar = varVector;
         end
 %        mean(squeeze(aucVect(:,nDim,:)),1)
-        [lossMod,Cmat,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(gTrain,gTest,pTrain,...
-                       pTest,optimVar,isauc);
+        [lossMod,Cmat,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(gTrainGen,gTestGen,labelTrain,...
+                       labelTest,optimVar,isauc);
     optimVarAll = [optimVarAll optimVar];
 %     size(pTest)
      %size(aucVect)
-    ytestAll = [ytestAll pTest];
+    ytestAll = [ytestAll labelTest];
     ypredAll = [ypredAll yhat'];
     accAll = accAll + 1 - lossMod;
     modelWeightsAll{nCv} = modelweights;

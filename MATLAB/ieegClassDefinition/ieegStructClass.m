@@ -22,6 +22,36 @@ classdef ieegStructClass
             obj.fBand = fBand;        
             obj.name = name;
         end
+        function objCar = extractCableCar(obj, channelNames)
+            % Common average referencing
+            % Extracts CAR-filtered data by subtracting the common average across channels
+           assert(length(channelNames)==size(obj.data,1), 'Channel dimension mismatch')
+           for iChan = 1:length(channelNames)
+               chanNameShank{iChan} = ieegChanLabelParse(channelNames{iChan});
+           end
+           if(cellfun(@isempty,chanNameShank))
+                chanNameShank{cellfun(@isempty,chanNameShank)} = 'noName';
+           end
+           [chanNameUnique,~,chanId] = unique(chanNameShank,'stable');
+            
+            disp(['Common average filtering across cable' obj.name]);
+            objCar = obj;
+            
+            % Apply common average referencing
+            carFilt = carFilterImpedance(obj.data, []); 
+            % Apply cable average referencing
+            for iChan = 1:length(chanNameUnique)
+                disp(['Cable average filtering ' chanNameUnique{iChan}]);
+                chan2average = chanId==iChan;
+                if(sum(chan2average)>1)
+                    objCar.data(chan2average,:,:) = carFilter(obj.data(chan2average,:,:)); 
+                else
+                    objCar.data(chan2average,:,:) = carFilt(chan2average,:,:);
+                end
+            end
+            disp(['Nan channels ' sum(isnan(objCar.data(:,1,1)))]);
+            objCar.name = strcat(obj.name, '_CAR_cable');
+        end
         
         function objCar = extractCar(obj, badChannels)
             % Common average referencing
@@ -104,31 +134,45 @@ classdef ieegStructClass
                     obj.name = strcat(obj.name, '_High-Gamma');
                 case 4
                     normType = 1;
-                    obj.name = strcat(obj.name, '_High-Gamma-Normalized');
-                case 5                    
-                    obj.name = strcat(obj.name, '_High-Gamma-Normalized');
+                    obj.name = strcat(obj.name, '_High-Gamma-z-score-normalized');
+                case 5 
+                    switch(normType)
+                        case 1
+                            obj.name = strcat(obj.name, '_High-Gamma-z-score-normalized');
+                        case 2
+                            obj.name = strcat(obj.name, '_High-Gamma-mean-subtracted-normalized'); 
+                        case 3
+                            obj.name = strcat(obj.name, '_High-Gamma-abs-rel-baseline-normalized');
+                        case 4
+                            obj.name = strcat(obj.name, '_High-Gamma-perc-ratio-baseline-normalized');
+                        case 5
+                            obj.name = strcat(obj.name, '_High-Gamma-log-baseline-normalized (unit dB)');
+                        case 6
+                            obj.name = strcat(obj.name, '_High-Gamma-norm-baseline-normalized');
+                    end
             end
-            
+            isPower = 0;
             if size(dataTemp, 1) == 1
-                [~, ieegGammaTemp(1, :, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp)), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType); 
+                [~, ieegGammaTemp(1, :, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp)), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType,isPower); 
             else
                 for iTrial = 1:size(obj.data, 2)    
-                    [~, ieegGammaTemp(:, iTrial, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp(:, iTrial, :))), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType);
+                    [~, ieegGammaTemp(:, iTrial, :)] = EcogExtractHighGammaTrial(double(squeeze(dataTemp(:, iTrial, :))), fsTemp, fDown, fGamma, twTemp, gtw, normFactor, normType,isPower);
                 end
             end
             
             ieegHiGamma = ieegStructClass(ieegGammaTemp, fDown, gtw, fGamma, obj.name);
-            ieegHiGammaPower = squeeze(mean(log10(ieegGammaTemp.^2), 3));
+            ieegHiGammaPower = squeeze(mean(log10(ieegGammaTemp), 3));
         end
 
         function normFactor = extractHGnormFactor(obj)
             % Extract normalization factors for ieeg (mean & standard deviation)
             
             % Calculates the mean and standard deviation normalization factors for each channel in the iEEG data
-            
+           % [NumTrials, goodtrials] = remove_bad_trials(obj.data, 10);
             normFactor = zeros(size(obj.data, 1), 2);
             for iChan = 1:size(obj.data, 1)
-                normFactor(iChan, :) = [mean2(squeeze(obj.data(iChan, :, :))), std2(squeeze(obj.data(iChan, :, :)))];
+               % normFactor(iChan, :) = [mean2(squeeze(obj.data(iChan, goodtrials(iChan,:),:)),"omitnan"), std2(squeeze(obj.data(iChan,  goodtrials(iChan,:),:)),"omitnan")];
+           normFactor(iChan, :) = [mean(squeeze(obj.data(iChan, :)),"omitnan"), std(squeeze(obj.data(iChan,  :)),"omitnan")];
             end
         end
         
