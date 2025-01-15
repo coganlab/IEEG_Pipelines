@@ -7,6 +7,7 @@ from scipy import ndimage
 from ieeg import Doubles
 from ieeg.arrays.reshape import make_data_same
 from ieeg.calc.fast import mean_diff, permgt
+from ieeg.calc.permtest import permutation_test
 from ieeg.process import get_mem, iterate_axes
 
 
@@ -468,7 +469,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     batch_size //= 4
     # small_enough = batch_size > n_perm ** 2
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
-                  axis=axis, vectorized=True, random_state=rng)
+                  axis=axis, vectorized=True, rng=rng)
 
     if isinstance(stat_func(np.array([1]), np.array([1]), axis), tuple):
         logger.warning('stat_func returns a tuple. Taking the first element')
@@ -480,9 +481,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     # Create binary clusters using the p value threshold
     def _proc(pid: int, sig1: np.ndarray, sig2: np.ndarray
               ) -> tuple[int, np.ndarray[int], np.ndarray[float]]:
-        res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
-        p_act = res.pvalue
-        diff = res.null_distribution
+        res = permutation_test([sig1, sig2], stat_func, **kwargs)
+        p_act = res[1]
+        diff = res[2]
 
         # Calculate the p value of the permutation distribution
         p_perm = proportion(diff, tail=tails, axis=axis)
