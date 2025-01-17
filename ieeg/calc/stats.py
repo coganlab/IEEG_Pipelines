@@ -6,8 +6,7 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.arrays.reshape import make_data_same
-from ieeg.calc.fast import mean_diff, permgt
-from ieeg.calc.permtest import permutation_test
+from ieeg.calc.fast import permgt, ttest
 from ieeg.process import get_mem, iterate_axes
 
 
@@ -240,52 +239,10 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
         logger.info(msg)
     return np.mean(data, axis=0, where=keep[..., np.newaxis])
 
-# def perm_test(group1: np.ndarray, group2: np.ndarray, n_perm: int = 1000,
-#               axis: int=-1):
-#     """Calculate the permutation test.
-#
-#     This function calculates the permutation test between two groups of
-#     observations. The permutation test is a non-parametric test that compares
-#     the mean difference between two groups of observations to the mean
-#     difference between two groups of observations that have been randomly
-#     permuted. The function returns the p-value of the observed difference.
-#
-#     Parameters
-#     ----------
-#     group1 : array, shape (..., time)
-#         The first group of observations.
-#     group2 : array, shape (..., time)
-#         The second group of observations.
-#     n_perm : int, optional
-#         The number of permutations to perform.
-#     axis : int, optional
-#         The axis along which to calculate the statistic function.
-#
-#     Returns
-#     -------
-#     p : float
-#         The p-value of the observed difference.
-#
-#     Examples
-#     --------
-#     >>> import numpy as np
-#     >>> seed = 43; rng = np.random.default_rng(seed)
-#     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
-#     ... for _ in range(50)])
-#     >>> sig2 = rng.random((100, 15)) * 2
-#     >>> perm_test(sig1, sig2, n_perm=1000000, axis=0) # doctest: +ELLIPSIS
-#     0.0
-#     """
-#     in1 = np.moveaxis(group1, axis, -1).astype('double')
-#     in2 = np.moveaxis(group2, axis, -1).astype('double')
-#
-#     return _perm_test(in1, in2, n_perm)
-
-
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 100000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
-                            stat_func: callable = mean_diff, seed: int = None,
+                            stat_func: callable = ttest, seed: int = None,
                             ) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
 
@@ -361,7 +318,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
-                      stat_func: callable = mean_diff,
+                      stat_func: callable = ttest,
                       ignore_adjacency: tuple[int] | int = None,
                       n_jobs: int = -1, seed: int = None
                       ) -> (np.ndarray[bool], np.ndarray[float]):
@@ -469,7 +426,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     batch_size //= 4
     # small_enough = batch_size > n_perm ** 2
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
-                  axis=axis, vectorized=True, rng=rng)
+                  axis=axis, vectorized=True, random_state=rng)
+
+    if 'alternative' in stat_func.__code__.co_varnames:
+        func = stat_func
+        def stat_func(*args, **kwargs):
+            kwargs['alternative'] = alt
+            return func(*args, **kwargs)
 
     if isinstance(stat_func(np.array([1]), np.array([1]), axis), tuple):
         logger.warning('stat_func returns a tuple. Taking the first element')
@@ -481,9 +444,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     # Create binary clusters using the p value threshold
     def _proc(pid: int, sig1: np.ndarray, sig2: np.ndarray
               ) -> tuple[int, np.ndarray[int], np.ndarray[float]]:
-        res = permutation_test([sig1, sig2], stat_func, **kwargs)
-        p_act = res[1]
-        diff = res[2]
+        res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
+        p_act = res.pvalue
+        diff = res.null_distribution
 
         # Calculate the p value of the permutation distribution
         p_perm = proportion(diff, tail=tails, axis=axis)
@@ -948,7 +911,7 @@ if __name__ == '__main__':
     sig2 = np.array([[[0] * n for _ in range(100)] for _ in range(100)]) + rng.random((100, 100, n))
     sig2 = sig2.transpose(1, 2, 0)
     diff = window_averaged_shuffle(sig1, sig2, 30000, 0)
-    act = mean_diff(sig1, sig2, axis=0)
+    act = ttest(sig1, sig2, 0, 'greater')
 
     # Calculate the p value of the permutation distribution and compare
     # execution times

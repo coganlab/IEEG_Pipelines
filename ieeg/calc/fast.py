@@ -3,8 +3,51 @@ from ieeg.calc._fast.ufuncs import mean_diff as _md
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
 from ieeg.calc._fast.concat import nan_concatinate
+from scipy.stats import ttest_ind
 
-__all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays"]
+__all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays",
+           "ttest"]
+
+
+def ttest(group1: np.ndarray, group2: np.ndarray,
+          axis: int, alternative: str, **kwargs) -> np.ndarray:
+    """Calculate the t-statistic between two groups.
+
+    This function is the default statistic function for time_perm_cluster. It
+    calculates the t-statistic between two groups along the specified axis.
+
+    Parameters
+    ----------
+    group1 : array, shape (..., time)
+        The first group of observations.
+    group2 : array, shape (..., time)
+        The second group of observations.
+    axis : int or tuple of ints, optional
+        The axis or axes along which to compute the t-statistic. If None,
+        compute the t-statistic over all axes.
+
+    Returns
+    -------
+    t : array
+        The t-statistic between the two groups.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]])
+    >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
+    >>> ttest(group1, group2, 1, 'greater')
+    array([ 0.,  2.])
+    >>> ttest(group1, group2, 0, 'greater')
+    array([ 0., 30.,  0.,  5.,  0.])
+    >>> group3 = np.arange(100000, dtype=float).reshape(20000, 5)
+    >>> ttest(group3, group1, 0, 'greater')
+    array([49997., 49968., 49999., 49995., 50001.])
+    """
+    kwargs.setdefault("equal_var", False)
+    kwargs.setdefault("nan_policy", "omit")
+    kwargs['alternative'] = alternative
+    return ttest_ind(group1, group2, axis=axis, **kwargs).statistic
 
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
@@ -197,7 +240,7 @@ if __name__ == "__main__":
     from timeit import timeit
 
     np.random.seed(0)
-    n = 10000
+    n = 1000
     group1 = np.random.rand(100, 100, 100)
     group2 = np.random.rand(500, 100, 100)
 
