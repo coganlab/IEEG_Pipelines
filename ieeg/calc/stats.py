@@ -6,7 +6,7 @@ from scipy import ndimage
 
 from ieeg import Doubles
 from ieeg.arrays.reshape import make_data_same
-from ieeg.calc.fast import permgt, ttest
+from ieeg.calc.fast import permgt, brunnermunzel
 from ieeg.process import get_mem, iterate_axes
 
 
@@ -242,8 +242,8 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 100000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
-                            stat_func: callable = ttest, seed: int = None,
-                            ) -> np.ndarray[bool]:
+                            stat_func: callable = brunnermunzel,
+                            seed: int = None) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
 
     Essentially a wrapper for:
@@ -318,7 +318,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
-                      stat_func: callable = ttest,
+                      stat_func: callable = brunnermunzel,
                       ignore_adjacency: tuple[int] | int = None,
                       n_jobs: int = -1, seed: int = None
                       ) -> (np.ndarray[bool], np.ndarray[float]):
@@ -911,7 +911,7 @@ if __name__ == '__main__':
     sig2 = np.array([[[0] * n for _ in range(100)] for _ in range(100)]) + rng.random((100, 100, n))
     sig2 = sig2.transpose(1, 2, 0)
     diff = window_averaged_shuffle(sig1, sig2, 30000, 0)
-    act = ttest(sig1, sig2, 0, 'greater')
+    act = brunnermunzel(sig1, sig2, 0, 'greater')
 
     # Calculate the p value of the permutation distribution and compare
     # execution times
