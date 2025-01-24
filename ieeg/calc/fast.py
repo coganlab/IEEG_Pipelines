@@ -1,9 +1,9 @@
 import numpy as np
-from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
+from ieeg.calc._fast.ufuncs import mean_diff as _md
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
 from ieeg.calc._fast.concat import nan_concatinate
-from scipy.stats import ttest_ind, rankdata
+from scipy.stats import rankdata
 from functools import partial
 
 __all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays",
@@ -157,18 +157,27 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
+    >>> from numba import set_num_threads
+    >>> set_num_threads(1)
     >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]])
     >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
     >>> ttest(group1, group2, 1)
     array([      nan, 1.2004901])
     >>> ttest(group1, group2, 0)
     array([0.        , 1.01680311, 0.        , 1.10431526, 0.        ])
-    >>> group3 = np.arange(100000, dtype=float).reshape(20000, 5)
-    >>> ttest(group3, group1, 0)
+    >>> group3 = np.arange(100000000, dtype=float).reshape(200000, 500)
+    >>> ttest(group3, group1.repeat(100, 1), 0)
     array([244.92741947, 242.26926888, 244.93721715, 244.858866  ,
            244.94701484])
     """
-    return _ttest(group1, group2, axes=[axis, axis])
+    nonan1, nonan2 = ~np.isnan(group1), ~np.isnan(group2)
+    n1, n2 = nonan1.sum(axis, keepdims=True), nonan2.sum(axis, keepdims=True)
+    m1 = group1.mean(axis, where=nonan1, keepdims=True)
+    m2 = group2.mean(axis, where=nonan2, keepdims=True)
+    var1 = ((group1 - m1) ** 2).sum(axis, where=nonan1, keepdims=True) / (n1 - 1)
+    var2 = ((group2 - m2) ** 2).sum(axis, where=nonan2, keepdims=True) / (n2 - 1)
+    var = np.sqrt(var1 / n1 + var2 / n2)
+    return np.squeeze((m1 - m2) / var)
 
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
