@@ -1,5 +1,5 @@
 import numpy as np
-from ieeg.calc._fast.ufuncs import mean_diff as _md
+from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
 from ieeg.calc._fast.concat import nan_concatinate
@@ -8,6 +8,10 @@ from functools import partial
 
 __all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays",
            "ttest", "brunnermunzel"]
+
+from torch import einsum
+
+_chars = ''.join([chr(i) for i in range(105, 123)])
 
 
 def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
@@ -157,8 +161,6 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> from numba import set_num_threads
-    >>> set_num_threads(1)
     >>> group1 = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]])
     >>> group2 = np.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
     >>> ttest(group1, group2, 1)
@@ -170,15 +172,30 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     array([244.92741947, 242.26926888, 244.93721715, 244.858866  ,
            244.94701484])
     """
+    group1 = np.asarray(group1, dtype=float)
+    group2 = np.asarray(group2, dtype=float)
     nonan1, nonan2 = ~np.isnan(group1), ~np.isnan(group2)
     n1, n2 = nonan1.sum(axis, keepdims=True), nonan2.sum(axis, keepdims=True)
-    m1 = group1.mean(axis, where=nonan1, keepdims=True)
-    m2 = group2.mean(axis, where=nonan2, keepdims=True)
-    var1 = ((group1 - m1) ** 2).sum(axis, where=nonan1, keepdims=True) / (n1 - 1)
-    var2 = ((group2 - m2) ** 2).sum(axis, where=nonan2, keepdims=True) / (n2 - 1)
-    var = np.sqrt(var1 / n1 + var2 / n2)
-    return np.squeeze((m1 - m2) / var)
 
+    m1, var1 = _meanvar(group1, n1, axis, nonan1)
+    m2, var2 = _meanvar(group2, n2, axis, nonan2)
+
+    out = (m1 - m2)
+    out /= np.sqrt(var1 / (n1 * (n1 - 1)) + var2 / (n2 * (n2 - 1)))
+    return np.squeeze(out)
+
+def _meanvar(group, n, axis, nonan):
+    group[~nonan] = 0
+    char = _chars[:group.ndim]
+    reduced_char = char.replace(char[axis], "")
+    subscript = ",".join([char, reduced_char]) + "->" + reduced_char
+    m = np.einsum(subscript, group, 1/n.squeeze())
+    m = np.expand_dims(m, axis)
+    np.subtract(group, m, where=nonan, out=group)
+    subscript = ",".join([char, char]) + "->" + reduced_char
+    var = np.einsum(subscript, group, group)
+    var = np.expand_dims(var, axis)
+    return m, var
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
                        ) -> np.ndarray:
@@ -370,13 +387,13 @@ if __name__ == "__main__":
     from timeit import timeit
 
     np.random.seed(0)
-    n = 1000
+    n = 500
     group1 = np.random.rand(100, 100, 100)
     group2 = np.random.rand(500, 100, 100)
 
     kwargs = dict(globals=globals(), number=n)
-    time1 = timeit('mean_diff(group1, group2, axis=0)', **kwargs)
-    # time2 = timeit('_md(group1, group2, axes=[0, 0])', **kwargs)
+    time1 = timeit('ttest(group1, group2, axis=0)', **kwargs)
+    time2 = timeit('_ttest(group1, group2, axes=[0, 0])', **kwargs)
 
-    print(f"mean_diff: {time1 / n:.3g} per run")
-    # print(f"md: {time2 / n:.3g} per run")
+    print(f"ttest: {time1 / n:.3g} per run")
+    print(f"ufunc: {time2 / n:.3g} per run")
