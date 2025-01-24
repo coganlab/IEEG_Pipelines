@@ -118,6 +118,21 @@ static void mean_diff(
     }
 }
 
+double sum_var(double sum1, double sum2, npy_intp n1, npy_intp n2) {
+
+    if (n1 == 1) {
+        double var2 = sum2 / ((n2 - 1) * n2);
+        return sqrt(var2);
+    } else if (n2 == 1) {
+        double var1 = sum1 / ((n1 - 1) * n1);
+        return sqrt(var1);
+    } else {
+        double var1 = sum1 / ((n1 - 1) * n1);
+        double var2 = sum2 / ((n2 - 1) * n2);
+        return sqrt(var1 + var2);
+    }
+}
+
 static void t_test(
     char **args,
     const npy_intp *dimensions,
@@ -137,45 +152,57 @@ static void t_test(
     npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
 
     if (len1 > len2) {
+        // outer loop
         for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
             double sum1 = 0.0, sum2 = 0.0;
-            double varsum1 = 0.0, varsum2 = 0.0;
             npy_intp count1 = 0, count2 = 0;
 
+            // inner loop
             for (npy_intp j = 0; j < len1; ++j) {
                 double val1 = *(double *)(in1 + j * innerstep1);
                 if (val1 == val1) {
                     sum1 += val1;
-                    varsum1 += val1 * val1;
                     count1++;
                 }
                 if (j < len2) {
                     double val2 = *(double *)(in2 + j * innerstep2);
                     if (val2 == val2) {
                         sum2 += val2;
-                        varsum2 += val2 * val2;
                         count2++;
                     }
                 }
             }
 
-            if ((count1 > 0) && (count2 > 0)) {
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((double *)out) = NAN;
+            } else {
+                double varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
                 double mean1 = sum1 / count1;
                 double mean2 = sum2 / count2;
-                double var1 = varsum1 / (count1 * count1);
-                double var2 = varsum2 / (count2 * count2);
+
+                // Calculate the variance
+                for (npy_intp j = 0; j < len1; ++j) {
+                    double val1 = *(double *)(in1 + j * innerstep1);
+                    if (val1 == val1) {
+                        varsum1 += pow(val1 - mean1, 2);
+                    }
+                    if (j < len2) {
+                        double val2 = *(double *)(in2 + j * innerstep2);
+                        if (val2 == val2) {
+                            varsum2 += pow(val2 - mean2, 2);
+                        }
+                    }
+                }
 
                 // Calculate the difference
-                *((double *)out) = (mean1 - mean2) / sqrt(var1 + var2);
-            }
-            else {
-                *((double *)out) = NAN;
+                *((double *)out) = (mean1 - mean2) / sum_var(varsum1, varsum2, count1, count2);
             }
         }
     } else if (len1 < len2) {
         for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
             double sum1 = 0.0, sum2 = 0.0;
-            double varsum1 = 0.0, varsum2 = 0.0;
             npy_intp count1 = 0, count2 = 0;
 
             for (npy_intp j = 0; j < len2; ++j) {
@@ -183,67 +210,89 @@ static void t_test(
                     double val1 = *(double *)(in1 + j * innerstep1);
                     if (val1 == val1) {
                         sum1 += val1;
-                        varsum1 += val1 * val1;
                         count1++;
                     }
                 }
                 double val2 = *(double *)(in2 + j * innerstep2);
                 if (val2 == val2) {
                     sum2 += val2;
-                    varsum2 += val2 * val2;
                     count2++;
                 }
             }
 
-            if ((count1 > 0) && (count2 > 0)) {
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((double *)out) = NAN;
+            } else {
+                double varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
                 double mean1 = sum1 / count1;
                 double mean2 = sum2 / count2;
-                double var1 = varsum1 / (count1 * count1);
-                double var2 = varsum2 / (count2 * count2);
+
+                // Calculate the variance
+                for (npy_intp j = 0; j < len2; ++j) {
+                    if (j < len1) {
+                        double val1 = *(double *)(in1 + j * innerstep1);
+                        if (val1 == val1) {
+                            varsum1 += pow(val1 - mean1, 2);
+                        }
+                    }
+                    double val2 = *(double *)(in2 + j * innerstep2);
+                    if (val2 == val2) {
+                        varsum2 += pow(val2 - mean2, 2);
+                    }
+                }
 
                 // Calculate the difference
-                *((double *)out) = (mean1 - mean2) / sqrt(var1 + var2);
-            }
-            else {
-                *((double *)out) = NAN;
+                *((double *)out) = (mean1 - mean2) / sum_var(varsum1, varsum2, count1, count2);
             }
         }
     } else {
         for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
             double sum1 = 0.0, sum2 = 0.0;
-            double varsum1 = 0.0, varsum2 = 0.0;
             npy_intp count1 = 0, count2 = 0;
 
             for (npy_intp j = 0; j < len2; ++j) {
                 double val1 = *(double *)(in1 + j * innerstep1);
                 if (val1 == val1) {
                     sum1 += val1;
-                    varsum1 += val1 * val1;
                     count1++;
                 }
                 double val2 = *(double *)(in2 + j * innerstep2);
                 if (val2 == val2) {
                     sum2 += val2;
-                    varsum2 += val2 * val2;
                     count2++;
                 }
             }
 
-            if ((count1 > 0) && (count2 > 0)) {
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((double *)out) = NAN;
+            } else {
+                double varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
                 double mean1 = sum1 / count1;
                 double mean2 = sum2 / count2;
-                double var1 = varsum1 / (count1 * count1);
-                double var2 = varsum2 / (count2 * count2);
+
+                // Calculate the variance
+                for (npy_intp j = 0; j < len2; ++j) {
+                    double val1 = *(double *)(in1 + j * innerstep1);
+                    if (val1 == val1) {
+                        varsum1 += pow(val1 - mean1, 2);
+                    }
+                    double val2 = *(double *)(in2 + j * innerstep2);
+                    if (val2 == val2) {
+                        varsum2 += pow(val2 - mean2, 2);
+                    }
+                }
 
                 // Calculate the difference
-                *((double *)out) = (mean1 - mean2) / sqrt(var1 + var2);
-            }
-            else {
-                *((double *)out) = NAN;
+                *((double *)out) = (mean1 - mean2) / sum_var(varsum1, varsum2, count1, count2);
             }
         }
     }
 }
+
 
 PyUFuncGenericFunction funcs[2] = {&mean_diff, &t_test};
 
@@ -302,7 +351,6 @@ PyMODINIT_FUNC PyInit_ufuncs(void) {
     import_ufunc();
     import_umath();
 
-
     m = PyModule_Create(&moduledef);
     if (!m) {
         return NULL;
@@ -311,7 +359,7 @@ PyMODINIT_FUNC PyInit_ufuncs(void) {
     ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, md_types, 1, 2, 1, PyUFunc_None, "mean_diff",
     doc, 0, "(i),(j)->()");
 
-    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, t_types, 1, 2, 1, PyUFunc_None, "t_test",
+    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 1, NULL, t_types, 1, 2, 1, PyUFunc_None, "t_test",
     "", 0, "(i),(j)->()");
 
     d = PyModule_GetDict(m);
