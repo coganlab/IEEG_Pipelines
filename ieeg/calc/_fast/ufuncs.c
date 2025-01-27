@@ -1,15 +1,53 @@
 #include <Python.h>
 #include <numpy/arrayobject.h>
 #include <numpy/ufuncobject.h>
+#include <numpy/halffloat.h>
+
+#ifndef NPY_INLINE
+#define NPY_INLINE static inline
+#endif
+
+#define NPY_NAN_HALF (npy_half)NPY_NAN
 
 static PyMethodDef Meandiff_Methods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+NPY_INLINE void calculate_sums_and_counts_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        npy_half vall = *(npy_half *)(inl + j * innerstepl);
+        if (vall == vall) {
+            *suml += npy_half_to_float(vall);
+            (*countl)++;
+        }
+        if (j < lens) {
+            npy_half vals = *(npy_half *)(ins + j * innersteps);
+            if (vals == vals) {
+                *sums += npy_half_to_float(vals);
+                (*counts)++;
+            }
+        }
+    }
+}
 
-static void calculate_sums_and_counts(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, double * const suml, double * const sums, npy_intp * const countl, npy_intp * const counts) {
+NPY_INLINE void calculate_sums_and_counts_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        float vall = *(float *)(inl + j * innerstepl);
+        if (vall == vall) {
+            *suml += vall;
+            (*countl)++;
+        }
+        if (j < lens) {
+            float vals = *(float *)(ins + j * innersteps);
+            if (vals == vals) {
+                *sums += vals;
+                (*counts)++;
+            }
+        }
+    }
+}
 
-    // we know that lenl is always greater than lens
+NPY_INLINE void calculate_sums_and_counts_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, double * const suml, double * const sums, npy_intp * const countl, npy_intp * const counts) {
     for (npy_intp j = 0; j < lenl; ++j) {
         double vall = *(double *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -26,7 +64,58 @@ static void calculate_sums_and_counts(const char *inl, const char *ins, const np
     }
 }
 
-static void calculate_sums_and_counts_equal(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, double * const suml, double * const sums, npy_intp * const countl, npy_intp * const counts) {
+NPY_INLINE void calculate_sums_and_counts_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, long double * const suml, long double * const sums, npy_intp * const countl, npy_intp * const counts) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        long double vall = *(long double *)(inl + j * innerstepl);
+        if (vall == vall) {
+            *suml += vall;
+            (*countl)++;
+        }
+        if (j < lens) {
+            long double vals = *(long double *)(ins + j * innersteps);
+            if (vals == vals) {
+                *sums += vals;
+                (*counts)++;
+            }
+        }
+    }
+}
+
+NPY_INLINE void calculate_sums_and_counts_equal_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
+
+    // we know that lenl is always equal to lens
+    for (npy_intp j = 0; j < lenl; ++j) {
+        npy_half vall = *(npy_half *)(inl + j * innerstepl);
+        if (vall == vall) {
+            *suml += npy_half_to_float(vall);
+            (*countl)++;
+        }
+        npy_half vals = *(npy_half *)(ins + j * innersteps);
+        if (vals == vals) {
+            *sums += npy_half_to_float(vals);
+            (*counts)++;
+        }
+    }
+}
+
+NPY_INLINE void calculate_sums_and_counts_equal_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
+
+    // we know that lenl is always equal to lens
+    for (npy_intp j = 0; j < lenl; ++j) {
+        float vall = *(float *)(inl + j * innerstepl);
+        if (vall == vall) {
+            *suml += vall;
+            (*countl)++;
+        }
+        float vals = *(float *)(ins + j * innersteps);
+        if (vals == vals) {
+            *sums += vals;
+            (*counts)++;
+        }
+    }
+}
+
+NPY_INLINE void calculate_sums_and_counts_equal_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, double * const suml, double * const sums, npy_intp * const countl, npy_intp * const counts) {
 
     // we know that lenl is always equal to lens
     for (npy_intp j = 0; j < lenl; ++j) {
@@ -43,7 +132,132 @@ static void calculate_sums_and_counts_equal(const char *inl, const char *ins, co
     }
 }
 
-static void mean_diff(
+NPY_INLINE void calculate_sums_and_counts_equal_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, long double * const suml, long double * const sums, npy_intp * const countl, npy_intp * const counts) {
+
+    // we know that lenl is always equal to lens
+    for (npy_intp j = 0; j < lenl; ++j) {
+        long double vall = *(long double *)(inl + j * innerstepl);
+        if (vall == vall) {
+            *suml += vall;
+            (*countl)++;
+        }
+        long double vals = *(long double *)(ins + j * innersteps);
+        if (vals == vals) {
+            *sums += vals;
+            (*counts)++;
+        }
+    }
+}
+
+static void mean_diff_half(
+    char **args,
+    const npy_intp *dimensions,
+    const npy_intp *steps,
+    void *extra)
+{
+    char *in1 = args[0], *in2 = args[1], *out = args[2];
+
+    const npy_intp nloops = dimensions[0];  // Number of outer loops
+    const npy_intp len1 = dimensions[1];    // Core dimension i
+    const npy_intp len2 = dimensions[2];    // Core dimension j
+
+    const npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    const npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    const npy_intp step_out = steps[2];     // Outer loop step size for the output
+    const npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
+    const npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
+
+    if (len1 > len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // Calculate the difference
+            *((npy_half *)out) = ((count1 > 0) && (count2 > 0)) ? npy_float_to_half(sum1 / count1 - sum2 / count2) : NPY_NAN_HALF;
+        }
+    } else if (len1 < len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_half(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+
+            // Calculate the difference
+            *((npy_half *)out) = ((count1 > 0) && (count2 > 0)) ? npy_float_to_half(sum1 / count1 - sum2 / count2) : NPY_NAN_HALF;
+        }
+    } else {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_equal_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // Calculate the difference
+            *((npy_half *)out) = ((count1 > 0) && (count2 > 0)) ? npy_float_to_half(sum1 / count1 - sum2 / count2) : NPY_NAN_HALF;
+        }
+    }
+}
+
+static void mean_diff_float(
+    char **args,
+    const npy_intp *dimensions,
+    const npy_intp *steps,
+    void *extra)
+{
+    char *in1 = args[0], *in2 = args[1], *out = args[2];
+
+    const npy_intp nloops = dimensions[0];  // Number of outer loops
+    const npy_intp len1 = dimensions[1];    // Core dimension i
+    const npy_intp len2 = dimensions[2];    // Core dimension j
+
+    const npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    const npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    const npy_intp step_out = steps[2];     // Outer loop step size for the output
+    const npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
+    const npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
+
+    if (len1 > len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // Calculate the difference
+            *((float *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
+        }
+    } else if (len1 < len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_float(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+
+            // Calculate the difference
+            *((float *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
+        }
+    } else {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_equal_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // Calculate the difference
+            *((float *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
+        }
+    }
+}
+
+static void mean_diff_double(
     char **args,
     const npy_intp *dimensions,
     const npy_intp *steps,
@@ -67,7 +281,7 @@ static void mean_diff(
             npy_intp count1 = 0, count2 = 0;
 
             // inner loop
-            calculate_sums_and_counts(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            calculate_sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
 
             // Calculate the difference
             *((double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
@@ -78,7 +292,7 @@ static void mean_diff(
             npy_intp count1 = 0, count2 = 0;
 
             // inner loop
-            calculate_sums_and_counts(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            calculate_sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
 
             // Calculate the difference
             *((double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
@@ -89,7 +303,7 @@ static void mean_diff(
             npy_intp count1 = 0, count2 = 0;
 
             // inner loop
-            calculate_sums_and_counts_equal(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            calculate_sums_and_counts_equal_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
 
             // Calculate the difference
             *((double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
@@ -97,7 +311,89 @@ static void mean_diff(
     }
 }
 
-static double sum_var(const double sum1, const double sum2, const npy_intp n1, const npy_intp n2) {
+static void mean_diff_longdouble(
+    char **args,
+    const npy_intp *dimensions,
+    const npy_intp *steps,
+    void *extra)
+{
+    char *in1 = args[0], *in2 = args[1], *out = args[2];
+
+    const npy_intp nloops = dimensions[0];  // Number of outer loops
+    const npy_intp len1 = dimensions[1];    // Core dimension i
+    const npy_intp len2 = dimensions[2];    // Core dimension j
+
+    const npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    const npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    const npy_intp step_out = steps[2];     // Outer loop step size for the output
+    const npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
+    const npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
+
+    if (len1 > len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            long double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // Calculate the difference
+            *((long double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
+        }
+    } else if (len1 < len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            long double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_longdouble(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+
+            // Calculate the difference
+            *((long double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
+        }
+    } else {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            long double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_equal_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // Calculate the difference
+            *((long double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
+        }
+    }
+}
+
+NPY_INLINE npy_half sum_var_half(const float sum1, const float sum2, const npy_intp n1, const npy_intp n2) {
+
+    // at this point, it is already known that n1 and n2 are not zero
+    if (n1 == 1) {
+        return npy_double_to_half(sqrt(sum2 / ((n2 - 1) * n2)));
+    } else if (n2 == 1) {
+        return npy_double_to_half(sqrt(sum1 / ((n1 - 1) * n1)));
+    } else {
+        const float var1 = sum1 / ((n1 - 1) * n1);
+        const float var2 = sum2 / ((n2 - 1) * n2);
+        return npy_double_to_half(sqrt(var1 + var2));
+    }
+}
+
+NPY_INLINE float sum_var_float(const float sum1, const float sum2, const npy_intp n1, const npy_intp n2) {
+
+    // at this point, it is already known that n1 and n2 are not zero
+    if (n1 == 1) {
+        return (float)sqrt(sum2 / ((n2 - 1) * n2));
+    } else if (n2 == 1) {
+        return (float)sqrt(sum1 / ((n1 - 1) * n1));
+    } else {
+        const float var1 = sum1 / ((n1 - 1) * n1);
+        const float var2 = sum2 / ((n2 - 1) * n2);
+        return (float)sqrt(var1 + var2);
+    }
+}
+
+NPY_INLINE double sum_var_double(const double sum1, const double sum2, const npy_intp n1, const npy_intp n2) {
 
     // at this point, it is already known that n1 and n2 are not zero
     if (n1 == 1) {
@@ -111,7 +407,355 @@ static double sum_var(const double sum1, const double sum2, const npy_intp n1, c
     }
 }
 
-static void t_test(
+NPY_INLINE long double sum_var_longdouble(const long double sum1, const long double sum2, const npy_intp n1, const npy_intp n2) {
+
+    // at this point, it is already known that n1 and n2 are not zero
+    if (n1 == 1) {
+        return sqrt(sum2 / ((n2 - 1) * n2));
+    } else if (n2 == 1) {
+        return sqrt(sum1 / ((n1 - 1) * n1));
+    } else {
+        const long double var1 = sum1 / ((n1 - 1) * n1);
+        const long double var2 = sum2 / ((n2 - 1) * n2);
+        return sqrt(var1 + var2);
+    }
+}
+
+NPY_INLINE void calculate_varsums_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        npy_half vall = *(npy_half *)(inl + j * innerstepl);
+        if (!npy_half_isnan(vall)) {
+            float val = npy_half_to_float(vall);
+            val -= meanl;
+            val *= val;
+            *varsuml += val;
+        }
+        if (j < lens) {
+            npy_half vals = *(npy_half *)(ins + j * innersteps);
+            if (!npy_half_isnan(vals)) {
+                float val = npy_half_to_float(vals);
+                val -= means;
+                val *= val;
+                *varsums += val;
+            }
+        }
+    }
+}
+
+NPY_INLINE void calculate_varsums_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        float vall = *(float *)(inl + j * innerstepl);
+        if (vall == vall) {
+            vall -= meanl;
+            vall *= vall;
+            *varsuml += vall;
+        }
+        if (j < lens) {
+            float vals = *(float *)(ins + j * innersteps);
+            if (vals == vals) {
+                vals -= means;
+                vals *= vals;
+                *varsums += vals;
+            }
+        }
+    }
+}
+
+NPY_INLINE void calculate_varsums_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const double meanl, const double means, double * const varsuml, double * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        double vall = *(double *)(inl + j * innerstepl);
+        if (vall == vall) {
+            vall -= meanl;
+            vall *= vall;
+            *varsuml += vall;
+        }
+        if (j < lens) {
+            double vals = *(double *)(ins + j * innersteps);
+            if (vals == vals) {
+                vals -= means;
+                vals *= vals;
+                *varsums += vals;
+            }
+        }
+    }
+}
+
+NPY_INLINE void calculate_varsums_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const long double meanl, const long double means, long double * const varsuml, long double * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        long double vall = *(long double *)(inl + j * innerstepl);
+        if (vall == vall) {
+            vall -= meanl;
+            vall *= vall;
+            *varsuml += vall;
+        }
+        if (j < lens) {
+            long double vals = *(long double *)(ins + j * innersteps);
+            if (vals == vals) {
+                vals -= means;
+                vals *= vals;
+                *varsums += vals;
+            }
+        }
+    }
+}
+
+NPY_INLINE void calculate_varsums_equal_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        npy_half vall = *(npy_half *)(inl + j * innerstepl);
+        if (vall == vall) {
+            float val = npy_half_to_float(vall);
+            val -= meanl;
+            val *= val;
+            *varsuml += val;
+        }
+        npy_half vals = *(npy_half *)(ins + j * innersteps);
+        if (vals == vals) {
+            float val = npy_half_to_float(vals);
+            val -= means;
+            val *= val;
+            *varsums += val;
+        }
+    }
+}
+
+NPY_INLINE void calculate_varsums_equal_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        float vall = *(float *)(inl + j * innerstepl);
+        if (vall == vall) {
+            vall -= meanl;
+            vall *= vall;
+            *varsuml += vall;
+        }
+        float vals = *(float *)(ins + j * innersteps);
+        if (vals == vals) {
+            vals -= means;
+            vals *= vals;
+            *varsums += vals;
+        }
+    }
+}
+
+NPY_INLINE void calculate_varsums_equal_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const double meanl, const double means, double * const varsuml, double * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        double vall = *(double *)(inl + j * innerstepl);
+        if (vall == vall) {
+            vall -= meanl;
+            vall *= vall;
+            *varsuml += vall;
+        }
+        double vals = *(double *)(ins + j * innersteps);
+        if (vals == vals) {
+            vals -= means;
+            vals *= vals;
+            *varsums += vals;
+        }
+    }
+}
+
+NPY_INLINE void calculate_varsums_equal_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const long double meanl, const long double means, long double * const varsuml, long double * const varsums) {
+    for (npy_intp j = 0; j < lenl; ++j) {
+        long double vall = *(long double *)(inl + j * innerstepl);
+        if (vall == vall) {
+            vall -= meanl;
+            vall *= vall;
+            *varsuml += vall;
+        }
+        long double vals = *(long double *)(ins + j * innersteps);
+        if (vals == vals) {
+            vals -= means;
+            vals *= vals;
+            *varsums += vals;
+        }
+    }
+}
+
+static void t_test_half(
+    char **args,
+    const npy_intp *dimensions,
+    const npy_intp *steps,
+    void *extra)
+{
+    char *in1 = args[0], *in2 = args[1], *out = args[2];
+
+    const npy_intp nloops = dimensions[0];  // Number of outer loops
+    const npy_intp len1 = dimensions[1];    // Core dimension i
+    const npy_intp len2 = dimensions[2];    // Core dimension j
+
+    const npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    const npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    const npy_intp step_out = steps[2];     // Outer loop step size for the output
+    const npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
+    const npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
+
+    if (len1 > len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((npy_half *)out) = NPY_NAN_HALF;
+            } else {
+                float varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                float mean1 = sum1 / count1;
+                float mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_half(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+
+                // Calculate the difference
+                *((npy_half *)out) = npy_float_to_half((mean1 - mean2) / sum_var_half(varsum1, varsum2, count1, count2));
+            }
+        }
+    } else if (len1 < len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_half(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((npy_half *)out) = NPY_NAN_HALF;
+            } else {
+                float varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                float mean1 = sum1 / count1;
+                float mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_half(in2, in1, len2, len1, innerstep2, innerstep1, mean2, mean1, &varsum2, &varsum1);
+
+                // Calculate the difference
+                *((npy_half *)out) = npy_float_to_half((mean1 - mean2) / sum_var_half(varsum1, varsum2, count1, count2));
+            }
+        }
+    } else {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_equal_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((npy_half *)out) = NPY_NAN_HALF;
+            } else {
+                float varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                float mean1 = sum1 / count1;
+                float mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_equal_half(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+
+                // Calculate the difference
+                *((npy_half *)out) = npy_float_to_half((mean1 - mean2) / sum_var_half(varsum1, varsum2, count1, count2));
+            }
+        }
+    }
+}
+
+static void t_test_float(
+    char **args,
+    const npy_intp *dimensions,
+    const npy_intp *steps,
+    void *extra)
+{
+    char *in1 = args[0], *in2 = args[1], *out = args[2];
+
+    const npy_intp nloops = dimensions[0];  // Number of outer loops
+    const npy_intp len1 = dimensions[1];    // Core dimension i
+    const npy_intp len2 = dimensions[2];    // Core dimension j
+
+    const npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    const npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    const npy_intp step_out = steps[2];     // Outer loop step size for the output
+    const npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
+    const npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
+
+    if (len1 > len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((float *)out) = NAN;
+            } else {
+                float varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                float mean1 = sum1 / count1;
+                float mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_float(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+
+                // Calculate the difference
+                *((float *)out) = (mean1 - mean2) / sum_var_float(varsum1, varsum2, count1, count2);
+            }
+        }
+    } else if (len1 < len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_float(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((float *)out) = NAN;
+            } else {
+                float varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                float mean1 = sum1 / count1;
+                float mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_float(in2, in1, len2, len1, innerstep2, innerstep1, mean2, mean1, &varsum2, &varsum1);
+
+                // Calculate the difference
+                *((float *)out) = (mean1 - mean2) / sum_var_float(varsum1, varsum2, count1, count2);
+            }
+        }
+    } else {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            float sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_equal_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((float *)out) = NAN;
+            } else {
+                float varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                float mean1 = sum1 / count1;
+                float mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_equal_float(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+
+                // Calculate the difference
+                *((float *)out) = (mean1 - mean2) / sum_var_float(varsum1, varsum2, count1, count2);
+            }
+        }
+    }
+}
+
+static void t_test_double(
     char **args,
     const npy_intp *dimensions,
     const npy_intp *steps,
@@ -136,7 +780,7 @@ static void t_test(
             npy_intp count1 = 0, count2 = 0;
 
             // inner loop
-            calculate_sums_and_counts(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            calculate_sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
 
             // varience is zero if there is only one element, so we need to check for this
             if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
@@ -148,25 +792,10 @@ static void t_test(
                 double mean2 = sum2 / count2;
 
                 // Calculate the variance
-                for (npy_intp j = 0; j < len1; ++j) {
-                    double val1 = *(double *)(in1 + j * innerstep1);
-                    if (val1 == val1) {
-                        val1 -= mean1;
-                        val1 *= val1;
-                        varsum1 += val1;
-                    }
-                    if (j < len2) {
-                        double val2 = *(double *)(in2 + j * innerstep2);
-                        if (val2 == val2) {
-                            val2 -= mean2;
-                            val2 *= val2;
-                            varsum2 += val2;
-                        }
-                    }
-                }
+                calculate_varsums_double(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
 
                 // Calculate the difference
-                *((double *)out) = (mean1 - mean2) / sum_var(varsum1, varsum2, count1, count2);
+                *((double *)out) = (mean1 - mean2) / sum_var_double(varsum1, varsum2, count1, count2);
             }
         }
     } else if (len1 < len2) {
@@ -174,7 +803,7 @@ static void t_test(
             double sum1 = 0.0, sum2 = 0.0;
             npy_intp count1 = 0, count2 = 0;
 
-            calculate_sums_and_counts(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            calculate_sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
 
             // varience is zero if there is only one element, so we need to check for this
             if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
@@ -186,25 +815,10 @@ static void t_test(
                 double mean2 = sum2 / count2;
 
                 // Calculate the variance
-                for (npy_intp j = 0; j < len2; ++j) {
-                    if (j < len1) {
-                        double val1 = *(double *)(in1 + j * innerstep1);
-                        if (val1 == val1) {
-                            val1 -= mean1;
-                            val1 *= val1;
-                            varsum1 += val1;
-                        }
-                    }
-                    double val2 = *(double *)(in2 + j * innerstep2);
-                    if (val2 == val2) {
-                        val2 -= mean2;
-                        val2 *= val2;
-                        varsum2 += val2;
-                    }
-                }
+                calculate_varsums_double(in2, in1, len2, len1, innerstep2, innerstep1, mean2, mean1, &varsum2, &varsum1);
 
                 // Calculate the difference
-                *((double *)out) = (mean1 - mean2) / sum_var(varsum1, varsum2, count1, count2);
+                *((double *)out) = (mean1 - mean2) / sum_var_double(varsum1, varsum2, count1, count2);
             }
         }
     } else {
@@ -212,7 +826,7 @@ static void t_test(
             double sum1 = 0.0, sum2 = 0.0;
             npy_intp count1 = 0, count2 = 0;
 
-            calculate_sums_and_counts_equal(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            calculate_sums_and_counts_equal_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
 
             // varience is zero if there is only one element, so we need to check for this
             if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
@@ -224,34 +838,125 @@ static void t_test(
                 double mean2 = sum2 / count2;
 
                 // Calculate the variance
-                for (npy_intp j = 0; j < len2; ++j) {
-                    double val1 = *(double *)(in1 + j * innerstep1);
-                    if (val1 == val1) {
-                          val1 -= mean1;
-                          val1 *= val1;
-                          varsum1 += val1;
-                    }
-                    double val2 = *(double *)(in2 + j * innerstep2);
-                    if (val2 == val2) {
-                        val2 -= mean2;
-                        val2 *= val2;
-                        varsum2 += val2;
-                    }
-                }
+                calculate_varsums_equal_double(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
 
                 // Calculate the difference
-                *((double *)out) = (mean1 - mean2) / sum_var(varsum1, varsum2, count1, count2);
+                *((double *)out) = (mean1 - mean2) / sum_var_double(varsum1, varsum2, count1, count2);
             }
         }
     }
 }
 
+static void t_test_longdouble(
+    char **args,
+    const npy_intp *dimensions,
+    const npy_intp *steps,
+    void *extra)
+{
+    char *in1 = args[0], *in2 = args[1], *out = args[2];
 
-static PyUFuncGenericFunction funcs[2] = {&mean_diff, &t_test};
+    const npy_intp nloops = dimensions[0];  // Number of outer loops
+    const npy_intp len1 = dimensions[1];    // Core dimension i
+    const npy_intp len2 = dimensions[2];    // Core dimension j
 
-static char md_types[3] = {NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE};
+    const npy_intp step1 = steps[0];        // Outer loop step size for the first input
+    const npy_intp step2 = steps[1];        // Outer loop step size for the second input
+    const npy_intp step_out = steps[2];     // Outer loop step size for the output
+    const npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
+    const npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
 
-static char t_types[3] = {NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE};
+    if (len1 > len2) {
+        // outer loop
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            long double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            // inner loop
+            calculate_sums_and_counts_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((long double *)out) = NAN;
+            } else {
+                long double varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                long double mean1 = sum1 / count1;
+                long double mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+
+                // Calculate the difference
+                *((long double *)out) = (mean1 - mean2) / sum_var_longdouble(varsum1, varsum2, count1, count2);
+            }
+        }
+    } else if (len1 < len2) {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            long double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            calculate_sums_and_counts_longdouble(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((long double *)out) = NAN;
+            } else {
+                long double varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                long double mean1 = sum1 / count1;
+                long double mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_longdouble(in2, in1, len2, len1, innerstep2, innerstep1, mean2, mean1, &varsum2, &varsum1);
+
+                // Calculate the difference
+                *((long double *)out) = (mean1 - mean2) / sum_var_longdouble(varsum1, varsum2, count1, count2);
+            }
+        }
+    } else {
+        for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
+            long double sum1 = 0.0, sum2 = 0.0;
+            npy_intp count1 = 0, count2 = 0;
+
+            calculate_sums_and_counts_equal_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+
+            // varience is zero if there is only one element, so we need to check for this
+            if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
+                *((long double *)out) = NAN;
+            } else {
+                long double varsum1 = 0.0, varsum2 = 0.0;
+                // Calculate the mean
+                long double mean1 = sum1 / count1;
+                long double mean2 = sum2 / count2;
+
+                // Calculate the variance
+                calculate_varsums_equal_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+
+                // Calculate the difference
+                *((long double *)out) = (mean1 - mean2) / sum_var_longdouble(varsum1, varsum2, count1, count2);
+            }
+        }
+    }
+}
+
+static PyUFuncGenericFunction funcs[8] = {&mean_diff_half,
+                                          &mean_diff_float,
+                                          &mean_diff_double,
+                                          &mean_diff_longdouble,
+                                          &t_test_half,
+                                          &t_test_float,
+                                          &t_test_double,
+                                          &t_test_longdouble};
+
+static char md_types[12] = {NPY_HALF, NPY_HALF, NPY_HALF,
+                            NPY_FLOAT, NPY_FLOAT, NPY_FLOAT,
+                            NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE,
+                            NPY_LONGDOUBLE, NPY_LONGDOUBLE, NPY_LONGDOUBLE};
+
+static char t_types[12] = {NPY_HALF, NPY_HALF, NPY_HALF,
+                           NPY_FLOAT, NPY_FLOAT, NPY_FLOAT,
+                           NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE,
+                           NPY_LONGDOUBLE, NPY_LONGDOUBLE, NPY_LONGDOUBLE};
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
@@ -309,10 +1014,10 @@ PyMODINIT_FUNC PyInit_ufuncs(void) {
         return NULL;
     }
 
-    ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, md_types, 1, 2, 1, PyUFunc_None, "mean_diff",
+    ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, md_types, 4, 2, 1, PyUFunc_None, "mean_diff",
     doc, 0, "(i),(j)->()");
 
-    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 1, NULL, t_types, 1, 2, 1, PyUFunc_None, "t_test",
+    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 4, NULL, t_types, 4, 2, 1, PyUFunc_None, "t_test",
     "", 0, "(i),(j)->()");
 
     d = PyModule_GetDict(m);
