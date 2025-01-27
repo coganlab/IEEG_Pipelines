@@ -9,11 +9,6 @@ from functools import partial
 __all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays",
            "ttest", "brunnermunzel"]
 
-from torch import einsum
-
-_chars = ''.join([chr(i) for i in range(105, 123)])
-
-
 def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     """Compute the Brunner-Munzel test on samples x and y.
 
@@ -172,30 +167,7 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     array([244.92741947, 242.26926888, 244.93721715, 244.858866  ,
            244.94701484])
     """
-    group1 = np.asarray(group1, dtype=float)
-    group2 = np.asarray(group2, dtype=float)
-    nonan1, nonan2 = ~np.isnan(group1), ~np.isnan(group2)
-    n1, n2 = nonan1.sum(axis, keepdims=True), nonan2.sum(axis, keepdims=True)
-
-    m1, var1 = _meanvar(group1, n1, axis, nonan1)
-    m2, var2 = _meanvar(group2, n2, axis, nonan2)
-
-    out = (m1 - m2)
-    out /= np.sqrt(var1 / (n1 * (n1 - 1)) + var2 / (n2 * (n2 - 1)))
-    return np.squeeze(out)
-
-def _meanvar(group, n, axis, nonan):
-    group[~nonan] = 0
-    char = _chars[:group.ndim]
-    reduced_char = char.replace(char[axis], "")
-    subscript = ",".join([char, reduced_char]) + "->" + reduced_char
-    m = np.einsum(subscript, group, 1/n.squeeze())
-    m = np.expand_dims(m, axis)
-    np.subtract(group, m, where=nonan, out=group)
-    subscript = ",".join([char, char]) + "->" + reduced_char
-    var = np.einsum(subscript, group, group)
-    var = np.expand_dims(var, axis)
-    return m, var
+    return _ttest(group1, group2, axes=[axis, axis])
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
                        ) -> np.ndarray:
@@ -387,13 +359,13 @@ if __name__ == "__main__":
     from timeit import timeit
 
     np.random.seed(0)
-    n = 500
+    n = 1000
     group1 = np.random.rand(100, 100, 100)
     group2 = np.random.rand(500, 100, 100)
 
     kwargs = dict(globals=globals(), number=n)
     time1 = timeit('ttest(group1, group2, axis=0)', **kwargs)
-    time2 = timeit('_ttest(group1, group2, axes=[0, 0])', **kwargs)
+    time2 = timeit('mean_diff(group1, group2, axis=0)', **kwargs)
 
     print(f"ttest: {time1 / n:.3g} per run")
-    print(f"ufunc: {time2 / n:.3g} per run")
+    print(f"meandiff: {time2 / n:.3g} per run")
