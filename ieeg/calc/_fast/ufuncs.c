@@ -13,7 +13,7 @@ static PyMethodDef Meandiff_Methods[] = {
     {NULL, NULL, 0, NULL}
 };
 
-NPY_INLINE void calculate_sums_and_counts_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
+NPY_INLINE void sums_and_counts_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
     for (npy_intp j = 0; j < lenl; ++j) {
         npy_half vall = *(npy_half *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -30,7 +30,7 @@ NPY_INLINE void calculate_sums_and_counts_half(const char *inl, const char *ins,
     }
 }
 
-NPY_INLINE void calculate_sums_and_counts_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
+NPY_INLINE void sums_and_counts_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, float * const suml, float * const sums, npy_intp * const countl, npy_intp * const counts) {
     for (npy_intp j = 0; j < lenl; ++j) {
         float vall = *(float *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -47,7 +47,7 @@ NPY_INLINE void calculate_sums_and_counts_float(const char *inl, const char *ins
     }
 }
 
-NPY_INLINE void calculate_sums_and_counts_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, double * const suml, double * const sums, npy_intp * const countl, npy_intp * const counts) {
+NPY_INLINE void sums_and_counts_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, double * const suml, double * const sums, npy_intp * const countl, npy_intp * const counts) {
     for (npy_intp j = 0; j < lenl; ++j) {
         double vall = *(double *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -64,7 +64,7 @@ NPY_INLINE void calculate_sums_and_counts_double(const char *inl, const char *in
     }
 }
 
-NPY_INLINE void calculate_sums_and_counts_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, long double * const suml, long double * const sums, npy_intp * const countl, npy_intp * const counts) {
+NPY_INLINE void sums_and_counts_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, long double * const suml, long double * const sums, npy_intp * const countl, npy_intp * const counts) {
     for (npy_intp j = 0; j < lenl; ++j) {
         long double vall = *(long double *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -105,9 +105,9 @@ static void mean_diff_half(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_half(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_half(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
 
         // Calculate the difference
@@ -139,9 +139,9 @@ static void mean_diff_float(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_float(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_float(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
 
         // Calculate the difference
@@ -173,9 +173,9 @@ static void mean_diff_double(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
 
         // Calculate the difference
@@ -207,26 +207,12 @@ static void mean_diff_longdouble(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
         // Calculate the difference
         *((long double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
-    }
-}
-
-NPY_INLINE npy_half sum_var_half(const float sum1, const float sum2, const npy_intp n1, const npy_intp n2) {
-
-    // at this point, it is already known that n1 and n2 are not zero
-    if (n1 == 1) {
-        return npy_double_to_half(sqrt(sum2 / ((n2 - 1) * n2)));
-    } else if (n2 == 1) {
-        return npy_double_to_half(sqrt(sum1 / ((n1 - 1) * n1)));
-    } else {
-        const float var1 = sum1 / ((n1 - 1) * n1);
-        const float var2 = sum2 / ((n2 - 1) * n2);
-        return npy_double_to_half(sqrt(var1 + var2));
     }
 }
 
@@ -272,7 +258,7 @@ NPY_INLINE long double sum_var_longdouble(const long double sum1, const long dou
     }
 }
 
-NPY_INLINE void calculate_varsums_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
+NPY_INLINE void varsums_half(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
     for (npy_intp j = 0; j < lenl; ++j) {
         npy_half vall = *(npy_half *)(inl + j * innerstepl);
         if (!npy_half_isnan(vall)) {
@@ -293,7 +279,7 @@ NPY_INLINE void calculate_varsums_half(const char *inl, const char *ins, const n
     }
 }
 
-NPY_INLINE void calculate_varsums_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
+NPY_INLINE void varsums_float(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const float meanl, const float means, float * const varsuml, float * const varsums) {
     for (npy_intp j = 0; j < lenl; ++j) {
         float vall = *(float *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -312,7 +298,7 @@ NPY_INLINE void calculate_varsums_float(const char *inl, const char *ins, const 
     }
 }
 
-NPY_INLINE void calculate_varsums_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const double meanl, const double means, double * const varsuml, double * const varsums) {
+NPY_INLINE void varsums_double(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const double meanl, const double means, double * const varsuml, double * const varsums) {
     for (npy_intp j = 0; j < lenl; ++j) {
         double vall = *(double *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -331,7 +317,7 @@ NPY_INLINE void calculate_varsums_double(const char *inl, const char *ins, const
     }
 }
 
-NPY_INLINE void calculate_varsums_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const long double meanl, const long double means, long double * const varsuml, long double * const varsums) {
+NPY_INLINE void varsums_longdouble(const char *inl, const char *ins, const npy_intp lenl, const npy_intp lens, const npy_intp innerstepl, const npy_intp innersteps, const long double meanl, const long double means, long double * const varsuml, long double * const varsums) {
     for (npy_intp j = 0; j < lenl; ++j) {
         long double vall = *(long double *)(inl + j * innerstepl);
         if (vall == vall) {
@@ -375,9 +361,9 @@ static void t_test_half(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_half(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_half(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_half(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
 
         // varience is zero if there is only one element, so we need to check for this
@@ -390,10 +376,10 @@ static void t_test_half(
             float mean2 = sum2 / count2;
 
             // Calculate the variance
-            calculate_varsums_half(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+            varsums_half(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
 
             // Calculate the difference
-            *((npy_half *)out) = npy_float_to_half((mean1 - mean2) / sum_var_half(varsum1, varsum2, count1, count2));
+            *((npy_half *)out) = npy_float_to_half((mean1 - mean2) / sum_var_float(varsum1, varsum2, count1, count2));
         }
     }
 }
@@ -422,14 +408,14 @@ static void t_test_float(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_float(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_float(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_float(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
 
         // varience is zero if there is only one element, so we need to check for this
         if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
-            *((float *)out) = NPY_NAN_HALF;
+            *((float *)out) = NPY_NAN;
         } else {
             float varsum1 = 0.0, varsum2 = 0.0;
             // Calculate the mean
@@ -437,10 +423,10 @@ static void t_test_float(
             float mean2 = sum2 / count2;
 
             // Calculate the variance
-            calculate_varsums_float(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+            varsums_float(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
 
             // Calculate the difference
-            *((float *)out) = npy_float_to_half((mean1 - mean2) / sum_var_half(varsum1, varsum2, count1, count2));
+            *((float *)out) = (mean1 - mean2) / sum_var_float(varsum1, varsum2, count1, count2);
         }
     }
 }
@@ -470,9 +456,9 @@ static void t_test_double(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
 
         // varience is zero if there is only one element, so we need to check for this
@@ -485,7 +471,7 @@ static void t_test_double(
             double mean2 = sum2 / count2;
 
             // Calculate the variance
-            calculate_varsums_double(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+            varsums_double(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
 
             // Calculate the difference
             *((double *)out) = (mean1 - mean2) / sum_var_double(varsum1, varsum2, count1, count2);
@@ -518,9 +504,9 @@ static void t_test_longdouble(
 
         // inner loop
         if (len1 > len2) {
-            calculate_sums_and_counts_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            calculate_sums_and_counts_longdouble(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_longdouble(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
 
         // varience is zero if there is only one element, so we need to check for this
@@ -533,7 +519,7 @@ static void t_test_longdouble(
             long double mean2 = sum2 / count2;
 
             // Calculate the variance
-            calculate_varsums_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
+            varsums_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, mean1, mean2, &varsum1, &varsum2);
 
             // Calculate the difference
             *((long double *)out) = (mean1 - mean2) / sum_var_longdouble(varsum1, varsum2, count1, count2);
