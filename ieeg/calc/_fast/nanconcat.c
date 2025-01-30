@@ -43,18 +43,24 @@ static inline void copy_arrays_to_max_shape_array(PyArrayObject* max_shape_array
     npy_intp itemsize = PyArray_ITEMSIZE(max_shape_array);
     npy_intp ndim = PyArray_NDIM(max_shape_array);
 
+    NPY_BEGIN_THREADS_DEF;
+
     for (int i = 0; i < n_arrays; i++) {
         iter = NpyIter_New(
             arrays[i], NPY_ITER_READONLY | NPY_ITER_MULTI_INDEX,
             NPY_KEEPORDER, NPY_NO_CASTING, NULL);
 
         if (NpyIter_GetIterSize(iter) == 0) {
+            if (iter != NULL){
+                NpyIter_Deallocate(iter);
+            }
             continue;
         }
         iternext = NpyIter_GetIterNext(iter, NULL);
         NpyIter_GetMultiIndexFunc *get_multi_index = NpyIter_GetGetMultiIndex(iter, NULL);
         char *dataptrarray = NpyIter_GetDataPtrArray(iter)[0];
 
+        NPY_BEGIN_ALLOW_THREADS;
         do {
             get_multi_index(iter, multi_index);
             outerstride = 0;
@@ -71,6 +77,7 @@ static inline void copy_arrays_to_max_shape_array(PyArrayObject* max_shape_array
             memcpy(outptrarray + outerstride, dataptrarray + innerstride, itemsize);
 
         } while (iternext(iter));
+        NPY_END_ALLOW_THREADS;
 
         NpyIter_Deallocate(iter);
         offset += PyArray_DIMS(arrays[i])[axis];
