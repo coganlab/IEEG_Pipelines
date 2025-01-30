@@ -1,31 +1,30 @@
 #include <Python.h>
 #include <numpy/arrayobject.h>
-#include <math.h>
-#include <stdlib.h>
-#include <time.h>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include <numpy/npy_math.h>
 
 // Function to create a new array with the maximum shape of the input arrays, filled with NaN values
-static PyArrayObject* create_max_shape_array(PyArrayObject** arrays, int n_arrays, int axis) {
+static inline PyArrayObject* create_max_shape_array(PyArrayObject** arrays, int n_arrays, int axis) {
     npy_intp* max_shape = malloc(PyArray_NDIM(arrays[0]) * sizeof(npy_intp));
-    memcpy(max_shape, PyArray_DIMS(arrays[0]), PyArray_NDIM(arrays[0]) * sizeof(npy_intp));
+    npy_intp ndim = PyArray_NDIM(arrays[0]), dtype = PyArray_TYPE(arrays[0]);
+    memcpy(max_shape, PyArray_DIMS(arrays[0]), ndim * sizeof(npy_intp));
+    npy_intp *shape = malloc(ndim * sizeof(npy_intp));
 
     for (int i = 1; i < n_arrays; i++) {
-        for (int j = 0; j < PyArray_NDIM(arrays[i]); j++) {
-            if (j != axis && PyArray_DIMS(arrays[i])[j] > max_shape[j]) {
-                max_shape[j] = PyArray_DIMS(arrays[i])[j];
+        shape = PyArray_DIMS(arrays[i]);
+        for (int j = 0; j < ndim; j++) {
+            if (j != axis && shape[j] > max_shape[j]) {
+                max_shape[j] = shape[j];
             } else if (j == axis) {
-                max_shape[j] += PyArray_DIMS(arrays[i])[j];
+                max_shape[j] += shape[j];
             }
         }
     }
 
-    PyArrayObject* max_shape_array = (PyArrayObject*)PyArray_SimpleNew(PyArray_NDIM(arrays[0]), max_shape, NPY_DOUBLE);
-    double nan_value = NAN;
-    PyArray_FillWithScalar(max_shape_array, PyArray_Scalar(&nan_value, PyArray_DescrFromType(NPY_DOUBLE), NULL));
+    PyArrayObject* max_shape_array = (PyArrayObject*)PyArray_SimpleNew(ndim, max_shape, dtype);
+
+    // make an array of npy_nan's
+    double nan = NPY_NAN;
+    PyArray_FillWithScalar(max_shape_array, PyArray_Scalar(&nan, PyArray_DescrFromType(NPY_DOUBLE), NULL));
 
     free(max_shape);
 
@@ -33,102 +32,50 @@ static PyArrayObject* create_max_shape_array(PyArrayObject** arrays, int n_array
 }
 
 // Function to copy the contents of the input arrays into the new array, leaving NaN values where the input arrays do not have elements
-static int copy_arrays_to_max_shape_array(PyArrayObject* max_shape_array, PyArrayObject** arrays, int n_arrays, int axis) {
+static inline void copy_arrays_to_max_shape_array(PyArrayObject* max_shape_array, PyArrayObject** arrays, int n_arrays, int axis) {
     NpyIter *iter;
     NpyIter_IterNextFunc *iternext;
     npy_intp *multi_index = malloc(PyArray_NDIM(arrays[0]) * sizeof(npy_intp));
-    npy_intp *multi_index_out = malloc(PyArray_NDIM(arrays[0]) * sizeof(npy_intp));
     npy_intp offset = 0;
+    npy_intp innerstride, outerstride;
+    npy_intp *out_strides = PyArray_STRIDES(max_shape_array);
+    char *outptrarray = (char*)PyArray_DATA(max_shape_array);
+    npy_intp itemsize = PyArray_ITEMSIZE(max_shape_array);
+    npy_intp ndim = PyArray_NDIM(max_shape_array);
 
     for (int i = 0; i < n_arrays; i++) {
         iter = NpyIter_New(
             arrays[i], NPY_ITER_READONLY | NPY_ITER_MULTI_INDEX,
             NPY_KEEPORDER, NPY_NO_CASTING, NULL);
 
-        if (iter == NULL) {
-            return -1;
+        if (NpyIter_GetIterSize(iter) == 0) {
+            continue;
         }
-        if (NpyIter_GetIterSize(iter) != 0) {
-            iternext = NpyIter_GetIterNext(iter, NULL);
-            if (iternext == NULL) {
-                NpyIter_Deallocate(iter);
-                return -1;
-            }
-            NpyIter_GetMultiIndexFunc *get_multi_index =
-            NpyIter_GetGetMultiIndex(iter, NULL);
-            if (get_multi_index == NULL) {
-                NpyIter_Deallocate(iter);
-                return -1;
-            }
-            do {
-                get_multi_index(iter, multi_index);
-                for (int j = 0; j < PyArray_NDIM(arrays[i]); j++) {
-                    multi_index_out[j] = multi_index[j];
-                }
-                multi_index_out[axis] += offset;
-
-                fprintf(stderr, "multi_index is [%" NPY_INTP_FMT ", %" NPY_INTP_FMT "]\n",
-                       multi_index_out[0], multi_index_out[1]);
-                // copy the value from the input array to the output array
-                memcpy(
-                    (char*)PyArray_DATA(max_shape_array) + PyArray_STRIDES(max_shape_array)[0] * multi_index_out[0] +
-                    PyArray_STRIDES(max_shape_array)[1] * multi_index_out[1],
-                    (char*)PyArray_DATA(arrays[i]) + PyArray_STRIDES(arrays[i])[0] * multi_index[0] +
-                    PyArray_STRIDES(arrays[i])[1] * multi_index[1],
-                    sizeof(double)
-                );
-            } while (iternext(iter));
-        }
-        if (!NpyIter_Deallocate(iter)) {
-            return -1;
-        }
-        offset += PyArray_DIMS(arrays[i])[axis];
-//        NpyIter_Deallocate(iter);
-    }
-    free(multi_index);
-    free(multi_index_out);
-    return 0;
-}
-
-int PrintMultiIndex(PyArrayObject *arr) {
-    NpyIter *iter;
-    NpyIter_IterNextFunc *iternext;
-    npy_intp *multi_index = malloc(PyArray_NDIM(arr) * sizeof(npy_intp));
-
-    iter = NpyIter_New(
-        arr, NPY_ITER_READONLY | NPY_ITER_MULTI_INDEX | NPY_ITER_REFS_OK,
-        NPY_KEEPORDER, NPY_NO_CASTING, NULL);
-    if (iter == NULL) {
-        return -1;
-    }
-    if (NpyIter_GetNDim(iter) != 2) {
-        NpyIter_Deallocate(iter);
-        PyErr_SetString(PyExc_ValueError, "Array must be 2-D");
-        return -1;
-    }
-    if (NpyIter_GetIterSize(iter) != 0) {
         iternext = NpyIter_GetIterNext(iter, NULL);
-        if (iternext == NULL) {
-            NpyIter_Deallocate(iter);
-            return -1;
-        }
-        NpyIter_GetMultiIndexFunc *get_multi_index =
-            NpyIter_GetGetMultiIndex(iter, NULL);
-        if (get_multi_index == NULL) {
-            NpyIter_Deallocate(iter);
-            return -1;
-        }
+        NpyIter_GetMultiIndexFunc *get_multi_index = NpyIter_GetGetMultiIndex(iter, NULL);
+        char *dataptrarray = NpyIter_GetDataPtrArray(iter)[0];
 
         do {
             get_multi_index(iter, multi_index);
-            printf("multi_index is [%" NPY_INTP_FMT ", %" NPY_INTP_FMT "]\n",
-                   multi_index[0], multi_index[1]);
+            outerstride = 0;
+            innerstride = 0;
+            for (int j = 0; j < ndim; j++) {
+                innerstride += multi_index[j] * NpyIter_GetAxisStrideArray(iter, j)[0];
+                if (j != axis) {
+                    outerstride += multi_index[j] * out_strides[j];
+                } else {
+                    outerstride += (multi_index[j] + offset) * out_strides[j];
+                }
+            }
+            // copy the value from the input array to the output array
+            memcpy(outptrarray + outerstride, dataptrarray + innerstride, itemsize);
+
         } while (iternext(iter));
+
+        NpyIter_Deallocate(iter);
+        offset += PyArray_DIMS(arrays[i])[axis];
     }
-    if (!NpyIter_Deallocate(iter)) {
-        return -1;
-    }
-    return 0;
+    free(multi_index);
 }
 
 // Python wrapper function
@@ -146,7 +93,7 @@ static PyObject* py_concatenate_and_pad(PyObject* self, PyObject* args) {
     PyArrayObject** arrays = malloc(n_arrays * sizeof(PyArrayObject*));
     for (Py_ssize_t i = 0; i < n_arrays; i++) {
         PyObject* array_obj = PyList_GetItem(list_obj, i);
-        arrays[i] = (PyArrayObject*)PyArray_FROM_OTF(array_obj, NPY_DOUBLE, NPY_ARRAY_IN_ARRAY);
+        arrays[i] = (PyArrayObject*)PyArray_FROM_OF(array_obj, NPY_ARRAY_IN_ARRAY);
         if (arrays[i] == NULL) {
             return NULL;
         }
@@ -154,13 +101,7 @@ static PyObject* py_concatenate_and_pad(PyObject* self, PyObject* args) {
 
     // Call C functions
     PyArrayObject* max_shape_array = create_max_shape_array(arrays, n_arrays, axis);
-    fprintf(stderr, "here\n");
-//    PrintMultiIndex(max_shape_array);
-//    PrintMultiIndex(arrays[0]);
-    int check = copy_arrays_to_max_shape_array(max_shape_array, arrays, n_arrays, axis);
-    if (check == -1) {
-        return NULL;
-    }
+    copy_arrays_to_max_shape_array(max_shape_array, arrays, n_arrays, axis);
 
     // Convert result back to Python object
     PyObject* result = PyArray_Return(max_shape_array);
