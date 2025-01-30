@@ -2,7 +2,7 @@ import numpy as np
 from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
-from ieeg.calc._fast.concat import nan_concatinate
+from ieeg.calc._fast.nanconcat import concatenate_and_pad as nan_concatinate
 from scipy.stats import rankdata
 from functools import partial
 
