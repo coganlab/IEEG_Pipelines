@@ -214,13 +214,17 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
            [[ 0.,  1.,  2.,  3.],
             [ 4.,  5.,  6.,  7.],
             [ 8.,  9., 10., 11.]]])
+    >>> concatenate_arrays((arr2[0].astype('f2'), arr1[0].astype('f2')), axis=1)
+    array([[ 0.,  1.,  2.,  3.,  0.,  1.,  2.],
+           [ 4.,  5.,  6.,  7.,  3.,  4.,  5.],
+           [ 8.,  9., 10., 11., nan, nan, nan]], dtype=float16)
     """
 
     if axis is None:
         axis = 0
         arrays = [np.expand_dims(ar, axis) for ar in arrays]
 
-    arrays = [ar.astype(float) for ar in arrays if ar.size > 0]
+    arrays = [ar.astype(float) if ar.dtype.kind in 'iu' else ar for ar in arrays ]
 
     while axis < 0:
         axis += max(a.ndim for a in arrays)
