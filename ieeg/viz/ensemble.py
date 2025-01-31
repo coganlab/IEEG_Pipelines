@@ -208,6 +208,30 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
     return ax
 
 
+def plot_dist_bound(data: np.ndarray, mode: str = 'sem', which: str = 'both',
+                    times: tuple[float, float] = None, axis: int = None,
+                    color: list[list[float]] = None,
+                    ax: plt.Axes = None, **plot_kwargs) -> plt.Axes:
+    assert which in ['both', 'upper', 'lower']
+    mean, std = stats.dist(data, axis=axis, mode=mode)
+    if times is None:
+        tscale = range(mean.shape[0])
+    else:
+        tscale = np.linspace(times[0], times[1], len(mean))
+    if ax is None:
+        plt.figure()
+        ax = plt.gca()
+    if color is None:
+        color = ax.get_color()
+    if which == 'upper':
+        ax.plot(tscale, mean + std, color=color, **plot_kwargs)
+    elif which == 'lower':
+        ax.plot(tscale, mean - std, color=color, **plot_kwargs)
+    elif which == 'both':
+        ax.fill_between(tscale, mean - std, mean + std, color=color, **plot_kwargs)
+    return ax
+
+
 def plot_weight_dist(data: np.ndarray, label: np.ndarray, mode: str = 'sem',
                      mask: np.ndarray = None, times: Doubles = None,
                      sig_titles: list[str] = None,

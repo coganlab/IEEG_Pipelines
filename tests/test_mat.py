@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from ieeg.calc.mat import LabeledArray, Labels, combine, iter_nest_dict
+from ieeg.arrays.label import LabeledArray, Labels, combine, iter_nest_dict
 from ieeg.calc.fast import concatenate_arrays
 
 

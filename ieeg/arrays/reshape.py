@@ -1,10 +1,11 @@
 # Checked
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
+from ieeg.arrays.api import array_namespace, xp_assert_equal, Array
 
 
-def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
-                ) -> np.ndarray:
+def stitch_mats(mats: list[Array], overlaps: list[int], axis: int = 0
+                ) -> Array:
     """break up the matrices into their overlapping and non-overlapping parts
     then stitch them back together
 
@@ -39,40 +40,43 @@ def stitch_mats(mats: list[np.ndarray], overlaps: list[int], axis: int = 0
     array([[13., 14., 15., 19., 20., 21.],
            [16., 17., 18., 22., 23., nan]])
     """
+    xp = array_namespace(*mats)
     stitches = [mats[0]]
     if len(mats) != len(overlaps) + 1:
         raise ValueError("The number of matrices must be one more than the num"
                          "ber of overlaps")
     for i, over in enumerate(overlaps):
         stitches = stitches[:-2] + merge(stitches[-1], mats[i + 1], over, axis)
-    out = np.concatenate(stitches, axis=axis)
-    if np.array_equal(out.astype(int), out):
+    out = xp.concatenate(stitches, axis=axis)
+    try:
+        xp_assert_equal(out.astype(int), out, check_dtype=False, xp=xp)
         return out.astype(int)
-    else:
+    except AssertionError:
         return out
 
 
-def merge(mat1: np.ndarray, mat2: np.ndarray, overlap: int, axis: int = 0
-          ) -> list[np.ndarray[float]]:
+def merge(mat1: Array, mat2: Array, overlap: int, axis: int = 0
+          ) -> list[Array]:
     """Take two arrays and merge them over the overlap gradually"""
+    xp = array_namespace(mat1, mat2)
     sl = [slice(None)] * mat1.ndim
     sl[axis] = slice(0, mat1.shape[axis] - overlap)
     start = mat1[tuple(sl)]
     sl[axis] = slice(mat1.shape[axis] - overlap, mat1.shape[axis])
-    middle1 = np.multiply(np.linspace(1, 0, overlap), mat1[tuple(sl)])
+    middle1 = xp.multiply(xp.linspace(1, 0, overlap), mat1[tuple(sl)])
     sl[axis] = slice(0, overlap)
-    middle2 = np.multiply(np.linspace(0, 1, overlap), mat2[tuple(sl)])
-    middle = np.add(middle1, middle2)
+    middle2 = xp.multiply(xp.linspace(0, 1, overlap), mat2[tuple(sl)])
+    middle = xp.add(middle1, middle2)
     sl[axis] = slice(overlap, mat2.shape[axis])
     last = mat2[tuple(sl)]
 
     return [start, middle, last]
 
 
-def make_data_same(data_fix: np.ndarray, shape: tuple | list,
+def make_data_same(data_fix: Array, shape: tuple | list,
                    stack_ax: int = 0, pad_ax: int = -1,
                    make_stacks_same: bool = True,
-                   rng: np.random.Generator = None) -> np.ndarray:
+                   rng: np.random.Generator = None) -> Array:
     """Force the last dimension of data_fix to match the last dimension of
     shape.
 
@@ -118,6 +122,8 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     stack_ax = list(range(len(shape)))[stack_ax]
     pad_ax = list(range(len(shape)))[pad_ax]
 
+    xp = array_namespace(data_fix)
+
     # # Attempt to stack trials along the pad axis so long as there are more
     # # trials and fewer timepoints
     # while data_fix.shape[pad_ax] < shape[pad_ax] and \
@@ -146,7 +152,7 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
     # Check if the pad dimension of data_fix is smaller than the pad
     # dimension of shape
     if data_fix.shape[pad_ax] <= shape[pad_ax]:
-        out = pad_to_match(np.zeros(shape), data_fix, stack_ax)
+        out = pad_to_match(xp.zeros(shape), data_fix, stack_ax)
 
     # When the pad dimension of data_fix is larger than the pad dimension of
     # shape, take subsets of data_fix and stack them together on the stack
@@ -158,17 +164,17 @@ def make_data_same(data_fix: np.ndarray, shape: tuple | list,
         return out
     elif out.shape[stack_ax] > shape[stack_ax]: # subsample stacks if too many
         idx = rng.choice(out.shape[stack_ax], (shape[stack_ax],), False)
-        out = np.take(out, idx, axis=stack_ax)
+        out = xp.take(out, idx, axis=stack_ax)
     elif out.shape[stack_ax] < shape[stack_ax]: # oversample stacks if too few
         n = shape[stack_ax] - out.shape[stack_ax]
         idx = rng.choice(out.shape[stack_ax], (n,), True)
-        out = np.concatenate((out, np.take(out, idx, axis=stack_ax)), axis=stack_ax)
+        out = xp.concatenate((out, xp.take(out, idx, axis=stack_ax)), axis=stack_ax)
 
     return out
 
 
-def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
-                 axis: int | tuple[int, ...] = ()) -> np.ndarray:
+def pad_to_match(sig1: Array, sig2: Array,
+                 axis: int | tuple[int, ...] = ()) -> Array:
     """Pad the second signal to match the first signal along all axes not
     specified.
 
@@ -203,13 +209,14 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
             [16, 17, 18, 19, 18, 17, 16, 17],
             [20, 21, 22, 23, 22, 21, 20, 21]]])
     """
+    xp = array_namespace(sig1, sig2)
     # Make sure the data is the same shape
     if np.isscalar(axis):
         axis = (axis,)
     axis = list(axis)
     for i, ax in enumerate(axis):
-        axis[i] = np.arange(sig1.ndim)[ax]
-    eq = list(e for i, e in enumerate(np.equal(sig1.shape, sig2.shape))
+        axis[i] = xp.arange(sig1.ndim)[ax]
+    eq = list(e for i, e in enumerate(xp.equal(sig1.shape, sig2.shape))
               if i not in axis)
     if not all(eq):
         for ax in axis:
@@ -217,13 +224,13 @@ def pad_to_match(sig1: np.ndarray, sig2: np.ndarray,
         pad_shape = [(0, 0) if eq[i] else
                      (0, sig1.shape[i] - sig2.shape[i])
                      for i in range(sig1.ndim)]
-        sig2 = np.pad(sig2, pad_shape, mode='reflect')
+        sig2 = xp.pad(sig2, pad_shape, mode='reflect')
     return sig2
 
 
-def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
+def rand_offset_reshape(data_fix: Array, shape: tuple, stack_ax: int,
                         pad_ax: int, rng: np.random.Generator = None
-                        ) -> np.ndarray:
+                        ) -> Array:
     """Take subsets of data_fix and stack them together on the stack dimension
 
     This function takes the data and reshapes it to match the shape by taking
@@ -258,22 +265,24 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
            [30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
            [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]])
     >>> rand_offset_reshape(data_fix, (2, 4), 0, 1)
-    array([[ 0,  1,  2,  3],
-           [ 4,  5,  6,  7],
-           [10, 11, 12, 13],
-           [14, 15, 16, 17],
-           [20, 21, 22, 23],
-           [24, 25, 26, 27],
-           [30, 31, 32, 33],
-           [34, 35, 36, 37],
-           [40, 41, 42, 43],
-           [44, 45, 46, 47]])
+    array([[ 1,  2,  3,  4],
+           [ 5,  6,  7,  8],
+           [11, 12, 13, 14],
+           [15, 16, 17, 18],
+           [21, 22, 23, 24],
+           [25, 26, 27, 28],
+           [31, 32, 33, 34],
+           [35, 36, 37, 38],
+           [41, 42, 43, 44],
+           [45, 46, 47, 48]])
     >>> rand_offset_reshape(data_fix, (2, 4), 1, 0) # doctest: +ELLIPSIS
     array([[ 0, 20,  1, 21,  2, 22,  3, 23,  4, 24,  5, 25,  6, 26,  7, 27,
              8, 28,  9, 29],
            [10, 30, 11, 31, 12, 32, 13, 33, 14, 34, 15, 35, 16, 36, 17, 37,
             18, 38, 19, 39]])
     """
+
+    xp = array_namespace(data_fix)
 
     if not isinstance(rng, np.random.Generator):
         rng = np.random.default_rng(rng)
@@ -289,7 +298,7 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
     out_shape = [shape[i] if i == pad_ax else data_fix.shape[i]
                  for i in range(data_fix.ndim)]
     out_shape[stack_ax] *= num_stack
-    out = np.zeros(tuple(out_shape), dtype=data_fix.dtype)
+    out = xp.zeros(tuple(out_shape), dtype=data_fix.dtype)
 
     # Iterate over the subsets
     sl_in = [slice(None)] * data_fix.ndim
@@ -309,8 +318,8 @@ def rand_offset_reshape(data_fix: np.ndarray, shape: tuple, stack_ax: int,
     return out
 
 
-def windower(x_data: np.ndarray, window_size: int, axis: int = -1,
-             insert_at: int = 0):
+def windower(x_data: Array, window_size: int, axis: int = -1,
+             insert_at: int = 0) -> Array:
     """Create a sliding window view of the array with the given window size."""
     # Compute the shape and strides for the sliding window view
     shape = list(x_data.shape)
