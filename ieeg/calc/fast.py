@@ -2,7 +2,8 @@ import numpy as np
 from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
-from ieeg.calc._fast.nanconcat import concatenate_and_pad as nan_concatinate
+from ieeg.calc._fast.nanconcat import concatenate_and_pad as nan_concatinate2
+from ieeg.calc._fast.concat import nan_concatinate
 from scipy.stats import rankdata
 from functools import partial
 
@@ -188,7 +189,7 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
 
     Examples
     --------
-    >>> concatenate_arrays((np.array([1, 2, 3]), np.array([4, 5])), axis=None)
+    >>> concatenate_arrays((np.array([[1, 2, 3]]), np.array([[4, 5]])), axis=0)
     array([[ 1.,  2.,  3.],
            [ 4.,  5., nan]])
     >>> concatenate_arrays((np.array([1, 2, 3]), np.array([4, 5])), axis=0)
@@ -229,7 +230,16 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
     while axis < 0:
         axis += max(a.ndim for a in arrays)
 
-    return nan_concatinate(arrays, axis)
+    max_shape = [max(a.shape[ax] for a in arrays) if ax!=axis else
+                 sum(a.shape[ax] for a in arrays) for ax in range(arrays[0].ndim)]
+    out = np.full(max_shape, np.nan, dtype=arrays[0].dtype)
+    start = 0
+    for i, ar in enumerate(arrays):
+        slices = tuple(slice(start, start + ar.shape[ax]) if ax == axis else slice(ar.shape[ax])
+                       for ax in range(ar.ndim))
+        out[*slices] = ar
+        start += ar.shape[axis]
+    return out
 
 
 def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
@@ -363,13 +373,13 @@ if __name__ == "__main__":
     from timeit import timeit
 
     np.random.seed(0)
-    n = 1000
+    n = 300
     group1 = np.random.rand(100, 100, 100)
     group2 = np.random.rand(500, 100, 100)
 
     kwargs = dict(globals=globals(), number=n)
-    time1 = timeit('ttest(group1, group2, axis=0)', **kwargs)
-    time2 = timeit('mean_diff(group1, group2, axis=0)', **kwargs)
+    time1 = timeit('concatenate_arrays((group1, group2), axis=0)', **kwargs)
+    time2 = timeit('concatenate_arrays3((group1, group2), axis=0)', **kwargs)
 
     print(f"ttest: {time1 / n:.3g} per run")
     print(f"meandiff: {time2 / n:.3g} per run")
