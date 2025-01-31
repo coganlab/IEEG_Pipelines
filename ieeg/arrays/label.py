@@ -324,10 +324,26 @@ class LabeledArray(np.ndarray):
         labels(['a', 'd']
                ['b']
                ['c', 'e'])
+        >>> data = {'a': {'b': {'c': np.array([1, 2, 3])}}}
+        >>> LabeledArray.from_dict(data) # doctest: +ELLIPSIS
+        array([[[[1., 2., 3.]]]])
+        labels(['a']
+               ['b']
+               ['c']
+               ['0', '1', '2'])
         """
 
-        arr = inner_array(data)
         keys = inner_all_keys(data)
+        dtype = kwargs.pop('dtype', None)
+        tmp = data
+        if dtype is None:
+            for key in keys:
+                tmp = tmp[key[0]]
+            dtype = get_float_type(type(tmp))
+
+        shape = tuple(len(keys[i]) for i in range(len(keys)))
+        arr = np.full(shape, np.nan, dtype=dtype)
+        inner_array(data, arr)
         return cls(arr, keys, **kwargs)
 
     @classmethod
@@ -1240,7 +1256,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     return tuple(map(tuple, keys))
 
 
-def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
+def inner_array(data: dict | np.ndarray, out: np.array = None) -> np.ndarray | None:
     """Convert a nested dictionary to a nested array.
 
     Parameters
@@ -1270,11 +1286,17 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
     """
     if np.isscalar(data):
         return data
-    elif isinstance(data, dict):
+    elif isinstance(data, dict) and out is None:
         gen_arr = (inner_array(d) for d in data.values())
         arr = [a for a in gen_arr if a is not None]
         if len(arr) > 0:
             return concatenate_arrays(arr, axis=None)
+    elif isinstance(data, dict):
+        for i, (k, v) in enumerate(data.items()):
+            if isinstance(v, dict):
+                inner_array(v, out[i])
+            elif v is not None:
+                out[i] = v
 
     # Call np.atleast_1d once and store the result in a variable
     data_1d = np.atleast_1d(data)
@@ -1286,6 +1308,19 @@ def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
         return data
     else:
         return np.array(data)
+
+
+def get_float_type(int_type):
+    if int_type == np.int16:
+        return np.float16
+    elif int_type == np.int32:
+        return np.float32
+    elif int_type == np.int64 or int_type is int:
+        return np.float64
+    elif np.issubdtype(int_type, np.floating):
+        return int_type
+    else:
+        raise ValueError("Unsupported integer type:" + str(int_type))
 
 
 def _combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
