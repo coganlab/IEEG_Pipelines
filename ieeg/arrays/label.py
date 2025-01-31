@@ -342,7 +342,12 @@ class LabeledArray(np.ndarray):
             dtype = get_float_type(type(tmp))
 
         shape = tuple(len(keys[i]) for i in range(len(keys)))
-        arr = np.full(shape, np.nan, dtype=dtype)
+        #   try to create output array, fall back to memory map if too large
+        try:
+            arr = np.full(shape, np.nan, dtype=dtype)
+        except MemoryError:
+            arr = np.memmap('data.dat', dtype=dtype, mode='w+', shape=shape)
+            arr[...] = np.nan
         inner_array(data, arr)
         return cls(arr, keys, **kwargs)
 
@@ -1295,6 +1300,9 @@ def inner_array(data: dict | np.ndarray, out: np.array = None) -> np.ndarray | N
         for i, (k, v) in enumerate(data.items()):
             if isinstance(v, dict):
                 inner_array(v, out[i])
+            elif not np.isscalar(v):
+                idx = (i,) + tuple(slice(s) for s in range(v.shape))
+                out[idx] = v
             elif v is not None:
                 out[i] = v
         return
