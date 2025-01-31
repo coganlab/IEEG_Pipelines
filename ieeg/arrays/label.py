@@ -1357,7 +1357,7 @@ def inner_array(data: dict | np.ndarray, out: np.array = None) -> np.ndarray | N
             if isinstance(v, dict):
                 inner_array(v, out[i])
             elif not np.isscalar(v):
-                idx = (i,) + tuple(slice(s) for s in range(v.shape))
+                idx = (i,) + tuple(slice(s) for s in v.shape)
                 out[idx] = v
             elif v is not None:
                 out[i] = v
