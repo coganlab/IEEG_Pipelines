@@ -1297,6 +1297,7 @@ def inner_array(data: dict | np.ndarray, out: np.array = None) -> np.ndarray | N
                 inner_array(v, out[i])
             elif v is not None:
                 out[i] = v
+        return
 
     # Call np.atleast_1d once and store the result in a variable
     data_1d = np.atleast_1d(data)
