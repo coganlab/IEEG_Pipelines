@@ -1,4 +1,5 @@
 import functools
+import os.path
 from collections.abc import Iterable
 
 import mne
@@ -122,7 +123,7 @@ class LabeledArray(np.ndarray):
     --------
     >>> import numpy as np
     >>> np.set_printoptions(legacy='1.21')
-    >>> from ieeg.calc.mat import LabeledArray
+    >>> from ieeg.array.label import LabeledArray
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
@@ -428,6 +429,61 @@ class LabeledArray(np.ndarray):
             case _:
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
+
+    def to_file(self, file: str, **kwargs):
+        """Save the LabeledArray to a file.
+
+        Parameters
+        ----------
+        file : str
+            The file to save the LabeledArray to.
+        **kwargs
+            Additional arguments to pass to np.save.
+
+        Examples
+        --------
+        >>> arr = np.arange(24).reshape((2, 3, 4))
+        >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+        >>> la = LabeledArray(arr, labels)
+        >>> la.to_file('data')
+        >>> la2 = LabeledArray.from_file('data')
+        >>> la == la2
+        True
+        """
+        kwargs['allow_pickle'] = False
+        np.save(file + '.npy', self.__array__(), **kwargs)
+        np.savez(file + '_labels.npz', *self.labels, **kwargs)
+
+    @classmethod
+    def from_file(cls, file: str, **kwargs) -> 'LabeledArray':
+        """Create a LabeledArray from a file.
+
+        Parameters
+        ----------
+        file : str
+            The file to load the LabeledArray from.
+        **kwargs
+            Additional arguments to pass to np.load.
+
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray created from the file.
+
+        Examples
+        --------
+        >>> arr = np.arange(24).reshape((2, 3, 4))
+        >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+        >>> la = LabeledArray(arr, labels)
+        >>> la.to_file('data')
+        >>> la2 = LabeledArray.from_file('data')
+        >>> la == la2
+        True
+        """
+
+        files = np.load(file + '_labels.npz', **kwargs)
+        labels = list(map(tuple, files.values()))
+        return cls(np.load(file + '.npy', **kwargs), labels)
 
     def _parse_index(self, keys: list) -> list:
         ndim = self.ndim
