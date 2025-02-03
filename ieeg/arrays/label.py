@@ -123,7 +123,7 @@ class LabeledArray(np.ndarray):
     --------
     >>> import numpy as np
     >>> np.set_printoptions(legacy='1.21')
-    >>> from ieeg.array.label import LabeledArray
+    >>> from ieeg.arrays.label import LabeledArray
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
@@ -430,7 +430,7 @@ class LabeledArray(np.ndarray):
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
 
-    def to_file(self, file: str, **kwargs):
+    def tofile(self, fid: str, **kwargs) -> None:
         """Save the LabeledArray to a file.
 
         Parameters
@@ -445,17 +445,17 @@ class LabeledArray(np.ndarray):
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
         >>> la = LabeledArray(arr, labels)
-        >>> la.to_file('data')
-        >>> la2 = LabeledArray.from_file('data')
+        >>> la.tofile('data')
+        >>> la2 = LabeledArray.fromfile('data')
         >>> la == la2
         True
         """
         kwargs['allow_pickle'] = False
-        np.save(file + '.npy', self.__array__(), **kwargs)
-        np.savez(file + '_labels.npz', *self.labels, **kwargs)
+        super().tofile(fid + '.npy', **kwargs)
+        np.savez(fid + '_labels.npz', *self.labels, **kwargs)
 
     @classmethod
-    def from_file(cls, file: str, **kwargs) -> 'LabeledArray':
+    def fromfile(cls, file: str, **kwargs) -> 'LabeledArray':
         """Create a LabeledArray from a file.
 
         Parameters
@@ -475,8 +475,8 @@ class LabeledArray(np.ndarray):
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
         >>> la = LabeledArray(arr, labels)
-        >>> la.to_file('data')
-        >>> la2 = LabeledArray.from_file('data')
+        >>> la.tofile('data')
+        >>> la2 = LabeledArray.fromfile('data')
         >>> la == la2
         True
         """
