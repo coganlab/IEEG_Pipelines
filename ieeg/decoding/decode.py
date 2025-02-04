@@ -58,7 +58,9 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        def proc(train_idx, test_idx, l):
+        idxs = ((divmod(i, self.n_splits), l) for i, l in enumerate(idxs))
+
+        def proc(train_idx, test_idx, l, rep_fold):
             x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, data, l, 0, oversample)
             if window is None:
                 x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
@@ -71,20 +73,19 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
                 x_flat = x_window.reshape(x_window.shape[0], -1)
                 x_train, x_test = np.split(x_flat, [train_idx.shape[0]], 0)
                 out[i] = self.fit_predict(x_train, x_test, y_train, y_test)
-            return out
+            return rep_fold, out
 
         # loop over folds and repetitions
         if n_jobs == 1:
             idxs = tqdm(idxs, total=self.n_splits * self.n_repeats)
-            results = (proc(train_idx, test_idx, l) for (train_idx, test_idx), l in idxs)
+            results = (proc(train_idx, test_idx, l, rep_fold) for rep_fold, ((train_idx, test_idx), l) in idxs)
         else:
-            results = Parallel(n_jobs=n_jobs, return_as='generator', verbose=40)(
-                delayed(proc)(train_idx, test_idx, l)
-                for (train_idx, test_idx), l in idxs)
+            results = Parallel(n_jobs=n_jobs, return_as='generator_unordered', verbose=40)(
+                delayed(proc)(train_idx, test_idx, l, rep_fold)
+                for rep_fold, ((train_idx, test_idx), l) in idxs)
 
         # Collect the results
-        for i, result in enumerate(results):
-            rep, fold = divmod(i, self.n_splits)
+        for (rep, fold), result in results:
             mats[..., rep, fold, :, :] = result
 
         # average the repetitions
@@ -116,9 +117,11 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
                **decoder_kwargs) -> dict[str, np.ndarray]:
     for i, idx in enumerate(idxs):
         all_conds = flatten_list(conds)
-        x_data = extract(array, all_conds, idx, decoder.n_splits,
-                         False)
 
+        ax = decoder_kwargs.get('obs_axs', array.ndim - 2)
+        x_data = extract(array, all_conds, ax, idx, decoder.n_splits,
+                         False)
+        decoder_kwargs['obs_axs'] = ax - ((array.ndim - x_data.ndim) + 1)
         for cond in conds:
             if isinstance(cond, list):
                 X = concatenate_conditions(x_data, cond, 0)
@@ -126,7 +129,7 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
             else:
                 X = x_data[cond,]
 
-            cats, labels = classes_from_labels(X.labels[1], crop=slice(0, 4))
+            cats, labels = classes_from_labels(X.labels[-2], crop=slice(0, 4))
 
             # Decoding
             if weights is None:
@@ -138,15 +141,15 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
                     yield "-".join([names[i], cond, str(j)]), score
 
 
-def extract(array, conds: list[str], idx: list[int] = slice(None),
+def extract(array, conds: list[str], trial_ax: int, idx: list[int] = slice(None),
             common: int = 5, crop_nan: bool = False) -> LabeledArray:
     """Extract data from GroupData object"""
     # reduced = sub[:, conds][:, :, :, idx]
     reduced = array[conds,][:,:,idx]
     reduced = reduced.dropna()
     # also sorts the trials by nan or not
-    reduced = nan_common_denom(reduced, True, 3, common, 2, crop_nan)
-    comb = reduced.combine((1, 3))
+    reduced = nan_common_denom(reduced, True, trial_ax, common, 2, crop_nan)
+    comb = reduced.combine((1, trial_ax))
     return comb.dropna()
 
 
