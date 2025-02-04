@@ -95,7 +95,7 @@ class DataLoader:
                 sig = sig.average(method=lambda x: np.nanmean(x, axis=0))
         elif isinstance(sig, list):
             sig = sig[0]
-        mat = get_data(sig, tmin=times[0], tmax=times[1])
+        mat = get_data_from_inst(sig, tmin=times[0], tmax=times[1])
         if dtype is not None:
             mat = mat.astype(dtype)
 
@@ -142,7 +142,7 @@ class DataLoader:
         return out
 
 
-def get_data(inst: Signal, tmin: float, tmax: float):
+def get_data_from_inst(inst: Signal, tmin: float, tmax: float):
 
     if isinstance(inst, tfr_types) or getattr(inst, "preload", False):
         tmin_idx = np.searchsorted(inst.times, tmin)
@@ -150,6 +150,7 @@ def get_data(inst: Signal, tmin: float, tmax: float):
         return inst._data[..., tmin_idx:tmax_idx]
     else:
         return inst.get_data(tmin=tmin, tmax=tmax)
+
 def find_dat(folder: PathLike) -> (PathLike, PathLike):
     """Looks for the .dat file in a specified folder
 
