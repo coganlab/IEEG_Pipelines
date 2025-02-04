@@ -772,6 +772,11 @@ class LabeledArray(np.ndarray):
         kwargs : dict
             Additional keyword arguments to pass to np.take.
 
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray with the selected elements.
+
         Examples
         --------
         >>> arr = np.arange(24).reshape((2, 3, 4))
@@ -796,7 +801,8 @@ class LabeledArray(np.ndarray):
                ['f', 'g'])
         >>> np.take(ad, 'f', axis=2).labels
         [['a', 'b'], ['c', 'd', 'e']]
-        >>> np.take(ad, ('f','g'), axis=2)
+        >>> np.take(ad, ('c','e'), axis=1).labels
+        [['a', 'b'], ['c', 'e'], ['f', 'g', 'h', 'i']]
         """
 
         idx = [slice(None)] * self.ndim
