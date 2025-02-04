@@ -111,7 +111,7 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
         return confusion_matrix(y_test, pred)
 
 
-def get_scores(array, decoder, idxs: list[list[int]], conds: list[str],
+def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
                names: list[str], weights: list[list[int]] = None,
                **decoder_kwargs) -> dict[str, np.ndarray]:
     for i, idx in enumerate(idxs):

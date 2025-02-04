@@ -2,8 +2,6 @@ import numpy as np
 from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
-from ieeg.calc._fast.nanconcat import concatenate_and_pad as nan_concatinate2
-from ieeg.calc._fast.concat import nan_concatinate
 from scipy.stats import rankdata
 from functools import partial
 
@@ -280,7 +278,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
-    >>> arr3 = np.arange(24, dtype=float).reshape(3, 2, 4)
+    >>> arr3 = np.arange(24, dtype='f2').reshape(3, 2, 4)
     >>> arr3[0, :, :] = float("nan")
     >>> mixup(arr3, 0, seed=42)
     >>> arr3 # doctest: +NORMALIZE_WHITESPACE +SKIP
@@ -294,6 +292,8 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     """
 
+    if obs_axis == 0:
+        arr = arr.swapaxes(1, obs_axis)
     if arr.ndim > 3:
         for i in range(arr.shape[0]):
             mixup(arr[i], obs_axis - 1, alpha, seed)
@@ -302,9 +302,13 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     else:
         if seed is None:
             seed = np.random.randint(0, 2 ** 16 - 1)
-        if obs_axis == 0:
-            arr = arr.swapaxes(1, obs_axis)
-        cmixup(arr, 1, alpha, seed)
+
+        if arr.dtype.char in 'ef':
+            x = arr.astype('f8')
+            cmixup(x, 1, alpha, seed)
+            arr[...] = x.astype(arr.dtype)[...]
+        else:
+            cmixup(arr, 1, alpha, seed)
 
 
 def norm(arr: np.ndarray, obs_axis: int = -1) -> None:
