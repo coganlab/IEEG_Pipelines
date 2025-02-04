@@ -783,16 +783,41 @@ class LabeledArray(np.ndarray):
         [['a', 'b'], ['c', 'd', 'e'], ['f', 'g']]
         >>> np.take(ad, np.array([[0,2], [1,3]]), axis=2).labels
         [['a', 'b'], ['c', 'd', 'e'], ['f-h', 'g-i'], ['f-g', 'h-i']]
+        >>> np.take(ad, np.array(['f','g']), axis=2)
+        array([[[ 0,  1],
+                [ 4,  5],
+                [ 8,  9]],
+        <BLANKLINE>
+               [[12, 13],
+                [16, 17],
+                [20, 21]]])
+        labels(['a', 'b']
+               ['c', 'd', 'e']
+               ['f', 'g'])
+        >>> np.take(ad, 'f', axis=2).labels
+        [['a', 'b'], ['c', 'd', 'e']]
+        >>> np.take(ad, ('f','g'), axis=2)
         """
 
         idx = [slice(None)] * self.ndim
+        if isinstance(indices, str):
+            indices = self.labels[axis].find(indices)
+        elif not isinstance(indices, int):
+            indices = np.array(indices)
 
         if axis is None:
             return self.flat[indices]
         elif isinstance(axis, int):
+            if not isinstance(indices, int):
+                if indices.dtype.kind == 'U':
+                    indices = np.array(
+                        [self.labels[axis].find(idx) for idx in indices])
             idx[axis] = indices
         elif len(indices) == len(axis):
             for i, ax in enumerate(axis):
+                if indices.dtype.kind == 'U':
+                    indices = np.array(
+                        [self.labels[ax].find(idx) for idx in indices])
                 idx[ax] = indices[i]
         else:
             raise ValueError("indices and axis must have the same length")
