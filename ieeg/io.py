@@ -162,6 +162,24 @@ def find_dat(folder: PathLike) -> (PathLike, PathLike):
                 return ieeg, cleanieeg
     raise FileNotFoundError("Not all .dat files were found:")
 
+def dict_to_structured_array(dict_matrices, filename='structured_array.npy'):
+    """Save a dictionary of matrices to a structured array."""
+    # Get the keys and shapes
+    keys = list(dict_matrices.keys())
+    shape = dict_matrices[keys[0]].shape
+
+    # Create a data type for the structured array
+    dt = np.dtype([(key, dict_matrices[key].dtype, shape) for key in keys])
+
+    # Create the structured array
+    structured_array = np.zeros((1,), dtype=dt)
+
+    # Fill the structured array
+    for key in keys:
+        structured_array[key] = dict_matrices[key]
+
+    # Save the structured array to a file
+    np.save(filename, structured_array)
 
 def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     """Searches a :class:`BIDSLayout` for a file and returns a

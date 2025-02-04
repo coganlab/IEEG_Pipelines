@@ -14,13 +14,13 @@ from tqdm import tqdm
 
 class Decoder(PcaLdaClassification, MinimumNaNSplit):
 
-    def __init__(self, categories: dict, *args,
+    def __init__(self, categories: dict,
                  n_splits: int = 5,
                  n_repeats: int = 1,
                  min_samples: int = 1,
                  which: str = 'test',
                  **kwargs):
-        PcaLdaClassification.__init__(self, *args, **kwargs)
+        PcaLdaClassification.__init__(self, **kwargs)
         MinimumNaNSplit.__init__(self, n_splits, n_repeats,
                                  None, min_samples, which)
         self.categories = categories
