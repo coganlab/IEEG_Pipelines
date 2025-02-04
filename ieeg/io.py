@@ -1,23 +1,26 @@
 import re
 from functools import singledispatch
 from os import scandir, mkdir, path as op, walk
-from itertools import product
-from collections import OrderedDict
-
-import mne
-import numpy as np
 import pandas as pd
-from bids import BIDSLayout
 from bids.layout import BIDSFile, parse_file_entities
 from mne.utils import fill_doc, verbose
 from mne_bids import BIDSPath, get_bids_path_from_fname, mark_channels, \
     read_raw_bids, write_raw_bids
 from mne_bids.write import _from_tsv
-from joblib import Parallel, delayed
+import os
+from collections import OrderedDict
+import mne
+import numpy as np
+from bids import BIDSLayout
 from tqdm import tqdm
 
-from ieeg import PathLike, Signal, Doubles
+from ieeg import Doubles, PathLike
+from joblib import Parallel, delayed
+from ieeg import Signal
+from itertools import product
 
+mne.set_log_level("ERROR")
+tfr_types = (mne.time_frequency.EpochsTFR, mne.time_frequency.AverageTFR)
 
 class DataLoader:
     def __init__(self, layout: BIDSLayout, conds: dict[str, Doubles],
@@ -73,10 +76,10 @@ class DataLoader:
                                  f" instead got {self.value_type}")
         return reader, suffix
 
-    def load_subject_condition(self, subject, cond):
+    def load_subject_condition(self, subject, cond, dtype=None):
         out_cond = OrderedDict()
         try:
-            fname = op.join(self.root, 'derivatives',
+            fname = os.path.join(self.root, 'derivatives',
                                  self.derivatives_folder,
                                  f"{subject}_{cond}_{self.suffix}")
             epoch = self.reader(fname)
@@ -92,7 +95,9 @@ class DataLoader:
                 sig = sig.average(method=lambda x: np.nanmean(x, axis=0))
         elif isinstance(sig, list):
             sig = sig[0]
-        mat = sig.get_data(tmin=times[0], tmax=times[1])
+        mat = get_data(sig, tmin=times[0], tmax=times[1])
+        if dtype is not None:
+            mat = mat.astype(dtype)
 
         for i, ch in enumerate(sig.ch_names):
             if (self.suffix.split('.')[0].endswith("epo") or
@@ -114,7 +119,7 @@ class DataLoader:
                 out_cond[ch] = mat[i]
         return subject, cond, out_cond
 
-    def load_dict(self, **kwargs):
+    def load_dict(self, dtype=None, **kwargs):
         out = OrderedDict()
         combos = product(self.subjects, self.conds.keys())
 
@@ -125,7 +130,7 @@ class DataLoader:
         kwargs.setdefault("verbose", 0)
 
         proc = Parallel(**kwargs)(delayed(self.load_subject_condition)(
-            subject, cond) for subject, cond in combos)
+            subject, cond, dtype) for subject, cond in combos)
         for subject, cond, result in tqdm(
                 proc,
                 total=len(self.subjects) * len(self.conds),
@@ -137,6 +142,14 @@ class DataLoader:
         return out
 
 
+def get_data(inst: Signal, tmin: float, tmax: float):
+
+    if isinstance(inst, tfr_types) or getattr(inst, "preload", False):
+        tmin_idx = np.searchsorted(inst.times, tmin)
+        tmax_idx = np.searchsorted(inst.times, tmax, side="right")
+        return inst._data[..., tmin_idx:tmax_idx]
+    else:
+        return inst.get_data(tmin=tmin, tmax=tmax)
 def find_dat(folder: PathLike) -> (PathLike, PathLike):
     """Looks for the .dat file in a specified folder
 
