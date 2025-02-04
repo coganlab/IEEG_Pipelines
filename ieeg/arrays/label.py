@@ -450,8 +450,8 @@ class LabeledArray(np.ndarray):
         >>> la == la2
         True
         """
-        kwargs['allow_pickle'] = False
         super().tofile(fid + '.npy', **kwargs)
+        kwargs['allow_pickle'] = False
         np.savez(fid + '_labels.npz', *self.labels, **kwargs)
 
     @classmethod
