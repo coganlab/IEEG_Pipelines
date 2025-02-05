@@ -1,4 +1,5 @@
 from sklearn.metrics import confusion_matrix
+from tempfile import TemporaryFile
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
@@ -7,12 +8,12 @@ from numpy.lib.stride_tricks import sliding_window_view
 import numpy as np
 import matplotlib.pyplot as plt
 from ieeg.viz.ensemble import plot_dist
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, dump, load
 import itertools
 from tqdm import tqdm
 
 
-class Decoder(PcaLdaClassification, MinimumNaNSplit):
+class Decoder(MinimumNaNSplit):
 
     def __init__(self, categories: dict,
                  n_splits: int = 5,
@@ -20,7 +21,7 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
                  min_samples: int = 1,
                  which: str = 'test',
                  **kwargs):
-        PcaLdaClassification.__init__(self, **kwargs)
+        self.model = PcaLdaClassification(**kwargs)
         MinimumNaNSplit.__init__(self, n_splits, n_repeats,
                                  None, min_samples, which)
         self.categories = categories
@@ -61,30 +62,31 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
         def proc(train_idx, test_idx, l, pid):
             x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, data, l, 0, oversample)
             if window is None:
-                x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
-                x_train, x_test = np.split(x_flat, [train_idx.shape[0]], 0)
-                return self.fit_predict(x_train, x_test, y_train, y_test)
+                return fit_predict(self.model, x_stacked, train_idx.shape[0], y_train, y_test)
             windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
             out = np.zeros((windowed.shape[-2], n_cats, n_cats), dtype=np.uint8)
             for i in range(windowed.shape[-2]):
                 x_window = windowed[..., i, :]
-                x_flat = x_window.reshape(x_window.shape[0], -1)
-                x_train, x_test = np.split(x_flat, [train_idx.shape[0]], 0)
-                out[i] = self.fit_predict(x_train, x_test, y_train, y_test)
+                out[i] = fit_predict(self.model, x_window, train_idx.shape[0], y_train, y_test)
             rep, fold = divmod(pid, self.n_splits)
             mats[..., rep, fold, :, :] = out
 
-        # loop over folds and repetitions
-        results = Parallel(n_jobs=n_jobs, verbose=10, mmap_mode=None,
-                           return_as="generator_unordered", max_nbytes=None)(
-                delayed(proc)(train_idx, test_idx, l, i)
-                for i, ((train_idx, test_idx), l) in enumerate(idxs))
+        # dump data for parallelization
+        with TemporaryFile() as f:
+            dump(data, f)
+            f.seek(0)
+            data = load(f, mmap_mode='r')
+            # loop over folds and repetitions
+            results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
+                               return_as="generator_unordered", mmap_mode=None)(
+                    delayed(proc)(train_idx, test_idx, l, i)
+                    for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
-        # Collect the results
-        t = tqdm(desc="repetitions", total=self.n_splits * self.n_repeats)
-        for _ in results:
-            t.update()
-        t.close()
+            # Collect the results
+            t = tqdm(desc="repetitions", total=self.n_splits * self.n_repeats)
+            for _ in results:
+                t.update()
+            t.close()
 
         # average the repetitions
         if average_repetitions:
@@ -102,16 +104,13 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
             divisor = 1
         return mats / divisor
 
-    def fit_predict(self, x_train, x_test, y_train, y_test):
-
-        # fit model and score results
-        self.model.fit(x_train, y_train)
-        pred = self.model.predict(x_test)
-        return confusion_matrix(y_test, pred)
-
-    def clone(self):
-        return Decoder(self.categories, self.n_splits, self.n_repeats,
-                       self.min_non_nan, self.which, **self.kwargs)
+def fit_predict(model, x_stacked, split_idx, y_train, y_test):
+    x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
+    x_train, x_test = np.split(x_flat, [split_idx], 0)
+    # fit model and score results
+    model.fit(x_train, y_train)
+    pred = model.predict(x_test)
+    return confusion_matrix(y_test, pred)
 
 
 def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
