@@ -119,12 +119,12 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
                **decoder_kwargs) -> dict[str, np.ndarray]:
     for i, idx in enumerate(idxs):
         all_conds = flatten_list(conds)
-        x_data = extract(array, all_conds, 4, idx, decoder.n_splits,
+        x_data = extract(array, all_conds, -2, idx, decoder.n_splits,
                          False)
 
         for cond in conds:
             if isinstance(cond, list):
-                X = np.swapaxes(x_data, 0, 3).combine((0, 3)).dropna()
+                X = np.swapaxes(x_data, 0, -2).combine((0, -2)).dropna()
                 cond = "-".join(cond)
             else:
                 X = x_data[cond,].dropna()
