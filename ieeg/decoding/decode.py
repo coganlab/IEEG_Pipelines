@@ -58,9 +58,7 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        idxs = ((divmod(i, self.n_splits), l) for i, l in enumerate(idxs))
-
-        def proc(train_idx, test_idx, l, rep_fold):
+        def proc(train_idx, test_idx, l, pid):
             x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, data, l, 0, oversample)
             if window is None:
                 x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
@@ -73,20 +71,20 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
                 x_flat = x_window.reshape(x_window.shape[0], -1)
                 x_train, x_test = np.split(x_flat, [train_idx.shape[0]], 0)
                 out[i] = self.fit_predict(x_train, x_test, y_train, y_test)
-            return rep_fold, out
+            rep, fold = divmod(pid, self.n_splits)
+            mats[..., rep, fold, :, :] = out
 
         # loop over folds and repetitions
-        if n_jobs == 1:
-            idxs = tqdm(idxs, total=self.n_splits * self.n_repeats)
-            results = (proc(train_idx, test_idx, l, rep_fold) for rep_fold, ((train_idx, test_idx), l) in idxs)
-        else:
-            results = Parallel(n_jobs=n_jobs, return_as='generator_unordered', verbose=40)(
-                delayed(proc)(train_idx, test_idx, l, rep_fold)
-                for rep_fold, ((train_idx, test_idx), l) in idxs)
+        results = Parallel(n_jobs=n_jobs, verbose=10, mmap_mode=None,
+                           return_as="generator_unordered", max_nbytes=None)(
+                delayed(proc)(train_idx, test_idx, l, i)
+                for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
         # Collect the results
-        for (rep, fold), result in results:
-            mats[..., rep, fold, :, :] = result
+        t = tqdm(desc="repetitions", total=self.n_splits * self.n_repeats)
+        for _ in results:
+            t.update()
+        t.close()
 
         # average the repetitions
         if average_repetitions:
@@ -111,24 +109,25 @@ class Decoder(PcaLdaClassification, MinimumNaNSplit):
         pred = self.model.predict(x_test)
         return confusion_matrix(y_test, pred)
 
+    def clone(self):
+        return Decoder(self.categories, self.n_splits, self.n_repeats,
+                       self.min_non_nan, self.which, **self.kwargs)
+
 
 def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
                names: list[str], weights: list[list[int]] = None,
                **decoder_kwargs) -> dict[str, np.ndarray]:
     for i, idx in enumerate(idxs):
         all_conds = flatten_list(conds)
-
-        ax = decoder_kwargs.get('obs_axs', array.ndim - 2)
-        x_data = extract(array, all_conds, ax, idx, decoder.n_splits,
+        x_data = extract(array, all_conds, 4, idx, decoder.n_splits,
                          False)
-        decoder_kwargs['obs_axs'] = ax - ((array.ndim - x_data.ndim) + 1)
+
         for cond in conds:
             if isinstance(cond, list):
-                X = concatenate_conditions(x_data, cond, 0)
+                X = np.swapaxes(x_data, 0, 3).combine((0, 3)).dropna()
                 cond = "-".join(cond)
             else:
-                X = x_data[cond,]
-
+                X = x_data[cond,].dropna()
             cats, labels = classes_from_labels(X.labels[-2], crop=slice(0, 4))
 
             # Decoding
@@ -141,8 +140,9 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
                     yield "-".join([names[i], cond, str(j)]), score
 
 
-def extract(array, conds: list[str], trial_ax: int, idx: list[int] = slice(None),
-            common: int = 5, crop_nan: bool = False) -> LabeledArray:
+def extract(array: LabeledArray, conds: list[str], trial_ax: int,
+            idx: list[int] = slice(None), common: int = 5,
+            crop_nan: bool = False) -> LabeledArray:
     """Extract data from GroupData object"""
     # reduced = sub[:, conds][:, :, :, idx]
     reduced = array[conds,][:,:,idx]
@@ -251,15 +251,6 @@ def flatten_list(nested_list: list[list[str] | str]) -> list[str]:
         else:
             flat_list.append(element)
     return flat_list
-
-
-def concatenate_conditions(data, conditions, axis=1):
-    """Concatenate data for all conditions"""
-    concatenated_data = np.take(data, conditions[0], axis=axis)
-    for condition in conditions[1:]:
-        cond_data = np.take(data, condition, axis=axis)
-        concatenated_data = concatenated_data.concatenate(cond_data, axis=axis)
-    return concatenated_data
 
 
 def decode_and_score(decoder, data, labels, scorer='acc', **decoder_kwargs):
