@@ -450,8 +450,8 @@ class LabeledArray(np.ndarray):
         >>> la == la2
         True
         """
-        super().tofile(fid + '.npy', **kwargs)
         kwargs['allow_pickle'] = False
+        np.save(fid + '.npy', self.__array__(), **kwargs)
         np.savez(fid + '_labels.npz', *self.labels, **kwargs)
 
     @classmethod
@@ -480,7 +480,7 @@ class LabeledArray(np.ndarray):
         >>> la == la2
         True
         """
-
+        kwargs['allow_pickle'] = False
         files = np.load(file + '_labels.npz', **kwargs)
         labels = list(map(tuple, files.values()))
         return cls(np.load(file + '.npy', **kwargs), labels)
@@ -991,6 +991,8 @@ class LabeledArray(np.ndarray):
         reordered = other.__array__()[tuple(idx)]
         out = np.concatenate((self.__array__(), reordered), axis, **kwargs)
         return LabeledArray(out, new_labels, dtype=self.dtype)
+
+    # def swapaxes(self):
 
 
 def is_unique(arr: np.ndarray) -> bool:
