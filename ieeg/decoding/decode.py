@@ -75,6 +75,7 @@ class Decoder(MinimumNaNSplit):
         with TemporaryFile() as f:
             dump(data, f)
             f.seek(0)
+            del x_data
             data = load(f, mmap_mode='r')
             # loop over folds and repetitions
             results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
