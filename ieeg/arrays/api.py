@@ -14,8 +14,8 @@ from typing import Any, Literal, TypeAlias
 import numpy as np
 import numpy.typing as npt
 
-from ieeg.arrays._api import array_api_compat, array_api_extra
 from array_api_compat import (
+    array_namespace as xp_array_namespace,
     is_array_api_obj,
     size as xp_size,
     numpy as np_compat,
@@ -27,12 +27,12 @@ from array_api_compat import (
     is_array_api_strict_namespace as is_array_api_strict
 )
 from array_api_extra import (
-    at, atleast_nd, cov, create_diagonal, expand_dims, isclose, kron, nunique,
+    at, atleast_nd, cov, create_diagonal, expand_dims, kron, nunique,
     pad, setdiff1d, sinc
 )
 
 __all__ = [
-    '_asarray', 'array_namespace', 'isclose', 'at', 'atleast_nd', 'cov',
+    '_asarray', 'array_namespace', 'at', 'atleast_nd', 'cov',
     'create_diagonal', 'expand_dims', 'kron', 'nunique', 'pad', 'setdiff1d',
     'sinc', 'get_xp_devices',
     'is_array_api_strict', 'is_complex', 'is_cupy', 'is_jax', 'is_numpy', 'is_torch',
@@ -45,6 +45,8 @@ __all__ = [
 
 
 # To enable array API and strict array-like input validation
+# set the environment variable SCIPY_ARRAY_API to True.
+os.environ.setdefault("SCIPY_ARRAY_API", "1")
 SCIPY_ARRAY_API: str | bool = os.environ.get("SCIPY_ARRAY_API", False)
 
 Array: TypeAlias = Any  # To be changed to a Protocol later (see array-api#589)
@@ -90,7 +92,7 @@ def array_namespace(*arrays: Array) -> ModuleType:
 
     _arrays = [array for array in arrays if array is not None]
 
-    return array_api_compat.array_namespace(*_arrays)
+    return xp_array_namespace(*_arrays)
 
 
 def _asarray(

@@ -16,3 +16,5 @@ h5io
 dipy
 mne-qt-browser
 edfio
+array-api-compat
+array-api-extra

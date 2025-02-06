@@ -1,6 +1,0 @@
-[submodule "ieeg/arrays/_api/array-api-compat"]
-	path = ieeg/arrays/_api/array-api-compat
-	url = git@github.com:data-apis/array-api-compat.git
-[submodule "ieeg/arrays/_api/array-api-extra"]
-	path = ieeg/arrays/_api/array-api-extra
-	url = git@github.com:data-apis/array-api-extra.git
