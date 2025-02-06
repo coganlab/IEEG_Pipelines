@@ -30,7 +30,45 @@ class Decoder(MinimumNaNSplit):
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
               average_repetitions: bool = True, window: int = None,
               shuffle: bool = False, oversample: bool = True, step: int = 1) -> np.ndarray:
-        """Cross-validated confusion matrix"""
+        """Cross-validated confusion matrix
+
+        Parameters
+        ----------
+        x_data : np.ndarray
+            The data to be decoded
+        labels : np.ndarray
+            The labels for the data
+        normalize : str, optional
+            How to normalize the confusion matrix, by default None
+        obs_axs : int, optional
+            The axis containing the observations, by default -2
+        n_jobs : int, optional
+            The number of jobs to run in parallel, by default 1
+        average_repetitions : bool, optional
+            Whether to average the repetitions, by default True
+        window : int, optional
+            The window size for time sliding, by default None
+        shuffle : bool, optional
+            Whether to shuffle the labels, by default False
+        oversample : bool, optional
+            Whether to oversample the training data, by default True
+        step : int, optional
+            The step size for time sliding, by default 1
+
+        Returns
+        -------
+        np.ndarray
+            The confusion matrix
+
+        Examples
+        --------
+        >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
+        ...             5, 10, explained_variance=0.8, da_type='lda')
+        >>> X = np.random.randn(100, 50, 100)
+        >>> labels = np.random.randint(1, 5, 50)
+        >>> decoder.cv_cm(X, labels, normalize='true')
+        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5)
+        """
         n_cats = len(set(labels))
         out_shape = (self.n_repeats, self.n_splits, n_cats, n_cats)
         if window is not None:
@@ -59,33 +97,36 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        def proc(train_idx, test_idx, l, pid):
-            x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, data, l, 0, oversample)
+        def proc(train_idx, test_idx, l, orig_data, pid):
+            x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, 0, oversample)
+            rep, fold = divmod(pid, self.n_splits)
             if window is None:
-                return fit_predict(self.model, x_stacked, train_idx.shape[0], y_train, y_test)
+                return fit_predict(self.model, x_stacked, train_idx.shape[0], y_train, y_test), rep, fold
             windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
             out = np.zeros((windowed.shape[-2], n_cats, n_cats), dtype=np.uint8)
             for i in range(windowed.shape[-2]):
                 x_window = windowed[..., i, :]
                 out[i] = fit_predict(self.model, x_window, train_idx.shape[0], y_train, y_test)
-            rep, fold = divmod(pid, self.n_splits)
-            mats[..., rep, fold, :, :] = out
+            return out, rep, fold
 
         # dump data for parallelization
         with TemporaryFile() as f:
-            dump(data, f)
-            f.seek(0)
-            del x_data
-            data = load(f, mmap_mode='r')
+            in_data = np.memmap(f, dtype=data.dtype, mode='w+',
+                                shape=data.shape)
+            in_data[:] = data
+            del x_data, data
+            in_data = np.memmap(f, dtype=in_data.dtype, mode='r',
+                                shape=in_data.shape)
             # loop over folds and repetitions
             results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
                                return_as="generator_unordered", mmap_mode=None)(
-                    delayed(proc)(train_idx, test_idx, l, i)
+                    delayed(proc)(train_idx, test_idx, l, in_data, i)
                     for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
             # Collect the results
             t = tqdm(desc="repetitions", total=self.n_splits * self.n_repeats)
-            for _ in results:
+            for result, rep, fold in results:
+                mats[..., rep, fold, :, :] = result
                 t.update()
             t.close()
 
