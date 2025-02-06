@@ -21,7 +21,8 @@ class Decoder(MinimumNaNSplit):
                  min_samples: int = 1,
                  which: str = 'test',
                  **kwargs):
-        self.model = PcaLdaClassification(**kwargs)
+        # self.model = PcaLdaClassification(**kwargs)
+        self.kwargs = kwargs
         MinimumNaNSplit.__init__(self, n_splits, n_repeats,
                                  None, min_samples, which)
         self.categories = categories
@@ -66,7 +67,7 @@ class Decoder(MinimumNaNSplit):
         ...             5, 10, explained_variance=0.8, da_type='lda')
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
-        >>> decoder.cv_cm(X, labels, normalize='true')
+        >>> decoder.cv_cm(X, labels, normalize='true', n_jobs=10)
         >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5)
         """
         n_cats = len(set(labels))
@@ -97,30 +98,18 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        def proc(train_idx, test_idx, l, orig_data, pid):
-            x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, 0, oversample)
-            rep, fold = divmod(pid, self.n_splits)
-            if window is None:
-                return fit_predict(self.model, x_stacked, train_idx.shape[0], y_train, y_test), rep, fold
-            windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
-            out = np.zeros((windowed.shape[-2], n_cats, n_cats), dtype=np.uint8)
-            for i in range(windowed.shape[-2]):
-                x_window = windowed[..., i, :]
-                out[i] = fit_predict(self.model, x_window, train_idx.shape[0], y_train, y_test)
-            return out, rep, fold
-
         # dump data for parallelization
         with TemporaryFile() as f:
-            in_data = np.memmap(f, dtype=data.dtype, mode='w+',
-                                shape=data.shape)
-            in_data[:] = data
+            dump(data, f, 0)
             del x_data, data
-            in_data = np.memmap(f, dtype=in_data.dtype, mode='r',
-                                shape=in_data.shape)
+            f.seek(0)
+            in_data = load(f, mmap_mode='r')
             # loop over folds and repetitions
             results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
                                return_as="generator_unordered", mmap_mode=None)(
-                    delayed(proc)(train_idx, test_idx, l, in_data, i)
+                    delayed(proc)(train_idx, test_idx, l, in_data, i,
+                                  self.n_splits, n_cats, window, step,
+                                  oversample, self.kwargs)
                     for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
             # Collect the results
@@ -146,7 +135,20 @@ class Decoder(MinimumNaNSplit):
             divisor = 1
         return mats / divisor
 
-def fit_predict(model, x_stacked, split_idx, y_train, y_test):
+def proc(train_idx, test_idx, l, orig_data, pid, n_splits, n_cats, window, step, oversample, model_kwargs):
+    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, 0, oversample)
+    rep, fold = divmod(pid, n_splits)
+    if window is None:
+        return fit_predict(model_kwargs, x_stacked, train_idx.shape[0], y_train, y_test), rep, fold
+    windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
+    out = np.zeros((windowed.shape[-2], n_cats, n_cats), dtype=np.uint8)
+    for i in range(windowed.shape[-2]):
+        x_window = windowed[..., i, :]
+        out[i] = fit_predict(model_kwargs, x_window, train_idx.shape[0], y_train, y_test)
+    return out, rep, fold
+
+def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test):
+    model = PcaLdaClassification(**kwargs)
     x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
     x_train, x_test = np.split(x_flat, [split_idx], 0)
     # fit model and score results
