@@ -1,5 +1,4 @@
 from sklearn.metrics import confusion_matrix
-from tempfile import TemporaryFile
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
@@ -8,7 +7,7 @@ from numpy.lib.stride_tricks import sliding_window_view
 import numpy as np
 import matplotlib.pyplot as plt
 from ieeg.viz.ensemble import plot_dist
-from joblib import Parallel, delayed, dump, load
+from joblib import Parallel, delayed
 import itertools
 from tqdm import tqdm
 
@@ -98,26 +97,20 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        # dump data for parallelization
-        with TemporaryFile() as f:
-            dump(data, f, 0)
-            del x_data, data
-            f.seek(0)
-            in_data = load(f, mmap_mode='r')
-            # loop over folds and repetitions
-            results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
-                               return_as="generator_unordered", mmap_mode='r')(
-                    delayed(proc)(train_idx, test_idx, l, in_data, i,
-                                  self.n_splits, n_cats, window, step,
-                                  oversample, self.kwargs)
-                    for i, ((train_idx, test_idx), l) in enumerate(idxs))
+        # loop over folds and repetitions
+        results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
+                           return_as="generator_unordered", mmap_mode=None)(
+                delayed(proc)(train_idx, test_idx, l, data, i,
+                              self.n_splits, n_cats, window, step,
+                              oversample, self.kwargs)
+                for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
-            # Collect the results
-            t = tqdm(desc="repetitions", total=self.n_splits * self.n_repeats)
-            for result, rep, fold in results:
-                mats[..., rep, fold, :, :] = result
-                t.update()
-            t.close()
+        # Collect the results
+        t = tqdm(desc="repetitions", total=self.n_splits * self.n_repeats)
+        for result, rep, fold in results:
+            mats[..., rep, fold, :, :] = result
+            t.update()
+        t.close()
 
         # average the repetitions
         if average_repetitions:
