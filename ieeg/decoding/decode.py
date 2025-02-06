@@ -106,7 +106,7 @@ class Decoder(MinimumNaNSplit):
             in_data = load(f, mmap_mode='r')
             # loop over folds and repetitions
             results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
-                               return_as="generator_unordered", mmap_mode=None)(
+                               return_as="generator_unordered", mmap_mode='r')(
                     delayed(proc)(train_idx, test_idx, l, in_data, i,
                                   self.n_splits, n_cats, window, step,
                                   oversample, self.kwargs)
