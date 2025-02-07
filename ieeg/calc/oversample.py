@@ -7,7 +7,7 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 import itertools
 from functools import partial
 from ieeg.calc.fast import mixup, norm
-from ieeg.arrays.api import array_namespace, is_numpy
+from ieeg.arrays.api import array_namespace, is_numpy, intersect1d, setdiff1d
 from decimal import Decimal
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
@@ -71,8 +71,8 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
         # find where the nans are
         where = xp.isnan(X).any(axis=tuple(range(X.ndim))[1:])
-        not_where = xp.where(~where)[0]
-        where = xp.where(where)[0]
+        not_where = xp.nonzero(~where)[0]
+        where = xp.nonzero(where)[0]
 
         splits = super(MinimumNaNSplit, self).split(X, y, groups)
         if not is_numpy(xp):
@@ -87,9 +87,9 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
             raise ValueError(f"Need at least {n_min} non-nan values, but only"
                              f" have {n_non_nan}")
 
-        check = {'train': lambda t: xp.setdiff1d(not_where, t,
+        check = {'train': lambda t: setdiff1d(not_where, t, xp=xp,
                                                  assume_unique=True),
-                 'test': lambda t: xp.intersect1d(not_where, t,
+                 'test': lambda t: intersect1d(not_where, t, xp=xp,
                                                   assume_unique=True)}
 
         # check that all training sets for each kfold within each repetition
@@ -106,7 +106,9 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 # if any test set has more non-nan values than the total number
                 # of non-nan values minus the minimum number of non-nan values,
                 # then throw out the split and append an extra repetition
-                if all(xp.intersect1d(check[self.which](test), i).shape[0] < self.min_non_nan for i in idxs):
+                if all(intersect1d(check[self.which](test), i,
+                                   assume_unique=True, xp=xp
+                                   ).shape[0] < self.min_non_nan for i in idxs):
                     for _ in range(i + 1, self.n_splits):
                         next(splits)
                     extra = super().split(X, y, groups)

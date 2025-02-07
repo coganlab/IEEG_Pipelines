@@ -13,6 +13,7 @@ from typing import Any, Literal, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
+from functools import reduce
 
 from array_api_compat import (
     array_namespace as xp_array_namespace,
@@ -93,6 +94,105 @@ def array_namespace(*arrays: Array) -> ModuleType:
     _arrays = [array for array in arrays if array is not None]
 
     return xp_array_namespace(*_arrays)
+
+
+def intersect1d(*arrays: Array, assume_unique: bool = False, xp: ModuleType | None = None) -> Array:
+    """SciPy-specific replacement for `np.intersect1d` with `assume_unique` and `xp`.
+
+    Parameters
+    ----------
+    *arrays : array_like
+        Input arrays. Will be cast to a common type.
+    assume_unique : bool, optional
+        If True, the input arrays are assumed to be unique, which can speed up the calculation.
+    xp : array_namespace, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the arrays.
+
+    Returns
+    -------
+    intersect1d : array
+        Sorted 1D array of common elements.
+
+    Notes
+    -----
+    This function is a thin wrapper around `setdiff1d` from `array_api_extra`.
+
+    Examples
+    --------
+
+    >>> import numpy as np
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> y = np.array([3, 4, 5, 6, 7])
+    >>> intersect1d(x, y)
+    array([3, 4, 5])
+    >>> z = np.array([3, 4, 7, 8])
+    >>> intersect1d(x, y, z)
+    array([3, 4])
+    """
+    if xp is None:
+        xp = array_namespace(*arrays)
+    if hasattr(xp, 'intersect1d'):
+        reduction = lambda x, y: xp.intersect1d(x, y, assume_unique=assume_unique)
+        return reduce(reduction, arrays)
+    if len(arrays) == 0:
+        return xp.array([])
+
+    result = xp.asarray(arrays[0])
+    for array in arrays[1:]:
+        result = setdiff1d(result, setdiff1d(
+            result, xp.asarray(array), assume_unique=assume_unique),
+                              assume_unique=assume_unique)
+    return result
+
+
+def split(array: Array, indices_or_sections: int | list[int], axis: int = 0, xp: ModuleType | None = None) -> list[Array]:
+    """SciPy-specific replacement for `np.split` with `axis` and `xp`.
+
+    Parameters
+    ----------
+    array : array_like
+        Array to be divided into sub-arrays.
+    indices_or_sections : int or 1-D array
+        If `indices_or_sections` is an integer, N, the array will be divided into N equal
+        arrays along `axis`. If such a split is not possible, an error is raised.
+        If `indices_or_sections` is a 1-D array of sorted integers, the entries indicate
+        where along `axis` the array is split.
+    axis : int, optional
+        The axis along which to split, default is 0.
+    xp : array_namespace, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the arrays.
+
+    Returns
+    -------
+    subarrays : list of ndarrays
+        A list of sub-arrays.
+
+    Notes
+    -----
+    This function is a thin wrapper around `array_api_compat.split`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.arange(9.0)
+    >>> np.split(x, 3)
+    [array([0., 1., 2.]), array([3., 4., 5.]), array([6., 7., 8.])]
+    >>> x = np.arange(8.0).reshape(2, 4)
+    >>> np.split(x, 2, axis=1)
+    [array([[0., 1.], [4., 5.]]), array([[2., 3.], [6., 7.]])]
+    """
+    if xp is None:
+        xp = array_namespace(array)
+    start = 0
+    if isinstance(indices_or_sections, int):
+        indices = np.linspace(0, xp_size(array), indices_or_sections + 1, dtype=int)
+    else:
+        indices = xp.asarray(indices_or_sections)
+    subarrays = []
+    for end in indices:
+        subarrays.append(xp.take(array, slice(start, end), axis=axis))
+        start = end
+    return subarrays
 
 
 def _asarray(

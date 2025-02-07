@@ -3,7 +3,7 @@ from sklearn import config_context
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
-from ieeg.arrays.api import array_namespace, Array
+from ieeg.arrays.api import array_namespace, Array, is_torch
 from ieeg.arrays.reshape import sliding_window_view
 from ieeg.calc.fast import mixup
 import numpy as np
@@ -68,20 +68,27 @@ class Decoder(MinimumNaNSplit):
         ...             5, 10, explained_variance=0.8, da_type='lda')
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
-        >>> decoder.cv_cm(X, labels, normalize='true', n_jobs=3)
-        >>> import cupy as cp
-        >>> X = cp.random.randn(100, 100, 50, 100)
-        >>> X[0, 0, 0, :] = np.nan
-        >>> labels = cp.random.randint(1, 5, 50)
+        >>> decoder.cv_cm(X, labels, normalize='true')
+        >>> #import cupy as cp
+        >>> #X = cp.random.randn(100, 100, 50, 100)
+        >>> #X[0, 0, 0, :] = np.nan
+        >>> #labels = cp.random.randint(1, 5, 50)
+        >>> #with config_context(array_api_dispatch=True):
+        ... #    decoder.cv_cm(X, labels, normalize='true')
+        >>> import torch
+        >>> X = torch.randn(100, 100, 50, 100)
+        >>> X[0, 0, ::2, :] = np.nan
+        >>> labels = torch.randint(1, 5, (50,))
         >>> with config_context(array_api_dispatch=True):
         ...     decoder.cv_cm(X, labels, normalize='true')
+
         """
         xp = array_namespace(x_data)
         n_cats = xp.unique(labels).shape[0]
         out_shape = (self.n_repeats, self.n_splits, n_cats, n_cats)
         if window is not None:
             out_shape = ((x_data.shape[-1] - window) // step + 1,) + out_shape
-        mats = xp.zeros(out_shape, dtype=np.int16)
+        mats = xp.zeros(out_shape, dtype=xp.int16)
         data = x_data.swapaxes(0, obs_axs)
 
         if shuffle:
@@ -154,7 +161,7 @@ def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test, xp):
     kwargs['PCA_kwargs'] = {'copy': False}
     model = PcaLdaClassification(**kwargs)
     x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
-    x_train, x_test = xp.split(x_flat, [split_idx], 0)
+    x_train, x_test = x_flat[:split_idx], x_flat[split_idx:]
     # fit model and score results
     model.fit(x_train, y_train)
     pred = model.predict(x_test)
@@ -260,7 +267,7 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
 
         for cond in conds:
             if isinstance(cond, list):
-                X = np.swapaxes(x_data, 0, ax-1).combine((0, ax-1)).dropna()
+                X = concatenate_conditions(x_data, cond, 0, 3)
                 cond = "-".join(cond)
             else:
                 X = x_data[cond,].dropna()
@@ -335,17 +342,23 @@ def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
 
     # make first and only copy of x_data
     idx_stacked = xp.concatenate((train_idx, test_idx))
-    x_stacked = xp.take(x_data, idx_stacked, axis)
+    idx = tuple(slice(None) if i != axis else idx_stacked
+                for i in range(x_data.ndim))
+    x_stacked = x_data[idx]
     y_stacked = labels[idx_stacked]
 
     # define train and test as views of x_stacked
     sep = train_idx.shape[0]
-    y_train, y_test = xp.split(y_stacked, [sep])
+    y_train, y_test = y_stacked[:sep], y_stacked[sep:]
 
     if not oversample:
         return x_stacked, y_train, y_test
 
-    x_train, x_test = xp.split(x_stacked, [sep], axis=axis)
+    idx1 = tuple(slice(None) if i != axis else slice(None, sep)
+                for i in range(x_data.ndim))
+    idx2 = tuple(slice(None) if i != axis else slice(sep, None)
+                for i in range(x_data.ndim))
+    x_train, x_test = x_stacked[idx1], x_stacked[idx2]
     # mixup2(x_train, labels[:sep], axis)
     idx = [slice(None) for _ in range(x_data.ndim)]
     unique = np.unique(y_train)
@@ -357,11 +370,24 @@ def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
         mixup(out, axis)
         x_train[tuple(idx)] = out
 
+
     # fill in test data nans with noise from distribution
     is_nan = xp.isnan(x_test)
-    x_test[is_nan] = xp.random.normal(0, 1, int(xp.sum(is_nan)))
+    if is_torch(xp):
+        normal = xp.distributions.normal.Normal(0, 1)
+        x_test[is_nan] = normal.sample((xp.sum(is_nan),))
+    else:
+        x_test[is_nan] = xp.random.normal(0, 1, int(xp.sum(is_nan)))
 
     return x_stacked, y_train, y_test
+
+def concatenate_conditions(data, conditions, axis=1, trial_axis=2):
+    """Concatenate data for all conditions"""
+    concatenated_data = np.take(data, conditions[0], axis=axis)
+    for condition in conditions[1:]:
+        cond_data = np.take(data, condition, axis=axis)
+        concatenated_data = concatenated_data.concatenate(cond_data, axis=trial_axis - 1)
+    return concatenated_data
 
 
 def flatten_features(arr: np.ndarray, obs_axs: int = -2) -> np.ndarray:
