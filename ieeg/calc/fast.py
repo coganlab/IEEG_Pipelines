@@ -2,6 +2,7 @@ import numpy as np
 from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
+from ieeg.arrays.api import array_namespace
 from scipy.stats import rankdata
 from functools import partial
 
@@ -192,9 +193,9 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
            [ 4.,  5., nan]])
     >>> concatenate_arrays((np.array([1, 2, 3]), np.array([4, 5])), axis=0)
     array([1., 2., 3., 4., 5.])
-    >>> arr1 = np.arange(6, dtype=float).reshape(1, 2, 3)
-    >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
-    >>> concatenate_arrays((arr1[0], arr2[0]), axis=0)
+    >>> arr1 = np.arange(60, dtype=float).reshape(10, 2, 3)
+    >>> arr2 = np.arange(240, dtype=float).reshape(20, 3, 4)
+    >>> concatenate_arrays((arr1, arr2), axis=0)
     array([[ 0.,  1.,  2., nan],
            [ 3.,  4.,  5., nan],
            [ 0.,  1.,  2.,  3.],
@@ -241,7 +242,7 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
 
 
 def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
-          seed: int = None) -> None:
+          rng: int = None) -> None:
     """Oversample by mixing two random non-NaN observations
 
     Parameters
@@ -261,7 +262,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     --------
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> mixup(arr, 0, seed=42)
+    >>> mixup(arr, 0, rng=42)
     >>> arr # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[1.        , 2.        ],
            [4.        , 5.        ],
@@ -269,7 +270,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
            [5.24946679, 6.24946679]])
     >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr2[0, 2, :] = [float("nan")] * 4
-    >>> mixup(arr2, 1, seed=42)
+    >>> mixup(arr2, 1, rng=42)
     >>> arr2 # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
@@ -280,7 +281,7 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     >>> arr3 = np.arange(24, dtype='f2').reshape(3, 2, 4)
     >>> arr3[0, :, :] = float("nan")
-    >>> mixup(arr3, 0, seed=42)
+    >>> mixup(arr3, 0, rng=42)
     >>> arr3 # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
             [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
@@ -292,23 +293,60 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     """
 
-    if obs_axis == 0:
-        arr = arr.swapaxes(1, obs_axis)
-    if arr.ndim > 3:
-        for i in range(arr.shape[0]):
-            mixup(arr[i], obs_axis - 1, alpha, seed)
-    elif arr.ndim == 1:
-        raise ValueError("Array must have at least 2 dimensions")
-    else:
-        if seed is None:
-            seed = np.random.randint(0, 2 ** 16 - 1)
-
-        if arr.dtype.char in 'ef':
-            x = arr.astype('f8')
-            cmixup(x, 1, alpha, seed)
-            arr[...] = x.astype(arr.dtype)[...]
+    if arr.dtype.char in 'd':
+        if obs_axis == 0:
+            arr = arr.swapaxes(1, obs_axis)
+        if arr.ndim > 3:
+            for i in range(arr.shape[0]):
+                mixup(arr[i], obs_axis - 1, alpha, rng)
+        elif arr.ndim == 1:
+            raise ValueError("Array must have at least 2 dimensions")
         else:
-            cmixup(arr, 1, alpha, seed)
+            if rng is None:
+                rng = np.random.randint(0, 2 ** 16 - 1)
+
+            cmixup(arr, 1, alpha, rng)
+        return
+
+    xp = array_namespace(arr)
+
+    if rng is None:
+        rng = xp.random.RandomState()
+    elif isinstance(rng, int):
+        rng = xp.random.RandomState(rng)
+
+    # Move observation axis to the front for easier handling
+    # also reshape the array to 3D for consistency
+    arr_3d = xp.moveaxis(arr, obs_axis, 0).reshape(
+        (arr.shape[obs_axis], -1, arr.shape[-1]))
+
+    # Initialize boolean mask of rows with NaN values
+    not_obs = tuple(i for i in range(arr.ndim) if i != obs_axis)
+
+    # Check each row individually
+    nan = xp.any(xp.isnan(arr), axis=not_obs)
+    if not nan.any():
+        return
+
+    # Get indices of rows with and without NaN values using boolean indexing
+    nan_rows = np.flatnonzero(nan)
+    non_nan_rows = np.flatnonzero(~nan)
+    n_nan = nan_rows.shape[0]
+    n_non_nan = non_nan_rows.shape[0]
+
+    # Generate random numbers using sort-based sampling
+    random_indices = xp.argsort(rng.rand(n_nan, n_non_nan), axis=1
+               )[:, :2]
+    indices = non_nan_rows[random_indices]
+
+    # Generate random numbers using the beta distribution
+    lams = rng.beta(alpha, alpha, n_nan)
+    lam_mask = lams < 0.5
+    lams[lam_mask] = 1 - lams[lam_mask]
+
+    # Mixup the data
+    arr_3d[nan_rows] = (lams[:, None, None] * arr_3d[indices[:, 0]]
+                        + (1 - lams[:, None, None]) * arr_3d[indices[:, 1]])
 
 
 def norm(arr: np.ndarray, obs_axis: int = -1) -> None:
@@ -375,15 +413,17 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
 if __name__ == "__main__":
     import numpy as np
     from timeit import timeit
+    from ieeg.calc.oversample import mixup3
 
     np.random.seed(0)
     n = 300
     group1 = np.random.rand(100, 100, 100)
     group2 = np.random.rand(500, 100, 100)
+    group2[::2] = np.nan
 
     kwargs = dict(globals=globals(), number=n)
-    time1 = timeit('concatenate_arrays((group1, group2), axis=0)', **kwargs)
-    time2 = timeit('concatenate_arrays3((group1, group2), axis=0)', **kwargs)
+    time1 = timeit('mixup(group2.copy(), 0)', **kwargs)
+    time2 = timeit('mixup3(group2.copy(), 0)', **kwargs)
 
     print(f"ttest: {time1 / n:.3g} per run")
     print(f"meandiff: {time2 / n:.3g} per run")

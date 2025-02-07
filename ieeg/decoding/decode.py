@@ -2,9 +2,10 @@ from sklearn import config_context
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
-from ieeg.calc.oversample import MinimumNaNSplit, mixup2
-from ieeg.arrays.api import array_namespace, Array, is_numpy, is_cupy
+from ieeg.calc.oversample import MinimumNaNSplit
+from ieeg.arrays.api import array_namespace, Array
 from ieeg.arrays.reshape import sliding_window_view
+from ieeg.calc.fast import mixup
 import numpy as np
 import matplotlib.pyplot as plt
 from ieeg.viz.ensemble import plot_dist
@@ -30,7 +31,7 @@ class Decoder(MinimumNaNSplit):
     def cv_cm(self, x_data: Array, labels: Array,
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
               average_repetitions: bool = True, window: int = None,
-              shuffle: bool = False, oversample: bool = True, step: int = 1) -> np.ndarray:
+              shuffle: bool = False, oversample: bool = True, step: int = 1) -> Array:
         """Cross-validated confusion matrix
 
         Parameters
@@ -67,12 +68,13 @@ class Decoder(MinimumNaNSplit):
         ...             5, 10, explained_variance=0.8, da_type='lda')
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
-        >>> #decoder.cv_cm(X, labels, normalize='true'))
+        >>> decoder.cv_cm(X, labels, normalize='true', n_jobs=3)
         >>> import cupy as cp
         >>> X = cp.random.randn(100, 100, 50, 100)
+        >>> X[0, 0, 0, :] = np.nan
         >>> labels = cp.random.randint(1, 5, 50)
         >>> with config_context(array_api_dispatch=True):
-        ...     decoder.cv_cm(X, labels, normalize='true', window=20)
+        ...     decoder.cv_cm(X, labels, normalize='true')
         """
         xp = array_namespace(x_data)
         n_cats = xp.unique(labels).shape[0]
@@ -103,7 +105,7 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        idxs = (((xp.asarray(spl1), xp.asarray(spl2)), l) for (spl1, spl2), l in idxs)
+        # idxs = (((xp.asarray(spl1), xp.asarray(spl2)), l) for (spl1, spl2), l in idxs)
         # loop over folds and repetitions
         results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
                            return_as="generator_unordered", mmap_mode=None)(
@@ -329,7 +331,7 @@ def nan_common_denom(array: LabeledArray, sort: bool = True, trials_ax: int = 1,
 
 def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
                 x_data: np.ndarray, labels: np.ndarray,
-                axis: int, oversample: bool, xp) -> tuple[np.ndarray]:
+                axis: int, oversample: bool, xp) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     # make first and only copy of x_data
     idx_stacked = xp.concatenate((train_idx, test_idx))
@@ -344,16 +346,16 @@ def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
         return x_stacked, y_train, y_test
 
     x_train, x_test = xp.split(x_stacked, [sep], axis=axis)
-    mixup2(x_train, labels, axis)
-    # idx = [slice(None) for _ in range(x_data.ndim)]
-    # unique = np.unique(labels)
-    # for i in unique:
-    #     # fill in train data nans with random combinations of
-    #     # existing train data trials (mixup)
-    #     idx[axis] = y_train == i
-    #     out = x_train[tuple(idx)]
-    #     mixup2(out, axis)
-    #     x_train[tuple(idx)] = out
+    # mixup2(x_train, labels[:sep], axis)
+    idx = [slice(None) for _ in range(x_data.ndim)]
+    unique = np.unique(y_train)
+    for i in unique:
+        # fill in train data nans with random combinations of
+        # existing train data trials (mixup)
+        idx[axis] = y_train == i
+        out = x_train[tuple(idx)]
+        mixup(out, axis)
+        x_train[tuple(idx)] = out
 
     # fill in test data nans with noise from distribution
     is_nan = xp.isnan(x_test)
