@@ -1,9 +1,10 @@
-from sklearn.metrics import confusion_matrix
+from sklearn import config_context
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
-from ieeg.calc.oversample import MinimumNaNSplit, mixup
-from numpy.lib.stride_tricks import sliding_window_view
+from ieeg.calc.oversample import MinimumNaNSplit, mixup2
+from ieeg.arrays.api import array_namespace, Array, is_numpy, is_cupy
+from ieeg.arrays.reshape import sliding_window_view
 import numpy as np
 import matplotlib.pyplot as plt
 from ieeg.viz.ensemble import plot_dist
@@ -26,7 +27,7 @@ class Decoder(MinimumNaNSplit):
                                  None, min_samples, which)
         self.categories = categories
 
-    def cv_cm(self, x_data: np.ndarray, labels: np.ndarray,
+    def cv_cm(self, x_data: Array, labels: Array,
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
               average_repetitions: bool = True, window: int = None,
               shuffle: bool = False, oversample: bool = True, step: int = 1) -> np.ndarray:
@@ -66,14 +67,19 @@ class Decoder(MinimumNaNSplit):
         ...             5, 10, explained_variance=0.8, da_type='lda')
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
-        >>> decoder.cv_cm(X, labels, normalize='true', n_jobs=10)
-        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5)
+        >>> #decoder.cv_cm(X, labels, normalize='true'))
+        >>> import cupy as cp
+        >>> X = cp.random.randn(100, 100, 50, 100)
+        >>> labels = cp.random.randint(1, 5, 50)
+        >>> with config_context(array_api_dispatch=True):
+        ...     decoder.cv_cm(X, labels, normalize='true', window=20)
         """
-        n_cats = len(set(labels))
+        xp = array_namespace(x_data)
+        n_cats = xp.unique(labels).shape[0]
         out_shape = (self.n_repeats, self.n_splits, n_cats, n_cats)
         if window is not None:
             out_shape = ((x_data.shape[-1] - window) // step + 1,) + out_shape
-        mats = np.zeros(out_shape, dtype=np.int16)
+        mats = xp.zeros(out_shape, dtype=np.int16)
         data = x_data.swapaxes(0, obs_axs)
 
         if shuffle:
@@ -97,6 +103,7 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
+        idxs = (((xp.asarray(spl1), xp.asarray(spl2)), l) for (spl1, spl2), l in idxs)
         # loop over folds and repetitions
         results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
                            return_as="generator_unordered", mmap_mode=None)(
@@ -129,42 +136,133 @@ class Decoder(MinimumNaNSplit):
         return mats / divisor
 
 def proc(train_idx, test_idx, l, orig_data, pid, n_splits, n_cats, window, step, oversample, model_kwargs):
-    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, 0, oversample)
+    xp = array_namespace(orig_data)
+    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, 0, oversample, xp)
     rep, fold = divmod(pid, n_splits)
     if window is None:
-        return fit_predict(model_kwargs, x_stacked, train_idx.shape[0], y_train, y_test), rep, fold
+        return fit_predict(model_kwargs, x_stacked, train_idx.shape[0], y_train, y_test, xp), rep, fold
     windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
-    out = np.zeros((windowed.shape[-2], n_cats, n_cats), dtype=np.uint8)
+    out = xp.zeros((windowed.shape[-2], n_cats, n_cats), dtype=np.uint8)
     for i in range(windowed.shape[-2]):
         x_window = windowed[..., i, :]
-        out[i] = fit_predict(model_kwargs, x_window, train_idx.shape[0], y_train, y_test)
+        out[i] = fit_predict(model_kwargs, x_window, train_idx.shape[0], y_train, y_test, xp)
     return out, rep, fold
 
-def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test):
+def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test, xp):
+    kwargs['PCA_kwargs'] = {'copy': False}
     model = PcaLdaClassification(**kwargs)
     x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
-    x_train, x_test = np.split(x_flat, [split_idx], 0)
+    x_train, x_test = xp.split(x_flat, [split_idx], 0)
     # fit model and score results
     model.fit(x_train, y_train)
     pred = model.predict(x_test)
-    return confusion_matrix(y_test, pred)
+    return confusion_matrix(y_test, pred, namespace=xp)
+
+def confusion_matrix(
+    y_true, y_pred, labels=None, namespace=None
+):
+    """Compute confusion matrix to evaluate the accuracy of a classification.
+
+    By definition a confusion matrix :math:`C` is such that :math:`C_{i, j}`
+    is equal to the number of observations known to be in group :math:`i` and
+    predicted to be in group :math:`j`.
+
+    Thus in binary classification, the count of true negatives is
+    :math:`C_{0,0}`, false negatives is :math:`C_{1,0}`, true positives is
+    :math:`C_{1,1}` and false positives is :math:`C_{0,1}`.
+
+    Read more in the :ref:`User Guide <confusion_matrix>`.
+
+    Parameters
+    ----------
+    y_true : array-like of shape (n_samples,)
+        Ground truth (correct) target values.
+
+    y_pred : array-like of shape (n_samples,)
+        Estimated targets as returned by a classifier.
+
+    labels : array-like of shape (n_classes), default=None
+        List of labels to index the matrix. This may be used to reorder
+        or select a subset of labels.
+        If ``None`` is given, those that appear at least once
+        in ``y_true`` or ``y_pred`` are used in sorted order.
+
+        .. versionadded:: 0.18
+
+    Returns
+    -------
+    C : ndarray of shape (n_classes, n_classes)
+        Confusion matrix whose i-th row and j-th
+        column entry indicates the number of
+        samples with true label being i-th class
+        and predicted label being j-th class.
+
+    References
+    ----------
+    .. [1] `Wikipedia entry for the Confusion matrix
+           <https://en.wikipedia.org/wiki/Confusion_matrix>`_
+           (Wikipedia and other references may use a different
+           convention for axes).
+
+    Examples
+    --------
+    >>> y_true = [2, 0, 2, 2, 0, 1]
+    >>> y_pred = [0, 0, 2, 2, 0, 2]
+    >>> confusion_matrix(y_true, y_pred)
+    array([[2, 0, 0],
+           [0, 0, 1],
+           [1, 0, 2]])
+
+    >>> y_true = ["cat", "ant", "cat", "cat", "ant", "bird"]
+    >>> y_pred = ["ant", "ant", "cat", "cat", "ant", "cat"]
+    >>> confusion_matrix(y_true, y_pred, labels=["ant", "bird", "cat"])
+    array([[2, 0, 0],
+           [0, 0, 1],
+           [1, 0, 2]])
+
+    In the binary case, we can extract true positives, etc. as follows:
+
+    >>> tn, fp, fn, tp = confusion_matrix([0, 1, 0, 1], [1, 1, 1, 0]).ravel()
+    >>> (tn, fp, fn, tp)
+    (np.int64(0), np.int64(2), np.int64(1), np.int64(1))
+    """
+    if namespace is not None:
+        xp = namespace
+    if isinstance(y_true, list) or isinstance(y_pred, list):
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        xp = np
+    else:
+        xp = array_namespace(y_true, y_pred)
+
+    if labels is None:
+        labels = xp.unique(xp.concatenate([y_true, y_pred]))
+    else:
+        labels = xp.unique(labels)
+    n_labels = labels.shape[0]
+    cm = xp.zeros((n_labels, n_labels), dtype=np.uint32)
+    for i, li in enumerate(labels):
+        for j, lj in enumerate(labels):
+            cm[i, j] = xp.sum((y_true == li) & (y_pred == lj))
+    return cm
 
 
 def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
                names: list[str], weights: list[list[int]] = None,
                **decoder_kwargs) -> dict[str, np.ndarray]:
+    ax = array.ndim - 2
     for i, idx in enumerate(idxs):
         all_conds = flatten_list(conds)
-        x_data = extract(array, all_conds, -2, idx, decoder.n_splits,
+        x_data = extract(array, all_conds, ax, idx, decoder.n_splits,
                          False)
 
         for cond in conds:
             if isinstance(cond, list):
-                X = np.swapaxes(x_data, 0, -2).combine((0, -2)).dropna()
+                X = np.swapaxes(x_data, 0, ax-1).combine((0, ax-1)).dropna()
                 cond = "-".join(cond)
             else:
                 X = x_data[cond,].dropna()
-            cats, labels = classes_from_labels(X.labels[-2], crop=slice(0, 4))
+            cats, labels = classes_from_labels(X.labels[ax-2], crop=slice(0, 4))
 
             # Decoding
             if weights is None:
@@ -231,34 +329,35 @@ def nan_common_denom(array: LabeledArray, sort: bool = True, trials_ax: int = 1,
 
 def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
                 x_data: np.ndarray, labels: np.ndarray,
-                axis: int, oversample: bool = True):
+                axis: int, oversample: bool, xp) -> tuple[np.ndarray]:
 
     # make first and only copy of x_data
-    idx_stacked = np.concatenate((train_idx, test_idx))
-    x_stacked = np.take(x_data, idx_stacked, axis)
+    idx_stacked = xp.concatenate((train_idx, test_idx))
+    x_stacked = xp.take(x_data, idx_stacked, axis)
     y_stacked = labels[idx_stacked]
 
     # define train and test as views of x_stacked
     sep = train_idx.shape[0]
-    y_train, y_test = np.split(y_stacked, [sep])
+    y_train, y_test = xp.split(y_stacked, [sep])
 
     if not oversample:
         return x_stacked, y_train, y_test
 
-    x_train, x_test = np.split(x_stacked, [sep], axis=axis)
-    idx = [slice(None) for _ in range(x_data.ndim)]
-    unique = np.unique(labels)
-    for i in unique:
-        # fill in train data nans with random combinations of
-        # existing train data trials (mixup)
-        idx[axis] = y_train == i
-        out = x_train[tuple(idx)]
-        mixup(out, axis)
-        x_train[tuple(idx)] = out
+    x_train, x_test = xp.split(x_stacked, [sep], axis=axis)
+    mixup2(x_train, labels, axis)
+    # idx = [slice(None) for _ in range(x_data.ndim)]
+    # unique = np.unique(labels)
+    # for i in unique:
+    #     # fill in train data nans with random combinations of
+    #     # existing train data trials (mixup)
+    #     idx[axis] = y_train == i
+    #     out = x_train[tuple(idx)]
+    #     mixup2(out, axis)
+    #     x_train[tuple(idx)] = out
 
     # fill in test data nans with noise from distribution
-    is_nan = np.isnan(x_test)
-    x_test[is_nan] = np.random.normal(0, 1, np.sum(is_nan))
+    is_nan = xp.isnan(x_test)
+    x_test[is_nan] = xp.random.normal(0, 1, int(xp.sum(is_nan)))
 
     return x_stacked, y_train, y_test
 

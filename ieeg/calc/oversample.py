@@ -7,6 +7,7 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 import itertools
 from functools import partial
 from ieeg.calc.fast import mixup, norm
+from ieeg.arrays.api import array_namespace
 from decimal import Decimal
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
@@ -66,10 +67,12 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
     def split(self, X, y=None, groups=None):
 
+        xp = array_namespace(X)
+
         # find where the nans are
-        where = np.isnan(X).any(axis=tuple(range(X.ndim))[1:])
-        not_where = np.where(~where)[0]
-        where = np.where(where)[0]
+        where = xp.isnan(X).any(axis=tuple(range(X.ndim))[1:])
+        not_where = xp.where(~where)[0]
+        where = xp.where(where)[0]
 
         # if there are no nans, then just split the data
         if len(where) == 0:
@@ -80,9 +83,9 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
             raise ValueError(f"Need at least {n_min} non-nan values, but only"
                              f" have {n_non_nan}")
 
-        check = {'train': lambda t: np.setdiff1d(not_where, t,
+        check = {'train': lambda t: xp.setdiff1d(not_where, t,
                                                  assume_unique=True),
-                 'test': lambda t: np.intersect1d(not_where, t,
+                 'test': lambda t: xp.intersect1d(not_where, t,
                                                   assume_unique=True)}
 
         splits = super().split(X, y, groups)
@@ -183,16 +186,17 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         >>> labels
         array([1, 1, 0, 0])
         """
-        cats = np.unique(labels)
+        xp = array_namespace(arr)
+        cats = xp.unique(labels)
         gt_labels = [0] * cats.shape[0]
         min_trials *= self.n_splits
         i = 0
         while not all(g >= min_trials for g in gt_labels):
             np.random.shuffle(labels)
             for j, l in enumerate(cats):
-                eval_arr = np.take(arr, np.flatnonzero(labels == l), trials_ax)
-                gt_labels[j] = np.min(np.sum(
-                    np.all(~np.isnan(eval_arr), axis=2), axis=trials_ax))
+                eval_arr = xp.take(arr, np.flatnonzero(labels == l), trials_ax)
+                gt_labels[j] = xp.min(np.sum(
+                    xp.all(~xp.isnan(eval_arr), axis=2), axis=trials_ax))
             if sum(gt_labels) < min_trials * cats.shape[0]:
                 raise ValueError("Not enough non-nan trials to shuffle")
             i += 1
@@ -333,7 +337,7 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
 
 
 def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
-           alpha: float = 1., seed: int = None) -> None:
+           alpha: float = 1., seed: int = None, _isnan=None) -> None:
     """Mixup the data using the labels
 
     Parameters
@@ -362,24 +366,29 @@ def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
            [7.        , 8.        ],
            [6.03943491, 7.03943491]])
            """
+    if _isnan is None:
+        isnan = np.isnan(arr).any(-1)
+    else:
+        isnan = _isnan
     if arr.ndim > 2:
         arr = arr.swapaxes(obs_axis, -2)
+        isnan = isnan.swapaxes(obs_axis, -1)
         for i in range(arr.shape[0]):
-            mixup2(arr[i], labels, obs_axis, alpha, seed)
+            if isnan[i].any():
+                mixup2(arr[i], labels, obs_axis, alpha, seed, isnan[i])
     else:
         if seed is not None:
             np.random.seed(seed)
         if obs_axis == 1:
             arr = arr.T
 
-        is_nan = np.isnan(arr).any(axis=1)
-        n_nan = np.where(is_nan)[0]
-        n_non_nan = np.where(~is_nan)[0]
+        n_nan = np.where(isnan)[0]
+        n_non_nan = np.where(~isnan)[0]
 
         for i in n_nan:
             l_class = labels[i]
             possible_choices = np.nonzero(np.logical_and(
-                ~is_nan, labels == l_class))[0]
+                ~isnan, labels == l_class))[0]
             choice1 = np.random.choice(possible_choices)
             choice2 = np.random.choice(n_non_nan)
             lam = np.random.beta(alpha, alpha)
