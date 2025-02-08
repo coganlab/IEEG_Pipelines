@@ -69,13 +69,13 @@ class Decoder(MinimumNaNSplit):
         ...             5, 10, explained_variance=0.8, da_type='lda')
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
-        >>> #decoder.cv_cm(X, labels, normalize='true')
+        >>> decoder.cv_cm(X, labels, normalize='true')
         >>> import cupy as cp
         >>> X = cp.random.randn(100, 100, 50, 100)
         >>> X[0, 0, 0, :] = np.nan
         >>> labels = cp.random.randint(1, 5, 50)
-        >>> #with config_context(array_api_dispatch=True):
-        ...     #decoder.cv_cm(X, labels, normalize='true')
+        >>> with config_context(array_api_dispatch=True):
+        ...     decoder.cv_cm(X, labels, normalize='true')
         >>> import torch
         >>> X = torch.randn(100, 100, 50, 100)
         >>> X[0, 0, ::2, :] = np.nan
@@ -134,11 +134,11 @@ class Decoder(MinimumNaNSplit):
             mats = np.mean(mats, axis=1)
 
         # normalize, sum the folds
-        mats = np.sum(mats, axis=-3)
+        mats = xp.sum(mats, axis=-3)
         if normalize == 'true':
-            divisor = np.sum(mats, axis=-1, keepdims=True)
+            divisor = xp.sum(mats, axis=-1, keepdims=True)
         elif normalize == 'pred':
-            divisor = np.sum(mats, axis=-2, keepdims=True)
+            divisor = xp.sum(mats, axis=-2, keepdims=True)
         elif normalize == 'all':
             divisor = self.n_repeats
         else:
