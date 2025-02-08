@@ -2,7 +2,7 @@ import numpy as np
 from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
-from ieeg.arrays.api import array_namespace, is_numpy, is_torch
+from ieeg.arrays.api import array_namespace, is_numpy, is_torch, Array
 from scipy.stats import rankdata
 from functools import partial
 
@@ -310,7 +310,7 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
 
         cmixup(arr.view('f8'), 1, alpha, rng)
 
-def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
+def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
                      rng=None) -> None:
     """
     Replace rows along the observation axis that are “missing” (i.e. contain any NaNs)
@@ -370,12 +370,19 @@ def mixup(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> group3 = torch.randn(100, 10, 10, 100)
     >>> group3[::2, 0, 0, :] = float("nan")
     >>> mixup(group3, 0)
-    >>> group3
+    >>> group3[0, 0, :, :5]
     """
     xp = array_namespace(arr)
     if is_numpy(xp):
         _mixup_np(arr, obs_axis, alpha, rng)
         return
+    elif is_torch(xp): # TODO: remove this crutch to keep data on the GPU
+        if arr.is_cuda:
+            temp = arr.detach().cpu()
+            _mixup_np(temp.numpy(), obs_axis, alpha, rng)
+            arr.copy_(temp)
+        else:
+            _mixup_np(arr.numpy(), obs_axis, alpha, rng)
 
     if rng is None:
         if is_torch(xp):
