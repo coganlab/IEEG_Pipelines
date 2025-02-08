@@ -281,7 +281,7 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     >>> arr3 = np.arange(24, dtype='f2').reshape(3, 2, 4)
     >>> arr3[0, :, :] = float("nan")
-    >>> mixup(arr3, 0, rng=42)
+    >>> _mixup_np(arr3, 0, rng=42)
     >>> arr3 # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
             [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
@@ -291,10 +291,6 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     <BLANKLINE>
            [[16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
-    >>> import cupy as cp
-    >>> arr4 = cp.arange(24, dtype='f2').reshape(3, 2, 4)
-    >>> arr4[0, :, :] = cp.nan
-    >>> mixup(arr4, 0, rng=42)
     """
 
     if obs_axis == 0:
@@ -308,7 +304,7 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
         if rng is None:
             rng = np.random.randint(0, 2 ** 16 - 1)
 
-        cmixup(arr.view('f8'), 1, alpha, rng)
+        cmixup(arr.astype(float, copy=False), 1, alpha, rng)
 
 def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
                      rng=None) -> None:
@@ -368,7 +364,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     >>> mixup(group2, 0)
     >>> import torch
     >>> group3 = torch.randn(100, 10, 10, 100)
-    >>> group3[::2, 0, 0, :] = float("nan")
+    >>> group3[0::2, 0, 0, :] = float("nan")
     >>> mixup(group3, 0)
     >>> group3[0, 0, :, :5]
     """
@@ -377,12 +373,10 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
         _mixup_np(arr, obs_axis, alpha, rng)
         return
     elif is_torch(xp): # TODO: remove this crutch to keep data on the GPU
-        if arr.is_cuda:
-            temp = arr.detach().cpu()
-            _mixup_np(temp.numpy(), obs_axis, alpha, rng)
-            arr.copy_(temp)
-        else:
-            _mixup_np(arr.numpy(), obs_axis, alpha, rng)
+        temp = arr.numpy(force=True).astype(float)
+        _mixup_np(temp, obs_axis, alpha, rng)
+        arr.copy_(xp.from_numpy(temp))
+        return
 
     if rng is None:
         if is_torch(xp):

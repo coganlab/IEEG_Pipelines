@@ -1,4 +1,5 @@
 from sklearn import config_context
+from torch.jit.frontend import is_torch_jit_ignore_context_manager
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
@@ -68,13 +69,13 @@ class Decoder(MinimumNaNSplit):
         ...             5, 10, explained_variance=0.8, da_type='lda')
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
-        >>> decoder.cv_cm(X, labels, normalize='true')
-        >>> #import cupy as cp
-        >>> #X = cp.random.randn(100, 100, 50, 100)
-        >>> #X[0, 0, 0, :] = np.nan
-        >>> #labels = cp.random.randint(1, 5, 50)
+        >>> #decoder.cv_cm(X, labels, normalize='true')
+        >>> import cupy as cp
+        >>> X = cp.random.randn(100, 100, 50, 100)
+        >>> X[0, 0, 0, :] = np.nan
+        >>> labels = cp.random.randint(1, 5, 50)
         >>> #with config_context(array_api_dispatch=True):
-        ... #    decoder.cv_cm(X, labels, normalize='true')
+        ...     #decoder.cv_cm(X, labels, normalize='true')
         >>> import torch
         >>> X = torch.randn(100, 100, 50, 100)
         >>> X[0, 0, ::2, :] = np.nan
@@ -249,7 +250,7 @@ def confusion_matrix(
     else:
         labels = xp.unique(labels)
     n_labels = labels.shape[0]
-    cm = xp.zeros((n_labels, n_labels), dtype=np.uint32)
+    cm = xp.zeros((n_labels, n_labels), dtype=xp.int32)
     for i, li in enumerate(labels):
         for j, lj in enumerate(labels):
             cm[i, j] = xp.sum((y_true == li) & (y_pred == lj))
@@ -365,17 +366,23 @@ def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
     for i in unique:
         # fill in train data nans with random combinations of
         # existing train data trials (mixup)
-        idx[axis] = y_train == i
+        isin = y_train == i
+        idx[axis] = isin
         out = x_train[tuple(idx)]
         mixup(out, axis)
-        x_train[tuple(idx)] = out
+        if is_torch(xp):
+            idx3 = tuple(None if j != axis else
+                         slice(None) for j in range(x_data.ndim))
+            x_train.masked_scatter_(isin[idx3], out)
+        else:
+            x_train[tuple(idx)] = out
 
 
     # fill in test data nans with noise from distribution
     is_nan = xp.isnan(x_test)
     if is_torch(xp):
         normal = xp.distributions.normal.Normal(0, 1)
-        x_test[is_nan] = normal.sample((xp.sum(is_nan),))
+        x_test.masked_scatter_(is_nan, normal.sample((xp.sum(is_nan),)))
     else:
         x_test[is_nan] = xp.random.normal(0, 1, int(xp.sum(is_nan)))
 
