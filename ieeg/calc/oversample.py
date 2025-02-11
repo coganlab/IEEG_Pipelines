@@ -57,8 +57,8 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     def __init__(self, n_splits: int, n_repeats: int = 10,
                  random_state: int = None, min_non_nan: int = 2,
                  which: str = 'train'):
-        super().__init__(n_splits=n_splits, n_repeats=n_repeats,
-                         random_state=random_state)
+        super(MinimumNaNSplit, self).__init__(
+            n_splits=n_splits, n_repeats=n_repeats, random_state=random_state)
         self.n_splits = n_splits
         self.min_non_nan = min_non_nan
         if which not in ('train', 'test'):
@@ -74,9 +74,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         not_where = xp.nonzero(~where)[0]
         where = xp.nonzero(where)[0]
 
-        splits = super(MinimumNaNSplit, self).split(X, y, groups)
-        if not is_numpy(xp):
-            splits = ((xp.asarray(train), xp.asarray(test)) for train, test in splits)
+        splits = self._splits(X, y, groups, xp)
 
         # if there are no nans, then just split the data
         if len(where) == 0:
@@ -106,18 +104,25 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 # if any test set has more non-nan values than the total number
                 # of non-nan values minus the minimum number of non-nan values,
                 # then throw out the split and append an extra repetition
-                if all(intersect1d(check[self.which](test), i,
-                                   assume_unique=True, xp=xp
-                                   ).shape[0] < self.min_non_nan for i in idxs):
+                if all(intersect1d(check[self.which](test), i, xp=xp,
+                                   assume_unique=True).shape[0] <
+                       self.min_non_nan for i in idxs):
                     for _ in range(i + 1, self.n_splits):
                         next(splits)
-                    extra = super().split(X, y, groups)
+                    extra = self._splits(X, y, groups, xp)
                     one_rep = itertools.islice(extra, self.n_splits)
                     splits = itertools.chain(one_rep, splits)
                     break
                 kfold_set[i] = (train, test)
             else:
                 yield from kfold_set
+
+    def _splits(self, X, y, groups, xp):
+        splits = super(MinimumNaNSplit, self).split(X, y, groups)
+        if not is_numpy(xp):
+            splits = ((xp.asarray(train), xp.asarray(test)) for
+                      train, test in splits)
+        return splits
 
     @staticmethod
     def oversample(arr: np.ndarray, func: callable = mixup,
