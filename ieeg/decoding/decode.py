@@ -1,5 +1,8 @@
+from typing import Any, Generator
+
+from numpy import ndarray
 from sklearn import config_context
-from torch.jit.frontend import is_torch_jit_ignore_context_manager
+import cupy as cp
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
@@ -28,6 +31,7 @@ class Decoder(MinimumNaNSplit):
         MinimumNaNSplit.__init__(self, n_splits, n_repeats,
                                  None, min_samples, which)
         self.categories = categories
+        self.current_job = "Repetitions"
 
     def cv_cm(self, x_data: Array, labels: Array,
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
@@ -70,22 +74,26 @@ class Decoder(MinimumNaNSplit):
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
         >>> decoder.cv_cm(X, labels, normalize='true')
+        >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
+        ...             5, 10, explained_variance=0.8, da_type='lda',
+        ... DA_kwargs={'solver': 'eigen'})
+        >>> decoder.cv_cm(X, labels, normalize='true')
         >>> import cupy as cp
         >>> X = cp.random.randn(100, 100, 50, 100)
         >>> X[0, 0, 0, :] = np.nan
         >>> labels = cp.random.randint(1, 5, 50)
         >>> with config_context(array_api_dispatch=True):
         ...     decoder.cv_cm(X, labels, normalize='true')
-        >>> import torch
-        >>> X = torch.randn(100, 100, 50, 100)
-        >>> X[0, 0, ::2, :] = np.nan
-        >>> labels = torch.randint(1, 5, (50,))
-        >>> with config_context(array_api_dispatch=True):
-        ...     decoder.cv_cm(X, labels, normalize='true')
+        # >>> import torch
+        # >>> X = torch.randn(100, 100, 50, 100)
+        # >>> X[0, 0, ::2, :] = np.nan
+        # >>> labels = torch.randint(1, 5, (50,))
+        # >>> with config_context(array_api_dispatch=True):
+        # ...     decoder.cv_cm(X, labels, normalize='true')
 
         """
         xp = array_namespace(x_data)
-        n_cats = xp.unique(labels).shape[0]
+        n_cats = len(self.categories)
         out_shape = (self.n_repeats, self.n_splits, n_cats, n_cats)
         if window is not None:
             out_shape = ((x_data.shape[-1] - window) // step + 1,) + out_shape
@@ -113,17 +121,16 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        # idxs = (((xp.asarray(spl1), xp.asarray(spl2)), l) for (spl1, spl2), l in idxs)
         # loop over folds and repetitions
-        results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes=None,
-                           return_as="generator_unordered", mmap_mode=None)(
+        results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes='5G',
+                           return_as="generator_unordered")(
                 delayed(proc)(train_idx, test_idx, l, data, i,
-                              self.n_splits, n_cats, window, step,
+                              self.n_splits, self.categories, window, step,
                               oversample, self.kwargs)
                 for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
         # Collect the results
-        t = tqdm(desc="repetitions", total=self.n_splits * self.n_repeats)
+        t = tqdm(desc=self.current_job, total=self.n_splits * self.n_repeats)
         for result, rep, fold in results:
             mats[..., rep, fold, :, :] = result
             t.update()
@@ -131,7 +138,7 @@ class Decoder(MinimumNaNSplit):
 
         # average the repetitions
         if average_repetitions:
-            mats = np.mean(mats, axis=1)
+            mats = xp.mean(mats, axis=1)
 
         # normalize, sum the folds
         mats = xp.sum(mats, axis=-3)
@@ -145,20 +152,24 @@ class Decoder(MinimumNaNSplit):
             divisor = 1
         return mats / divisor
 
-def proc(train_idx, test_idx, l, orig_data, pid, n_splits, n_cats, window, step, oversample, model_kwargs):
+def proc(train_idx, test_idx, l, orig_data, pid, n_splits, cats, window, step, oversample, model_kwargs):
     xp = array_namespace(orig_data)
-    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, 0, oversample, xp)
+    n_cats = len(cats)
+    label_cats = xp.asarray(list(cats.values()))
+    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, label_cats, 0, oversample, xp)
+
     rep, fold = divmod(pid, n_splits)
     if window is None:
-        return fit_predict(model_kwargs, x_stacked, train_idx.shape[0], y_train, y_test, xp), rep, fold
+        return fit_predict(model_kwargs, x_stacked, train_idx.shape[0], y_train, y_test, label_cats, xp), rep, fold
+
     windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
-    out = xp.zeros((windowed.shape[-2], n_cats, n_cats), dtype=np.uint8)
+    out = xp.zeros((windowed.shape[-2], n_cats, n_cats), dtype=xp.uint8)
     for i in range(windowed.shape[-2]):
         x_window = windowed[..., i, :]
-        out[i] = fit_predict(model_kwargs, x_window, train_idx.shape[0], y_train, y_test, xp)
+        out[i] = fit_predict(model_kwargs, x_window, train_idx.shape[0], y_train, y_test, label_cats, xp)
     return out, rep, fold
 
-def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test, xp):
+def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test, labels, xp):
     kwargs['PCA_kwargs'] = {'copy': False}
     model = PcaLdaClassification(**kwargs)
     x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
@@ -166,7 +177,7 @@ def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test, xp):
     # fit model and score results
     model.fit(x_train, y_train)
     pred = model.predict(x_test)
-    return confusion_matrix(y_test, pred, namespace=xp)
+    return confusion_matrix(y_test, pred, labels, namespace=xp)
 
 def confusion_matrix(
     y_true, y_pred, labels=None, namespace=None
@@ -235,10 +246,11 @@ def confusion_matrix(
     >>> tn, fp, fn, tp = confusion_matrix([0, 1, 0, 1], [1, 1, 1, 0]).ravel()
     >>> (tn, fp, fn, tp)
     (np.int64(0), np.int64(2), np.int64(1), np.int64(1))
+    >>> confusion_matrix(y_true, y_pred)
     """
     if namespace is not None:
         xp = namespace
-    if isinstance(y_true, list) or isinstance(y_pred, list):
+    elif isinstance(y_true, list) or isinstance(y_pred, list):
         y_true = np.array(y_true)
         y_pred = np.array(y_pred)
         xp = np
@@ -246,20 +258,22 @@ def confusion_matrix(
         xp = array_namespace(y_true, y_pred)
 
     if labels is None:
-        labels = xp.unique(xp.concatenate([y_true, y_pred]))
+        labels, y_true_indices = xp.unique(y_true, return_inverse=True)
     else:
-        labels = xp.unique(labels)
+        labels = xp.array(labels)
+        y_true_indices = xp.searchsorted(labels, y_true)
+
+    y_pred_indices = xp.searchsorted(labels, y_pred)
+
     n_labels = labels.shape[0]
     cm = xp.zeros((n_labels, n_labels), dtype=xp.int32)
-    for i, li in enumerate(labels):
-        for j, lj in enumerate(labels):
-            cm[i, j] = xp.sum((y_true == li) & (y_pred == lj))
+    xp.add.at(cm, (y_true_indices, y_pred_indices), 1)
     return cm
 
 
 def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
-               names: list[str], weights: list[list[int]] = None,
-               **decoder_kwargs) -> dict[str, np.ndarray]:
+               names: list[str], on_gpu: bool = False,
+               **decoder_kwargs) -> Generator[ndarray, Any, None]:
     ax = array.ndim - 2
     for i, idx in enumerate(idxs):
         all_conds = flatten_list(conds)
@@ -268,20 +282,24 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
 
         for cond in conds:
             if isinstance(cond, list):
-                X = concatenate_conditions(x_data, cond, 0, 3)
+                X = concatenate_conditions(x_data, cond, 0, ax-1)
                 cond = "-".join(cond)
             else:
                 X = x_data[cond,].dropna()
-            cats, labels = classes_from_labels(X.labels[ax-2], crop=slice(0, 4))
+            cats, labels = classes_from_labels(X.labels[ax-2],
+                                               crop=slice(0, 4),
+                                               cats=decoder.categories)
 
             # Decoding
-            if weights is None:
-                score = decoder.cv_cm(X.__array__(), labels, **decoder_kwargs)
-                yield "-".join([names[i], cond]), score
+            decoder.current_job = "-".join([names[i], cond])
+            if on_gpu:
+                with config_context(array_api_dispatch=True):
+                    data = cp.asarray(X.__array__())
+                    labels = cp.asarray(labels)
+                    score = decoder.cv_cm(data, labels, **decoder_kwargs)
+                yield score.get()
             else:
-                for j, weight in enumerate(weights):
-                    score = decoder.cv_cm(X.__array__() * weight[X.labels[0], None, None].__array__(), labels, **decoder_kwargs)
-                    yield "-".join([names[i], cond, str(j)]), score
+                yield decoder.cv_cm(X.__array__(), labels, **decoder_kwargs)
 
 
 def extract(array: LabeledArray, conds: list[str], trial_ax: int,
@@ -337,9 +355,9 @@ def nan_common_denom(array: LabeledArray, sort: bool = True, trials_ax: int = 1,
     return data[np.ix_(*idx)]
 
 
-def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
-                x_data: np.ndarray, labels: np.ndarray,
-                axis: int, oversample: bool, xp) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def sample_fold(train_idx: Array, test_idx: Array,
+                x_data: Array, labels: Array, unique: Array,
+                axis: int, oversample: bool, xp) -> tuple[Array, Array, Array]:
 
     # make first and only copy of x_data
     idx_stacked = xp.concatenate((train_idx, test_idx))
@@ -362,7 +380,6 @@ def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
     x_train, x_test = x_stacked[idx1], x_stacked[idx2]
     # mixup2(x_train, labels[:sep], axis)
     idx = [slice(None) for _ in range(x_data.ndim)]
-    unique = np.unique(y_train)
     for i in unique:
         # fill in train data nans with random combinations of
         # existing train data trials (mixup)
@@ -381,7 +398,7 @@ def sample_fold(train_idx: np.ndarray, test_idx: np.ndarray,
     # fill in test data nans with noise from distribution
     is_nan = xp.isnan(x_test)
     if is_torch(xp):
-        normal = xp.distributions.normal.Normal(0, 1)
+        normal = xp.distributions.normal.Normal(0, 1, dtype=x_data.dtype)
         x_test.masked_scatter_(is_nan, normal.sample((xp.sum(is_nan),)))
     else:
         x_test[is_nan] = xp.random.normal(0, 1, int(xp.sum(is_nan)))
@@ -403,10 +420,13 @@ def flatten_features(arr: np.ndarray, obs_axs: int = -2) -> np.ndarray:
 
 
 def classes_from_labels(labels: np.ndarray, delim: str = '-', which: int = 0,
-                        crop: slice = slice(None)) -> tuple[dict, np.ndarray]:
+                        crop: slice = slice(None), cats: dict = None) -> tuple[dict, np.ndarray]:
     class_ids = np.array([k.split(delim, )[which][crop] for k in labels])
-    classes = {k: i for i, k in enumerate(np.unique(class_ids))}
-    return classes, np.array([classes[k] for k in class_ids])
+    if cats is None:
+        classes = {k: i for i, k in enumerate(np.unique(class_ids))}
+        return classes, np.array([classes[k] for k in class_ids])
+    else:
+        return cats, np.array([cats[k] for k in class_ids])
 
 
 def scale(X, xmax: float, xmin: float):
