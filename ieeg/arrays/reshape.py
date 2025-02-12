@@ -1,10 +1,15 @@
 # Checked
 import numpy as np
-import cupy as cp
 from numpy.lib.stride_tricks import as_strided
-from cupy.lib.stride_tricks import as_strided as as_strided_cp
 from numpy.lib.array_utils import normalize_axis_tuple
 from ieeg.arrays.api import array_namespace, xp_assert_equal, Array, is_numpy, is_cupy
+
+try:
+    import cupy as cp
+    from cupy.lib.stride_tricks import as_strided as as_strided_cp
+    no_cupy = False
+except ImportError:
+    no_cupy = True
 
 
 def stitch_mats(mats: list[Array], overlaps: list[int], axis: int = 0
@@ -540,6 +545,8 @@ def sliding_window_view(x, window_shape, axis=None, *,
     if is_numpy(xp):
         return as_strided(x, strides=out_strides, shape=out_shape,
                           subok=subok, writeable=writeable)
+    elif is_cupy(xp) and no_cupy:
+        raise ModuleNotFoundError("cupy not available")
     elif is_cupy(xp):
         return as_strided_cp(x, strides=out_strides, shape=out_shape)
     else:
