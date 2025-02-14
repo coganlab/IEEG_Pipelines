@@ -2,7 +2,7 @@ from functools import singledispatch
 
 import numpy as np
 from mne import Epochs
-from mne.time_frequency import EpochsTFR
+from mne.time_frequency import EpochsTFRArray
 from mne.io import Raw, base
 from tqdm import tqdm
 from joblib import Parallel, delayed
@@ -61,7 +61,7 @@ def _(inst: Epochs, Wn=(1, 150), decim: int = 1, spacing: float = 1/7,
     array, freqs = hilbert_spectrogram(inst.get_data(copy=False),
                                        inst.info['sfreq'], Wn, decim,
                                        spacing, n_jobs)
-    return EpochsTFR(inst.info, array, inst.times[::decim], freqs)
+    return EpochsTFRArray(inst.info, array, inst.times[::decim], freqs)
 
 
 @singledispatch
