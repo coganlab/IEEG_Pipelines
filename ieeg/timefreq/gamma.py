@@ -61,7 +61,8 @@ def _(inst: Epochs, Wn=(1, 150), decim: int = 1, spacing: float = 1/7,
     array, freqs = hilbert_spectrogram(inst.get_data(copy=False),
                                        inst.info['sfreq'], Wn, decim,
                                        spacing, n_jobs)
-    return EpochsTFRArray(inst.info, array, inst.times[::decim], freqs)
+    return EpochsTFRArray(inst.info, array, inst.times[::decim], freqs,
+                          events=inst.events, event_id=inst.event_id)
 
 
 @singledispatch
