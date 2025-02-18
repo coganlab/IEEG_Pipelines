@@ -20,7 +20,7 @@ from ieeg import Signal
 from itertools import product
 
 mne.set_log_level("ERROR")
-tfr_types = (mne.time_frequency.EpochsTFR, mne.time_frequency.AverageTFR)
+tfr_types = mne.time_frequency.BaseTFR
 
 class DataLoader:
     def __init__(self, layout: BIDSLayout, conds: dict[str, Doubles],
@@ -105,7 +105,7 @@ class DataLoader:
                 for ev, id in sig.event_id.items():
                     ev = ev.split('/')[-1]
                     out_cond.setdefault(ev, {}).setdefault(ch, {})
-                    if isinstance(sig, mne.time_frequency.EpochsTFR):
+                    if isinstance(sig, mne.time_frequency.BaseTFR):
                         for j, f in enumerate(sig.freqs):
                             out_cond[ev][ch].setdefault(f, {})
                             out_cond[ev][ch][f] = mat[sig.events[:, 2] == id, i, j]
