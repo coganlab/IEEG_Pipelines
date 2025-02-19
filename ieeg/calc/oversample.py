@@ -67,7 +67,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
     def split(self, X, y=None, groups=None):
 
-        xp = array_namespace(X)
+        xp = array_namespace(*[a for a in (X, y, groups) if a is not None])
 
         # find where the nans are
         where = xp.isnan(X).any(axis=tuple(range(X.ndim))[1:])

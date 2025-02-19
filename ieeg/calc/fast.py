@@ -362,8 +362,8 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     >>> group2 = np.random.rand(500, 10, 10, 100)
     >>> group2[::2, 0, 0, :] = np.nan
     >>> mixup(group2, 0)
-    >>> import torch
-    >>> group3 = torch.randn(100, 10, 10, 100)
+    >>> import cupy as cp
+    >>> group3 = cp.randn(100, 10, 10, 100)
     >>> group3[0::2, 0, 0, :] = float("nan")
     >>> mixup(group3, 0)
     >>> group3[0, 0, :, :5]
@@ -384,7 +384,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
             rng = xp
             xp.beta = xp.distributions.beta.Beta(alpha, alpha)
         else:
-            rng = xp.random.get_default_rng()
+            rng = xp.random.RandomState()
 
     # Bring the observation axis to the front; this is a view.
     arr_view = xp.moveaxis(arr, obs_axis, 0)

@@ -7,7 +7,7 @@ import cupy as cp
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
-from ieeg.arrays.api import array_namespace, Array, is_torch
+from ieeg.arrays.api import array_namespace, Array, is_torch, is_numpy
 from ieeg.arrays.reshape import sliding_window_view
 from ieeg.calc.fast import mixup
 import numpy as np
@@ -75,9 +75,8 @@ class Decoder(MinimumNaNSplit):
         >>> labels = np.random.randint(1, 5, 50)
         >>> decoder.cv_cm(X, labels, normalize='true')
         >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
-        ...             5, 10, explained_variance=0.8, da_type='lda',
-        ... DA_kwargs={'solver': 'eigen'})
-        >>> decoder.cv_cm(X, labels, normalize='true')
+        ...             5, 10, explained_variance=0.8, da_type='lda')
+        >>> decoder.cv_cm(X, labels, normalize='true', window=20)
         >>> import cupy as cp
         >>> X = cp.random.randn(100, 100, 50, 100)
         >>> X[0, 0, 0, :] = np.nan
@@ -92,6 +91,8 @@ class Decoder(MinimumNaNSplit):
         # ...     decoder.cv_cm(X, labels, normalize='true')
 
         """
+        assert all(l in self.categories.values() for l in labels), \
+            "Labels must be in the categories"
         xp = array_namespace(x_data)
         n_cats = len(self.categories)
         out_shape = (self.n_repeats, self.n_splits, n_cats, n_cats)
@@ -101,6 +102,9 @@ class Decoder(MinimumNaNSplit):
         data = x_data.swapaxes(0, obs_axs)
 
         if shuffle:
+            isnan = xp.isnan(data)
+            std = float(xp.std(data[~isnan]))
+            data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan)))
             # shuffled label pool
             label_stack = [labels.copy() for _ in range(self.n_repeats)]
             for i in range(self.n_repeats):
@@ -154,30 +158,40 @@ class Decoder(MinimumNaNSplit):
 
 def proc(train_idx, test_idx, l, orig_data, pid, n_splits, cats, window, step, oversample, model_kwargs):
     xp = array_namespace(orig_data)
-    n_cats = len(cats)
     label_cats = xp.asarray(list(cats.values()))
     x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, label_cats, 0, oversample, xp)
+    model = PcaLdaClassification(**model_kwargs)
+
+    def _fit_predict(x_flat):
+        x_train, x_test = x_flat[:train_idx.shape[0]], x_flat[train_idx.shape[0]:]
+        # fit model and score results
+        model.fit(x_train, y_train)
+        pred = model.predict(x_test)
+        return confusion_matrix(y_test, pred, label_cats, namespace=xp)
 
     rep, fold = divmod(pid, n_splits)
     if window is None:
-        return fit_predict(model_kwargs, x_stacked, train_idx.shape[0], y_train, y_test, label_cats, xp), rep, fold
+        x_flattened = x_stacked.reshape(x_stacked.shape[0], -1)
+        return _fit_predict(x_flattened), rep, fold
 
     windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
-    out = xp.zeros((windowed.shape[-2], n_cats, n_cats), dtype=xp.uint8)
-    for i in range(windowed.shape[-2]):
-        x_window = windowed[..., i, :]
-        out[i] = fit_predict(model_kwargs, x_window, train_idx.shape[0], y_train, y_test, label_cats, xp)
+    swapped = xp.moveaxis(windowed.swapaxes(-1, -2).reshape(
+        windowed.shape[0], -1, windowed.shape[-2]),-1, 0)
+
+    if is_numpy(xp):
+        func = np.vectorize(_fit_predict,
+                            signature='(a,b) -> (d,d)',
+                            otypes=[xp.uint8])
+        out = func(swapped)
+    else:
+        out = xp.zeros((windowed.shape[-2], label_cats.shape[0],
+                        label_cats.shape[0]), dtype=xp.uint8)
+        for i in range(windowed.shape[-2]):
+            x_window = windowed[..., i, :]
+            out[i] = _fit_predict(x_window.reshape(x_window.shape[0], -1))
+
     return out, rep, fold
 
-def fit_predict(kwargs, x_stacked, split_idx, y_train, y_test, labels, xp):
-    kwargs['PCA_kwargs'] = {'copy': False}
-    model = PcaLdaClassification(**kwargs)
-    x_flat = x_stacked.reshape(x_stacked.shape[0], -1)
-    x_train, x_test = x_flat[:split_idx], x_flat[split_idx:]
-    # fit model and score results
-    model.fit(x_train, y_train)
-    pred = model.predict(x_test)
-    return confusion_matrix(y_test, pred, labels, namespace=xp)
 
 def confusion_matrix(
     y_true, y_pred, labels=None, namespace=None
@@ -293,7 +307,9 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
             # Decoding
             decoder.current_job = "-".join([names[i], cond])
             if on_gpu:
-                with config_context(array_api_dispatch=True):
+                with config_context(array_api_dispatch=True,
+                                    enable_metadata_routing=True,
+                                    skip_parameter_validation=True):
                     data = cp.asarray(X.__array__())
                     labels = cp.asarray(labels)
                     score = decoder.cv_cm(data, labels, **decoder_kwargs)
@@ -386,13 +402,14 @@ def sample_fold(train_idx: Array, test_idx: Array,
         isin = y_train == i
         idx[axis] = isin
         out = x_train[tuple(idx)]
-        mixup(out, axis)
-        if is_torch(xp):
-            idx3 = tuple(None if j != axis else
-                         slice(None) for j in range(x_data.ndim))
-            x_train.masked_scatter_(isin[idx3], out)
-        else:
-            x_train[tuple(idx)] = out
+        if out.size != 0:
+            mixup(out, axis)
+            if is_torch(xp):
+                idx3 = tuple(None if j != axis else
+                             slice(None) for j in range(x_data.ndim))
+                x_train.masked_scatter_(isin[idx3], out)
+            else:
+                x_train[tuple(idx)] = out
 
 
     # fill in test data nans with noise from distribution
