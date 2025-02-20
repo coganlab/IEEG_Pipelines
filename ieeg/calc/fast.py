@@ -262,7 +262,7 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     --------
     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
     ... [float("nan"), float("nan")]])
-    >>> mixup(arr, 0, rng=42)
+    >>> _mixup_np(arr, 0, rng=42)
     >>> arr # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[1.        , 2.        ],
            [4.        , 5.        ],
@@ -270,7 +270,7 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
            [5.24946679, 6.24946679]])
     >>> arr2 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr2[0, 2, :] = [float("nan")] * 4
-    >>> mixup(arr2, 1, rng=42)
+    >>> _mixup_np(arr2, 1, rng=42)
     >>> arr2 # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
@@ -279,10 +279,10 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
-    >>> arr3 = np.arange(24, dtype='f2').reshape(3, 2, 4)
+    >>> arr3 = np.arange(24).reshape(3, 2, 4).astype("f2")
     >>> arr3[0, :, :] = float("nan")
     >>> _mixup_np(arr3, 0, rng=42)
-    >>> arr3 # doctest: +NORMALIZE_WHITESPACE +SKIP
+    >>> arr3 # doctest: +NORMALIZE_WHITESPACE
     array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
             [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
     <BLANKLINE>
@@ -293,18 +293,26 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     """
 
+    if arr.dtype != np.float64:
+        temp = arr.astype(float, copy=True)
+        _mixup_np(temp, obs_axis, alpha, rng)
+        arr[...] = temp
+        return
+
     if obs_axis == 0:
         arr = arr.swapaxes(1, obs_axis)
     if arr.ndim > 3:
         for i in range(arr.shape[0]):
-            mixup(arr[i], obs_axis - 1, alpha, rng)
+            _mixup_np(arr[i], obs_axis - 1, alpha, rng)
     elif arr.ndim == 1:
         raise ValueError("Array must have at least 2 dimensions")
     else:
         if rng is None:
             rng = np.random.randint(0, 2 ** 16 - 1)
 
-        cmixup(arr.astype(float, copy=False), 1, alpha, rng)
+        # temp = arr.astype(float, copy=True)
+        cmixup(arr, 1, alpha, rng)
+        # arr[...] = temp
 
 def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
                      rng=None) -> None:
@@ -359,9 +367,10 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     >>> mixup(arr3, 1)
     >>> arr3
     ... # arr3[0,2,:] has been replaced with a mixup of two non-NaN rows from arr3[0,:,:]
-    >>> group2 = np.random.rand(500, 10, 10, 100)
+    >>> group2 = np.random.rand(500, 10, 10, 100).astype("float16")
     >>> group2[::2, 0, 0, :] = np.nan
     >>> mixup(group2, 0)
+    >>> group2[:10, 0, 0, :5]
     >>> import cupy as cp
     >>> group3 = cp.randn(100, 10, 10, 100)
     >>> group3[0::2, 0, 0, :] = float("nan")
