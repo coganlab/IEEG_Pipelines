@@ -283,6 +283,9 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr3[0, :, :] = float("nan")
     >>> _mixup_np(arr3, 0, rng=42)
     >>> arr3 # doctest: +NORMALIZE_WHITESPACE
+    >>> group2 = np.random.rand(500, 100, 10, 10).astype("f8")
+    >>> group2[::2] = np.nan
+    >>> _mixup_np(group2, 0, rng=42)
     array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
             [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
     <BLANKLINE>
@@ -293,14 +296,18 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     """
 
-    if arr.dtype != np.float64:
-        temp = arr.astype(float, copy=True)
-        _mixup_np(temp, obs_axis, alpha, rng)
-        arr[...] = temp
-        return
+    # arrtype = arr.dtype
+    # if arrtype != np.float64:
+    #     temp = arr.astype(np.float64, casting='safe')
+    #     # temp = arr.astype(float, copy=True)
+    #     _mixup_np(temp, obs_axis, alpha, rng)
+    #     # arr.astype(arrtype, copy=False, casting='safe')
+    #     arr[...] = temp
+    #     return
 
     if obs_axis == 0:
         arr = arr.swapaxes(1, obs_axis)
+        obs_axis = 1
     if arr.ndim > 3:
         for i in range(arr.shape[0]):
             _mixup_np(arr[i], obs_axis - 1, alpha, rng)
@@ -310,8 +317,9 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
         if rng is None:
             rng = np.random.randint(0, 2 ** 16 - 1)
 
-        # temp = arr.astype(float, copy=True)
         cmixup(arr, 1, alpha, rng)
+        # temp = arr.astype(float, copy=False, casting='safe')
+        # cmixup(temp, 1, alpha, rng)
         # arr[...] = temp
 
 def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
@@ -372,13 +380,13 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     >>> mixup(group2, 0)
     >>> group2[:10, 0, 0, :5]
     >>> import cupy as cp
-    >>> group3 = cp.randn(100, 10, 10, 100)
+    >>> group3 = cp.random.randn(100, 10, 10, 100)
     >>> group3[0::2, 0, 0, :] = float("nan")
     >>> mixup(group3, 0)
     >>> group3[0, 0, :, :5]
     """
     xp = array_namespace(arr)
-    if is_numpy(xp):
+    if is_numpy(xp) and arr.dtype == np.float64:
         _mixup_np(arr, obs_axis, alpha, rng)
         return
     elif is_torch(xp): # TODO: remove this crutch to keep data on the GPU
@@ -431,7 +439,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
         # boolean mask along axis 0: since False sorts before True, the first few
         # indices are the non-missing ones.
         order = xp.argsort(mask, axis=0)
-        counts = xp.sum(~mask, axis=0)  # number of non-missing rows per batch
+        counts = xp.sum(~mask, axis=0, dtype=xp.int64)  # number of non-missing rows per batch
         # Get all indices where the observation is missing.
         missing_rows, batch_idx = xp.nonzero(mask)
         if missing_rows.size:
@@ -524,14 +532,14 @@ if __name__ == "__main__":
     from timeit import timeit
 
     np.random.seed(0)
-    n = 300
-    group1 = np.random.rand(100, 100, 100)
-    group2 = np.random.rand(500, 100, 100)
+    n = 30
+    group1 = np.random.rand(100, 100, 100, 10)
+    group2 = np.random.rand(500, 100, 100, 10).astype("f2")
     group2[::2] = np.nan
 
     kwargs = dict(globals=globals(), number=n)
     time1 = timeit('mixup(group2.copy(), 0)', **kwargs)
-    time2 = timeit('mixup3(group2.copy(), 0)', **kwargs)
+    time2 = timeit('_mixup_np(group2.copy(), 0)', **kwargs)
 
     print(f"ttest: {time1 / n:.3g} per run")
     print(f"meandiff: {time2 / n:.3g} per run")
