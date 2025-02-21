@@ -283,9 +283,6 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr3[0, :, :] = float("nan")
     >>> _mixup_np(arr3, 0, rng=42)
     >>> arr3 # doctest: +NORMALIZE_WHITESPACE
-    >>> group2 = np.random.rand(500, 100, 10, 10).astype("f8")
-    >>> group2[::2] = np.nan
-    >>> _mixup_np(group2, 0, rng=42)
     array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
             [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
     <BLANKLINE>
@@ -296,18 +293,8 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
             [20.        , 21.        , 22.        , 23.        ]]])
     """
 
-    # arrtype = arr.dtype
-    # if arrtype != np.float64:
-    #     temp = arr.astype(np.float64, casting='safe')
-    #     # temp = arr.astype(float, copy=True)
-    #     _mixup_np(temp, obs_axis, alpha, rng)
-    #     # arr.astype(arrtype, copy=False, casting='safe')
-    #     arr[...] = temp
-    #     return
-
     if obs_axis == 0:
         arr = arr.swapaxes(1, obs_axis)
-        obs_axis = 1
     if arr.ndim > 3:
         for i in range(arr.shape[0]):
             _mixup_np(arr[i], obs_axis - 1, alpha, rng)
@@ -317,10 +304,14 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
         if rng is None:
             rng = np.random.randint(0, 2 ** 16 - 1)
 
-        cmixup(arr, 1, alpha, rng)
-        # temp = arr.astype(float, copy=False, casting='safe')
-        # cmixup(temp, 1, alpha, rng)
-        # arr[...] = temp
+
+        if arr.dtype != np.float64:
+            temp = arr.astype('f8', copy=True)
+            cmixup(temp, 1, alpha, rng)
+            arr[...] = temp
+        else:
+            cmixup(arr, 1, alpha, rng)
+
 
 def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
                      rng=None) -> None:
@@ -386,7 +377,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     >>> group3[0, 0, :, :5]
     """
     xp = array_namespace(arr)
-    if is_numpy(xp) and arr.dtype == np.float64:
+    if is_numpy(xp):
         _mixup_np(arr, obs_axis, alpha, rng)
         return
     elif is_torch(xp): # TODO: remove this crutch to keep data on the GPU
@@ -405,65 +396,47 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
 
     # Bring the observation axis to the front; this is a view.
     arr_view = xp.moveaxis(arr, obs_axis, 0)
-    ndim = arr_view.ndim
 
-    if ndim == 2:
-        # 2D case: shape is (n_obs, n_features)
-        mask = xp.isnan(arr_view).any(axis=-1)  # True for rows with any NaN
-        missing_idx = xp.nonzero(mask)[0]
-        if missing_idx.size:
-            non_missing_idx = xp.nonzero(~mask)[0]
-            # For every missing row, randomly choose two non-missing donor rows.
-            donors = rng.choice(non_missing_idx, size=(missing_idx.size, 2))
-            # Draw mixing coefficients from Beta(alpha, alpha) and flip if < 0.5.
-            lams = rng.beta(alpha, alpha, size=missing_idx.size)
-            lams = xp.where(lams < 0.5, 1 - lams, lams)
-            # Replace the missing rows with a convex combination.
-            arr_view[missing_idx] = (
-                lams[:, None] * arr_view[donors[:, 0]] +
-                (1 - lams)[:, None] * arr_view[donors[:, 1]]
-            )
-    else:
-        # For ndim >= 3, assume that the last axis holds features.
-        # Flatten all intermediate (batch) dimensions into one.
-        n_obs = arr_view.shape[0]
-        n_features = arr_view.shape[-1]
-        if is_torch(xp) and not arr_view.is_contiguous():
-            arr_view = arr_view.contiguous()
+    # For ndim >= 3, assume that the last axis holds features.
+    # Flatten all intermediate (batch) dimensions into one.
+    n_obs = arr_view.shape[0]
+    n_features = arr_view.shape[-1]
+    if is_torch(xp) and not arr_view.is_contiguous():
+        arr_view = arr_view.contiguous()
 
-        arr_flat = arr_view.reshape(n_obs, -1, n_features)
-        # Compute a mask over the observation axis for each batch:
-        mask = xp.isnan(arr_view).any(axis=-1).reshape(n_obs, -1)
-        # For each batch (i.e. each column in the flattened batch dimension) we
-        # want to know the available (non-NaN) indices. We do this by sorting the
-        # boolean mask along axis 0: since False sorts before True, the first few
-        # indices are the non-missing ones.
-        order = xp.argsort(mask, axis=0)
-        counts = xp.sum(~mask, axis=0, dtype=xp.int64)  # number of non-missing rows per batch
-        # Get all indices where the observation is missing.
-        missing_rows, batch_idx = xp.nonzero(mask)
-        if missing_rows.size:
-            L = missing_rows.shape[0]
-            # For each missing observation, generate a random index into the available
-            # (non-missing) rows in its batch.
-            idx1 = xp.astype(rng.rand(L) * counts[batch_idx], int)
-            idx2 = xp.astype(rng.rand(L) * counts[batch_idx], int)
-            donor1 = order[idx1, batch_idx]
-            donor2 = order[idx2, batch_idx]
-            if is_torch(xp):
-                lams = xp.beta.sample((L,))
-            else:
-                lams = rng.beta(alpha, alpha, size=L)
-            lams = xp.where(lams < 0.5, 1 - lams, lams)
-            # Instead of direct advanced indexing assignment, use index_put_ for torch:
-            value = (
-                lams[:, None] * arr_flat[donor1, batch_idx, :] +
-                (1 - lams)[:, None] * arr_flat[donor2, batch_idx, :]
-            )
-            if is_torch(xp):
-                arr_flat.masked_scatter_(mask[..., None], value)
-            else:
-                arr_flat[missing_rows, batch_idx, :] = value
+    arr_flat = arr_view.reshape(n_obs, -1, n_features)
+    # Compute a mask over the observation axis for each batch:
+    mask = xp.isnan(arr_view).any(axis=-1).reshape(n_obs, -1)
+    # For each batch (i.e. each column in the flattened batch dimension) we
+    # want to know the available (non-NaN) indices. We do this by sorting the
+    # boolean mask along axis 0: since False sorts before True, the first few
+    # indices are the non-missing ones.
+    order = xp.argsort(mask, axis=0)
+    counts = xp.sum(~mask, axis=0)  # number of non-missing rows per batch
+    # Get all indices where the observation is missing.
+    missing_rows, batch_idx = xp.nonzero(mask)
+    if missing_rows.size:
+        L = missing_rows.shape[0]
+        # For each missing observation, generate a random index into the available
+        # (non-missing) rows in its batch.
+        idx1 = xp.astype(rng.rand(L) * counts[batch_idx], int)
+        idx2 = xp.astype(rng.rand(L) * counts[batch_idx], int)
+        donor1 = order[idx1, batch_idx]
+        donor2 = order[idx2, batch_idx]
+        if is_torch(xp):
+            lams = xp.beta.sample((L,))
+        else:
+            lams = rng.beta(alpha, alpha, size=L)
+        lams = xp.where(lams < 0.5, 1 - lams, lams)
+        # Instead of direct advanced indexing assignment, use index_put_ for torch:
+        value = (
+            lams[:, None] * arr_flat[donor1, batch_idx, :] +
+            (1 - lams)[:, None] * arr_flat[donor2, batch_idx, :]
+        )
+        if is_torch(xp):
+            arr_flat.masked_scatter_(mask[..., None], value)
+        else:
+            arr_flat[missing_rows, batch_idx, :] = value
 
 
 def norm(arr: np.ndarray, obs_axis: int = -1) -> None:
@@ -532,14 +505,14 @@ if __name__ == "__main__":
     from timeit import timeit
 
     np.random.seed(0)
-    n = 30
-    group1 = np.random.rand(100, 100, 100, 10)
-    group2 = np.random.rand(500, 100, 100, 10).astype("f2")
+    n = 300
+    group1 = np.random.rand(100, 100, 100)
+    group2 = np.random.rand(500, 100, 100).astype('f2')
     group2[::2] = np.nan
 
     kwargs = dict(globals=globals(), number=n)
     time1 = timeit('mixup(group2.copy(), 0)', **kwargs)
-    time2 = timeit('_mixup_np(group2.copy(), 0)', **kwargs)
+    time2 = timeit('mixup3(group2.copy(), 0)', **kwargs)
 
     print(f"ttest: {time1 / n:.3g} per run")
     print(f"meandiff: {time2 / n:.3g} per run")
