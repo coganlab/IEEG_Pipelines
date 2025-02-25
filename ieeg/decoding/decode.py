@@ -5,7 +5,7 @@ from sklearn import config_context
 try:
     import cupy as cp
 except ImportError:
-    pass
+    cp = None
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
@@ -310,6 +310,8 @@ def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
             # Decoding
             decoder.current_job = "-".join([names[i], cond])
             if on_gpu:
+                if cp is None:
+                    raise ImportError("CuPy is not installed.")
                 with config_context(array_api_dispatch=True,
                                     enable_metadata_routing=True,
                                     skip_parameter_validation=True):
