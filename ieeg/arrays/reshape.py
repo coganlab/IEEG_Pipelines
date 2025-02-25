@@ -1,8 +1,36 @@
 # Checked
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
-from numpy.lib.array_utils import normalize_axis_tuple
 from ieeg.arrays.api import array_namespace, xp_assert_equal, Array, is_numpy, is_cupy
+
+try:
+    from numpy.lib.array_utils import normalize_axis_tuple
+except ImportError:
+    import operator
+    def _normalize_axis_tuple(axis, ndim, argname=None, allow_duplicate=False):
+        if type(axis) not in (tuple, list):
+            try:
+                axis = [operator.index(axis)]
+            except TypeError:
+                pass
+        # Going via an iterator directly is slower than via list comprehension.
+        axis = tuple([_normalize_index(ax, ndim) for ax in axis])
+        if not allow_duplicate and len(set(axis)) != len(axis):
+            if argname:
+                raise ValueError('repeated axis in `{}` argument'.format(argname))
+            else:
+                raise ValueError('repeated axis')
+        return axis
+
+    def _normalize_index(index: int, ndim: int):
+        if ndim < 1:
+            raise ValueError("ndim must be at least 1")
+        while index < 0:
+            index += ndim
+        if index >= ndim:
+            raise IndexError("index {} is out of bounds for axis with size {}".format(index, ndim))
+        return index
+    normalize_axis_tuple = _normalize_axis_tuple
 
 try:
     import cupy as cp
