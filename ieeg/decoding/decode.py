@@ -2,7 +2,10 @@ from typing import Any, Generator
 
 from numpy import ndarray
 from sklearn import config_context
-import cupy as cp
+try:
+    import cupy as cp
+except ImportError:
+    pass
 
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
@@ -103,8 +106,8 @@ class Decoder(MinimumNaNSplit):
 
         if shuffle:
             isnan = xp.isnan(data)
-            std = float(xp.std(data[~isnan]))
-            data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan)))
+            std = float(xp.nanstd(data, dtype='f8'))
+            data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan, dtype='i8')))
             # shuffled label pool
             label_stack = [labels.copy() for _ in range(self.n_repeats)]
             for i in range(self.n_repeats):
