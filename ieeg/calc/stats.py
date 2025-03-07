@@ -320,6 +320,7 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = ttest,
                       ignore_adjacency: tuple[int] | int = None,
+                      permutation_type='independent',
                       n_jobs: int = -1, seed: int = None
                       ) -> (np.ndarray[bool], np.ndarray[float]):
     """Calculate significant clusters using permutation testing and cluster
@@ -362,6 +363,13 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         The axis or axes to ignore when finding clusters. For example, if
         sig1.shape = (trials, channels, time), and you want to find clusters
         across time, but not channels, you would set ignore_adjacency = 1.
+    permutation_type : {‘independent’, ‘samples’, ‘pairings’}, optional
+        The type of permutations to be performed, in accordance with the null
+        hypothesis. The first two permutation types are for paired sample
+        statistics, in which all samples contain the same number of
+        observations and observations with corresponding indices along
+        axis are considered to be paired; the third is for independent sample
+        statistics. See: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html#permutation-test
     n_jobs : int, optional
         The number of jobs to run in parallel. -1 for all processors. Default
         is -1.
@@ -426,7 +434,8 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     batch_size //= 4
     # small_enough = batch_size > n_perm ** 2
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
-                  axis=axis, vectorized=True, random_state=rng)
+                  axis=axis, vectorized=True, random_state=rng,
+                  permutation_type=permutation_type)
 
     if 'alternative' in stat_func.__code__.co_varnames:
         func = stat_func
