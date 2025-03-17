@@ -207,9 +207,9 @@ static void mean_diff_longdouble(
 
         // inner loop
         if (len1 > len2) {
-            sums_and_counts_double(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
+            sums_and_counts_longdouble(in1, in2, len1, len2, innerstep1, innerstep2, &sum1, &sum2, &count1, &count2);
         } else {
-            sums_and_counts_double(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
+            sums_and_counts_longdouble(in2, in1, len2, len1, innerstep2, innerstep1, &sum2, &sum1, &count2, &count1);
         }
         // Calculate the difference
         *((long double *)out) = ((count1 > 0) && (count2 > 0)) ? sum1 / count1 - sum2 / count2 : NAN;
@@ -354,7 +354,6 @@ static void t_test_half(
     const npy_intp innerstep1 = steps[3];   // Step size of elements within the first input
     const npy_intp innerstep2 = steps[4];   // Step size of elements within the second input
 
-
     for (npy_intp i = 0; i < nloops; i++, in1 += step1, in2 += step2, out += step_out) {
         float sum1 = 0.0, sum2 = 0.0;
         npy_intp count1 = 0, count2 = 0;
@@ -415,7 +414,7 @@ static void t_test_float(
 
         // varience is zero if there is only one element, so we need to check for this
         if ((count1 == 0) || (count2 == 0) || (count1 == 1 && count2 == 1)) {
-            *((float *)out) = NPY_NAN;
+            *((float *)out) = NAN;
         } else {
             float varsum1 = 0.0, varsum2 = 0.0;
             // Calculate the mean
@@ -536,12 +535,12 @@ static PyUFuncGenericFunction funcs[8] = {&mean_diff_half,
                                           &t_test_double,
                                           &t_test_longdouble};
 
-static char md_types[12] = {NPY_HALF, NPY_HALF, NPY_HALF,
+static const char md_types[12] = {NPY_HALF, NPY_HALF, NPY_HALF,
                             NPY_FLOAT, NPY_FLOAT, NPY_FLOAT,
                             NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE,
                             NPY_LONGDOUBLE, NPY_LONGDOUBLE, NPY_LONGDOUBLE};
 
-static char t_types[12] = {NPY_HALF, NPY_HALF, NPY_HALF,
+static const char t_types[12] = {NPY_HALF, NPY_HALF, NPY_HALF,
                            NPY_FLOAT, NPY_FLOAT, NPY_FLOAT,
                            NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE,
                            NPY_LONGDOUBLE, NPY_LONGDOUBLE, NPY_LONGDOUBLE};
@@ -602,10 +601,10 @@ PyMODINIT_FUNC PyInit_ufuncs(void) {
         return NULL;
     }
 
-    ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, md_types, 4, 2, 1, PyUFunc_None, "mean_diff",
+    ufunc1 = PyUFunc_FromFuncAndDataAndSignature(funcs, NULL, md_types, 4, 2, 1, PyUFunc_Zero, "mean_diff",
     doc, 0, "(i),(j)->()");
 
-    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 4, NULL, t_types, 4, 2, 1, PyUFunc_None, "t_test",
+    ufunc2 = PyUFunc_FromFuncAndDataAndSignature(funcs + 4, NULL, t_types, 4, 2, 1, PyUFunc_ReorderableNone, "t_test",
     "", 0, "(i),(j)->()");
 
     d = PyModule_GetDict(m);
