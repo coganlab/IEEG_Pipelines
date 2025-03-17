@@ -19,7 +19,7 @@ from joblib import Parallel, delayed
 from ieeg import Signal
 from itertools import product
 
-mne.set_log_level("ERROR")
+# mne.set_log_level("ERROR")
 tfr_types = mne.time_frequency.BaseTFR
 
 class DataLoader:

@@ -3,8 +3,6 @@ from joblib import Parallel, delayed, cpu_count
 from mne.utils import logger
 from scipy import stats as st
 from scipy import ndimage
-from psutil import virtual_memory
-from threadpoolctl import threadpool_limits
 
 from ieeg import Doubles
 from ieeg.arrays.reshape import make_data_same
@@ -317,182 +315,12 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     return res.pvalue
 
 
-# def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
-#                       p_cluster: float = None, n_perm: int = 1000,
-#                       tails: int = 1, axis: int = 0,
-#                       stat_func: callable = ttest,
-#                       ignore_adjacency: tuple[int] | int = None,
-#                       permutation_type='independent',
-#                       n_jobs: int = -1, seed: int = None
-#                       ) -> (np.ndarray[bool], np.ndarray[float]):
-#     """Calculate significant clusters using permutation testing and cluster
-#     correction.
-#
-#     Takes two time series signals, finding clusters of activation defined as
-#     significant contiguous time points with a p value less than the p_thresh
-#     (greater if tails is -1, and both if tails is 2). The p value is the
-#     proportion of times that the difference in the statistic value for signal 1
-#     with respect to signal 2 is greater than the statistic for a random
-#     sampling of signal 1 and 2 with respect to a random sampling of signal 1
-#     and 2. The clusters are then corrected by only keeping clusters that are in
-#     the (1 - p_cluster)'th percentile of cluster lengths for signal 2.
-#
-#     Parameters
-#     ----------
-#     sig1 : array, shape (trials, ..., time)
-#         Active signal. The first dimension is assumed to be the trials
-#     sig2 : array, shape (trials, ..., time)
-#         Passive signal. The first dimension is assumed to be the trials
-#     p_thresh : float
-#         The p-value threshold to use for determining significant time points.
-#     p_cluster : float, optional
-#         The p-value threshold to use for determining significant clusters.
-#     n_perm : int, optional
-#         The number of permutations to perform.
-#     tails : int, optional
-#         The number of tails to use. 1 for one-tailed, 2 for two-tailed.
-#     axis : int, optional
-#         The axis to perform the permutation test across. Also known as the
-#         observations axis
-#     stat_func : callable, optional
-#         The statistical function to use to compare populations. Requires an
-#         axis keyword input to denote observations (trials, for example).
-#         Default function is `mean_diff`, but may be substituted with other test
-#         functions found here:
-#         https://scipy.github.io/devdocs/reference/stats.html#independent
-#         -sample-tests
-#     ignore_adjacency : int or tuple of ints, optional
-#         The axis or axes to ignore when finding clusters. For example, if
-#         sig1.shape = (trials, channels, time), and you want to find clusters
-#         across time, but not channels, you would set ignore_adjacency = 1.
-#     permutation_type : {‘independent’, ‘samples’, ‘pairings’}, optional
-#         The type of permutations to be performed, in accordance with the null
-#         hypothesis. The first two permutation types are for paired sample
-#         statistics, in which all samples contain the same number of
-#         observations and observations with corresponding indices along
-#         axis are considered to be paired; the third is for independent sample
-#         statistics. See: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html#permutation-test
-#     n_jobs : int, optional
-#         The number of jobs to run in parallel. -1 for all processors. Default
-#         is -1.
-#     seed : int, optional
-#         The random seed to use for the permutation test. Default is None.
-#
-#     Returns
-#     -------
-#     clusters : array, shape (..., time)
-#         The binary array of significant clusters.
-#     p_obs : array, shape (..., time)
-#         The p-value of the observed difference.
-#
-#     References
-#     ----------
-#     1. https://www.sciencedirect.com/science/article/pii/S0165027007001707
-#
-#     Examples
-#     --------
-#     >>> import numpy as np
-#     >>> seed = 43; rng = np.random.default_rng(seed)
-#     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
-#     ... for _ in range(50)]) - rng.random((50, 15)) * 2.6
-#     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random(
-#     ... (100, 15))
-#     >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=100000, seed=seed)[0]
-#     array([False, False, False, False,  True,  True,  True,  True,  True,
-#             True,  True, False, False, False, False])
-#     >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=100000, seed=seed)[0]
-#     array([False, False, False, False, False,  True,  True,  True,  True,
-#             True, False, False, False, False, False])
-#     """
-#     # check inputs
-#     if tails == 1:
-#         alt = 'greater'
-#     elif tails == -1:
-#         alt = 'less'
-#     elif tails == 2:
-#         alt = 'two-sided'
-#     else:
-#         raise ValueError('tails must be 1, 2, or -1')
-#     if p_cluster is None:
-#         p_cluster = p_thresh
-#     if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
-#         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
-#     if isinstance(ignore_adjacency, int):
-#         ignore_adjacency = (ignore_adjacency,)
-#     if isinstance(ignore_adjacency, tuple):
-#         assert axis not in ignore_adjacency, ValueError(
-#             'observations axis is eliminated before clustering and so cannot '
-#             'be in ignore_adjacency')
-#         nprocs = sum(sig1.shape[i] for i in ignore_adjacency)
-#         n_jobs += cpu_count() + 1 if n_jobs < 0 else 0
-#     else:
-#         nprocs = 1
-#
-#     # set process parameters
-#     rng = np.random.default_rng(seed)
-#     sig2 = make_data_same(sig2, sig1.shape, axis, -1, True, rng)
-#     sample_size = sig1.nbytes + sig2.nbytes
-#     batch_size = get_mem() // sample_size
-#     batch_size //= 4
-#     # small_enough = batch_size > n_perm ** 2
-#     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
-#                   axis=axis, vectorized=True, random_state=rng,
-#                   permutation_type=permutation_type)
-#
-#     if 'alternative' in stat_func.__code__.co_varnames:
-#         func = stat_func
-#         def stat_func(*args, **kwargs):
-#             kwargs['alternative'] = alt
-#             return func(*args, **kwargs)
-#
-#     if isinstance(stat_func(np.array([1]), np.array([1]), axis), tuple):
-#         logger.warning('stat_func returns a tuple. Taking the first element')
-#         func = stat_func
-#
-#         def stat_func(*args, **kwargs):
-#             return func(*args, **kwargs)[0]
-#
-#     # Create binary clusters using the p value threshold
-#     def _proc(pid: int, sig1: np.ndarray, sig2: np.ndarray
-#               ) -> tuple[int, np.ndarray[int], np.ndarray[float]]:
-#         res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
-#         p_act = res.pvalue
-#         diff = res.null_distribution
-#
-#         # Calculate the p value of the permutation distribution
-#         p_perm = proportion(diff, tail=tails, axis=axis)
-#
-#         # Create binary clusters using the p value threshold
-#         b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
-#         b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
-#
-#         return pid, time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
-#
-#     # axes where adjacency is ignored can be computed independently in
-#     # parallel
-#     if nprocs > 1:
-#         out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
-#         out1 = np.zeros(out_shape, dtype=int)
-#         out2 = np.zeros(out_shape, dtype=float)
-#         ins = ((i[:axis] + i[axis + 1:], sig1[i], sig2[i]
-#                 ) for i in iterate_axes(sig1, ignore_adjacency))
-#         # axis -= sum(1 for i in ignore_adjacency if i < axis)
-#         proc = Parallel(n_jobs, "threading", 'generator_unordered', 40,)(
-#             delayed(_proc)(*i) for i in ins)
-#         for idx, iout1, iout2 in proc:
-#             out1[idx], out2[idx] = iout1, iout2
-#         return out1, out2
-#     else:
-#         return _proc(0, sig1, sig2)[1:]
-
-
 def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = ttest,
                       ignore_adjacency: tuple[int] | int = None,
                       permutation_type='independent',
-                      vectorized: bool = True,
                       n_jobs: int = -1, seed: int = None
                       ) -> (np.ndarray[bool], np.ndarray[float]):
     """Calculate significant clusters using permutation testing and cluster
@@ -587,19 +415,26 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         p_cluster = p_thresh
     if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
+    if isinstance(ignore_adjacency, int):
+        ignore_adjacency = (ignore_adjacency,)
+    if isinstance(ignore_adjacency, tuple):
+        assert axis not in ignore_adjacency, ValueError(
+            'observations axis is eliminated before clustering and so cannot '
+            'be in ignore_adjacency')
+        nprocs = sum(sig1.shape[i] for i in ignore_adjacency)
+        n_jobs += cpu_count() + 1 if n_jobs < 0 else 0
+    else:
+        nprocs = 1
 
     # set process parameters
     rng = np.random.default_rng(seed)
     sig2 = make_data_same(sig2, sig1.shape, axis, -1, True, rng)
     sample_size = sig1.nbytes + sig2.nbytes
-    n_batches = virtual_memory().available // sample_size
-
-    # https://github.com/scipy/scipy/blob/5cf433589639f28cbf5c3911061b07f0c6d6bd68/scipy/stats/_resampling.py#L22-L23
-    if vectorized:
-        n_batches /= 2 # halve memory because scipy copys data once
-
-    kwargs = dict(n_resamples=n_perm, alternative=alt, batch=n_batches,
-                  axis=axis, vectorized=vectorized, random_state=rng,
+    batch_size = get_mem() // sample_size
+    batch_size //= 2
+    # small_enough = batch_size > n_perm ** 2
+    kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
+                  axis=axis, vectorized=True, random_state=rng,
                   permutation_type=permutation_type)
 
     if 'alternative' in stat_func.__code__.co_varnames:
@@ -615,8 +450,9 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         def stat_func(*args, **kwargs):
             return func(*args, **kwargs)[0]
 
-    # Use threadpoolctl to control the number of threads
-    with threadpool_limits(limits=n_jobs):
+    # Create binary clusters using the p value threshold
+    def _proc(pid: int, sig1: np.ndarray, sig2: np.ndarray
+              ) -> tuple[int, np.ndarray[int], np.ndarray[float]]:
         res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
         p_act = res.pvalue
         diff = res.null_distribution
@@ -625,11 +461,103 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         p_perm = proportion(diff, tail=tails, axis=axis)
 
         # Create binary clusters using the p value threshold
-        b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
-        b_perm = tail_compare(p_perm, 1 - p_thresh, tails)
-        b_clust = time_cluster(b_act, b_perm, 1 - p_cluster, tails, ignore_adjacency)
+        b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
+        b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
 
-        return b_clust, p_act
+        return pid, time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
+
+    # axes where adjacency is ignored can be computed independently in
+    # parallel
+    if nprocs > 1:
+        out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
+        out1 = np.zeros(out_shape, dtype=int)
+        out2 = np.zeros(out_shape, dtype=float)
+        ins = ((i[:axis] + i[axis + 1:], sig1[i], sig2[i]
+                ) for i in iterate_axes(sig1, ignore_adjacency))
+        proc = Parallel(n_jobs, "threading", 'generator_unordered', 40,)(
+            delayed(_proc)(*i) for i in ins)
+        for idx, iout1, iout2 in proc:
+            out1[idx], out2[idx] = iout1, iout2
+        return out1, out2
+    else:
+        return _proc(0, sig1, sig2)[1:]
+
+
+# def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
+#                       p_cluster: float = None, n_perm: int = 1000,
+#                       tails: int = 1, axis: int = 0,
+#                       stat_func: callable = ttest,
+#                       ignore_adjacency: tuple[int] | int = None,
+#                       permutation_type='independent',
+#                       vectorized: bool = True,
+#                       n_jobs: int = -1, seed: int = None
+#                       ) -> (np.ndarray[bool], np.ndarray[float]):
+#     # check inputs
+#     if tails == 1:
+#         alt = 'greater'
+#     elif tails == -1:
+#         alt = 'less'
+#     elif tails == 2:
+#         alt = 'two-sided'
+#     else:
+#         raise ValueError('tails must be 1, 2, or -1')
+#     if p_cluster is None:
+#         p_cluster = p_thresh
+#     if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
+#         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
+#
+#     # set process parameters
+#     rng = np.random.default_rng(seed)
+#     sig2 = make_data_same(sig2, sig1.shape, axis, -1, True, rng)
+#     sample_size = sig1.nbytes + sig2.nbytes
+#     n_batches = virtual_memory().available // sample_size
+#
+#     # https://github.com/scipy/scipy/blob/5cf433589639f28cbf5c3911061b07f0c6d6bd68/scipy/stats/_resampling.py#L22-L23
+#     if vectorized:
+#         n_batches //= 2 # halve memory because scipy copys data once
+#
+#     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=n_batches,
+#                   axis=axis, vectorized=vectorized, random_state=rng,
+#                   permutation_type=permutation_type)
+#
+#     stat_func = _handle_stat_func(stat_func, alt, axis, n_jobs)
+#
+#     res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
+#     p_act = res.pvalue
+#     diff = res.null_distribution
+#
+#     # Calculate the p value of the permutation distribution
+#     p_perm = proportion(diff, tail=tails, axis=axis)
+#
+#     # Create binary clusters using the p value threshold
+#     b_act = tail_compare(1 - p_act, 1 - p_thresh, tails)
+#     b_perm = tail_compare(p_perm, 1 - p_thresh, tails)
+#     b_clust = time_cluster(b_act, b_perm, 1 - p_cluster, tails, ignore_adjacency)
+#
+#     return b_clust, p_act
+#
+#
+# def _handle_stat_func(stat_func, alt, axis, n_jobs):
+#     if 'alternative' in stat_func.__code__.co_varnames:
+#         func = stat_func
+#         def stat_func(*args, **kwargs):
+#             kwargs['alternative'] = alt
+#             return func(*args, **kwargs)
+#
+#     if 'n_jobs' in stat_func.__code__.co_varnames:
+#         func = stat_func
+#         def stat_func(*args, **kwargs):
+#             kwargs['n_jobs'] = n_jobs
+#             return func(*args, **kwargs)
+#
+#     if isinstance(stat_func(np.array([1]), np.array([1]), axis), tuple):
+#         logger.warning('stat_func returns a tuple. Taking the first element')
+#         func = stat_func
+#
+#         def stat_func(*args, **kwargs):
+#             return func(*args, **kwargs)[0]
+#
+#     return stat_func
 
 
 def proportion(val: np.ndarray[float, ...] | float,
