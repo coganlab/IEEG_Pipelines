@@ -3,6 +3,7 @@ from joblib import Parallel, delayed, cpu_count
 from mne.utils import logger
 from scipy import stats as st
 from scipy import ndimage
+import inspect
 
 from ieeg import Doubles
 from ieeg.arrays.reshape import make_data_same
@@ -129,7 +130,9 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
         i += 1
 
 
-def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
+def find_outliers(data: np.ndarray, outliers: float,
+                  deviation: callable = np.std,
+                  center: callable = np.mean) -> np.ndarray[bool]:
     """ Find outliers in data matrix.
 
     This function finds outliers in a data matrix. Outliers are defined as any
@@ -142,7 +145,12 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
     data : np.ndarray
         Data to find outliers in.
     outliers : float
-        Number of standard deviations from the mean to consider an outlier.
+        Number of deviations from the mean to consider an outlier.
+    deviation: callable, optional
+        Metric function to determine the deviation from the center. Default is
+        median absolute deviation.
+    center : callable, optional
+        Metric function to determine the center of the data. Default is median.
 
     Returns
     -------
@@ -155,16 +163,21 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
     >>> import numpy as np
     >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
     >>> find_outliers(data, 1)
-    array([ True, False,  True,  True,  True])
-    >>> find_outliers(data, 3)
-    array([ True,  True,  True,  True,  True])
+    array([ True, False,  True, False,  True])
+    >>> find_outliers(data, 10)
+    array([ True, False,  True, False,  True])
     >>> find_outliers(data, 0.1)
+    array([ True, False,  True, False,  True])
+    >>> find_outliers(data, 0.1, np.std)
     array([ True, False,  True, False,  True])
     """
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
     max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
-    std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
-    mean = np.mean(dat, axis=(-1, 0))  # (channels X (frequency))
+    kwargs = {'axis': (-1, 0)}
+    mean = center(dat, **kwargs)  # (channels X (frequency))
+    if 'center' in inspect.signature(deviation).parameters:
+        kwargs['center'] = center
+    std = deviation(dat, **kwargs)  # (channels X (frequency))
     keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
     return keep
 

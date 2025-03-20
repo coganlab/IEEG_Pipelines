@@ -131,6 +131,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32']
     outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3']
     outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3', 'PD4']
+    >>> mne.preprocessing.find_bad_channels_lof(raw)
     """
 
     names = input_raw.copy().pick('data').ch_names
@@ -159,7 +160,9 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
 @verbose
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
                     copy: bool = False, picks: list = 'data',
-                    verbose=None) -> mne.epochs.BaseEpochs:
+                    deviation: callable = np.std,
+                    center: callable = np.mean, verbose=None
+                    ) -> mne.epochs.BaseEpochs:
     """Set outliers to nan.
 
     Parameters
@@ -167,12 +170,16 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     trials : mne.epochs.BaseEpochs
         The trials to remove outliers from.
     outliers : float
-        The number of standard deviations above the mean to be considered an
-        outlier.
+        The number of deviations above the mean to be considered an outlier.
     copy : bool, optional
         Whether to copy the data, by default False
     picks : list, optional
         The channels to remove outliers from, by default 'data'
+    deviation: callable, optional
+        Metric function to determine the deviation from the center. Default is
+        median absolute deviation.
+    center : callable, optional
+        Metric function to determine the center of the data. Default is median.
 
     Returns
     -------
@@ -213,7 +220,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     data = trials.get_data(picks=picks, verbose=verbose)
 
     # bool array of where to keep data trials X channels
-    keep = stats.find_outliers(data, outliers)
+    keep = stats.find_outliers(data, outliers, deviation, center)
 
     # set outliers to nan if not keep
     data = np.where(keep[..., None], data, np.nan)
