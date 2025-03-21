@@ -417,12 +417,16 @@ def scipy_namespace_for(xp: ModuleType) -> ModuleType | None:
         import cupyx  # type: ignore[import-not-found,import-untyped]
         return cupyx.scipy
 
-    if is_jax(xp):
+    elif is_jax(xp):
         import jax  # type: ignore[import-not-found]
         return jax.scipy
 
-    if is_torch(xp):
+    elif is_torch(xp):
         return xp
+
+    elif is_numpy(xp):
+        import scipy
+        return scipy
 
     return None
 

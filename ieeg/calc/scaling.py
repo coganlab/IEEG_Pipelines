@@ -5,6 +5,7 @@ from mne import Epochs
 from mne.epochs import BaseEpochs
 from mne.time_frequency import AverageTFR, EpochsTFR
 from mne.utils import logger, verbose
+from ieeg.calc.stats import dist
 
 
 def _log_rescale(baseline, mode='mean'):
@@ -84,8 +85,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
                 d /= s
         case _:
             raise NotImplementedError()
-    mean = np.nanmean(basedata, axis=axis, keepdims=True)
-    std = np.nanstd(basedata, axis=axis, keepdims=True)
+    mean, std = dist(basedata, axis=axis, mode='std', ddof=1, keepdims=True)
     fun(data, mean, std)
     return data
 

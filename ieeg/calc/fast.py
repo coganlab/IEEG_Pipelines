@@ -2,7 +2,7 @@ import numpy as np
 from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
-from ieeg.arrays.api import array_namespace, is_numpy, is_torch, Array
+from ieeg.arrays.api import array_namespace, is_numpy, is_torch, Array, is_cupy
 from scipy.stats import rankdata
 from functools import partial
 
@@ -132,7 +132,7 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     return np.squeeze(wbfn)
 
 def ttest(group1: np.ndarray, group2: np.ndarray,
-          axis: int) -> np.ndarray:
+          axis: int, xp = None) -> np.ndarray:
     """Calculate the t-statistic between two groups.
 
     This function is the default statistic function for time_perm_cluster. It
@@ -162,12 +162,28 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     array([      nan, 1.2004901])
     >>> ttest(group1, group2, 0)
     array([0.        , 1.01680311, 0.        , 1.10431526, 0.        ])
-    >>> group3 = np.arange(100000000, dtype=float).reshape(200000, 500)
-    >>> ttest(group3, group1.repeat(100, 1), 0)
-    array([244.92741947, 242.26926888, 244.93721715, 244.858866  ,
-           244.94701484])
+    >>> import cupy as cp
+    >>> group1 = cp.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]])
+    >>> group2 = cp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
+    >>> ttest(group1, group2, 1)
+    array([      nan, 1.2004901])
+    >>> ttest(group1, group2, 0)
     """
-    return _ttest(group1, group2, axes=[axis, axis])
+    if xp is None:
+        xp = array_namespace(group1, group2)
+    if is_numpy(xp):
+        return _ttest(group1, group2, axes=[axis, axis])
+    elif is_cupy(xp):
+        n1 = xp.sum(~xp.isnan(group1), axis=axis)
+        n2 = xp.sum(~xp.isnan(group2), axis=axis)
+        mean1 = xp.nansum(group1, axis=axis) / n1
+        mean2 = xp.nansum(group2, axis=axis) / n2
+        var1 = xp.nanvar(group1, axis=axis)
+        var2 = xp.nanvar(group2, axis=axis)
+        return (mean1 - mean2) / xp.sqrt(var1 / (n1 - 1) + var2 / (n2 - 1))
+    else:
+        raise NotImplementedError("T-test is not implemented for this array type.")
+
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
                        ) -> np.ndarray:
@@ -401,8 +417,8 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     # Flatten all intermediate (batch) dimensions into one.
     n_obs = arr_view.shape[0]
     n_features = arr_view.shape[-1]
-    if is_torch(xp) and not arr_view.is_contiguous():
-        arr_view = arr_view.contiguous()
+    # if is_torch(xp) and not arr_view.is_contiguous():
+    #     arr_view = arr_view.contiguous()
 
     arr_flat = arr_view.reshape(n_obs, -1, n_features)
     # Compute a mask over the observation axis for each batch:
@@ -463,7 +479,7 @@ def norm(arr: np.ndarray, obs_axis: int = -1) -> None:
 
 
 def mean_diff(group1: np.ndarray, group2: np.ndarray,
-              axis: int = -1) -> np.ndarray | float:
+              axis: int = -1, xp = None) -> np.ndarray | float:
     """Calculate the mean difference between two groups.
 
     This function is the default statistic function for time_perm_cluster. It
@@ -496,8 +512,15 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     >>> group3 = np.arange(100000, dtype=float).reshape(20000, 5)
     >>> mean_diff(group3, group1, axis=0)
     array([49997., 49968., 49999., 49995., 50001.])
+    >>> mean_diff(group3, group1, axis=0, n_jobs=2)
     """
-    return _md(group1, group2, axes=[axis, axis])
+
+    if xp is None:
+        xp = array_namespace(group1, group2)
+    if is_numpy(xp):
+        return _md(group1, group2, axes=[axis, axis])
+    else:
+        return group1.mean(axis=axis) - group2.mean(axis=axis)
 
 
 if __name__ == "__main__":

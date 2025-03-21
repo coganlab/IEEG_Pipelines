@@ -1,7 +1,7 @@
 # Checked
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
-from ieeg.arrays.api import array_namespace, xp_assert_equal, Array, is_numpy, is_cupy
+from ieeg.arrays.api import array_namespace, xp_assert_equal, ArrayLike, is_numpy, is_cupy
 
 try:
     from numpy.lib.array_utils import normalize_axis_tuple
@@ -40,8 +40,8 @@ except ImportError:
     no_cupy = True
 
 
-def stitch_mats(mats: list[Array], overlaps: list[int], axis: int = 0
-                ) -> Array:
+def stitch_mats(mats: list[ArrayLike], overlaps: list[int], axis: int = 0
+                ) -> ArrayLike:
     """break up the matrices into their overlapping and non-overlapping parts
     then stitch them back together
 
@@ -91,8 +91,8 @@ def stitch_mats(mats: list[Array], overlaps: list[int], axis: int = 0
         return out
 
 
-def merge(mat1: Array, mat2: Array, overlap: int, axis: int = 0
-          ) -> list[Array]:
+def merge(mat1: ArrayLike, mat2: ArrayLike, overlap: int, axis: int = 0
+          ) -> list[ArrayLike]:
     """Take two arrays and merge them over the overlap gradually"""
     xp = array_namespace(mat1, mat2)
     sl = [slice(None)] * mat1.ndim
@@ -109,10 +109,10 @@ def merge(mat1: Array, mat2: Array, overlap: int, axis: int = 0
     return [start, middle, last]
 
 
-def make_data_same(data_fix: Array, shape: tuple | list,
+def make_data_same(data_fix: ArrayLike, shape: tuple | list,
                    stack_ax: int = 0, pad_ax: int = -1,
                    make_stacks_same: bool = True,
-                   rng: np.random.Generator = None) -> Array:
+                   rng: np.random.Generator = None) -> ArrayLike:
     """Force the last dimension of data_fix to match the last dimension of
     shape.
 
@@ -125,14 +125,14 @@ def make_data_same(data_fix: Array, shape: tuple | list,
 
     Parameters
     ----------
-    data_fix : array
+    data_fix : ArrayLike
         The data to reshape.
     shape : list | tuple
         The shape of data to match.
 
     Returns
     -------
-    data_fix : array
+    data_fix : ArrayLike
         The reshaped data.
 
     Examples
@@ -151,14 +151,19 @@ def make_data_same(data_fix: Array, shape: tuple | list,
     array([[1, 2],
            [3, 4],
            [6, 7]])
+    >>> import cupy as cp
+    >>> make_data_same(cp.asarray(data_fix), (2, 2), make_stacks_same=False)
     """
 
-    if not isinstance(rng, np.random.Generator):
-        rng = np.random.default_rng(rng)
+    xp = array_namespace(data_fix)
+
+    if is_cupy(xp):
+        rng = xp.random
+    elif not isinstance(rng, np.random.Generator):
+        rng = xp.random.default_rng(rng)
+
     stack_ax = list(range(len(shape)))[stack_ax]
     pad_ax = list(range(len(shape)))[pad_ax]
-
-    xp = array_namespace(data_fix)
 
     # # Attempt to stack trials along the pad axis so long as there are more
     # # trials and fewer timepoints
@@ -209,8 +214,8 @@ def make_data_same(data_fix: Array, shape: tuple | list,
     return out
 
 
-def pad_to_match(sig1: Array, sig2: Array,
-                 axis: int | tuple[int, ...] = ()) -> Array:
+def pad_to_match(sig1: ArrayLike, sig2: ArrayLike,
+                 axis: int | tuple[int, ...] = ()) -> ArrayLike:
     """Pad the second signal to match the first signal along all axes not
     specified.
 
@@ -220,16 +225,16 @@ def pad_to_match(sig1: Array, sig2: Array,
 
     Parameters
     ----------
-    sig1 : array
+    sig1 : ArrayLike
         The data to match.
-    sig2 : array
+    sig2 : ArrayLike
         The data to pad.
     axis : int | tuple
         The axes along which to pad the data.
 
     Returns
     -------
-    sig2 : array
+    sig2 : ArrayLike
         The padded data.
 
     Examples
@@ -247,12 +252,13 @@ def pad_to_match(sig1: Array, sig2: Array,
     """
     xp = array_namespace(sig1, sig2)
     # Make sure the data is the same shape
-    if np.isscalar(axis):
+    if xp.isscalar(axis):
         axis = (axis,)
     axis = list(axis)
     for i, ax in enumerate(axis):
         axis[i] = xp.arange(sig1.ndim)[ax]
-    eq = list(e for i, e in enumerate(xp.equal(sig1.shape, sig2.shape))
+    eq = list(e for i, e in enumerate(xp.equal(xp.asarray(sig1.shape),
+                                               xp.asarray(sig2.shape)))
               if i not in axis)
     if not all(eq):
         for ax in axis:
@@ -264,9 +270,9 @@ def pad_to_match(sig1: Array, sig2: Array,
     return sig2
 
 
-def rand_offset_reshape(data_fix: Array, shape: tuple, stack_ax: int,
+def rand_offset_reshape(data_fix: ArrayLike, shape: tuple, stack_ax: int,
                         pad_ax: int, rng: np.random.Generator = None
-                        ) -> Array:
+                        ) -> ArrayLike:
     """Take subsets of data_fix and stack them together on the stack dimension
 
     This function takes the data and reshapes it to match the shape by taking
@@ -276,7 +282,7 @@ def rand_offset_reshape(data_fix: Array, shape: tuple, stack_ax: int,
 
     Parameters
     ----------
-    data_fix : array
+    data_fix : ArrayLike
         The data to reshape.
     shape : list | tuple
         The shape of data to match.
@@ -287,7 +293,7 @@ def rand_offset_reshape(data_fix: Array, shape: tuple, stack_ax: int,
 
     Returns
     -------
-    data_fix : array
+    data_fix : ArrayLike
         The reshaped data.
 
     Examples
@@ -321,7 +327,7 @@ def rand_offset_reshape(data_fix: Array, shape: tuple, stack_ax: int,
     xp = array_namespace(data_fix)
 
     if not isinstance(rng, np.random.Generator):
-        rng = np.random.default_rng(rng)
+        rng = xp.random.default_rng(rng)
 
     # Randomly offset the start of the first subset
     num_stack = data_fix.shape[pad_ax] // shape[pad_ax]
@@ -367,7 +373,7 @@ def sliding_window_view(x, window_shape, axis=None, *,
 
     Parameters
     ----------
-    x : array_like
+    x : ArrayLike_like
         Array to create the sliding window view from.
     window_shape : int or tuple of int
         Size of window over each axis that takes part in the sliding window.

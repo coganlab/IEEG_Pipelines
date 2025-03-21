@@ -202,10 +202,10 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         min_trials *= self.n_splits
         i = 0
         while not all(g >= min_trials for g in gt_labels):
-            np.random.shuffle(labels)
+            xp.random.shuffle(labels)
             for j, l in enumerate(cats):
-                eval_arr = xp.take(arr, np.flatnonzero(labels == l), trials_ax)
-                gt_labels[j] = xp.min(np.sum(
+                eval_arr = xp.take(arr, xp.flatnonzero(labels == l), trials_ax)
+                gt_labels[j] = xp.min(xp.sum(
                     xp.all(~xp.isnan(eval_arr), axis=2), axis=trials_ax))
             if sum(gt_labels) < min_trials * cats.shape[0]:
                 raise ValueError("Not enough non-nan trials to shuffle")
