@@ -34,10 +34,11 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
     """
 
     centers = get_centers(Wn, spacing)
-    whole = get_centers((0.018, 10000), spacing)
-    center_start = np.argmin(np.abs(whole - centers[0]))
-    bands = [(whole[center_start + i - 1], whole[center_start + i + 1])
-             for i in range(len(centers))]
+    bands = [(center - 0.1, center + 0.1) for center in centers]
+    # whole = get_centers((0.018, 10000), spacing)
+    # center_start = np.argmin(np.abs(whole - centers[0]))
+    # bands = [(whole[center_start + i - 1], whole[center_start + i + 1])
+    #          for i in range(len(centers))]
 
     # pre-allocate
     out_shape = data.shape[:-1] + (data.shape[-1]//decim + 1, len(bands))
