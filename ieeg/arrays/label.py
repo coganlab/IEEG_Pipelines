@@ -450,9 +450,9 @@ class LabeledArray(np.ndarray):
         >>> la == la2
         True
         """
-        kwargs['allow_pickle'] = False
-        np.save(fid + '.npy', self.__array__(), **kwargs)
-        np.savez(fid + '_labels.npz', *self.labels, **kwargs)
+        files = {str(i): l for i, l in enumerate(self.labels)}
+        np.save(fid + '.npy', self.__array__())
+        np.savez(fid + '_labels.npz', **files)
 
     @classmethod
     def fromfile(cls, file: str, **kwargs) -> 'LabeledArray':
