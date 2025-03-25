@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
 from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal, calculate_wavelets
 from ieeg.timefreq.hilbert import (filterbank_hilbert_first_half_wrapper,
-                                   extract_channel_wrapper)
+                                   extract_channel_wrapper, get_centers)
 
 
 @singledispatch
@@ -34,11 +34,7 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
     """
 
     centers = get_centers(Wn, spacing)
-    whole = get_centers((0.018, 10000), spacing)
-    center_start = np.argmin(np.abs(whole - centers[0]))
-    bands = [(whole[center_start + i - 1] + 0.1,
-              whole[center_start + i + 1] - 0.1)
-             for i in range(len(centers))]
+    bands = [(c - 0.01, c + 0.01) for c in centers]
 
     # pre-allocate
     out_shape = data.shape[:-1] + (data.shape[-1]//decim + 1, len(bands))
@@ -46,7 +42,7 @@ def hilbert_spectrogram(data: np.ndarray, fs: int, Wn=(1, 150),
 
     # run in parallel
     proc = Parallel(n_jobs, verbose=10, return_as="generator")(
-        delayed(extract)(data, fs, band, True, 1, False)
+        delayed(extract)(data, fs, band, True, spacing, 1, False)
         for band in bands)
     for i, out in enumerate(proc):
         hilb_amp[..., i] = out[..., ::decim]
@@ -69,6 +65,7 @@ def _(inst: Epochs, Wn=(1, 150), decim: int = 1, spacing: float = 1/7,
 @singledispatch
 def extract(data: np.ndarray, fs: float = None,
             passband: tuple[int, int] = (70, 150), copy: bool = True,
+            spacing: float = 1/7,
             n_jobs=-1, verbose: bool = True) -> np.ndarray:
     """Extract gamma band envelope from data.
 
@@ -150,7 +147,7 @@ def extract(data: np.ndarray, fs: float = None,
         if n_jobs != 1:
             ins = (in_data[trial].T for trial in trials)
             par_out = parallelize(filterbank_hilbert, ins, fs=fs, Wn=passband,
-                                  n_jobs=n_jobs)
+                                  spacnig=spacing, n_jobs=n_jobs)
             env[:, :, :] = np.array([np.sum(out, axis=-1).T for
                                      out in par_out])
         else:
@@ -158,10 +155,10 @@ def extract(data: np.ndarray, fs: float = None,
                 trials = tqdm(trials)
             for trial in trials:
                 out = filterbank_hilbert(in_data[trial, :, :].T, fs,
-                                         passband, 1)
+                                         passband, spacing, 1)
                 env[trial, :, :] = np.sum(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
-        out = filterbank_hilbert(in_data.T, fs, passband, n_jobs)
+        out = filterbank_hilbert(in_data.T, fs, passband, spacing, n_jobs)
         env = np.sum(out, axis=-1).T
     else:
         raise ValueError("number of dims should be either 2 or 3, not {}"
@@ -238,54 +235,10 @@ def _my_hilt(x: np.ndarray, fs, Wn=(1, 150), n_jobs=-1):
     return x_out, cfs
 
 
-def get_centers(Wn, octSpace = 1. / 7, f0 = 0.018,
-                a1 = np.log10(0.39), a2 = 0.5):
-    """Get center frequencies for filter bank.
-
-    Parameters
-    ----------
-    Wn : tuple
-        Frequency range to use for filter bank.
-
-    Returns
-    -------
-    cfs : list
-        Center frequencies for filter bank.
-        """
-
-    # create filter bank
-    minf, maxf = Wn
-    if minf >= maxf:
-        raise ValueError(
-            f'Upper bound of frequency range must be greater than lower '
-            f'bound, but got lower bound of {minf} and upper bound of {maxf}')
-    maxfo = np.log2(maxf / f0)  # octave of max freq
-
-    cfs = [f0]
-    sigma_f = 10 ** (a1 + a2 * np.log10(f0))
-
-    while np.log2(cfs[-1] / f0) < maxfo:
-
-        if cfs[-1] < 4:
-            cfs.append(cfs[-1] + sigma_f)
-        else:  # switches to log spacing at 4 Hz
-            cfo = np.log2(cfs[-1] / f0)  # current freq octave
-            cfo += octSpace  # new freq octave
-            cfs.append(f0 * (2 ** (cfo)))
-
-        sigma_f = 10 ** (a1 + a2 * np.log10(cfs[-1]))
-
-    cfs = np.array(cfs)
-    if np.logical_and(cfs >= minf, cfs <= maxf).sum() == 0:
-        raise ValueError(
-            f'Frequency band is too narrow, so no filters in filterbank are '
-            f'placed inside. Try a wider frequency band.')
-
-    # choose those that lie in the input freqRange
-    return cfs[np.logical_and(cfs >= minf, cfs <= maxf)]
 
 
-def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
+
+def filterbank_hilbert(x, fs, Wn=[70, 150], spacing=1./7, n_jobs=1):
     """
     Compute the phase and amplitude (envelope) of a signal for a single
     frequency band, as in [#edwards]_. This is done using a filter bank of
@@ -329,6 +282,7 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
     filter in the filterbank
     >>> x_envelope.shape # 3rd dimension is one for each filter in filterbank
     (1000, 3, 42)
+    >>> filterbank_hilbert(x, fs, [1, 150], 1/10).shape
 
     """
 
@@ -341,7 +295,7 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], n_jobs=1):
              f', but got lower bound of {minf} and upper bound of {maxf}'))
 
     Xf, freqs, cfs, N, sds, h = filterbank_hilbert_first_half_wrapper(
-        x, fs, minf, maxf)
+        x, fs, minf, maxf, spacing)
 
     def extract_channel(Xf):
         return extract_channel_wrapper(Xf, freqs, cfs, N, sds, h, minf, maxf)
