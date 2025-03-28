@@ -640,7 +640,6 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
     """
     if fig_dims is None:
         min_size = int(np.ceil(np.sqrt(W.shape[0])))
-        min_size = [int(np.ceil(np.sqrt(W.shape[0] / min_size))), min_size]
         fig_dims = (int(np.ceil(np.sqrt(W.shape[0] / min_size))), min_size)
     plotter = BackgroundPlotter(shape=fig_dims)
     scale = W.copy()
