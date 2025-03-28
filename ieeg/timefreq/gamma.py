@@ -1,14 +1,14 @@
 from functools import singledispatch
 
 import numpy as np
-from mne import Epochs
+from mne import Epochs, Evoked
 from mne.time_frequency import EpochsTFRArray
 from mne.io import Raw, base
 from tqdm import tqdm
 from joblib import Parallel, delayed
 
 from ieeg.process import COLA, cpu_count, get_mem, parallelize
-from ieeg.timefreq.utils import BaseEpochs, Evoked, Signal, calculate_wavelets
+from ieeg.timefreq.utils import BaseEpochs, Signal
 from ieeg.timefreq.hilbert import (filterbank_hilbert_first_half_wrapper,
                                    extract_channel_wrapper, get_centers)
 
