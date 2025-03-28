@@ -163,7 +163,7 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
 def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
               mask: np.ndarray = None, times: Doubles = None,
               label: str | int | float = None, color: str | list[int] = None,
-              ax: plt.Axes = None) -> plt.Axes:
+              ax: plt.Axes = None, **kwargs) -> plt.Axes:
     """Plot the distribution for a single signal
 
     A distribution is the mean of the signal over the last dimension, with
@@ -201,7 +201,7 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
     if ax is None:
         plt.figure()
         ax = plt.gca()
-    p = ax.plot(tscale, mean, label=label, color=color)
+    p = ax.plot(tscale, mean, label=label, color=color, **kwargs)
     if color is None:
         color = p[-1].get_color()
     ax.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)

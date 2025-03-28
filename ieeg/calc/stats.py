@@ -6,7 +6,7 @@ from scipy import ndimage
 import inspect
 
 from ieeg import Doubles
-from ieeg.arrays.api import array_namespace, ArrayLike, is_cupy
+from ieeg.arrays.api import array_namespace, ArrayLike, is_numpy
 from ieeg.arrays.reshape import make_data_same
 from ieeg.calc.fast import permgt, ttest
 from ieeg.process import get_mem, iterate_axes
@@ -59,13 +59,17 @@ def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem', ddof: int = 0,
         where = ~xp.isnan(mat)
     else:
         where = xp.logical_and(where, ~xp.isnan(mat))
-    n = xp.sum(where, axis=axis, keepdims=True, dtype=int)
 
-    mean = xp.sum(mat, axis=axis, where=where, keepdims=True, dtype=float) / n
-    std = xp.sqrt(xp.sum((mat - mean) ** 2, axis=axis, where=where,
-                         keepdims=True, dtype=float) / (n - ddof))
+    if is_numpy(xp):
+        mean = np.mean(mat, axis=axis, where=where, keepdims=True)
+        std = np.std(mat, axis=axis, where=where, ddof=ddof, keepdims=True,
+                     mean=mean)
+    else:
+        mean = xp.nanmean(mat, axis=axis)
+        std = xp.nanstd(mat, axis=axis, ddof=ddof)
+
     if mode == 'sem':
-        std /= xp.sqrt(n)
+        std /= xp.sqrt(xp.sum(where, axis=axis, keepdims=True, dtype=xp.intp))
     dtype = 'f' + str(mat.nbytes // mat.size)
 
     if keepdims:
