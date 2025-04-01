@@ -62,8 +62,12 @@ def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem', ddof: int = 0,
 
     if is_numpy(xp):
         mean = np.mean(mat, axis=axis, where=where, keepdims=True)
-        std = np.std(mat, axis=axis, where=where, ddof=ddof, keepdims=True,
-                     mean=mean)
+        np_version = tuple(map(int, np.__version__.split('.')[:2]))
+        if np_version >= (2, 0):  # NumPy 2.0 or later
+            std = np.std(mat, axis=axis, where=where, ddof=ddof, keepdims=True,
+                         mean=mean)
+        else:
+            std = np.std(mat, axis=axis, where=where, ddof=ddof, keepdims=True)
     else:
         mean = xp.nanmean(mat, axis=axis)
         std = xp.nanstd(mat, axis=axis, ddof=ddof)
