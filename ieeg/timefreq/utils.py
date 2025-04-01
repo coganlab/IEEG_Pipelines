@@ -10,10 +10,10 @@ from ieeg import Signal
 from ieeg.process import ensure_int, validate_type
 from ieeg.calc.oversample import resample
 from joblib import delayed, Parallel
+import numpy as np
 # from ieeg.process import parallelize
 # from scipy.fft import fft, ifft, fftfreq
 # from functools import partial
-# import numpy as np
 # from mne.evoked import Evoked
 # from mne.time_frequency import tfr_array_stockwell as tas
 
