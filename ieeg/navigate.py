@@ -3,6 +3,7 @@ import numpy as np
 from bids import BIDSLayout
 from mne.utils import fill_doc, verbose
 from scipy.signal import detrend
+from sklearn.neighbors import LocalOutlierFactor
 
 from ieeg import Doubles, Signal
 from ieeg.calc import stats
@@ -131,7 +132,6 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32']
     outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3']
     outlier round 2 channels: ['AST2', 'RQ2', 'N/A', 'G32', 'AD3', 'PD4']
-    >>> mne.preprocessing.find_bad_channels_lof(raw)
     """
 
     names = input_raw.copy().pick('data').ch_names
@@ -156,6 +156,84 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
 
     return bads
 
+def find_bad_channels_lof(
+    raw,
+    *,
+    picks=None,
+    metric="seuclidean",
+    threshold=1.5,
+    return_scores=False,
+    **kwargs
+):
+    """Find bad channels using Local Outlier Factor (LOF) algorithm.
+
+    Parameters
+    ----------
+    raw : instance of Raw
+        Raw data to process.
+    n_neighbors : int
+        Number of neighbors defining the local neighborhood (default is 20).
+        Smaller values will lead to higher LOF scores.
+    %(picks_good_data)s
+    metric : str
+        Metric to use for distance computation. Default is “euclidean”,
+        see :func:`sklearn.metrics.pairwise.distance_metrics` for details.
+    threshold : float
+        Threshold to define outliers. Theoretical threshold ranges anywhere
+        between 1.0 and any positive integer. Default: 1.5
+        It is recommended to consider this as an hyperparameter to optimize.
+    return_scores : bool
+        If ``True``, return a dictionary with LOF scores for each
+        evaluated channel. Default is ``False``.
+    %(verbose)s
+
+    Returns
+    -------
+    noisy_chs : list
+        List of bad M/EEG channels that were automatically detected.
+    scores : ndarray, shape (n_picks,)
+        Only returned when ``return_scores`` is ``True``. It contains the
+        LOF outlier score for each channel in ``picks``.
+
+    See Also
+    --------
+    maxwell_filter
+    annotate_amplitude
+
+    Notes
+    -----
+    See :footcite:`KumaravelEtAl2022` and :footcite:`BreunigEtAl2000` for background on
+    choosing ``threshold``.
+
+    .. versionadded:: 1.7
+
+    References
+    ----------
+    .. footbibliography::
+    """  # noqa: E501
+
+    if metric == "seuclidean":
+        kwargs.setdefault("metric_params",
+                          {"V": np.var(raw.get_data(), axis=0)})
+    # Get the channel types
+    picks = list(range(len(raw.ch_names))) if picks is None else picks
+    ch_names = [raw.ch_names[pick] for pick in picks]
+    data = raw.get_data(picks=picks)
+    clf = LocalOutlierFactor(n_neighbors=len(raw.ch_names) // 5, metric=metric,
+                             **kwargs)
+    bad_channel_indices = picks
+    clf.fit_predict(data)
+    scores_lof = clf.negative_outlier_factor_
+    while len(bad_channel_indices) / len(picks) > 0.2:
+        bad_channel_indices = [
+            i for i, v in enumerate(np.abs(scores_lof)) if v >= threshold
+        ]
+        threshold += 1
+    bads = [ch_names[idx] for idx in bad_channel_indices]
+    if return_scores:
+        return bads, scores_lof
+    else:
+        return bads
 
 @verbose
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
