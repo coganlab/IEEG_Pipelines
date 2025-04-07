@@ -79,19 +79,15 @@ class Decoder(MinimumNaNSplit):
         >>> decoder.cv_cm(X, labels, normalize='true')
         >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
         ...             5, 10, explained_variance=0.8, da_type='lda')
-        >>> decoder.cv_cm(X, labels, normalize='true', window=20)
+        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5)
+        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5,
+        ...     shuffle=True)
         >>> import cupy as cp
         >>> X = cp.random.randn(100, 100, 50, 100)
         >>> X[0, 0, 0, :] = np.nan
         >>> labels = cp.random.randint(1, 5, 50)
         >>> with config_context(array_api_dispatch=True):
         ...     decoder.cv_cm(X, labels, normalize='true')
-        # >>> import torch
-        # >>> X = torch.randn(100, 100, 50, 100)
-        # >>> X[0, 0, ::2, :] = np.nan
-        # >>> labels = torch.randint(1, 5, (50,))
-        # >>> with config_context(array_api_dispatch=True):
-        # ...     decoder.cv_cm(X, labels, normalize='true')
 
         """
         assert all(l in self.categories.values() for l in labels), \
@@ -129,12 +125,18 @@ class Decoder(MinimumNaNSplit):
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
         # loop over folds and repetitions
-        results = Parallel(n_jobs=n_jobs, verbose=0, max_nbytes='5G',
-                           return_as="generator_unordered")(
-                delayed(proc)(train_idx, test_idx, l, data, i,
-                              self.n_splits, self.categories, window, step,
-                              oversample, self.kwargs)
-                for i, ((train_idx, test_idx), l) in enumerate(idxs))
+        if n_jobs == 1:
+            results = (proc(train_idx, test_idx, l, data, i,
+                            self.n_splits, self.categories, window, step,
+                            oversample, self.kwargs)
+                       for i, ((train_idx, test_idx), l) in enumerate(idxs))
+        else:
+            results = Parallel(n_jobs=n_jobs, verbose=0, require='sharedmem',
+                               return_as="generator_unordered")(
+                    delayed(proc)(train_idx, test_idx, l, data, i,
+                                  self.n_splits, self.categories, window, step,
+                                  oversample, self.kwargs)
+                    for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
         # Collect the results
         t = tqdm(desc=self.current_job, total=self.n_splits * self.n_repeats)
@@ -327,7 +329,6 @@ def extract(array: LabeledArray, conds: list[str], trial_ax: int,
             idx: list[int] = slice(None), common: int = 5,
             crop_nan: bool = False) -> LabeledArray:
     """Extract data from GroupData object"""
-    # reduced = sub[:, conds][:, :, :, idx]
     reduced = array[conds,][:,:,idx]
     reduced = reduced.dropna()
     # also sorts the trials by nan or not
@@ -479,7 +480,8 @@ def plot_all_scores(all_scores: dict[str, np.ndarray],
                     conds: list[str], idxs: dict[str, list[int]],
                     colors: list[list[float]], suptitle: str = None,
                     fig: plt.Figure = None, axs: plt.Axes = None,
-                    **plot_kwargs) -> tuple[plt.Figure, plt.Axes]:
+                    ylims: tuple[float, float]= (0.1, 0.8), **plot_kwargs
+                    ) -> tuple[plt.Figure, plt.Axes]:
     names = list(idxs.keys())
     if fig is None and axs is None:
         fig, axs = plt.subplots(1, len(conds))
@@ -512,7 +514,7 @@ def plot_all_scores(all_scores: dict[str, np.ndarray],
             if name is names[-1]:
                 ax.legend()
                 ax.set_title(cond)
-                ax.set_ylim(0.1, 0.7)
+                ax.set_ylim(*ylims)
 
     axs[0].set_ylabel("Accuracy (%)")
     if suptitle is not None:
