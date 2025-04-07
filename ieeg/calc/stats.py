@@ -4,6 +4,7 @@ from mne.utils import logger
 from scipy import stats as st
 from scipy import ndimage
 import inspect
+# from sklearn.neighbors import LocalOutlierFactor
 
 from ieeg import Doubles
 from ieeg.arrays.api import array_namespace, ArrayLike, is_numpy
@@ -12,7 +13,7 @@ from ieeg.calc.fast import permgt, ttest
 from ieeg.process import get_mem, iterate_axes
 
 
-def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem', ddof: int = 0,
+def dist(mat: np.ndarray, axis: int = None, mode: str = 'sem', ddof: int = 0,
          where: np.ndarray = None, keepdims: bool = False, xp = None
          ) -> Doubles:
     """ Calculate the mean and standard deviation of a matrix.
@@ -83,7 +84,8 @@ def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem', ddof: int = 0,
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
-                   axis: int = 0) -> tuple[tuple[int, int]]:
+                   axis: int = 0, deviation: callable = np.std,
+                   center: callable = np.mean) -> tuple[tuple[int, int]]:
     """ Remove outliers from data and repeat until no outliers are left.
 
     This function removes outliers from data and repeats until no outliers are
@@ -130,8 +132,8 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
     axes = tuple(i for i in range(data.ndim) if not i == axis)
 
     # Initialize stats loop
-    sig = np.std(R2, axes)  # take standard deviation of each channel
-    cutoff = (sd * np.std(sig)) + np.mean(sig)  # outlier cutoff
+    sig = deviation(R2, axes)  # take standard deviation of each channel
+    cutoff = (sd * deviation(sig)) + center(sig)  # outlier cutoff
     i = 1
 
     # remove bad channels and re-calculate variance until no outliers are left
@@ -143,8 +145,8 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
 
         # re-calculate per channel variance
         R2 = R2[..., np.where(sig < cutoff)[0], :]
-        sig = np.std(R2, axes)
-        cutoff = (sd * np.std(sig)) + np.mean(sig)
+        sig = deviation(R2, axes)  # take standard deviation of each channel
+        cutoff = (sd * deviation(sig)) + center(sig)  # outlier cutoff
         i += 1
 
 
@@ -269,6 +271,46 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
     for msg in disp:
         logger.info(msg)
     return np.mean(data, axis=0, where=keep[..., np.newaxis])
+#
+# def outlier(data: np.ndarray, axis: int = 0, max_proportion: float = 0.2,
+#             metric: str = "seuclidean", policy: str = "increment",
+#             threshold: int = 1.5, **kwargs):
+#     """Remove outliers from data.
+#
+#     Uses Scikit-learn's LocalOutlierFactor to remove outliers from data. The
+#     function will remove outliers from the data, assuming that there are not
+#     more outliers in the data than the max_proportion.
+#
+#     Parameters
+#     ----------
+#     data
+#     axis
+#     max_proportion
+#     policy
+#     kwargs
+#
+#     Returns
+#     -------
+#
+#     """
+#     assert 0 < max_proportion <= 1, "max_proportion must be between 0 and 1"
+#     assert policy in ["increment", "toss"], "policy must be 'increment' or 'toss'"
+#
+#     n = data.shape[axis] // (1 / max_proportion)
+#     if metric == "seuclidean":
+#         kwargs.setdefault("metric_params", {"V": np.var(data, axis=axis)})
+#     clf = LocalOutlierFactor(n_neighbors=n, metric=metric, **kwargs)
+#
+#     bad_indices = np.arange(data.shape[axis]).tolist()
+#     clf.fit_predict(data)
+#     scores_lof = clf.negative_outlier_factor_
+#     while len(bad_indices) / n:
+#         bad_indices = [
+#             i for i, v in enumerate(np.abs(scores_lof)) if v >= threshold
+#         ]
+#         threshold += 1
+#     bads = [ch_names[idx] for idx in bad_indices]
+
 
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 100000, tails: int = 1,
