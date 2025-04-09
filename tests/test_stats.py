@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import scipy
 
-from ieeg.calc.fast import mean_diff
+from ieeg.calc.fast import mean_diff, ttest
 
 bids_root = mne.datasets.epilepsy_ecog.data_path()
 seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
@@ -30,7 +30,8 @@ def test_dist(mat, axis, expected):
 @pytest.mark.parametrize("func, expected", [
     (mean_diff, np.arange(38, 56)),
     (scipy.stats.f_oneway, np.arange(46, 50)),
-    (scipy.stats.ttest_ind, np.arange(38, 56))
+    (scipy.stats.ttest_ind, np.arange(38, 56)),
+    (ttest, np.arange(38, 56))
 ])
 def test_permclust(func, expected):
     from ieeg.navigate import trial_ieeg

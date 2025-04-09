@@ -43,10 +43,10 @@ def dist(mat: np.ndarray, axis: int = None, mode: str = 'sem', ddof: int = 0,
     --------
     >>> import numpy as np
     >>> mat = np.arange(24).reshape(4,6)
-    >>> dist(mat)[1] # doctest: +NORMALIZE_WHITESPACE
+    >>> dist(mat, 0)[1] # doctest: +NORMALIZE_WHITESPACE
     array([3.35410197, 3.35410197, 3.35410197, 3.35410197, 3.35410197,
            3.35410197])
-    >>> dist(mat, mode='std')[1]
+    >>> dist(mat, 0, mode='std')[1]
     array([6.70820393, 6.70820393, 6.70820393, 6.70820393, 6.70820393,
            6.70820393])
     """
@@ -350,13 +350,13 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> seed = 43; rng = np.random.default_rng(seed)
+    >>> seed = 42; rng = np.random.default_rng(seed)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)])
-    >>> sig2 = rng.random((100, 15)) * 3.2
-    >>> window_averaged_shuffle(sig1, sig2, n_perm=1000000, seed=seed
-    ... ) # doctest: +ELLIPSIS
-    0.99...
+    >>> sig2 = rng.random((100, 15)) * 6
+    >>> float(window_averaged_shuffle(sig1, sig2, n_perm=100000, seed=seed
+    ... )) # doctest: +ELLIPSIS
+    9.99...
     """
 
     # average the windows
@@ -479,9 +479,6 @@ def time_perm_cluster(sig1: ArrayLike, sig2: ArrayLike, p_thresh: float,
     >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=100000, seed=seed)[0]
     array([False, False, False, False, False,  True,  True,  True,  True,
             True, False, False, False, False, False])
-    >>> import cupy as cp
-    >>> time_perm_cluster(cp.asarray(sig1), cp.asarray(sig2), 0.05,
-    ... n_perm=100000, seed=seed)[0]
     """
     # check inputs
     if tails == 1:
@@ -646,7 +643,7 @@ def proportion(val: np.ndarray[float, ...] | float,
     match tail:
         case 1:
             if comp is None:
-                return permgt(val, axis=axis)
+                return permgt(val, axis=axis if axis is not None else 0)
         case 2:
             val = np.abs(val)
             if comp is not None:

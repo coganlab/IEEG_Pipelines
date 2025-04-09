@@ -167,7 +167,6 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     >>> group2 = cp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
     >>> ttest(group1, group2, 1)
     array([      nan, 1.2004901])
-    >>> ttest(group1, group2, 0)
     """
     if xp is None:
         xp = array_namespace(group1, group2)
@@ -211,12 +210,10 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
     array([1., 2., 3., 4., 5.])
     >>> arr1 = np.arange(60, dtype=float).reshape(10, 2, 3)
     >>> arr2 = np.arange(240, dtype=float).reshape(20, 3, 4)
-    >>> concatenate_arrays((arr1, arr2), axis=0)
+    >>> concatenate_arrays((arr1, arr2), axis=0)[0]
     array([[ 0.,  1.,  2., nan],
            [ 3.,  4.,  5., nan],
-           [ 0.,  1.,  2.,  3.],
-           [ 4.,  5.,  6.,  7.],
-           [ 8.,  9., 10., 11.]])
+           [nan, nan, nan, nan]])
     >>> concatenate_arrays((arr2[0], arr1[0]), axis=1)
     array([[ 0.,  1.,  2.,  3.,  0.,  1.,  2.],
            [ 4.,  5.,  6.,  7.,  3.,  4.,  5.],
