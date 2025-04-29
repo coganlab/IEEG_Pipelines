@@ -22,7 +22,7 @@ seeg = mne.io.read_raw(mne.datasets.misc.data_path() /
 def test_dist(mat, axis, expected):
     from ieeg.calc.stats import dist  # Import your actual module here
 
-    mean, std = dist(mat, axis)
+    mean, std = dist(mat, axis, ddof=1)
     assert np.allclose(mean, np.array(expected[0]))  # Check mean
     assert np.allclose(std, np.array(expected[1]))  # Check standard deviation
 
