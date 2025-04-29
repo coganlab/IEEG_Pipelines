@@ -10,81 +10,35 @@ __all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays",
            "ttest", "brunnermunzel"]
 
 def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
-    """Compute the Brunner-Munzel test on samples x and y.
+    """
+    Compute the Brunner-Munzel test statistic for two independent samples.
 
-    The Brunner-Munzel test is a nonparametric test of the null hypothesis that
-    when values are taken one by one from each group, the probabilities of
-    getting large values in both groups are equal.
-    Unlike the Wilcoxon-Mann-Whitney's U test, this does not require the
-    assumption of equivariance of two groups. Note that this does not assume
-    the distributions are same. This test works on two independent samples,
-    which may have different sizes.
+    The Brunner-Munzel test is used to compare the stochastic dominance of two
+    independent samples and does not assume equal variances. It is a nonparametric
+    statistical test that operates using ranked data. This implementation allows
+    handling NaN values based on the specified policy.
 
     Parameters
     ----------
-    x, y : array_like
-        Array of samples, should be one-dimensional.
-    alternative : {'two-sided', 'less', 'greater'}, optional
-        Defines the alternative hypothesis.
-        The following options are available (default is 'two-sided'):
-
-          * 'two-sided'
-          * 'less': one-sided
-          * 'greater': one-sided
-    distribution : {'t', 'normal'}, optional
-        Defines how to get the p-value.
-        The following options are available (default is 't'):
-
-          * 't': get the p-value by t-distribution
-          * 'normal': get the p-value by standard normal distribution.
+    x : np.ndarray
+        The first input array representing sample data.
+    y : np.ndarray
+        The second input array representing sample data.
+    axis : int or None, optional
+        The axis along which to compute the test statistic. If None, the arrays
+        are flattened before computation. Default is None.
     nan_policy : {'propagate', 'raise', 'omit'}, optional
-        Defines how to handle when input contains nan.
-        The following options are available (default is 'propagate'):
-
-          * 'propagate': returns nan
-          * 'raise': throws an error
-          * 'omit': performs the calculations ignoring nan values
+        Defines how to handle NaN values in the inputs:
+        - 'propagate': Returns NaN in the result if NaN is present in the input.
+        - 'raise': Raises an error if NaN is detected in the input.
+        - 'omit': Omits NaN values during the computation.
+        Default is 'omit'.
 
     Returns
     -------
-    statistic : float
-        The Brunner-Munzer W statistic.
-    pvalue : float
-        p-value assuming an t distribution. One-sided or
-        two-sided, depending on the choice of `alternative` and `distribution`.
-
-    See Also
-    --------
-    mannwhitneyu : Mann-Whitney rank test on two samples.
-
-    Notes
-    -----
-    Brunner and Munzel recommended to estimate the p-value by t-distribution
-    when the size of data is 50 or less. If the size is lower than 10, it would
-    be better to use permuted Brunner Munzel test (see [2]_).
-
-    References
-    ----------
-    .. [1] Brunner, E. and Munzel, U. "The nonparametric Benhrens-Fisher
-           problem: Asymptotic theory and a small-sample approximation".
-           Biometrical Journal. Vol. 42(2000): 17-25.
-    .. [2] Neubert, K. and Brunner, E. "A studentized permutation test for the
-           non-parametric Behrens-Fisher problem". Computational Statistics and
-           Data Analysis. Vol. 51(2007): 5192-5204.
-
-    Examples
-    --------
-    >>> from scipy.stats import brunnermunzel as bz
-    >>> x1 = np.array([1,2,1,1,1,1,1,1,1,1,2,4,1,1])
-    >>> x2 = np.array([3,3,4,3,1,2,3,1,1,5,4])
-    >>> brunnermunzel(x1, x2), bz(x1, x2, alternative='greater').statistic
-    3.1374674823029505
-    >>> x3 = np.array([[1,2,1,1],[1,1,1,1],[1,1,2,4]])
-    >>> x4 = np.array([[3,3,4,3],[1,2,3,1], [1,5,4,4]])
-    >>> brunnermunzel(x3, x4, axis=0), bz(x3, x4, axis=0, alternative='greater').statistic
-    3.1374674823029505
-    >>> brunnermunzel(x3, x4, axis=1), bz(x3, x4, axis=1, alternative='greater').statistic
-    >>> brunnermunzel(x3, x4, axis=None), bz(x3, x4, axis=None, alternative='greater').statistic
+    np.ndarray or float
+        The computed Brunner-Munzel statistic, returned as a scalar if the input
+        arrays are 1D and as an array otherwise.
     """
 
     if axis is None:
@@ -237,13 +191,17 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
         axis = 0
         arrays = [np.expand_dims(ar, axis) for ar in arrays]
 
-    arrays = [ar.astype(float) if ar.dtype.kind in 'iu' else ar for ar in arrays ]
+    arrays = [ar.astype(float) if ar.dtype.kind in 'iu' else ar
+              for ar in arrays if ar.size > 0]
+    if len(arrays) == 0:
+        return np.array([])
 
     while axis < 0:
         axis += max(a.ndim for a in arrays)
 
     max_shape = [max(a.shape[ax] for a in arrays) if ax!=axis else
-                 sum(a.shape[ax] for a in arrays) for ax in range(arrays[0].ndim)]
+                 sum(a.shape[ax] for a in arrays)
+                 for ax in range(arrays[0].ndim)]
     out = np.full(max_shape, np.nan, dtype=arrays[0].dtype)
     start = 0
     for i, ar in enumerate(arrays):
