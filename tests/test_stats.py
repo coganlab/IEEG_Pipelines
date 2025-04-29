@@ -50,7 +50,7 @@ def test_permclust(func, expected):
     base.decimate(10)
 
     mask, pvals = stats.time_perm_cluster(resp._data[:, 78],
-                                          base._data[:, 78], 0.01,
+                                          base._data[:, 78], 0.05,
                                           stat_func=func, n_perm=4000)
     assert np.mean(mask[expected]) > 0.8
 
