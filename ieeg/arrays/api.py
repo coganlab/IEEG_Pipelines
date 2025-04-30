@@ -1,5 +1,7 @@
 """Utility functions to use Python Array API compatible libraries.
 
+Copied from Scipy
+
 For the context about the Array API see:
 https://data-apis.org/array-api/latest/purpose_and_scope.html
 
@@ -41,7 +43,7 @@ __all__ = [
     'xp_assert_equal', 'xp_assert_less',
     'xp_copy', 'xp_copysign', 'xp_device',
     'xp_moveaxis_to_end', 'xp_ravel', 'xp_real', 'xp_sign', 'xp_size',
-    'xp_take_along_axis', 'xp_unsupported_param_msg', 'xp_vector_norm',
+    'xp_take_along_axis', 'xp_vector_norm',
 ]
 
 
@@ -89,6 +91,13 @@ def array_namespace(*arrays: Array) -> ModuleType:
     When the global switch is False, it defaults to the `numpy` namespace.
     In that case, there is no compliance check. This is a convenience to
     ease the adoption. Otherwise, arrays must comply with the new rules.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> array_namespace(np.array([1, 2, 3])) # doctest: +ELLIPSIS
+    <module '...numpy' from ...
+
     """
 
     _arrays = [array for array in arrays if array is not None]
@@ -179,7 +188,9 @@ def split(array: Array, indices_or_sections: int | list[int], axis: int = 0, xp:
     [array([0., 1., 2.]), array([3., 4., 5.]), array([6., 7., 8.])]
     >>> x = np.arange(8.0).reshape(2, 4)
     >>> np.split(x, 2, axis=1)
-    [array([[0., 1.], [4., 5.]]), array([[2., 3.], [6., 7.]])]
+    [array([[0., 1.],
+           [4., 5.]]), array([[2., 3.],
+           [6., 7.]])]
     """
     if xp is None:
         xp = array_namespace(array)
@@ -261,6 +272,12 @@ def xp_copy(x: Array, *, xp: ModuleType | None = None) -> Array:
     -----
     This copy function does not offer all the semantics of `np.copy`, i.e. the
     `subok` and `order` keywords are not used.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> xp_copy([1,2,3], xp=np)
+    array([1, 2, 3])
     """
     # Note: for older NumPy versions, `np.asarray` did not support the `copy` kwarg,
     # so this uses our other helper `_asarray`.
@@ -314,6 +331,49 @@ def _assert_matching_namespace(actual, desired):
 
 def xp_assert_equal(actual, desired, *, check_namespace=True, check_dtype=True,
                     check_shape=True, check_0d=True, err_msg='', xp=None):
+    """Assert that two arrays are equal.
+
+    Parameters
+    ----------
+    actual : array_like
+        The array to test.
+    desired : array_like
+        The expected array.
+    check_namespace : bool, optional
+        If True, check that the arrays have the same namespace.
+    check_dtype : bool, optional
+        If True, check that the arrays have the same dtype.
+    check_shape : bool, optional
+        If True, check that the arrays have the same shape.
+    check_0d : bool, optional
+        If True, check that the arrays have the same dimensionality.
+    err_msg : str, optional
+        The error message to be printed in case of failure.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the arrays.
+
+    Returns
+    -------
+    None
+        If the arrays are equal, otherwise raises an AssertionError.
+
+    Notes
+    -----
+    This function is a wrapper around the testing functions of different array libraries,
+    providing a consistent interface for equality testing across different backends.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> a = np.array([1, 2, 3])
+    >>> b = np.array([1, 2, 3])
+    >>> xp_assert_equal(a, b)  # No error raised
+    >>> c = np.array([1, 2, 4])
+    >>> xp_assert_equal(a, c)  # doctest: +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+        ...
+    AssertionError: Arrays are not equal
+    """
     __tracebackhide__ = True  # Hide traceback for py.test
     if xp is None:
         xp = array_namespace(actual)
@@ -338,6 +398,52 @@ def xp_assert_equal(actual, desired, *, check_namespace=True, check_dtype=True,
 
 def xp_assert_less(actual, desired, *, check_namespace=True, check_dtype=True,
                    check_shape=True, check_0d=True, err_msg='', verbose=True, xp=None):
+    """Assert that all elements of an array are strictly less than another array.
+
+    Parameters
+    ----------
+    actual : array_like
+        The array to test.
+    desired : array_like
+        The array to compare against.
+    check_namespace : bool, optional
+        If True, check that the arrays have the same namespace.
+    check_dtype : bool, optional
+        If True, check that the arrays have the same dtype.
+    check_shape : bool, optional
+        If True, check that the arrays have the same shape.
+    check_0d : bool, optional
+        If True, check that the arrays have the same dimensionality.
+    err_msg : str, optional
+        The error message to be printed in case of failure.
+    verbose : bool, optional
+        If True, print arrays that are not less.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the arrays.
+
+    Returns
+    -------
+    None
+        If all elements of `actual` are strictly less than all elements of `desired`,
+        otherwise raises an AssertionError.
+
+    Notes
+    -----
+    This function is a wrapper around the testing functions of different array libraries,
+    providing a consistent interface for comparison testing across different backends.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> a = np.array([1, 2, 3])
+    >>> b = np.array([4, 5, 6])
+    >>> xp_assert_less(a, b)  # No error raised
+    >>> c = np.array([3, 4, 2])
+    >>> xp_assert_less(a, c)  # doctest: +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+        ...
+    AssertionError: Arrays are not less
+    """
     __tracebackhide__ = True  # Hide traceback for py.test
     if xp is None:
         xp = array_namespace(actual)
@@ -361,16 +467,62 @@ def xp_assert_less(actual, desired, *, check_namespace=True, check_dtype=True,
                                         err_msg=err_msg, verbose=verbose)
 
 
-def xp_unsupported_param_msg(param: Any) -> str:
-    return f'Providing {param!r} is only supported for numpy arrays.'
-
-
 def is_complex(x: Array, xp: ModuleType) -> bool:
+    """Check if an array has a complex floating-point data type.
+
+    Parameters
+    ----------
+    x : Array
+        The array to check.
+    xp : module
+        The array API namespace to use.
+
+    Returns
+    -------
+    bool
+        True if the array has a complex floating-point data type, False otherwise.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.array([1+2j, 3+4j])
+    >>> is_complex(x, np)
+    True
+    >>> y = np.array([1, 2, 3])
+    >>> is_complex(y, np)
+    False
+    """
     return xp.isdtype(x.dtype, 'complex floating')
 
 
 def get_xp_devices(xp: ModuleType) -> list[str] | list[None]:
-    """Returns a list of available devices for the given namespace."""
+    """Returns a list of available devices for the given namespace.
+
+    Parameters
+    ----------
+    xp : module
+        The array API namespace to check for available devices.
+
+    Returns
+    -------
+    list of str or list of None
+        A list of available device strings for the given namespace.
+        For PyTorch, this might include 'cpu', 'cuda:0', etc.
+        For CuPy, this might include 'cuda:0', etc.
+        For JAX, this might include 'cpu:0', 'gpu:0', 'tpu:0', etc.
+        For other namespaces, returns [None].
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> get_xp_devices(np)
+    [None]
+
+    >>> # If PyTorch is available
+    >>> # import torch
+    >>> # get_xp_devices(torch)
+    >>> # ['cpu', 'cuda:0', ...]
+    """
     devices: list[str] = []
     if is_torch(xp):
         devices += ['cpu']
@@ -411,6 +563,31 @@ def scipy_namespace_for(xp: ModuleType) -> ModuleType | None:
     That is, return the namespace corresponding with backend `xp` that contains
     `scipy` sub-namespaces like `linalg` and `special`. If no such namespace
     exists, return ``None``. Useful for dispatching.
+
+    Parameters
+    ----------
+    xp : module
+        The array API namespace for which to find the corresponding SciPy-like namespace.
+
+    Returns
+    -------
+    module or None
+        The SciPy-like namespace for the given array API namespace, or None if no such
+        namespace exists.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import scipy
+    >>> scipy_namespace = scipy_namespace_for(np)
+    >>> scipy_namespace is scipy
+    True
+
+    >>> # For CuPy, if available
+    >>> # import cupy as cp
+    >>> # scipy_namespace = scipy_namespace_for(cp)
+    >>> # scipy_namespace is cupyx.scipy
+    >>> # True
     """
 
     if is_cupy(xp):
@@ -438,6 +615,40 @@ def xp_moveaxis_to_end(
         source: int,
         /, *,
         xp: ModuleType | None = None) -> Array:
+    """Move an axis to the end of the array.
+
+    Parameters
+    ----------
+    x : Array
+        The input array.
+    source : int
+        The source axis to move.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the array.
+
+    Returns
+    -------
+    Array
+        Array with the source axis moved to the end.
+
+    Notes
+    -----
+    This is a temporary substitute for xp.moveaxis, which is not yet available in all backends
+    or covered by array_api_compat.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    >>> x.shape
+    (2, 2, 2)
+    >>> y = xp_moveaxis_to_end(x, 0, xp=np)
+    >>> y.shape
+    (2, 2, 2)
+    >>> # The first axis (axis 0) is now the last axis
+    >>> np.array_equal(y, np.moveaxis(x, 0, -1))
+    True
+    """
     xp = array_namespace(xp) if xp is None else xp
     axes = list(range(x.ndim))
     temp = axes.pop(source)
@@ -448,6 +659,38 @@ def xp_moveaxis_to_end(
 # temporary substitute for xp.copysign, which is not yet in all backends
 # or covered by array_api_compat.
 def xp_copysign(x1: Array, x2: Array, /, *, xp: ModuleType | None = None) -> Array:
+    """Copy the sign of x2 to the magnitude of x1.
+
+    Parameters
+    ----------
+    x1 : Array
+        The array containing the magnitudes.
+    x2 : Array
+        The array containing the signs.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the arrays.
+
+    Returns
+    -------
+    Array
+        An array with the magnitude of x1 and the sign of x2.
+
+    Notes
+    -----
+    This is a temporary substitute for xp.copysign, which is not yet available in all backends
+    or covered by array_api_compat. This implementation does not attempt to account for special cases.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x1 = np.array([-1.3, 1.5, -3.0])
+    >>> x2 = np.array([1.0, -2.2, 3.0])
+    >>> xp_copysign(x1, x2, xp=np)
+    array([ 1.3, -1.5,  3. ])
+    >>> # Equivalent to NumPy's copysign
+    >>> np.copysign(x1, x2)
+    array([ 1.3, -1.5,  3. ])
+    """
     # no attempt to account for special cases
     xp = array_namespace(x1, x2) if xp is None else xp
     abs_x1 = xp.abs(x1)
@@ -457,6 +700,41 @@ def xp_copysign(x1: Array, x2: Array, /, *, xp: ModuleType | None = None) -> Arr
 # partial substitute for xp.sign, which does not cover the NaN special case
 # that I need. (https://github.com/data-apis/array-api-compat/issues/136)
 def xp_sign(x: Array, /, *, xp: ModuleType | None = None) -> Array:
+    """Return the sign of each element in the input array.
+
+    Parameters
+    ----------
+    x : Array
+        The input array.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the array.
+
+    Returns
+    -------
+    Array
+        An array with the same shape as x, where each element has the sign of the 
+        corresponding element in x. The sign is defined as:
+        - 1 for positive values
+        - 0 for zero
+        - -1 for negative values
+        - NaN for NaN values
+
+    Notes
+    -----
+    This is a partial substitute for xp.sign, which does not cover the NaN special case
+    in some array API implementations. See https://github.com/data-apis/array-api-compat/issues/136
+    for more details.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.array([-5.0, 0.0, 3.0, np.nan])
+    >>> xp_sign(x, xp=np)
+    array([-1.,  0.,  1., nan])
+    >>> # Equivalent to NumPy's sign
+    >>> np.sign(x)
+    array([-1.,  0.,  1., nan])
+    """
     xp = array_namespace(x) if xp is None else xp
     if is_numpy(xp):  # only NumPy implements the special cases correctly
         return xp.sign(x)
@@ -473,6 +751,49 @@ def xp_vector_norm(x: Array, /, *,
                    keepdims: bool = False,
                    ord: int | float = 2,
                    xp: ModuleType | None = None) -> Array:
+    """Compute the vector norm of an array.
+
+    Parameters
+    ----------
+    x : Array
+        The input array.
+    axis : int or tuple of ints, optional
+        The axis or axes along which to compute the norm. If None, the norm is
+        computed over all elements in the array.
+    keepdims : bool, optional
+        If True, the axes which are reduced are left in the result as dimensions
+        with size one. With this option, the result will broadcast correctly
+        against the original array.
+    ord : int or float, optional
+        The order of the norm. Default is 2 (Euclidean norm).
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the array.
+
+    Returns
+    -------
+    Array
+        The vector norm of the input array.
+
+    Notes
+    -----
+    This function attempts to use the `linalg.vector_norm` function from the array API
+    if available. If not, it falls back to a simple implementation for the Euclidean norm (ord=2).
+    For backends not implementing the `linalg` extension, only the Euclidean norm is supported.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.array([3.0, 4.0])
+    >>> float(xp_vector_norm(x, xp=np))  # Euclidean norm (default)
+    5.0
+    >>> float(xp_vector_norm(x, ord=1, xp=np))  # L1 norm
+    7.0
+    >>> x = np.array([[1, 2], [3, 4]])
+    >>> xp_vector_norm(x, axis=0, xp=np)  # Norm along first axis
+    array([3.16227766, 4.47213595])
+    >>> xp_vector_norm(x, axis=1, xp=np)  # Norm along second axis
+    array([2.23606798, 5.        ])
+    """
     xp = array_namespace(x) if xp is None else xp
 
     if SCIPY_ARRAY_API:
@@ -495,16 +816,70 @@ def xp_vector_norm(x: Array, /, *,
 
 
 def xp_ravel(x: Array, /, *, xp: ModuleType | None = None) -> Array:
-    # Equivalent of np.ravel written in terms of array API
-    # Even though it's one line, it comes up so often that it's worth having
-    # this function for readability
+    """Return a flattened array.
+
+    Parameters
+    ----------
+    x : Array
+        The input array to be flattened.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the array.
+
+    Returns
+    -------
+    Array
+        A 1-D array containing the elements of the input array.
+
+    Notes
+    -----
+    This function is equivalent to np.ravel written in terms of the array API.
+    Even though it's one line, it comes up so often that it's worth having
+    this function for readability.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.array([[1, 2], [3, 4]])
+    >>> xp_ravel(x, xp=np)
+    array([1, 2, 3, 4])
+    >>> # Equivalent to NumPy's ravel
+    >>> np.ravel(x)
+    array([1, 2, 3, 4])
+    """
     xp = array_namespace(x) if xp is None else xp
     return xp.reshape(x, (-1,))
 
 
 def xp_real(x: Array, /, *, xp: ModuleType | None = None) -> Array:
-    # Convenience wrapper of xp.real that allows non-complex input;
-    # see data-apis/array-api#824
+    """Return the real part of a complex array or the array itself if it's not complex.
+
+    Parameters
+    ----------
+    x : Array
+        The input array.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the array.
+
+    Returns
+    -------
+    Array
+        The real part of the input array if it has a complex data type, otherwise the input array.
+
+    Notes
+    -----
+    This is a convenience wrapper of xp.real that allows non-complex input;
+    see data-apis/array-api#824.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.array([1+2j, 3+4j])
+    >>> xp_real(x, xp=np)
+    array([1., 3.])
+    >>> y = np.array([1, 2, 3])
+    >>> xp_real(y, xp=np)  # Non-complex input is returned as is
+    array([1, 2, 3])
+    """
     xp = array_namespace(x) if xp is None else xp
     return xp.real(x) if xp.isdtype(x.dtype, 'complex floating') else x
 
@@ -513,8 +888,51 @@ def xp_take_along_axis(arr: Array,
                        indices: Array, /, *,
                        axis: int = -1,
                        xp: ModuleType | None = None) -> Array:
-    # Dispatcher for np.take_along_axis for backends that support it;
-    # see data-apis/array-api/pull#816
+    """Take values from an array along an axis at the indices specified.
+
+    Parameters
+    ----------
+    arr : Array
+        The source array.
+    indices : Array
+        The indices of the values to extract. This array must have the same shape
+        as `arr`, excluding the axis dimension.
+    axis : int, optional
+        The axis over which to select values. Default is -1 (the last axis).
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the arrays.
+
+    Returns
+    -------
+    Array
+        The indexed array. The shape of the output is the same as `indices`.
+
+    Notes
+    -----
+    This is a dispatcher for np.take_along_axis for backends that support it;
+    see data-apis/array-api/pull#816.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> a = np.array([[10, 30, 20], [60, 40, 50]])
+    >>> # Sort along the last axis
+    >>> ai = np.argsort(a)
+    >>> ai
+    array([[0, 2, 1],
+           [1, 2, 0]])
+    >>> xp_take_along_axis(a, ai, xp=np)
+    array([[10, 20, 30],
+           [40, 50, 60]])
+    >>> # Sort along the first axis
+    >>> ai = np.argsort(a, axis=0)
+    >>> ai
+    array([[0, 0, 0],
+           [1, 1, 1]])
+    >>> xp_take_along_axis(a, ai, axis=0, xp=np)
+    array([[10, 30, 20],
+           [60, 40, 50]])
+    """
     xp = array_namespace(arr) if xp is None else xp
     if is_torch(xp):
         return xp.take_along_dim(arr, indices, dim=axis)
@@ -526,6 +944,57 @@ def xp_take_along_axis(arr: Array,
 
 # utility to broadcast arrays and promote to common dtype
 def xp_broadcast_promote(*args, ensure_writeable=False, force_floating=False, xp=None):
+    """Broadcast arrays and promote to a common data type.
+
+    Parameters
+    ----------
+    *args : sequence of array_like
+        The arrays to broadcast and promote.
+    ensure_writeable : bool, optional
+        If True, ensure that the returned arrays are writeable by making a copy if necessary.
+    force_floating : bool, optional
+        If True, ensure that the returned arrays have a floating-point data type.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the arrays.
+
+    Returns
+    -------
+    list of Arrays
+        The broadcasted and promoted arrays. The order of the arrays in the output list
+        corresponds to the order of the input arrays.
+
+    Notes
+    -----
+    This function performs two operations:
+    1. Broadcasts all arrays to a common shape.
+    2. Promotes all arrays to a common data type.
+
+    If `force_floating` is True, the common data type will be a floating-point type,
+    even if all input arrays have integer types.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> a = np.array([1, 2, 3])
+    >>> b = np.array([[4], [5], [6]])
+    >>> c, d = xp_broadcast_promote(a, b, xp=np)
+    >>> c.shape  # Broadcasted to shape (3, 3)
+    (3, 3)
+    >>> d.shape  # Broadcasted to shape (3, 3)
+    (3, 3)
+    >>> c
+    array([[1, 2, 3],
+           [1, 2, 3],
+           [1, 2, 3]])
+    >>> d
+    array([[4, 4, 4],
+           [5, 5, 5],
+           [6, 6, 6]])
+    >>> # With force_floating=True
+    >>> e, f = xp_broadcast_promote(a, b, force_floating=True, xp=np)
+    >>> e.dtype  # Promoted to float
+    dtype('float64')
+    """
     xp = array_namespace(*args) if xp is None else xp
 
     args = [(xp.asarray(arg) if arg is not None else arg) for arg in args]
@@ -575,6 +1044,42 @@ def xp_broadcast_promote(*args, ensure_writeable=False, force_floating=False, xp
 
 
 def xp_float_to_complex(arr: Array, xp: ModuleType | None = None) -> Array:
+    """Convert a floating-point array to a complex array.
+
+    Parameters
+    ----------
+    arr : Array
+        The input array with floating-point data type.
+    xp : module, optional
+        The array API namespace to use. If not provided, the namespace is inferred from the array.
+
+    Returns
+    -------
+    Array
+        The input array converted to a complex data type. float32 is converted to complex64,
+        and float64 (and other real floating types) are converted to complex128.
+
+    Notes
+    -----
+    This function only converts arrays with floating-point data types. If the input array
+    already has a complex data type, it is returned unchanged.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+    >>> y = xp_float_to_complex(x, xp=np)
+    >>> y.dtype
+    dtype('complex64')
+    >>> z = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+    >>> w = xp_float_to_complex(z, xp=np)
+    >>> w.dtype
+    dtype('complex128')
+    >>> # Complex input is returned unchanged
+    >>> c = np.array([1+2j, 3+4j])
+    >>> xp_float_to_complex(c, xp=np) is c
+    True
+    """
     xp = array_namespace(arr) if xp is None else xp
     arr_dtype = arr.dtype
     # The standard float dtypes are float32 and float64.
