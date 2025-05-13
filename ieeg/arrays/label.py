@@ -332,6 +332,12 @@ class LabeledArray(np.ndarray):
                ['b']
                ['c']
                ['0', '1', '2'])
+        >>> data = {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'e': 6}}
+        >>> LabeledArray.from_dict(data)
+        array([[ 1.,  2.,  3.],
+               [ 4., nan,  6.]])
+        labels(['b', 'f']
+               ['c', 'd', 'e'])
         """
 
         keys = inner_all_keys(data)
@@ -349,7 +355,9 @@ class LabeledArray(np.ndarray):
         except MemoryError:
             arr = np.memmap('data.dat', dtype=dtype, mode='w+', shape=shape)
             arr[...] = np.nan
-        inner_array(data, arr)
+        for k, v in iter_nest_dict(data):
+            coords = tuple(keys[i].index(key) for i, key in enumerate(k))
+            arr[coords] = v
         return cls(arr, keys, **kwargs)
 
     @classmethod
@@ -1348,64 +1356,6 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     else:
         raise TypeError(f"Unexpected data type: {type(data)}")
     return tuple(map(tuple, keys))
-
-
-def inner_array(data: dict | np.ndarray, out: np.array = None) -> np.ndarray | None:
-    """Convert a nested dictionary to a nested array.
-
-    Parameters
-    ----------
-    data : dict or np.ndarray
-        The nested dictionary to convert.
-
-    Returns
-    -------
-    np.ndarray or None
-        The converted nested array.
-
-    Examples
-    --------
-    >>> data = {'a': {'b': {'c': 1}}}
-    >>> inner_array(data)
-    array([[[1.]]])
-    >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
-    >>> inner_array(data)
-    array([[[ 1., nan]],
-    <BLANKLINE>
-           [[ 2.,  3.]]])
-    >>> data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    >>> inner_array(data)
-    array([[[ 1.,  2.,  3.],
-            [ 4.,  5., nan]]])
-    """
-    if np.isscalar(data):
-        return data
-    elif isinstance(data, dict) and out is None:
-        gen_arr = (inner_array(d) for d in data.values())
-        arr = [a for a in gen_arr if a is not None]
-        if len(arr) > 0:
-            return concatenate_arrays(arr, axis=None)
-    elif isinstance(data, dict):
-        for i, (k, v) in enumerate(data.items()):
-            if isinstance(v, dict):
-                inner_array(v, out[i])
-            elif not np.isscalar(v):
-                idx = (i,) + tuple(slice(s) for s in v.shape)
-                out[idx] = v
-            elif v is not None:
-                out[i] = v
-        return
-
-    # Call np.atleast_1d once and store the result in a variable
-    data_1d = np.atleast_1d(data)
-
-    # Use the stored result to check the length of data
-    if len(data_1d) == 0:
-        return
-    elif len(data_1d) == 1:
-        return data
-    else:
-        return np.array(data)
 
 
 def get_float_type(int_type):
