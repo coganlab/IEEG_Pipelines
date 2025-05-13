@@ -11,7 +11,7 @@ from numpy.typing import ArrayLike
 import ieeg
 
 
-def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
+def iter_nest_dict(d: dict, iter_arrays: bool = False) -> Iterable[tuple]:
     """Iterate over a nested dictionary, yielding the key and value.
 
     Parameters
@@ -33,15 +33,42 @@ def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
     ('a', 'c') 2
     ('d', 'e') 3
     ('d', 'f') 4
+    >>> d = {'a': {'b': np.array([1, 2]), 'c': 2}, 'd': {'e': 3, 'f': 4}}
+    >>> for k, v in iter_nest_dict(d, iter_arrays=False):
+    ...     print(k, v)
+    ('a', 'b') [1 2]
+    ('a', 'c') 2
+    ('d', 'e') 3
+    ('d', 'f') 4
+    >>> for k, v in iter_nest_dict(d, iter_arrays=True):
+    ...     print(k, v)
+    ('a', 'b', 0) 1
+    ('a', 'b', 1) 2
+    ('a', 'c') 2
+    ('d', 'e') 3
+    ('d', 'f') 4
     """
-    for k, v in d.items():
-        if isinstance(v, dict):
-            yield from iter_nest_dict(v, _lvl + 1, _coords + (k,))
-        elif isinstance(v, np.ndarray):
-            yield from iter_nest_dict({i: val for i, val in enumerate(v)
-                                       }, _lvl + 1, _coords + (k,))
-        else:
-            yield _coords + (k,), v
+    stack = [(d, [])]
+    if not iter_arrays:
+        while stack:
+            current, path = stack.pop()
+            if isinstance(current, dict):
+                # Reverse to maintain order
+                for k, v in reversed(current.items()):
+                    stack.append((v, path + [k]))
+            else:
+                yield tuple(path), current
+    else:
+        while stack:
+            current, path = stack.pop()
+            if isinstance(current, dict):
+                for k, v in reversed(current.items()):
+                    stack.append((v, path + [k]))
+            elif isinstance(current, np.ndarray):
+                for i, val in reversed(list(enumerate(current))):
+                    stack.append((val, path + [i]))
+            else:
+                yield tuple(path), current
 
 
 def lcs(*strings: str) -> str:
@@ -325,12 +352,16 @@ class LabeledArray(np.ndarray):
         labels(['a', 'd']
                ['b']
                ['c', 'e'])
-        >>> data = {'a': {'b': {'c': np.array([1, 2, 3])}}}
+        >>> data = {'a': {'b': np.array([[1, 2, 3]]), 'c' : [[4, 5], [6, 7]]},}
         >>> LabeledArray.from_dict(data) # doctest: +ELLIPSIS
-        array([[[[1., 2., 3.]]]])
+        array([[[[ 1.,  2.,  3.],
+                 [nan, nan, nan]],
+        <BLANKLINE>
+                [[ 4.,  5., nan],
+                 [ 6.,  7., nan]]]])
         labels(['a']
-               ['b']
-               ['c']
+               ['b', 'c']
+               ['0', '1']
                ['0', '1', '2'])
         >>> data = {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'e': 6}}
         >>> LabeledArray.from_dict(data)
@@ -341,6 +372,9 @@ class LabeledArray(np.ndarray):
         """
 
         keys = inner_all_keys(data)
+        # each key layer is unique by definition
+        # also non-homogenous shape sequence would have failed by now
+        # example: {'c' : [[4, 5], [6]]}
         dtype = kwargs.pop('dtype', None)
         tmp = data
         if dtype is None:
@@ -355,8 +389,14 @@ class LabeledArray(np.ndarray):
         except MemoryError:
             arr = np.memmap('data.dat', dtype=dtype, mode='w+', shape=shape)
             arr[...] = np.nan
+
+        # slightly faster than using keys[i].index(key), O(n+m) vs O(n*m)
+        keys_dict = tuple({k: i for i, k in enumerate(ks)} for ks in keys)
         for k, v in iter_nest_dict(data):
-            coords = tuple(keys[i].index(key) for i, key in enumerate(k))
+            coords = tuple(keys_dict[i][key] for i, key in enumerate(k))
+            if isinstance(v, (list, tuple, np.ndarray)):
+                v = np.asarray(v)
+                coords += tuple(slice(0, s) for s in v.shape)
             arr[coords] = v
         return cls(arr, keys, **kwargs)
 
@@ -1343,7 +1383,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
             if np.isscalar(d):
                 continue
             inner_all_keys(d, keys, lvl + 1)
-    elif isinstance(data, np.ndarray):
+    elif isinstance(data, (np.ndarray, list, tuple)):
         data = np.atleast_1d(data)
         rows = range(data.shape[0])
         if len(keys) < lvl + 1:
