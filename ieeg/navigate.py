@@ -239,7 +239,8 @@ def find_bad_channels_lof(
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
                     copy: bool = False, picks: list = 'data',
                     deviation: callable = np.std,
-                    center: callable = np.mean, verbose=None
+                    center: callable = np.mean, tmin: int | float = None,
+                    tmax: int | float = None, verbose=None
                     ) -> mne.epochs.BaseEpochs:
     """Set outliers to nan.
 
@@ -295,12 +296,13 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
         trials = trials.copy()
     picks = mne.io.pick._picks_to_idx(trials.info, picks)
     trials.load_data()
-    data = trials.get_data(picks=picks, verbose=verbose)
+    data = trials.get_data(picks, tmin=tmin, tmax=tmax, verbose=verbose, copy=False)
 
     # bool array of where to keep data trials X channels
     keep = stats.find_outliers(data, outliers, deviation, center)
 
     # set outliers to nan if not keep
+    data = trials.get_data(picks, verbose=verbose, copy=False)
     data = np.where(keep[..., None], data, np.nan)
     trials._data[:, picks] = data
 
