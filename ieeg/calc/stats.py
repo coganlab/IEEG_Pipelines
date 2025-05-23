@@ -574,7 +574,7 @@ def _handle_stat_func(stat_func, alt, axis, *sigs):
             kwargs['xp'] = xp
             return func(*args, **kwargs)
 
-    if isinstance(stat_func(xp.array([1]), xp.array([1]), axis), tuple):
+    if isinstance(stat_func(xp.array([1]), xp.array([1]), 0), tuple):
         logger.warning('stat_func returns a tuple. Taking the first element')
         func = stat_func
 
