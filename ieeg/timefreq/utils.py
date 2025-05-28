@@ -260,7 +260,8 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     # parallelize(_ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
     #             verbose=verbose)
 
-    return EpochsTFRArray(inst.info, wave, inst.times[::decim], 1/ period)
+    return EpochsTFRArray(inst.info, wave, inst.times[::decim], 1/ period,
+                          events=inst.events, event_id=inst.event_id)
 
 
 def calculate_wavelets(sfreq: float, f_high: float, f_low: float,

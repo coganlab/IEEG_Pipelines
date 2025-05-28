@@ -533,7 +533,9 @@ def superlet_tfr(inst: Signal,
     faslt.clear()
 
     # create TFR object and return it
-    tfr = mne.time_frequency.EpochsTFRArray(inst.info, out, times, freqs)
+    tfr = mne.time_frequency.EpochsTFRArray(inst.info, out, times, freqs,
+                                            events=inst.events,
+                                            event_id=inst.event_id)
 
     return tfr
 
