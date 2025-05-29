@@ -253,7 +253,7 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
-    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    Reading 0 ... 269079 = 0.000 ... 269.079 secs...
     """
     verbose = kwargs.pop('verbose', True)
     if run is None:
@@ -360,9 +360,15 @@ def get_data(task: str, root: PathLike,
 
     # check for BIDS subfolder
     if op.isdir(alt_root := op.join(BIDS_root, "BIDS")):
-        return BIDSLayout(alt_root, derivatives=True)
+        BIDS_root = alt_root
+
+    # check for derivatives subfolder
+    if op.isdir(op.join(BIDS_root, "derivatives")):
+        kwargs = {'derivatives': True}
     else:
-        return BIDSLayout(BIDS_root, derivatives=True)
+        kwargs = {'derivatives': False}
+
+    return BIDSLayout(BIDS_root, **kwargs)
 
 
 @fill_doc
