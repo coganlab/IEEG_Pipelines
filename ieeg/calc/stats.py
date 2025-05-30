@@ -183,17 +183,23 @@ def find_outliers(data: np.ndarray, outliers: float,
     >>> import numpy as np
     >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
     >>> find_outliers(data, 1)
-    array([ True, False,  True, False,  True])
+    array([ True, False,  True,  True,  True])
     >>> find_outliers(data, 10)
-    array([ True, False,  True, False,  True])
+    array([ True,  True,  True,  True,  True])
     >>> find_outliers(data, 0.1)
     array([ True, False,  True, False,  True])
     >>> find_outliers(data, 0.1, np.std)
     array([ True, False,  True, False,  True])
+    >>> data = np.array([[1, 1, np.nan, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> find_outliers(data, 0.1)
+    array([ True, False,  True,  True,  True])
     """
+    where = np.isfinite(data)  # (trials X channels X (frequency) X time)
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
-    max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
+    max = np.max(dat, axis=-1, where=where, initial=0)  # (trials X channels X (frequency))
     kwargs = {'axis': (-1, 0)}
+    if 'where' in inspect.signature(center).parameters:
+        kwargs['where'] = where
     mean = center(dat, **kwargs)  # (channels X (frequency))
     if 'center' in inspect.signature(deviation).parameters:
         kwargs['center'] = center
