@@ -200,9 +200,17 @@ def find_outliers(data: np.ndarray, outliers: float,
     kwargs = {'axis': (-1, 0)}
     if 'where' in inspect.signature(center).parameters:
         kwargs['where'] = where
+    elif 'nan_policy' in inspect.signature(center).parameters:
+        kwargs['nan_policy'] = 'omit'
     mean = center(dat, **kwargs)  # (channels X (frequency))
+    _ = kwargs.pop('where', None)
+    _ = kwargs.pop('nan_policy', None)
     if 'center' in inspect.signature(deviation).parameters:
         kwargs['center'] = center
+    if 'where' in inspect.signature(deviation).parameters:
+        kwargs['where'] = where
+    elif 'nan_policy' in inspect.signature(deviation).parameters:
+        kwargs['nan_policy'] = 'omit'
     std = deviation(dat, **kwargs)  # (channels X (frequency))
     keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
     return keep
