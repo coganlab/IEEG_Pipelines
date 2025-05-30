@@ -1,3 +1,5 @@
+import functools
+
 import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from mne.utils import logger
@@ -191,27 +193,30 @@ def find_outliers(data: np.ndarray, outliers: float,
     >>> find_outliers(data, 0.1, np.std)
     array([ True, False,  True, False,  True])
     >>> data = np.array([[1, 1, np.nan, 1, 1], [0, 60, 0, 10, 0]]).T
-    >>> find_outliers(data, 0.1)
-    array([ True, False,  True,  True,  True])
+    >>> find_outliers(data, 0.1, st.median_abs_deviation)
+    array([ True, False,  True, False,  True])
     """
     where = np.isfinite(data)  # (trials X channels X (frequency) X time)
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
     max = np.max(dat, axis=-1, where=where, initial=0)  # (trials X channels X (frequency))
-    kwargs = {'axis': (-1, 0)}
+    kwargs = {}
     if 'where' in inspect.signature(center).parameters:
         kwargs['where'] = where
     elif 'nan_policy' in inspect.signature(center).parameters:
         kwargs['nan_policy'] = 'omit'
-    mean = center(dat, **kwargs)  # (channels X (frequency))
+    mean = center(dat, axis=(-1,0), **kwargs)  # (channels X (frequency))
     _ = kwargs.pop('where', None)
     _ = kwargs.pop('nan_policy', None)
     if 'center' in inspect.signature(deviation).parameters:
         kwargs['center'] = center
-    if 'where' in inspect.signature(deviation).parameters:
+    if 'where' in inspect.signature(deviation).parameters: # numpy
         kwargs['where'] = where
-    elif 'nan_policy' in inspect.signature(deviation).parameters:
+        std = deviation(dat, axis=(-1, 0), **kwargs)  # (channels X (frequency))
+    elif 'nan_policy' in inspect.signature(deviation).parameters: # scipy
         kwargs['nan_policy'] = 'omit'
-    std = deviation(dat, **kwargs)  # (channels X (frequency))
+        std = np.empty(dat.shape[slice(1, dat.ndim-1)], dtype=dat.dtype)
+        for idx in np.ndindex(std.shape):
+            std[idx] = deviation(dat[:,  *idx], axis=None, **kwargs)  # (channels X (frequency))
     keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
     return keep
 
