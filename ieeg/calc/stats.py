@@ -1,12 +1,10 @@
-import functools
-
 import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from mne.utils import logger
 from scipy import stats as st
 from scipy import ndimage
 import inspect
-# from sklearn.neighbors import LocalOutlierFactor
+from sklearn.neighbors import LocalOutlierFactor
 
 from ieeg import Doubles
 from ieeg.arrays.api import array_namespace, ArrayLike, is_numpy
@@ -165,7 +163,7 @@ def find_outliers(data: np.ndarray, outliers: float,
     Parameters
     ----------
     data : np.ndarray
-        Data to find outliers in.
+        Data to find outliers in. (trials X channels X (frequency) X time)
     outliers : float
         Number of deviations from the mean to consider an outlier.
     deviation: callable, optional
@@ -221,6 +219,66 @@ def find_outliers(data: np.ndarray, outliers: float,
         std = deviation(dat, axis=(-1, 0), **kwargs)  # (channels X (frequency))
     keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
     return keep
+
+
+def find_outliers_lof(data: np.ndarray, threshold: int = 1.5, max_proportion: float = 0.2,
+            metric: str = "seuclidean", policy: str = "increment",
+             **kwargs):
+    """Remove outliers from data.
+
+    Uses Scikit-learn's LocalOutlierFactor to remove outliers from data. The
+    function will remove outliers from the data, assuming that there are not
+    more outliers in the data than the max_proportion.
+
+    Parameters
+    ----------
+    data
+    max_proportion
+    policy
+    kwargs
+
+    Returns
+    -------
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> find_outliers(data, 1)
+    array([ True, False,  True,  True,  True])
+    >>> find_outliers(data, 10)
+    array([ True,  True,  True,  True,  True])
+    >>> find_outliers(data, 0.1)
+    array([ True, False,  True, False,  True])
+    >>> find_outliers(data, 0.1, np.std)
+    array([ True, False,  True, False,  True])
+    >>> data = np.array([[1, 1, np.nan, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> find_outliers(data, 0.1)
+    array([ True, False,  True, False,  True])
+
+    """
+    assert 0 < max_proportion <= 1, "max_proportion must be between 0 and 1"
+    assert policy in ["increment", "toss"], "policy must be 'increment' or 'toss'"
+
+    n = data.shape[0] // (1 / max_proportion)
+    if metric == "seuclidean":
+        kwargs.setdefault("metric_params", {"V": np.var(data, axis=0)})
+    clf = LocalOutlierFactor(n_neighbors=n, metric=metric, **kwargs)
+    out = np.empty(data.shape[:-1], dtype=bool)
+    for idx in np.ndindex(out.shape[1:]):
+        idx = (slice(None),) + idx  # add slice for trials
+        bad_indices = np.arange(data.shape[0]).tolist()
+        clf.fit(data[idx])
+        scores_lof = clf.negative_outlier_factor_
+        thresh = threshold
+        while len(bad_indices) / n:
+            bad_indices = [
+                i for i, v in enumerate(np.abs(scores_lof)) if v >= thresh
+            ]
+            thresh += 1
+        out1d = np.isin(np.arange(data.shape[0]), bad_indices, invert=True)
+        out = np.broadcast_to(out1d, out.shape)
+    return out
 
 
 def avg_no_outlier(data: np.ndarray, outliers: float = None,
@@ -292,45 +350,6 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
     for msg in disp:
         logger.info(msg)
     return np.mean(data, axis=0, where=keep[..., np.newaxis])
-#
-# def outlier(data: np.ndarray, axis: int = 0, max_proportion: float = 0.2,
-#             metric: str = "seuclidean", policy: str = "increment",
-#             threshold: int = 1.5, **kwargs):
-#     """Remove outliers from data.
-#
-#     Uses Scikit-learn's LocalOutlierFactor to remove outliers from data. The
-#     function will remove outliers from the data, assuming that there are not
-#     more outliers in the data than the max_proportion.
-#
-#     Parameters
-#     ----------
-#     data
-#     axis
-#     max_proportion
-#     policy
-#     kwargs
-#
-#     Returns
-#     -------
-#
-#     """
-#     assert 0 < max_proportion <= 1, "max_proportion must be between 0 and 1"
-#     assert policy in ["increment", "toss"], "policy must be 'increment' or 'toss'"
-#
-#     n = data.shape[axis] // (1 / max_proportion)
-#     if metric == "seuclidean":
-#         kwargs.setdefault("metric_params", {"V": np.var(data, axis=axis)})
-#     clf = LocalOutlierFactor(n_neighbors=n, metric=metric, **kwargs)
-#
-#     bad_indices = np.arange(data.shape[axis]).tolist()
-#     clf.fit_predict(data)
-#     scores_lof = clf.negative_outlier_factor_
-#     while len(bad_indices) / n:
-#         bad_indices = [
-#             i for i, v in enumerate(np.abs(scores_lof)) if v >= threshold
-#         ]
-#         threshold += 1
-#     bads = [ch_names[idx] for idx in bad_indices]
 
 
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
