@@ -15,6 +15,7 @@ function locs = extractTriggerOnset(trigger, fs)
     % Plot the trigger signal
     figure;
     plot(time, trigger);
+    drawnow;
     
     % Prompt user for input
     tw(1) = input('Enter the starting time: ');

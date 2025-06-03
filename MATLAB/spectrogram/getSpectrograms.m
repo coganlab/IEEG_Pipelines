@@ -47,7 +47,8 @@ for iChan = 1:length(channelOfInterest)
     elseif iscell(goodtrials)
         trials_g = goodtrials{iChan};
     else
-        trials_g = goodtrials;
+        trials_g = find(goodtrials(iChan,:));
+%         trials_g = goodtrials;
     end
     
     [spec{iChan}, F] = extract_spectrograms_channel(squeeze(ieeg(iChan, trials_g, :)), AnaParams);

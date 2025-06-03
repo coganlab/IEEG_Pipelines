@@ -4,8 +4,8 @@ function p = permtest(sample1, sample2, numperm)
 % Syntax: p = permtest(sample1, sample2, numperm)
 %
 % Inputs:
-%   sample1     - First sample data (1 x n1) array
-%   sample2     - Second sample data (1 x n2) array
+%   sample1     - First sample data (1 x n1) array (signal of interest)
+%   sample2     - Second sample data (1 x n2) array (baseline signal)
 %   numperm     - Number of permutations to perform
 %
 % Outputs:

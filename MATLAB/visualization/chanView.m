@@ -41,4 +41,4 @@ end
 set(b,'AlphaData',~isnan(valChannelSmooth));
 title( options.titl);
 colormap((parula(4096)));
-%colorbar;
+colorbar;

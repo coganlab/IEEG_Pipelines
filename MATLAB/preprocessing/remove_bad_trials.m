@@ -1,4 +1,4 @@
-function [NumTrials, goodtrials] = remove_bad_trials(data, threshold)
+function [NumTrials, goodtrials] = remove_bad_trials(data, options)
 % remove_bad_trials - Removes bad trials based on a threshold detection.
 %
 % Syntax: [NumTrials, goodtrials] = remove_bad_trials(data, threshold)
@@ -16,21 +16,27 @@ function [NumTrials, goodtrials] = remove_bad_trials(data, threshold)
 %   threshold = 3; % Threshold of 3 standard deviations
 %   [NumTrials, goodtrials] = remove_bad_trials(data, threshold); % Remove bad trials
 
+arguments
+    data double
+    options.threshold = 10;
+    options.method = 1;
+end
 
-thresh = threshold;
+thresh = options.threshold;
 
 for iCh = 1:size(data, 1) % Iterate over channels
     tmp = squeeze(data(iCh, :, :)); % Extract trials for the current channel
-    tmp = detrend(tmp); % Detrend the trials
-    sd = std(tmp(:)); % Calculate the standard deviation of the detrended trials
-    e = max(abs(tmp')); % Find the maximum absolute value for each trial (single point)
-    if thresh < 100 % Artifact threshold is in terms of standard deviations
-        th = thresh * sd; % Calculate the threshold as a multiple of the standard deviation
-    else
-        th = 10 * thresh; % Artifact threshold is in terms of uV, accounting for preamp gain
+    switch(options.method)
+        case 1
+            th = thresh*std(abs(tmp(:)))+mean(abs(tmp(:)));
+            e = max(abs(tmp')); % Finds the maximum SINGLE point
+            NumTrials(iCh) = length(find(e < th | e ~=0)); % Count the number of trials below the threshold
+            goodtrials(iCh,:) = (e < th| e ~=0); % Get the indices of the good trials (below the threshold)
+        case 2
+            difftmp = (diff(tmp')); 
+            NumTrials(iCh) = length(find(max(difftmp)<thresh)); % Count the number of trials below the threshold
+            goodtrials(iCh,:) = max(difftmp)<thresh; % Get the indices of the good trials (below the threshold)
     end
-    NumTrials(iCh) = length(find(e < th)); % Count the number of trials below the threshold
-    goodtrials{iCh} = find(e < th); % Get the indices of the good trials (below the threshold)
 end
 
 end

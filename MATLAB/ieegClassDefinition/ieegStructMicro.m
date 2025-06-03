@@ -36,7 +36,7 @@ classdef ieegStructMicro < ieegStructClass
             ieegSpatialSmooth = ieegStructMicro(dataSmooth, obj.fs, obj.tw, obj.fBand, [obj.name '_' num2str(window(1)) 'x' num2str(window(2)) '_spatially_smoothed'], chanMapTemp);
         end
         
-        function [ieegSpatialAverage, matrixPoints] = spatialAverage(obj, window, isOverlap)
+        function [ieegSpatialAverage, matrixPoints] = spatialAverage(obj, window, isOverlap, isCenter)
             % Spatial averaging of micro-scale iEEG data
             
             % Performs spatial averaging on the iEEG data using the channel map and a given window size
@@ -47,7 +47,11 @@ classdef ieegStructMicro < ieegStructClass
             %   ieegSpatialAverage: Spatially averaged ieegStructMicro object
             %   matrixPoints: Indices of the averaged channels in the channel map
             
-            matrixPoints = matrixSubSample(obj.chanMap, window, isOverlap);
+            matrixPoints = matrixSubSample(obj.chanMap, window, isOverlap, isCenter);
+
+            % don't consider matrixes with NaNs
+            matrixPoints = matrixPoints(~any(isnan(matrixPoints'), 1),:);
+
             chanMapAverage = zeros(floor(size(obj.chanMap, 1) / window(1)), floor(size(obj.chanMap, 2) / window(2)));
             dataAverage = zeros(size(matrixPoints, 1), size(obj.data, 2), size(obj.data, 3));
             

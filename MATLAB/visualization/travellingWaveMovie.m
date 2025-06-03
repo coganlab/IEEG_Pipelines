@@ -1,8 +1,9 @@
-function [waveChannel,timeSelect] = travellingWaveMovie(sig2Movie,chanMap,timeAll,options)
+function [waveChannel,timeSelect] = travellingWaveMovie(sig2Movie,chanMap,selectedChannels,timeAll,options)
 
 arguments
     sig2Movie double % sig2Movie: channels x timepoints
     chanMap double % chanMap: 2D channel map
+    selectedChannels double % selectedChannels: 1 x channels 
     timeAll double % timeAll: 1 x timepoints (in seconds)
     options.etw double = [timeAll(1) timeAll(end)] % etw: epoch time window in seconds (e.g. [-1 1] to print movie
             % between -1 to 1 seconds
@@ -18,7 +19,7 @@ end
         movTitle = options.movTitle;
         colbarTitle = options.colbarTitle; 
         
-        selectedChannels = sort(chanMap(~isnan(chanMap)))';
+%         selectedChannels = sort(chanMap(~isnan(chanMap)))';
         timeSelectInd = timeAll>=etw(1)&timeAll<=etw(2);
         timeSelect = timeAll(timeSelectInd);
         figure;
@@ -33,7 +34,9 @@ end
         waveChannel = nan(size(chanMap,1),size(chanMap,2),length(timeAll(timeSelectInd)));
         for c = 1 : length(selectedChannels)
             [cIndR, cIndC] = find(ismember(chanMap,selectedChannels(c)));
-            waveChannel(cIndR,cIndC,:)=sig2Movie(c,timeSelectInd);
+            for ind=1:length(cIndR)
+                waveChannel(cIndR(ind),cIndC(ind),:)=sig2Movie(c,timeSelectInd);
+            end
         end
         figure;
         for iTime=1:size(waveChannel,3)

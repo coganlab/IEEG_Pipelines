@@ -117,6 +117,7 @@ else
             caxis(cval);
         end
         set(gca, 'YDir', 'normal');
+        
     end
 end
 
