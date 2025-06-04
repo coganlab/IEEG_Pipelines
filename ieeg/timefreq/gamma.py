@@ -147,7 +147,7 @@ def extract(data: np.ndarray, fs: float = None,
         if n_jobs != 1:
             ins = (in_data[trial].T for trial in trials)
             par_out = parallelize(filterbank_hilbert, ins, fs=fs, Wn=passband,
-                                  spacnig=spacing, n_jobs=n_jobs)
+                                  spacing=spacing, n_jobs=n_jobs)
             env[:, :, :] = np.array([np.sum(out, axis=-1).T for
                                      out in par_out])
         else:
