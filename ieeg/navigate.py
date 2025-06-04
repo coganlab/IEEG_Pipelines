@@ -274,10 +274,10 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
     Reading 0 ... 269079  =      0.000 ...   269.079 secs...
-    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
-    ... verbose=False)
-    >>> epochs = outliers_to_nan(epochs, 3, verbose=False)
-    >>> epochs['AD1-4, ATT1,2'].get_data()[0]
+    >>> epochs = trial_ieeg(raw, ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD'],
+    ... (-1, 2), preload=True, verbose=False)
+    >>> outliers_to_nan(epochs, 1, verbose=False, copy=True
+    ... ).get_data()[0]
     array([[        nan,         nan,         nan, ...,         nan,
                     nan,         nan],
            [-0.00030586, -0.00030625, -0.00031171, ..., -0.00016054,
@@ -291,19 +291,28 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
             -0.00047148, -0.00047891],
            [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
             -0.00042341, -0.00040973]])
+    >>> outliers_to_nan(epochs, .1, verbose=False, copy=True,
+    ... deviation=None).get_data()[0]
     """
     if copy:
         trials = trials.copy()
     picks = mne.io.pick._picks_to_idx(trials.info, picks)
-    trials.load_data()
-    data = trials.get_data(picks, tmin=tmin, tmax=tmax, verbose=verbose, copy=False)
+    if isinstance(trials, mne.time_frequency.BaseTFR):
+        data = trials.get_data(picks, tmin=tmin, tmax=tmax)
+        out_data = trials.get_data(picks)
+    else:
+        trials.load_data()
+        data = trials.get_data(picks, tmin=tmin, tmax=tmax, verbose=verbose, copy=False)
+        out_data = trials.get_data(picks, verbose=False, copy=False)
 
     # bool array of where to keep data trials X channels
-    keep = stats.find_outliers(data, outliers, deviation, center)
+    if deviation is None or center is None:
+        keep = stats.find_outliers_lof(data, outliers)
+    else:
+        keep = stats.find_outliers(data, outliers, deviation, center)
 
     # set outliers to nan if not keep
-    data = trials.get_data(picks, verbose=verbose, copy=False)
-    data = np.where(keep[..., None], data, np.nan)
+    data = np.where(keep[..., None], out_data, np.nan)
     trials._data[:, picks] = data
 
     return trials
@@ -403,5 +412,5 @@ if __name__ == "__main__":
     events, event_id = mne.events_from_annotations(filt)
     auds = mne.Epochs(filt, events, event_id['Audio'], baseline=None, tmin=-2,
                       tmax=5, preload=True, detrend=1)
-    bads = channel_outlier_marker(auds)
-    auds.info['bads'] = bads
+    # bads = channel_outlier_marker(auds)
+    # auds.info['bads'] = bads
