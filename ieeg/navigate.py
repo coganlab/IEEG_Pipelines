@@ -301,7 +301,8 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
         data = trials.get_data(picks, tmin=tmin, tmax=tmax)
         out_data = trials.get_data(picks)
     else:
-        trials.load_data()
+        if not isinstance(trials, mne.epochs.EpochsArray):
+            trials.load_data()
         data = trials.get_data(picks, tmin=tmin, tmax=tmax, verbose=verbose, copy=False)
         out_data = trials.get_data(picks, verbose=False, copy=False)
 
