@@ -7,14 +7,14 @@ import inspect
 from sklearn.neighbors import LocalOutlierFactor
 
 from ieeg import Doubles
-from ieeg.arrays.api import array_namespace, ArrayLike, is_numpy
+from ieeg.arrays.api import array_namespace, Array, is_numpy
 from ieeg.arrays.reshape import make_data_same
 from ieeg.calc.fast import permgt, ttest
 from ieeg.process import get_mem, iterate_axes
 
 
 def dist(mat: np.ndarray, axis: int = None, mode: str = 'sem', ddof: int = 0,
-         where: np.ndarray = None, keepdims: bool = False, xp = None
+         where: np.ndarray = None, keepdims: bool = False, xp=None
          ) -> Doubles:
     """ Calculate the mean and standard deviation of a matrix.
 
@@ -196,34 +196,35 @@ def find_outliers(data: np.ndarray, outliers: float,
     """
     where = np.isfinite(data)  # (trials X channels X (frequency) X time)
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
-    max = np.max(dat, axis=-1, where=where, initial=0)  # (trials X channels X (frequency))
+    # (trials X channels X (frequency))
+    max = np.max(dat, axis=-1, where=where, initial=0)
     kwargs = {}
     if 'where' in inspect.signature(center).parameters:
         kwargs['where'] = where
     elif 'nan_policy' in inspect.signature(center).parameters:
         kwargs['nan_policy'] = 'omit'
-    mean = center(dat, axis=(-1,0), **kwargs)  # (channels X (frequency))
+    mean = center(dat, axis=(-1, 0), **kwargs)  # (channels X (frequency))
     _ = kwargs.pop('where', None)
     _ = kwargs.pop('nan_policy', None)
     if 'center' in inspect.signature(deviation).parameters:
         kwargs['center'] = center
-    if 'where' in inspect.signature(deviation).parameters: # numpy
+    if 'where' in inspect.signature(deviation).parameters:  # numpy
         kwargs['where'] = where
-        std = deviation(dat, axis=(-1, 0), **kwargs)  # (channels X (frequency))
-    elif 'nan_policy' in inspect.signature(deviation).parameters: # scipy
+        std = deviation(dat, axis=(-1, 0), **kwargs)  # channels X (frequency)
+    elif 'nan_policy' in inspect.signature(deviation).parameters:  # scipy
         kwargs['nan_policy'] = 'omit'
         std = np.empty(dat.shape[slice(1, dat.ndim-1)], dtype=dat.dtype)
         for idx in np.ndindex(std.shape):
-            std[idx] = deviation(dat[:,  *idx], axis=None, **kwargs)  # (channels X (frequency))
+            # (channels X (frequency))
+            std[idx] = deviation(dat[:,  *idx], axis=None, **kwargs)
     else:
-        std = deviation(dat, axis=(-1, 0), **kwargs)  # (channels X (frequency))
+        std = deviation(dat, axis=(-1, 0), **kwargs)  # channels X (frequency)
     keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
     return keep
 
 
-def find_outliers_lof(data: np.ndarray, threshold: int = 1.5, max_proportion: float = 0.2,
-            metric: str = "seuclidean", policy: str = "increment",
-             **kwargs):
+def find_outliers_lof(data: np.ndarray, threshold: int | float = 1.5,
+                      max_proportion: float = 0.9, policy: str = "increment"):
     """Remove outliers from data.
 
     Uses Scikit-learn's LocalOutlierFactor to remove outliers from data. The
@@ -243,41 +244,36 @@ def find_outliers_lof(data: np.ndarray, threshold: int = 1.5, max_proportion: fl
     Examples
     --------
     >>> import numpy as np
-    >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
-    >>> find_outliers(data, 1)
-    array([ True, False,  True,  True,  True])
-    >>> find_outliers(data, 10)
+    >>> np.random.seed(42)
+    >>> data = np.random.rand(10,20,100)
+    >>> data[5, 10, 50:100] = 1000  # add an outlier
+    >>> data[7, 15, 75:100] = 10  # add another outlier
+    >>> find_outliers_lof(data, 1., .9)[5:8, 10:16]
     array([ True,  True,  True,  True,  True])
-    >>> find_outliers(data, 0.1)
-    array([ True, False,  True, False,  True])
-    >>> find_outliers(data, 0.1, np.std)
-    array([ True, False,  True, False,  True])
-    >>> data = np.array([[1, 1, np.nan, 1, 1], [0, 60, 0, 10, 0]]).T
-    >>> find_outliers(data, 0.1)
-    array([ True, False,  True, False,  True])
 
     """
     assert 0 < max_proportion <= 1, "max_proportion must be between 0 and 1"
-    assert policy in ["increment", "toss"], "policy must be 'increment' or 'toss'"
+    assert policy in ["increment", "toss"], ("policy must be 'increment' or "
+                                             "'toss'")
 
-    n = data.shape[0] // (1 / max_proportion)
-    if metric == "seuclidean":
-        kwargs.setdefault("metric_params", {"V": np.var(data, axis=0)})
-    clf = LocalOutlierFactor(n_neighbors=n, metric=metric, **kwargs)
+    n = int(round(max(data.shape[0] / (1 / max_proportion), 2)))
+    var = np.var(data, axis=0)
+    clf = LocalOutlierFactor(n_neighbors=n, metric="seuclidean")
     out = np.empty(data.shape[:-1], dtype=bool)
     for idx in np.ndindex(out.shape[1:]):
+        clf.metric_params = {"V": var[idx]}
         idx = (slice(None),) + idx  # add slice for trials
         bad_indices = np.arange(data.shape[0]).tolist()
-        clf.fit(data[idx])
+        clf.fit_predict(data[idx])
         scores_lof = clf.negative_outlier_factor_
         thresh = threshold
         while len(bad_indices) / n:
             bad_indices = [
                 i for i, v in enumerate(np.abs(scores_lof)) if v >= thresh
             ]
-            thresh += 1
-        out1d = np.isin(np.arange(data.shape[0]), bad_indices, invert=True)
-        out = np.broadcast_to(out1d, out.shape)
+            thresh += .1
+        out[idx] = np.isin(np.arange(data.shape[0]), bad_indices, invert=True)
+
     return out
 
 
@@ -428,7 +424,7 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     return res.pvalue
 
 
-def time_perm_cluster(sig1: ArrayLike, sig2: ArrayLike, p_thresh: float,
+def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
                       stat_func: callable = ttest,
@@ -484,7 +480,8 @@ def time_perm_cluster(sig1: ArrayLike, sig2: ArrayLike, p_thresh: float,
         statistics, in which all samples contain the same number of
         observations and observations with corresponding indices along
         axis are considered to be paired; the third is for independent sample
-        statistics. See: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.permutation_test.html#permutation-test
+        statistics. See: https://docs.scipy.org/doc/scipy/reference/generated/s
+        cipy.stats.permutation_test.html#permutation-test
     vectorized : bool, optional
         Whether to use the vectorized version of the permutation test. Default
         is True.
@@ -536,16 +533,17 @@ def time_perm_cluster(sig1: ArrayLike, sig2: ArrayLike, p_thresh: float,
 
     # set process parameters
     xp = array_namespace(sig1, sig2)
-    if False: #is_cupy(xp):
+    if False:  # is_cupy(xp):
         rng = xp.random
     else:
         rng = xp.random.default_rng(seed)
     sig2 = make_data_same(sig2, sig1.shape, axis, -1, True, rng)
     sample_size = sig1.nbytes + sig2.nbytes
     batch_size = get_mem() // sample_size
-    # https://github.com/scipy/scipy/blob/5cf433589639f28cbf5c3911061b07f0c6d6bd68/scipy/stats/_resampling.py#L22-L23
+    # https://github.com/scipy/scipy/blob/5cf433589639f28cbf5c3911061b07f0c6d
+    # 6bd68/scipy/stats/_resampling.py#L22-L23
     if vectorized:
-        batch_size //= 2 # halve memory because scipy copys data once
+        batch_size //= 2  # halve memory because scipy copys data once
 
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
                   axis=axis, vectorized=vectorized, random_state=rng,
@@ -554,7 +552,7 @@ def time_perm_cluster(sig1: ArrayLike, sig2: ArrayLike, p_thresh: float,
     stat_func = _handle_stat_func(stat_func, alt, axis, sig1, sig2)
 
     # Create binary clusters using the p value threshold
-    def _proc(pid: int, sig1: ArrayLike, sig2: ArrayLike
+    def _proc(pid: int, sig1: Array, sig2: Array
               ) -> (int, np.ndarray[int], np.ndarray[float]):
         res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
         p_act = res.pvalue
@@ -604,12 +602,14 @@ def _handle_stat_func(stat_func, alt, axis, *sigs):
     xp = array_namespace(*sigs)
     if 'alternative' in stat_func.__code__.co_varnames:
         func = stat_func
+
         def stat_func(*args, **kwargs):
             kwargs['alternative'] = alt
             return func(*args, **kwargs)
 
     if 'xp' in stat_func.__code__.co_varnames:
         func = stat_func
+
         def stat_func(*args, **kwargs):
             kwargs['xp'] = xp
             return func(*args, **kwargs)
@@ -705,13 +705,14 @@ def proportion(val: np.ndarray[float, ...] | float,
 
 def _comp_by_sort(diff, axis=0):
     m = diff.shape[axis] - 1
-    sorted_indices = diff.argsort(axis=axis, stable=False)  # Get sorted indices
+    # Get sorted indices
+    sorted_indices = diff.argsort(axis=axis, stable=False)
     proportions = np.arange(diff.shape[axis]) / m  # Create proportions array
     # Rearrange to match original order
     return proportions[sorted_indices.argsort(axis=axis, stable=False)]
 
 
-def time_cluster(act: ArrayLike, perm: ArrayLike, p_val: float = None,
+def time_cluster(act: Array, perm: Array, p_val: float = None,
                  tails: int = 1, ignore: tuple | int = None
                  ) -> np.ndarray[bool]:
     """Cluster correction for time series data.
@@ -787,8 +788,10 @@ def time_cluster(act: ArrayLike, perm: ArrayLike, p_val: float = None,
     else:
         return cluster_p_values
 
+
 def make_structure(ndim: int, ignore: tuple[int, ...] | int = None):
-    """Make a binary structure with connectivity over every dimension not in ignore
+    """Make a binary structure with connectivity over every dimension not in
+     ignore
 
     Parameters
     ----------
@@ -1115,10 +1118,11 @@ if __name__ == '__main__':
     n = 1000
     orig = np.array([0, 1, 2, 3, 3])
     interped = np.interp(np.linspace(0, 4, n), np.arange(5), orig)
-    sig1 = np.array([[interped for _ in range(50)] for _ in range(100)]) - rng.random(
-        (100, 50, n)) * 5
+    sig1 = (np.array([[interped for _ in range(50)] for _ in range(100)]) -
+            rng.random((100, 50, n)) * 5)
     sig1 = sig1.transpose(1, 2, 0)
-    sig2 = np.array([[[0] * n for _ in range(100)] for _ in range(100)]) + rng.random((100, 100, n))
+    sig2 = (np.array([[[0] * n for _ in range(100)] for _ in range(100)]) +
+            rng.random((100, 100, n)))
     sig2 = sig2.transpose(1, 2, 0)
     diff = window_averaged_shuffle(sig1, sig2, 30000, 0)
     act = ttest(sig1, sig2, 0, 'greater')
@@ -1133,7 +1137,8 @@ if __name__ == '__main__':
 
     # Time the functions
     runs = 2000
-    # time1 = timeit('calculate_p_perm(diff, 1, 0)', globals=globals(), number=runs)
+    # time1 = timeit('calculate_p_perm(diff, 1, 0)', globals=globals(),
+    # number=runs)
     time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
                    '(diff.shape[0] - 1)', globals=globals(), number=runs)
     time3 = timeit('permgtnd(diff, axis=0)', globals=globals(), number=runs)

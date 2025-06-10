@@ -86,9 +86,9 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                              f" have {n_non_nan}")
 
         check = {'train': lambda t: setdiff1d(not_where, t, xp=xp,
-                                                 assume_unique=True),
+                                              assume_unique=True),
                  'test': lambda t: intersect1d(not_where, t, xp=xp,
-                                                  assume_unique=True)}
+                                               assume_unique=True)}
 
         # check that all training sets for each kfold within each repetition
         # have at least min_non_nan non-nan values
@@ -416,7 +416,6 @@ def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
             if lam < .5:
                 lam = 1 - lam
             arr[i] = lam * arr[choice1] + (1 - lam) * arr[choice2]
-
 
 
 def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,

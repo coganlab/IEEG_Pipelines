@@ -1,12 +1,14 @@
 # Checked
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
-from ieeg.arrays.api import array_namespace, xp_assert_equal, ArrayLike, is_numpy, is_cupy
+from ieeg.arrays.api import (array_namespace, xp_assert_equal, ArrayLike,
+                             is_numpy, is_cupy)
 
 try:
     from numpy.lib.array_utils import normalize_axis_tuple
 except ImportError:
     import operator
+
     def _normalize_axis_tuple(axis, ndim, argname=None, allow_duplicate=False):
         if type(axis) not in (tuple, list):
             try:
@@ -17,7 +19,8 @@ except ImportError:
         axis = tuple([_normalize_index(ax, ndim) for ax in axis])
         if not allow_duplicate and len(set(axis)) != len(axis):
             if argname:
-                raise ValueError('repeated axis in `{}` argument'.format(argname))
+                raise ValueError('repeated axis in `{}` argument'
+                                 ''.format(argname))
             else:
                 raise ValueError('repeated axis')
         return axis
@@ -41,7 +44,8 @@ except ImportError:
     no_cupy = True
 
 
-def stitch_mats(mats: list[ArrayLike], overlaps: list[int], axis: int = 0) -> ArrayLike:
+def stitch_mats(mats: list[ArrayLike], overlaps: list[int], axis: int = 0
+                ) -> ArrayLike:
     """break up the matrices into their overlapping and non-overlapping parts
     then stitch them back together
 
@@ -79,8 +83,8 @@ def stitch_mats(mats: list[ArrayLike], overlaps: list[int], axis: int = 0) -> Ar
     xp = array_namespace(*mats)
     stitches = [mats[0]]
     if len(mats) != len(overlaps) + 1:
-        raise ValueError("The number of matrices must be one more than the number "
-                         "of overlaps")
+        raise ValueError("The number of matrices must be one more than the"
+                         " number of overlaps")
     for i, over in enumerate(overlaps):
         stitches = stitches[:-2] + merge(stitches[-1], mats[i + 1], over, axis)
     out = xp.concatenate(stitches, axis=axis)
@@ -91,7 +95,8 @@ def stitch_mats(mats: list[ArrayLike], overlaps: list[int], axis: int = 0) -> Ar
         return out
 
 
-def merge(mat1: ArrayLike, mat2: ArrayLike, overlap: int, axis: int = 0) -> list[ArrayLike]:
+def merge(mat1: ArrayLike, mat2: ArrayLike, overlap: int, axis: int = 0
+          ) -> list[ArrayLike]:
     """Take two arrays and merge them over the overlap gradually"""
     xp = array_namespace(mat1, mat2)
     sl = [slice(None)] * mat1.ndim
@@ -193,7 +198,7 @@ def make_data_same(data_fix: ArrayLike, shape: tuple | list, stack_ax: int = 0,
     return out
 
 
-def pad_to_match(sig1: ArrayLike, sig2: ArrayLike, 
+def pad_to_match(sig1: ArrayLike, sig2: ArrayLike,
                  axis: int | tuple[int, ...] = ()) -> ArrayLike:
     """Pad the second signal to match the first signal along all axes not
     specified.
@@ -252,8 +257,9 @@ def pad_to_match(sig1: ArrayLike, sig2: ArrayLike,
     return sig2
 
 
-def rand_offset_reshape(data_fix: ArrayLike, shape: tuple, stack_ax: int, pad_ax: int,
-                        rng: np.random.Generator | int = None) -> ArrayLike:
+def rand_offset_reshape(data_fix: ArrayLike, shape: tuple, stack_ax: int,
+                        pad_ax: int, rng: np.random.Generator | int = None
+                        ) -> ArrayLike:
     """Take subsets of data_fix and stack them together on the stack dimension
 
     This function takes the data and reshapes it to match the shape by taking
@@ -316,12 +322,12 @@ def rand_offset_reshape(data_fix: ArrayLike, shape: tuple, stack_ax: int, pad_ax
     num_stack = data_fix.shape[pad_ax] // shape[pad_ax]
     if data_fix.shape[pad_ax] % shape[pad_ax] == 0:
         num_stack -= 1
-    offset = rng.integers(0, data_fix.shape[pad_ax] - shape[pad_ax] * num_stack)
+    offset = rng.integers(0,
+                          data_fix.shape[pad_ax] - shape[pad_ax] * num_stack)
 
     # Create an array to store the output
-    out_shape = [
-        shape[i] if i == pad_ax else data_fix.shape[i] for i in range(data_fix.ndim)
-    ]
+    out_shape = [shape[i] if i == pad_ax else data_fix.shape[i] for i in
+                 range(data_fix.ndim)]
     out_shape[stack_ax] *= num_stack
     out = xp.zeros(tuple(out_shape), dtype=data_fix.dtype)
 
@@ -343,7 +349,8 @@ def rand_offset_reshape(data_fix: ArrayLike, shape: tuple, stack_ax: int, pad_ax
     return out
 
 
-def sliding_window_view(x, window_shape, axis=None, *, subok=False, writeable=False):
+def sliding_window_view(x, window_shape, axis=None, *, subok=False,
+                        writeable=False):
     """
     Create a sliding window view into the array with the given window shape.
 
@@ -580,4 +587,5 @@ def sliding_window_view(x, window_shape, axis=None, *, subok=False, writeable=Fa
             return as_strided(x, strides=out_strides, shape=out_shape,
                               subok=subok, writeable=writeable)
         except Exception:
-            raise NotImplementedError(f"Only numpy and cupy are supported, not {xp.__name__}")
+            raise NotImplementedError(f"Only numpy and cupy are supported,"
+                                      f" not {xp.__name__}")

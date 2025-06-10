@@ -22,6 +22,7 @@ from itertools import product
 # mne.set_log_level("ERROR")
 tfr_types = mne.time_frequency.BaseTFR
 
+
 class DataLoader:
     def __init__(self, layout: BIDSLayout, conds: dict[str, Doubles],
                  value_type: str = "zscore", avg: bool = True,
@@ -43,7 +44,9 @@ class DataLoader:
                 suffix = "zscore"
                 if ext == ".fif":
                     suffix += "-epo" + ext
-                    reader = lambda f: mne.read_epochs(f, False, preload=True)
+
+                    def reader(f):
+                        return mne.read_epochs(f, False, preload=True)
                 else:
                     suffix += "-tfr" + ext
                     reader = mne.time_frequency.read_tfrs
@@ -51,7 +54,9 @@ class DataLoader:
                 suffix = "power"
                 if ext == ".fif":
                     suffix += "-epo" + ext
-                    reader = lambda f: mne.read_epochs(f, False, preload=True)
+
+                    def reader(f):
+                        return mne.read_epochs(f, False, preload=True)
                 else:
                     suffix += "-tfr" + ext
                     reader = mne.time_frequency.read_tfrs
@@ -108,7 +113,8 @@ class DataLoader:
                     if isinstance(sig, mne.time_frequency.BaseTFR):
                         for j, f in enumerate(sig.freqs):
                             out_cond[ev][ch].setdefault(f, {})
-                            out_cond[ev][ch][f] = mat[sig.events[:, 2] == id, i, j]
+                            out_cond[ev][ch][f] = mat[sig.events[:, 2] == id,
+                                                      i, j]
                     else:
                         out_cond[ev][ch] = mat[sig.events[:, 2] == id, i]
             elif isinstance(sig, mne.time_frequency.AverageTFR):
@@ -124,7 +130,7 @@ class DataLoader:
         combos = product(self.subjects, self.conds.keys())
 
         # joblib settings with some defaults
-        kwargs.setdefault("n_jobs", 1) # cpu_count())
+        kwargs.setdefault("n_jobs", 1)  # cpu_count())
         kwargs.setdefault("return_as", "generator")
         kwargs.setdefault("backend", "loky")
         kwargs.setdefault("verbose", 0)
@@ -151,6 +157,7 @@ def get_data_from_inst(inst: Signal, tmin: float, tmax: float):
     else:
         return inst.get_data(tmin=tmin, tmax=tmax)
 
+
 def find_dat(folder: PathLike) -> (PathLike, PathLike):
     """Looks for the .dat file in a specified folder
 
@@ -176,6 +183,7 @@ def find_dat(folder: PathLike) -> (PathLike, PathLike):
                 return ieeg, cleanieeg
     raise FileNotFoundError("Not all .dat files were found:")
 
+
 def dict_to_structured_array(dict_matrices, filename='structured_array.npy'):
     """Save a dictionary of matrices to a structured array."""
     # Get the keys and shapes
@@ -194,6 +202,7 @@ def dict_to_structured_array(dict_matrices, filename='structured_array.npy'):
 
     # Save the structured array to a file
     np.save(filename, structured_array)
+
 
 def bidspath_from_layout(layout: BIDSLayout, **kwargs) -> BIDSPath:
     """Searches a :class:`BIDSLayout` for a file and returns a

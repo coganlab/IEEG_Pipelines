@@ -235,9 +235,6 @@ def _my_hilt(x: np.ndarray, fs, Wn=(1, 150), n_jobs=-1):
     return x_out, cfs
 
 
-
-
-
 def filterbank_hilbert(x, fs, Wn=[70, 150], spacing=1./7, n_jobs=1):
     """
     Compute the phase and amplitude (envelope) of a signal for a single

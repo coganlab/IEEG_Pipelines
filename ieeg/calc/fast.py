@@ -9,14 +9,15 @@ from functools import partial
 __all__ = ["mean_diff", "mixup", "permgt", "norm", "concatenate_arrays",
            "ttest", "brunnermunzel"]
 
+
 def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     """
     Compute the Brunner-Munzel test statistic for two independent samples.
 
     The Brunner-Munzel test is used to compare the stochastic dominance of two
-    independent samples and does not assume equal variances. It is a nonparametric
-    statistical test that operates using ranked data. This implementation allows
-    handling NaN values based on the specified policy.
+    independent samples and does not assume equal variances. It is a
+     nonparametric statistical test that operates using ranked data. This
+      implementation allows handling NaN values based on the specified policy.
 
     Parameters
     ----------
@@ -29,7 +30,7 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
         are flattened before computation. Default is None.
     nan_policy : {'propagate', 'raise', 'omit'}, optional
         Defines how to handle NaN values in the inputs:
-        - 'propagate': Returns NaN in the result if NaN is present in the input.
+        - 'propagate': Returns NaN in the result if NaN is present in the input
         - 'raise': Raises an error if NaN is detected in the input.
         - 'omit': Omits NaN values during the computation.
         Default is 'omit'.
@@ -37,8 +38,8 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     Returns
     -------
     np.ndarray or float
-        The computed Brunner-Munzel statistic, returned as a scalar if the input
-        arrays are 1D and as an array otherwise.
+        The computed Brunner-Munzel statistic, returned as a scalar if the
+         input arrays are 1D and as an array otherwise.
     """
 
     if axis is None:
@@ -52,9 +53,9 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
             axis += x.ndim
         nx, ny = x.shape[axis], y.shape[axis]
         idxx = tuple(slice(None) if i != axis else slice(0, nx)
-                 for i in range(x.ndim))
+                     for i in range(x.ndim))
         idxy = tuple(slice(None) if i != axis else slice(nx, nx+ny)
-                    for i in range(x.ndim))
+                     for i in range(x.ndim))
         concat = np.concatenate((x, y), axis=axis)
 
     where = ~np.isnan(concat)
@@ -85,8 +86,9 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     wbfn /= (nx + ny) * np.sqrt(nx * Sx + ny * Sy)
     return np.squeeze(wbfn)
 
+
 def ttest(group1: np.ndarray, group2: np.ndarray,
-          axis: int, xp = None) -> np.ndarray:
+          axis: int, xp=None) -> np.ndarray:
     """Calculate the t-statistic between two groups.
 
     This function is the default statistic function for time_perm_cluster. It
@@ -135,7 +137,8 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
         var2 = xp.nanvar(group2, axis=axis)
         return (mean1 - mean2) / xp.sqrt(var1 / (n1 - 1) + var2 / (n2 - 1))
     else:
-        raise NotImplementedError("T-test is not implemented for this array type.")
+        raise NotImplementedError("T-test is not implemented for this array"
+                                  " type.")
 
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
@@ -181,7 +184,8 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
            [[ 0.,  1.,  2.,  3.],
             [ 4.,  5.,  6.,  7.],
             [ 8.,  9., 10., 11.]]])
-    >>> concatenate_arrays((arr2[0].astype('f2'), arr1[0].astype('f2')), axis=1)
+    >>> concatenate_arrays((arr2[0].astype('f2'), arr1[0].astype('f2')),
+    ... axis=1)
     array([[ 0.,  1.,  2.,  3.,  0.,  1.,  2.],
            [ 4.,  5.,  6.,  7.,  3.,  4.,  5.],
            [ 8.,  9., 10., 11., nan, nan, nan]], dtype=float16)
@@ -199,7 +203,7 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
     while axis < 0:
         axis += max(a.ndim for a in arrays)
 
-    max_shape = [max(a.shape[ax] for a in arrays) if ax!=axis else
+    max_shape = [max(a.shape[ax] for a in arrays) if ax != axis else
                  sum(a.shape[ax] for a in arrays)
                  for ax in range(arrays[0].ndim)]
     out = np.full(max_shape, np.nan, dtype=arrays[0].dtype)
@@ -213,7 +217,7 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
 
 
 def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
-          rng: int = None) -> None:
+              rng: int = None) -> None:
     """Oversample by mixing two random non-NaN observations
 
     Parameters
@@ -275,7 +279,6 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
         if rng is None:
             rng = np.random.randint(0, 2 ** 16 - 1)
 
-
         if arr.dtype != np.float64:
             temp = arr.astype('f8', copy=True)
             cmixup(temp, 1, alpha, rng)
@@ -285,20 +288,20 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
 
 
 def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
-                     rng=None) -> None:
-    """
-    Replace rows along the observation axis that are “missing” (i.e. contain any NaNs)
-    with a random convex combination of two non‐missing rows (the “mixup”).
+          rng=None) -> None:
+    """Replace rows along the observation axis that are “missing” (i.e. contain
+     any NaNs) with a random convex combination of two non‐missing rows (the
+      “mixup”).
 
     This function works for arrays of arbitrary dimension so long as the
     observation axis (obs_axis) contains the “rows” to mix up and the last axis
     holds features. In higher dimensions the axes other than obs_axis and the
-    last axis are treated as independent batch indices. (Every such batch is assumed
-    to have at least one non-NaN row.)
+    last axis are treated as independent batch indices. (Every such batch is
+     assumed to have at least one non-NaN row.)
 
-    The mixup coefficient for each missing row is drawn from a beta distribution
-    with parameters (alpha, alpha) and then “flipped” if it is less than 0.5 (so that
-    the coefficient is always >=0.5).
+    The mixup coefficient for each missing row is drawn from a beta
+     distribution with parameters (alpha, alpha) and then “flipped” if it is
+      less than 0.5 (so that the coefficient is always >=0.5).
 
     Parameters
     ----------
@@ -311,7 +314,8 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     alpha : float, default=1.
         The alpha parameter for the beta distribution.
     rng : np.random.RandomState or similar, optional
-        A random number generator (if None, one is created using np.random.RandomState()).
+        A random number generator (if None, one is created using
+         np.random.RandomState()).
 
     Returns
     -------
@@ -377,7 +381,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     if is_numpy(xp):
         _mixup_np(arr, obs_axis, alpha, rng)
         return
-    elif is_torch(xp): # TODO: remove this crutch to keep data on the GPU
+    elif is_torch(xp):  # TODO: remove this crutch to keep data on the GPU
         temp = arr.numpy(force=True).astype(float)
         _mixup_np(temp, obs_axis, alpha, rng)
         arr.copy_(xp.from_numpy(temp))
@@ -414,8 +418,8 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     missing_rows, batch_idx = xp.nonzero(mask)
     if missing_rows.size:
         L = missing_rows.shape[0]
-        # For each missing observation, generate a random index into the available
-        # (non-missing) rows in its batch.
+        # For each missing observation, generate a random index into the
+        # available (non-missing) rows in its batch.
         idx1 = xp.astype(rng.rand(L) * counts[batch_idx], int)
         idx2 = xp.astype(rng.rand(L) * counts[batch_idx], int)
         donor1 = order[idx1, batch_idx]
@@ -425,7 +429,8 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
         else:
             lams = rng.beta(alpha, alpha, size=L)
         lams = xp.where(lams < 0.5, 1 - lams, lams)
-        # Instead of direct advanced indexing assignment, use index_put_ for torch:
+        # Instead of direct advanced indexing assignment, use index_put_ for
+        # torch:
         value = (
             lams[:, None] * arr_flat[donor1, batch_idx, :] +
             (1 - lams)[:, None] * arr_flat[donor2, batch_idx, :]
@@ -459,8 +464,8 @@ def norm(arr: np.ndarray, obs_axis: int = -1) -> None:
     cnorm(arr, obs_axis)
 
 
-def mean_diff(group1: np.ndarray, group2: np.ndarray,
-              axis: int = -1, xp = None) -> np.ndarray | float:
+def mean_diff(group1: Array, group2: Array,
+              axis: int = -1, xp=None) -> np.ndarray[float] | float:
     """Calculate the mean difference between two groups.
 
     This function is the default statistic function for time_perm_cluster. It

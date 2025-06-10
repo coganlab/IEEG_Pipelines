@@ -39,7 +39,8 @@ class Decoder(MinimumNaNSplit):
     def cv_cm(self, x_data: Array, labels: Array,
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
               average_repetitions: bool = True, window: int = None,
-              shuffle: bool = False, oversample: bool = True, step: int = 1) -> Array:
+              shuffle: bool = False, oversample: bool = True, step: int = 1
+              ) -> Array:
         """Cross-validated confusion matrix
 
         Parameters
@@ -107,7 +108,7 @@ class Decoder(MinimumNaNSplit):
                [0.        , 0.35714286, 0.64285714, 0.        ]])
 
         """
-        assert all(l in self.categories.values() for l in labels), \
+        assert all(lab in self.categories.values() for lab in labels), \
             "Labels must be in the categories"
         xp = array_namespace(x_data)
         n_cats = len(self.categories)
@@ -120,7 +121,8 @@ class Decoder(MinimumNaNSplit):
         if shuffle:
             isnan = xp.isnan(data)
             std = float(xp.nanstd(data, dtype='f8'))
-            data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan, dtype='i8')))
+            data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan,
+                                                                  dtype='i8')))
             # shuffled label pool
             label_stack = [labels.copy() for _ in range(self.n_repeats)]
             for i in range(self.n_repeats):
@@ -129,7 +131,7 @@ class Decoder(MinimumNaNSplit):
             # build the test/train indices from the shuffled labels for each
             # repetition, then chain together the repetitions
             # splits = (train, test)
-            idxs = ((self.split(data, l), l) for l in label_stack)
+            idxs = ((self.split(data, lab), lab) for lab in label_stack)
             idxs = ((itertools.islice(s, self.n_splits),
                      itertools.repeat(l, self.n_splits))
                     for s, l in idxs)
@@ -143,16 +145,16 @@ class Decoder(MinimumNaNSplit):
 
         # loop over folds and repetitions
         if n_jobs == 1:
-            results = (proc(train_idx, test_idx, l, data, i,
-                            self.n_splits, self.categories, window, step,
-                            oversample, self.kwargs)
+            results = (_proc(train_idx, test_idx, l, data, i,
+                             self.n_splits, self.categories, window, step,
+                             oversample, self.kwargs)
                        for i, ((train_idx, test_idx), l) in enumerate(idxs))
         else:
             results = Parallel(n_jobs=n_jobs, verbose=0, require='sharedmem',
                                return_as="generator_unordered")(
-                    delayed(proc)(train_idx, test_idx, l, data, i,
-                                  self.n_splits, self.categories, window, step,
-                                  oversample, self.kwargs)
+                    delayed(_proc)(train_idx, test_idx, l, data, i,
+                                   self.n_splits, self.categories, window,
+                                   step, oversample, self.kwargs)
                     for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
         # Collect the results
@@ -178,14 +180,19 @@ class Decoder(MinimumNaNSplit):
             divisor = 1
         return mats / divisor
 
-def proc(train_idx, test_idx, l, orig_data, pid, n_splits, cats, window, step, oversample, model_kwargs):
+
+def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
+          step, oversample, model_kwargs):
     xp = array_namespace(orig_data)
     label_cats = xp.asarray(list(cats.values()))
-    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data, l, label_cats, 0, oversample, xp)
+    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data,
+                                             lab, label_cats, 0, oversample,
+                                             xp)
     model = PcaLdaClassification(**model_kwargs)
 
     def _fit_predict(x_flat):
-        x_train, x_test = x_flat[:train_idx.shape[0]], x_flat[train_idx.shape[0]:]
+        x_train, x_test = (x_flat[:train_idx.shape[0]],
+                           x_flat[train_idx.shape[0]:])
         # fit model and score results
         model.fit(x_train, y_train)
         pred = model.predict(x_test)
@@ -196,9 +203,10 @@ def proc(train_idx, test_idx, l, orig_data, pid, n_splits, cats, window, step, o
         x_flattened = x_stacked.reshape(x_stacked.shape[0], -1)
         return _fit_predict(x_flattened), rep, fold
 
-    windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[..., ::step, :]
+    windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[
+               ..., ::step, :]
     swapped = xp.moveaxis(windowed.swapaxes(-1, -2).reshape(
-        windowed.shape[0], -1, windowed.shape[-2]),-1, 0)
+        windowed.shape[0], -1, windowed.shape[-2]), -1, 0)
 
     if is_numpy(xp):
         func = np.vectorize(_fit_predict,
@@ -310,8 +318,8 @@ def confusion_matrix(
     return cm
 
 
-def get_scores(array, decoder: Decoder, idxs: list[list[int]], conds: list[str],
-               names: list[str], on_gpu: bool = False,
+def get_scores(array, decoder: Decoder, idxs: list[list[int]],
+               conds: list[str], names: list[str], on_gpu: bool = False,
                **decoder_kwargs) -> Generator[ndarray, Any, None]:
     ax = array.ndim - 2
     for i, idx in enumerate(idxs):
@@ -349,7 +357,7 @@ def extract(array: LabeledArray, conds: list[str], trial_ax: int,
             idx: list[int] = slice(None), common: int = 5,
             crop_nan: bool = False) -> LabeledArray:
     """Extract data from GroupData object"""
-    reduced = array[conds,][:,:,idx]
+    reduced = array[conds, ][:, :, idx]
     reduced = reduced.dropna()
     # also sorts the trials by nan or not
     reduced = nan_common_denom(reduced, True, trial_ax, common, 2, crop_nan)
@@ -357,8 +365,10 @@ def extract(array: LabeledArray, conds: list[str], trial_ax: int,
     return comb.dropna()
 
 
-def nan_common_denom(array: LabeledArray, sort: bool = True, trials_ax: int = 1, min_trials: int = 0,
-                     ch_ax: int = 0, crop_trials: bool = True, verbose: bool = False):
+def nan_common_denom(array: LabeledArray, sort: bool = True,
+                     trials_ax: int = 1, min_trials: int = 0,
+                     ch_ax: int = 0, crop_trials: bool = True,
+                     verbose: bool = False) -> LabeledArray:
     """Remove trials with NaNs from all channels"""
     others = [i for i in range(array.ndim) if ch_ax != i != trials_ax]
     isn = np.isnan(array.__array__())
@@ -416,9 +426,9 @@ def sample_fold(train_idx: Array, test_idx: Array,
         return x_stacked, y_train, y_test
 
     idx1 = tuple(slice(None) if i != axis else slice(None, sep)
-                for i in range(x_data.ndim))
+                 for i in range(x_data.ndim))
     idx2 = tuple(slice(None) if i != axis else slice(sep, None)
-                for i in range(x_data.ndim))
+                 for i in range(x_data.ndim))
     x_train, x_test = x_stacked[idx1], x_stacked[idx2]
     # mixup2(x_train, labels[:sep], axis)
     idx = [slice(None) for _ in range(x_data.ndim)]
@@ -437,7 +447,6 @@ def sample_fold(train_idx: Array, test_idx: Array,
             else:
                 x_train[tuple(idx)] = out
 
-
     # fill in test data nans with noise from distribution
     is_nan = xp.isnan(x_test)
     if is_torch(xp):
@@ -448,12 +457,14 @@ def sample_fold(train_idx: Array, test_idx: Array,
 
     return x_stacked, y_train, y_test
 
+
 def concatenate_conditions(data, conditions, axis=1, trial_axis=2):
     """Concatenate data for all conditions"""
     concatenated_data = np.take(data, conditions[0], axis=axis)
     for condition in conditions[1:]:
         cond_data = np.take(data, condition, axis=axis)
-        concatenated_data = concatenated_data.concatenate(cond_data, axis=trial_axis - 1)
+        concatenated_data = concatenated_data.concatenate(cond_data,
+                                                          axis=trial_axis - 1)
     return concatenated_data
 
 
@@ -463,7 +474,8 @@ def flatten_features(arr: np.ndarray, obs_axs: int = -2) -> np.ndarray:
 
 
 def classes_from_labels(labels: np.ndarray, delim: str = '-', which: int = 0,
-                        crop: slice = slice(None), cats: dict = None) -> tuple[dict, np.ndarray]:
+                        crop: slice = slice(None), cats: dict = None
+                        ) -> tuple[dict, np.ndarray]:
     class_ids = np.array([k.split(delim, )[which][crop] for k in labels])
     if cats is None:
         classes = {k: i for i, k in enumerate(np.unique(class_ids))}
@@ -490,7 +502,8 @@ def decode_and_score(decoder, data, labels, scorer='acc', **decoder_kwargs):
     """Perform decoding and scoring"""
     mats = decoder.cv_cm(data.__array__(), labels, **decoder_kwargs)
     if scorer == 'acc':
-        score = np.mean(mats.T[np.eye(len(decoder.categories)).astype(bool)].T, axis=-1)
+        score = np.mean(mats.T[np.eye(len(decoder.categories)).astype(bool)].T,
+                        axis=-1)
     else:
         raise NotImplementedError("Only accuracy is implemented")
     return score
@@ -500,7 +513,7 @@ def plot_all_scores(all_scores: dict[str, np.ndarray],
                     conds: list[str], idxs: dict[str, list[int]],
                     colors: list[list[float]], suptitle: str = None,
                     fig: plt.Figure = None, axs: plt.Axes = None,
-                    ylims: tuple[float, float]= (0.1, 0.8), **plot_kwargs
+                    ylims: tuple[float, float] = (0.1, 0.8), **plot_kwargs
                     ) -> tuple[plt.Figure, plt.Axes]:
     names = list(idxs.keys())
     if fig is None and axs is None:
@@ -540,4 +553,3 @@ def plot_all_scores(all_scores: dict[str, np.ndarray],
     if suptitle is not None:
         fig.suptitle(suptitle)
     return fig, axs
-

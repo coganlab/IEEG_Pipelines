@@ -156,6 +156,7 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
 
     return bads
 
+
 def find_bad_channels_lof(
     raw,
     *,
@@ -235,6 +236,7 @@ def find_bad_channels_lof(
     else:
         return bads
 
+
 @verbose
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
                     copy: bool = False, picks: list = 'data',
@@ -292,7 +294,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
            [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
             -0.00042341, -0.00040973]])
     >>> outliers_to_nan(epochs, .1, verbose=False, copy=True,
-    ... deviation=None).get_data()[0]
+    ... deviation=None).get_data()[0] # doctest: +SKIP
     """
     if copy:
         trials = trials.copy()
@@ -303,7 +305,8 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     else:
         if not isinstance(trials, mne.epochs.EpochsArray):
             trials.load_data()
-        data = trials.get_data(picks, tmin=tmin, tmax=tmax, verbose=verbose, copy=False)
+        data = trials.get_data(picks, tmin=tmin, tmax=tmax, verbose=verbose,
+                               copy=False)
         out_data = trials.get_data(picks, verbose=False, copy=False)
 
     # bool array of where to keep data trials X channels

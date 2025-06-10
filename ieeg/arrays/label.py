@@ -1067,7 +1067,13 @@ def is_unique(arr: np.ndarray) -> bool:
 
 
 class Labels(np.char.chararray):
-    """A class for storing labels for a LabeledArray."""
+    """A class for storing labels for a LabeledArray.
+
+    Examples
+    --------
+    >>> Labels(['D21']) @ Labels(['a', 'b', 'c',])
+    [['D21-a', 'D21-b', 'D21-c']]
+    """
     delimiter: str
 
     # __slots__ = ['delimiter', '__dict__']
@@ -1137,11 +1143,12 @@ class Labels(np.char.chararray):
 
     def split(
         self,
-        sep = None,
-        maxsplit = -1,
+        sep: str = None,
+        maxsplit: int = -1,
     ):
         """
-        Return a list of the words in the string, using sep as the delimiter string.
+        Return a list of the words in the string, using sep as the delimiter
+         string.
 
         sep
             The delimiter according which to split the string.
@@ -1583,7 +1590,7 @@ if __name__ == "__main__":
     #                                                       "Audio/LS"),
     #          "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),
     #                                                          "Audio/JL"),
-    #          "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
+    #          "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM")
     #          "go_jl": ((-0.5, 1.5), "Go/JL")}
     # task = "SentenceRep"
     # root = os.path.expanduser("~/Box/CoganLab")
