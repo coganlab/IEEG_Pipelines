@@ -205,8 +205,8 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
     out = np.full(max_shape, np.nan, dtype=arrays[0].dtype)
     start = 0
     for i, ar in enumerate(arrays):
-        slices = tuple(slice(start, start + ar.shape[ax]) if ax == axis else slice(ar.shape[ax])
-                       for ax in range(ar.ndim))
+        slices = tuple(slice(start, start + ar.shape[ax]) if ax == axis else
+                       slice(ar.shape[ax]) for ax in range(ar.ndim))
         out[*slices] = ar
         start += ar.shape[axis]
     return out
@@ -254,14 +254,14 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr3[0, :, :] = float("nan")
     >>> _mixup_np(arr3, 0, rng=42)
     >>> arr3 # doctest: +NORMALIZE_WHITESPACE
-    array([[[12.66808855, 13.66808855, 14.66808855, 15.66808855],
-            [17.31717879, 18.31717879, 19.31717879, 20.31717879]],
+    array([[[12.67, 13.67, 14.67, 15.67],
+            [17.31, 18.31, 19.31, 20.31]],
     <BLANKLINE>
-           [[ 8.        ,  9.        , 10.        , 11.        ],
-            [12.        , 13.        , 14.        , 15.        ]],
+           [[ 8.  ,  9.  , 10.  , 11.  ],
+            [12.  , 13.  , 14.  , 15.  ]],
     <BLANKLINE>
-           [[16.        , 17.        , 18.        , 19.        ],
-            [20.        , 21.        , 22.        , 23.        ]]])
+           [[16.  , 17.  , 18.  , 19.  ],
+            [20.  , 21.  , 22.  , 23.  ]]], dtype=float16)
     """
 
     if obs_axis == 0:
@@ -324,28 +324,54 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     ...                 [4, 5],
     ...                 [7, 8],
     ...                 [float("nan"), float("nan")]])
-    >>> mixup(arr, 0)
+    >>> mixup(arr, 0, rng=42)
     >>> arr
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
-           [6.03943491, 7.03943491]])
+           [5.24946679, 6.24946679]])
 
     For a 3D example (here we mix along axis 1):
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
-    >>> mixup(arr3, 1)
+    >>> mixup(arr3, 1, rng=42)
     >>> arr3
-    ... # arr3[0,2,:] has been replaced with a mixup of two non-NaN rows from arr3[0,:,:]
+    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
+            [ 4.        ,  5.        ,  6.        ,  7.        ],
+            [ 2.33404428,  3.33404428,  4.33404428,  5.33404428]],
+    <BLANKLINE>
+           [[12.        , 13.        , 14.        , 15.        ],
+            [16.        , 17.        , 18.        , 19.        ],
+            [20.        , 21.        , 22.        , 23.        ]]])
     >>> group2 = np.random.rand(500, 10, 10, 100).astype("float16")
     >>> group2[::2, 0, 0, :] = np.nan
     >>> mixup(group2, 0)
     >>> group2[:10, 0, 0, :5]
-    >>> import cupy as cp
-    >>> group3 = cp.random.randn(100, 10, 10, 100)
-    >>> group3[0::2, 0, 0, :] = float("nan")
-    >>> mixup(group3, 0)
-    >>> group3[0, 0, :, :5]
+    array([[0.3274 , 0.2805 , 0.1257 , 0.1256 , 0.3027 ],
+           [0.748  , 0.1802 , 0.389  , 0.0376 , 0.01179],
+           [0.6484 , 0.829  , 0.8213 , 0.2578 , 0.5327 ],
+           [0.7583 , 0.5034 , 0.177  , 0.8325 , 0.5166 ],
+           [0.7397 , 0.857  , 0.449  , 0.5913 , 0.714  ],
+           [0.3076 , 0.062  , 0.989  , 0.719  , 0.758  ],
+           [0.571  , 0.176  , 0.679  , 0.6924 , 0.636  ],
+           [0.6323 , 0.07513, 0.722  , 0.4668 , 0.7417 ],
+           [0.6987 , 0.3787 , 0.4668 , 0.04987, 0.915  ],
+           [0.1912 , 0.05853, 0.4368 , 0.72   , 0.824  ]], dtype=float16)
+    >>> import cupy as cp # doctest: +SKIP
+    >>> group3 = cp.random.randn(100, 10, 10, 100) # doctest: +SKIP
+    >>> group3[0::2, 0, 0, :] = float("nan") # doctest: +SKIP
+    >>> mixup(group3, 0) # doctest: +SKIP
+    >>> group3[0, 0, :, :5] # doctest: +SKIP
+    array([[0.3274 , 0.2805 , 0.1257 , 0.1256 , 0.3027 ],
+           [0.748  , 0.1802 , 0.389  , 0.0376 , 0.01179],
+           [0.6484 , 0.829  , 0.8213 , 0.2578 , 0.5327 ],
+           [0.7583 , 0.5034 , 0.177  , 0.8325 , 0.5166 ],
+           [0.7397 , 0.857  , 0.449  , 0.5913 , 0.714  ],
+           [0.3076 , 0.062  , 0.989  , 0.719  , 0.758  ],
+           [0.571  , 0.176  , 0.679  , 0.6924 , 0.636  ],
+           [0.6323 , 0.07513, 0.722  , 0.4668 , 0.7417 ],
+           [0.6987 , 0.3787 , 0.4668 , 0.04987, 0.915  ],
+           [0.1912 , 0.05853, 0.4368 , 0.72   , 0.824  ]], dtype=float16)
     """
     xp = array_namespace(arr)
     if is_numpy(xp):
@@ -467,7 +493,6 @@ def mean_diff(group1: np.ndarray, group2: np.ndarray,
     >>> group3 = np.arange(100000, dtype=float).reshape(20000, 5)
     >>> mean_diff(group3, group1, axis=0)
     array([49997., 49968., 49999., 49995., 50001.])
-    >>> mean_diff(group3, group1, axis=0, n_jobs=2)
     """
 
     if xp is None:

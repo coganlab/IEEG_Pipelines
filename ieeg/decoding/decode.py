@@ -72,22 +72,39 @@ class Decoder(MinimumNaNSplit):
 
         Examples
         --------
+        >>> np.random.seed(42)
         >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
         ...             5, 10, explained_variance=0.8, da_type='lda')
         >>> X = np.random.randn(100, 50, 100)
         >>> labels = np.random.randint(1, 5, 50)
         >>> decoder.cv_cm(X, labels, normalize='true')
+        array([[0.11111111, 0.        , 0.03333333, 0.85555556],
+               [0.1       , 0.        , 0.04      , 0.86      ],
+               [0.10666667, 0.        , 0.04      , 0.85333333],
+               [0.10625   , 0.        , 0.03125   , 0.8625    ]])
         >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
         ...             5, 10, explained_variance=0.8, da_type='lda')
-        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5)
+        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5)[0]
+        array([[0.04444444, 0.        , 0.36666667, 0.58888889],
+               [0.02      , 0.01      , 0.41      , 0.56      ],
+               [0.03333333, 0.        , 0.50666667, 0.46      ],
+               [0.03125   , 0.        , 0.5       , 0.46875   ]])
         >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5,
-        ...     shuffle=True)
-        >>> import cupy as cp
-        >>> X = cp.random.randn(100, 100, 50, 100)
-        >>> X[0, 0, 0, :] = np.nan
-        >>> labels = cp.random.randint(1, 5, 50)
-        >>> with config_context(array_api_dispatch=True):
-        ...     decoder.cv_cm(X, labels, normalize='true')
+        ...     shuffle=True)[0]
+        array([[0.        , 0.12222222, 0.52222222, 0.35555556],
+               [0.01      , 0.12      , 0.5       , 0.37      ],
+               [0.00666667, 0.10666667, 0.50666667, 0.38      ],
+               [0.        , 0.09375   , 0.525     , 0.38125   ]])
+        >>> import cupy as cp # doctest: +SKIP
+        >>> X = cp.random.randn(100, 100, 50, 100) # doctest: +SKIP
+        >>> X[0, 0, 0, :] = np.nan # doctest: +SKIP
+        >>> labels = cp.random.randint(1, 5, 50) # doctest: +SKIP
+        >>> with config_context(array_api_dispatch=True): # doctest: +SKIP
+        ...     decoder.cv_cm(X, labels, normalize='true') # doctest: +SKIP
+        array([[0.        , 0.36666667, 0.63333333, 0.        ],
+               [0.        , 0.32777778, 0.67222222, 0.        ],
+               [0.        , 0.33157895, 0.66842105, 0.        ],
+               [0.        , 0.35714286, 0.64285714, 0.        ]])
 
         """
         assert all(l in self.categories.values() for l in labels), \
@@ -251,21 +268,24 @@ def confusion_matrix(
     >>> confusion_matrix(y_true, y_pred)
     array([[2, 0, 0],
            [0, 0, 1],
-           [1, 0, 2]])
+           [1, 0, 2]], dtype=int32)
 
     >>> y_true = ["cat", "ant", "cat", "cat", "ant", "bird"]
     >>> y_pred = ["ant", "ant", "cat", "cat", "ant", "cat"]
     >>> confusion_matrix(y_true, y_pred, labels=["ant", "bird", "cat"])
     array([[2, 0, 0],
            [0, 0, 1],
-           [1, 0, 2]])
+           [1, 0, 2]], dtype=int32)
 
     In the binary case, we can extract true positives, etc. as follows:
 
     >>> tn, fp, fn, tp = confusion_matrix([0, 1, 0, 1], [1, 1, 1, 0]).ravel()
     >>> (tn, fp, fn, tp)
-    (np.int64(0), np.int64(2), np.int64(1), np.int64(1))
+    (0, 2, 1, 1)
     >>> confusion_matrix(y_true, y_pred)
+    array([[2, 0, 0],
+           [0, 0, 1],
+           [1, 0, 2]], dtype=int32)
     """
     if namespace is not None:
         xp = namespace

@@ -278,12 +278,12 @@ def filterbank_hilbert(x, fs, Wn=[70, 150], spacing=1./7, n_jobs=1):
     >>> x = np.random.rand(1000,3) # 3 channels of signals
     >>> fs = 500
     >>> x_envelope = filterbank_hilbert(x, fs, Wn=[1, 150])
-    >>> # the outputs have the phase and envelope for each channel and each
-    filter in the filterbank
+    ... # the outputs have the phase and envelope for each channel and each
+    ... # filter in the filterbank
     >>> x_envelope.shape # 3rd dimension is one for each filter in filterbank
     (1000, 3, 42)
     >>> filterbank_hilbert(x, fs, [1, 150], 1/10).shape
-
+    (1000, 3, 58)
     """
 
     x = x.astype('float32')

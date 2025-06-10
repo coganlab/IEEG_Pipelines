@@ -37,21 +37,21 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     >>> msn = MinimumNaNSplit(2, 3)
     >>> for train, test in msn.split(X, y):
     ...     print("train:", train, "test:", test)
-    train: [1 3 4 6] test: [0 2 5 7]
-    train: [0 2 5 7] test: [1 3 4 6]
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    >>> msn = MinimumNaNSplit(2, 3, which='test', min_non_nan=1)
+    >>> for train, test in msn.split(X, y):
+    ...     print("train:", train, "test:", test)
     train: [1 3 4 7] test: [0 2 5 6]
     train: [0 2 5 6] test: [1 3 4 7]
     train: [0 3 5 7] test: [1 2 4 6]
     train: [1 2 4 6] test: [0 3 5 7]
-    >>> msn = MinimumNaNSplit(2, 3, which='test', min_non_nan=1)
-    >>> for train, test in msn.split(X, y):
-    ...     print("train:", train, "test:", test)
-    train: [2 3 4 5] test: [0 1 6 7]
-    train: [0 1 6 7] test: [2 3 4 5]
-    train: [0 1 2 7] test: [3 4 5 6]
-    train: [3 4 5 6] test: [0 1 2 7]
-    train: [3 4 5 7] test: [0 1 2 6]
-    train: [0 1 2 6] test: [3 4 5 7]
+    train: [1 2 5 6] test: [0 3 4 7]
+    train: [0 3 4 7] test: [1 2 5 6]
     """
 
     def __init__(self, n_splits: int, n_repeats: int = 10,
@@ -319,7 +319,8 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
 
 
 def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
-    """Generate random numbers using sort-based sampling
+    """Generate random numbers using sort-based sampling, resulting in a random
+    choice generation without replacement along the first axis.
 
     Parameters
     ----------
@@ -341,6 +342,16 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
     [1] `stackoverflow link <https://stackoverflow.com/questions/31955660/effic
     iently-generating-multiple-instances-of-numpy-random-choice-without-replace
     /31958263#31958263>`_
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> sortbased_rand(10, 5, 3)
+    array([[9, 4, 6],
+           [6, 4, 5],
+           [4, 6, 9],
+           [4, 0, 2],
+           [3, 7, 6]])
     """
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]

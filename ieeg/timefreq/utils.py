@@ -147,33 +147,39 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
 #     ... extension=".vhdr", verbose=False)
 #     >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=False)
 #     >>> cwt(epochs, n_jobs=1, decim=10, n_fft=40) # doctest: +ELLIPSIS
-#     Using data from preloaded Raw for 2 events and 3001 original time points...
+#     Using data from preloaded Raw for 2 events and 3001 original time...
 #         Getting epoch for 85800-88801
 #         Getting epoch for 90760-93761
 #     0 bad epochs dropped
 #     Data is self data: False
-#     <TFR from Epochs, unknown method | 2 epochs × 98 channels × 46 freqs × ...
+#     <TFR from Epochs, unknown method | 2 epochs × 98 channels × 46 freqs ...
 #
 #     """
 #
-#     ins = ((ti, chi, a[None, None]) for ti, b in enumerate(inst) for chi, a in enumerate(b))
+#     ins = ((ti, chi, a[None, None]) for ti, b in enumerate(inst) for chi,
+#     a in enumerate(b))
 #     proc = Parallel(n_jobs=n_jobs, verbose=verbose, require="sharedmem",
 #                     return_as="generator_unordered")(
 #         delayed(tas_wrap)(i, j, x, inst.info['sfreq'], f_low, f_high, n_fft,
 #                           width, decim, False, 1) for i, j, x in ins)
-#     out0, _, freqs = tas(inst[0, 0], inst.info['sfreq'], f_low, f_high, n_fft,
+#     out0, _, freqs = tas(inst[0, 0], inst.info['sfreq'], f_low, f_high,
+#     n_fft,
 #                          width, decim, False, 1)
 #
-#     out = np.empty((len(inst), len(inst.ch_names), *out0.data.shape), dtype=np.float32)
+#     out = np.empty((len(inst), len(inst.ch_names), *out0.data.shape),
+#     dtype=np.float32)
 #     out[0, 0] = out0
 #     for ti, chi, (x, _, _) in proc:
 #         out[ti, chi] = x
 #
 #     return EpochsTFRArray(inst.info, out, inst.times[::decim], freqs)
 #     # data = inst.get_data(copy=False)
-#     # wave, _, freqs = tfr_array_stockwell(data, inst.info['sfreq'], f_low, f_high,
-#     #                              n_jobs=n_jobs, decim=decim, return_itc=False,
-#     #                              average=False, width=width, verbose=verbose,
+#     # wave, _, freqs = tfr_array_stockwell(data, inst.info['sfreq'], f_low,
+#     f_high,
+#     #                              n_jobs=n_jobs, decim=decim,
+#     return_itc=False,
+#     #                              average=False, width=width,
+#     verbose=verbose,
 #     #                                      n_fft=n_fft)
 #     #
 #     # return EpochsTFRArray(inst.info, wave, inst.times[::decim], freqs)
@@ -222,11 +228,11 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     >>> from ieeg.io import raw_from_layout
     >>> from ieeg.navigate import trial_ieeg
     >>> from bids import BIDSLayout
-    # >>> with mne.use_log_level(0):
     >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
     >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=False)
     >>> wavelet_scaleogram(epochs, n_jobs=1, decim=10) # doctest: +ELLIPSIS
     Using data from preloaded Raw for 2 events and 3001 original time points...
@@ -260,7 +266,7 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     # parallelize(_ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
     #             verbose=verbose)
 
-    return EpochsTFRArray(inst.info, wave, inst.times[::decim], 1/ period,
+    return EpochsTFRArray(inst.info, wave, inst.times[::decim], 1 / period,
                           events=inst.events, event_id=inst.event_id)
 
 
@@ -345,11 +351,13 @@ def roundup(x: float) -> int:
 #         n_fft = 2 ** int(np.ceil(np.log2(n_times)))
 #     elif n_fft < n_times:
 #         raise ValueError(
-#             f"n_fft cannot be smaller than signal size. Got {n_fft} < {n_times}."
+#             f"n_fft cannot be smaller than signal size. Got {n_fft} <
+#             {n_times}."
 #         )
 #     if n_times < n_fft:
 #         # logger.info(
-#         #     f'The input signal is shorter ({x_in.shape[-1]}) than "n_fft" ({n_fft}). '
+#         #     f'The input signal is shorter ({x_in.shape[-1]}) than "n_fft"
+#         ({n_fft}). '
 #         #     "Applying zero padding."
 #         # )
 #         zero_pad = n_fft - n_times
@@ -492,7 +500,7 @@ def roundup(x: float) -> int:
 #     Same computation as `~mne.time_frequency.tfr_stockwell`, but operates on
 #     :class:`NumPy arrays <numpy.ndarray>` instead of `~mne.Epochs` objects.
 #
-#     See :footcite:`Stockwell2007,MoukademEtAl2014,WheatEtAl2010,JonesEtAl2006`
+#     See :footcite:`Stockwell2007,MoukademEtAl2014,WheatEtAl2010,JonesEtAl2006
 #     for more information.
 #
 #     Parameters
@@ -505,7 +513,7 @@ def roundup(x: float) -> int:
 #         The minimum frequency to include. If None defaults to the minimum fft
 #         frequency greater than zero.
 #     fmax : None, float
-#         The maximum frequency to include. If None defaults to the maximum fft.
+#         The maximum frequency to include. If None defaults to the maximum fft
 #     n_fft : int | None
 #         The length of the windows used for FFT. If None, it defaults to the
 #         next power of 2 larger than the signal length.
@@ -706,6 +714,4 @@ if __name__ == "__main__":
     # Plot the spectrogram
     result = rescale(data['resp'], base, mode='ratio', copy=True)
     avg = result.average(lambda x: np.nanmean(x, axis=0))
-    chan_grid(avg, size=(20, 10),
-                         vlim=(-.5, 3.),
-                         cmap=parula_map, )
+    chan_grid(avg, size=(20, 10), vlim=(-.5, 3.), cmap=parula_map)

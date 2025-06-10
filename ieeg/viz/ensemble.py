@@ -228,7 +228,8 @@ def plot_dist_bound(data: np.ndarray, mode: str = 'sem', which: str = 'both',
     elif which == 'lower':
         ax.plot(tscale, mean - std, color=color, **plot_kwargs)
     elif which == 'both':
-        ax.fill_between(tscale, mean - std, mean + std, color=color, **plot_kwargs)
+        ax.fill_between(tscale, mean - std, mean + std, color=color,
+                        **plot_kwargs)
     return ax
 
 

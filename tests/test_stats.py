@@ -86,12 +86,14 @@ def test_stats_wavelet():
     base = out[0]
 
     mask, pvals = stats.time_perm_cluster(resp.data, base.data, 0.1,
-                                          ignore_adjacency=1, n_perm=10000)
+                                          ignore_adjacency=1, n_perm=10000,
+                                          seed=12)
     mask1, pvals1 = stats.time_perm_cluster(resp.data[:, 0], base.data[:, 0],
-                                            0.1, n_perm=10000)
+                                            0.1, n_perm=10000,
+                                            seed=12)
 
     assert np.any(mask)
-    assert np.isclose(np.mean(mask1), np.mean(mask[0]))
+    assert np.mean(mask1) == np.mean(mask[0])
 
 
 def test_window_averaged_shuffle():

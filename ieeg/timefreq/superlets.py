@@ -16,10 +16,12 @@ from ieeg import Signal
 import mne
 from joblib import Parallel, delayed
 
-# spread, in units of standard deviation, of the Gaussian window of the Morlet wavelet
+# spread, in units of standard deviation, of the Gaussian window of the
+# Morlet wavelet
 MORLET_SD_SPREAD = 6
 
-# the length, in units of standard deviation, of the actual support window of the Morlet
+# the length, in units of standard deviation, of the actual support window of
+# the Morlet
 MORLET_SD_FACTOR = 2.5
 
 
@@ -161,8 +163,8 @@ class SuperletTransform:
     """
     Class used to compute the Superlet Transform of input data.
 
-    This class implements the superlet transform algorithm for time-frequency analysis
-    as described in Moca et al., 2021.
+    This class implements the superlet transform algorithm for time-frequency
+     analysis as described in Moca et al., 2021.
     """
 
     def __init__(self,
@@ -185,13 +187,15 @@ class SuperletTransform:
         baseCycles : float
             Number of cycles of the smallest wavelet (c1 in the paper).
         superletOrders : tuple
-            A tuple containing the range of superlet orders, linearly distributed along frequencyRange.
+            A tuple containing the range of superlet orders, linearly
+             distributed along frequencyRange.
         frequencyRange : tuple
             Tuple of ascending frequency points, in Hz.
         frequencyBins : int
             Number of frequency bins to sample in the interval frequencyRange.
         frequencies : array_like, optional
-            Specific list of frequencies - can be provided instead of frequencyRange (it is ignored in this case).
+            Specific list of frequencies - can be provided instead of
+             frequencyRange (it is ignored in this case).
         """
         # clear to reinit
         self.clear()
@@ -290,7 +294,8 @@ class SuperletTransform:
         Parameters
         ----------
         inputData : ndarray
-            An NDarray of input data. Can be a single buffer or a list of buffers.
+            An NDarray of input data. Can be a single buffer or a list of
+             buffers.
 
         Returns
         -------
@@ -300,13 +305,15 @@ class SuperletTransform:
         Raises
         ------
         Exception
-            If input data size doesn't match the defined input size for this transform.
+            If input data size doesn't match the defined input size for this
+             transform.
         """
 
         # compute number of arrays to transform
         if len(inputData.shape) == 1:
             if inputData.shape[0] != self.inputSize:
-                raise "Input data must meet the defined input size for this transform."
+                raise ValueError("Input data must meet the defined input size"
+                                 " for this transform.")
 
             result = np.zeros((self.inputSize, len(self.frequencies)),
                               dtype=np.float64)
@@ -318,7 +325,8 @@ class SuperletTransform:
             insize = int(inputData.shape[len(inputData.shape) - 1])
 
             if insize != self.inputSize:
-                raise "Input data must meet the defined input size for this transform."
+                raise ValueError("Input data must meet the defined input size"
+                                 " for this transform.")
 
             # reshape to data list
             datalist = np.reshape(inputData, (n, insize), 'C')
@@ -379,7 +387,6 @@ class SuperletTransform:
                 # perform geometric mean
                 accumulator[iFreq, :] += self.poolBuffer ** rfactor
 
-
             else:
                 # wavelet transform
                 accumulator[iFreq, :] += (2 * np.abs(
@@ -396,7 +403,7 @@ def cropSpectrum(spectrum, paddingSize):
     spectrum : ndarray
         A 2D numpy array representing the time-frequency spectrum.
     paddingSize : int
-        Number of samples to remove - equals to longestWaveletSize() / 2 
+        Number of samples to remove - equals to longestWaveletSize() / 2
         of the computing SuperletTransform object.
 
     Returns
@@ -419,8 +426,8 @@ def superlets(data,
     Parameters
     ----------
     data : ndarray
-        A numpy array of data. The rightmost dimension of the data is the trial size. 
-        The result will be the average over all the spectra.
+        A numpy array of data. The rightmost dimension of the data is the trial
+         size. The result will be the average over all the spectra.
     fs : float
         The sampling rate in Hz.
     foi : array_like
@@ -428,7 +435,7 @@ def superlets(data,
     c1 : float
         Base number of cycles parameter.
     ord : tuple or list
-        The order (for SLT) or order range (for FASLT), spanned across the 
+        The order (for SLT) or order range (for FASLT), spanned across the
         frequencies of interest.
 
     Returns
@@ -461,6 +468,7 @@ def superlets(data,
     faslt.clear()
 
     return result
+
 
 def superlet_tfr(inst: Signal,
                  foi: list[float],
@@ -518,7 +526,8 @@ def superlet_tfr(inst: Signal,
                               baseCycles=c1,
                               superletOrders=ord)
     freqs = faslt.frequencies
-    out = np.zeros(data.shape[:-1] + (len(freqs), len(times)), dtype=data.dtype)
+    out = np.zeros(data.shape[:-1] + (len(freqs), len(times)),
+                   dtype=data.dtype)
 
     def _apply_transform(idx):
         tout = faslt.transform(data[idx])[..., ::decim]
@@ -538,4 +547,3 @@ def superlet_tfr(inst: Signal,
                                             event_id=inst.event_id)
 
     return tfr
-

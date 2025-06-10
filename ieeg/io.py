@@ -253,7 +253,7 @@ def raw_from_layout(layout: BIDSLayout, preload: bool = True,
     >>> layout = BIDSLayout(bids_root)
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
-    Reading 0 ... 269079 = 0.000 ... 269.079 secs...
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
     """
     verbose = kwargs.pop('verbose', True)
     if run is None:
