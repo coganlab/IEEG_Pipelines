@@ -223,58 +223,60 @@ def find_outliers(data: np.ndarray, outliers: float,
     return keep
 
 
-def find_outliers_lof(data: np.ndarray, threshold: int | float = 1.5,
-                      max_proportion: float = 0.9, policy: str = "increment"):
-    """Remove outliers from data.
-
-    Uses Scikit-learn's LocalOutlierFactor to remove outliers from data. The
-    function will remove outliers from the data, assuming that there are not
-    more outliers in the data than the max_proportion.
-
-    Parameters
-    ----------
-    data
-    max_proportion
-    policy
-    kwargs
-
-    Returns
-    -------
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> np.random.seed(42)
-    >>> data = np.random.rand(10,20,100)
-    >>> data[5, 10, 50:100] = 1000  # add an outlier
-    >>> data[7, 15, 75:100] = 10  # add another outlier
-    >>> find_outliers_lof(data, 1., .9)[5:8, 10:16]
-    array([ True,  True,  True,  True,  True])
-
-    """
-    assert 0 < max_proportion <= 1, "max_proportion must be between 0 and 1"
-    assert policy in ["increment", "toss"], ("policy must be 'increment' or "
-                                             "'toss'")
-
-    n = int(round(max(data.shape[0] / (1 / max_proportion), 2)))
-    var = np.var(data, axis=0)
-    clf = LocalOutlierFactor(n_neighbors=n, metric="seuclidean")
-    out = np.empty(data.shape[:-1], dtype=bool)
-    for idx in np.ndindex(out.shape[1:]):
-        clf.metric_params = {"V": var[idx]}
-        idx = (slice(None),) + idx  # add slice for trials
-        bad_indices = np.arange(data.shape[0]).tolist()
-        clf.fit_predict(data[idx])
-        scores_lof = clf.negative_outlier_factor_
-        thresh = threshold
-        while len(bad_indices) / n:
-            bad_indices = [
-                i for i, v in enumerate(np.abs(scores_lof)) if v >= thresh
-            ]
-            thresh += .1
-        out[idx] = np.isin(np.arange(data.shape[0]), bad_indices, invert=True)
-
-    return out
+# def find_outliers_lof(data: np.ndarray, threshold: int | float = 1.5,
+#                       max_proportion: float = 0.9, policy: str = "increment"
+#                       ):
+#     """Remove outliers from data.
+#
+#     Uses Scikit-learn's LocalOutlierFactor to remove outliers from data. The
+#     function will remove outliers from the data, assuming that there are not
+#     more outliers in the data than the max_proportion.
+#
+#     Parameters
+#     ----------
+#     data
+#     max_proportion
+#     policy
+#     kwargs
+#
+#     Returns
+#     -------
+#
+#     Examples
+#     --------
+#     >>> import numpy as np
+#     >>> np.random.seed(42)
+#     >>> data = np.random.rand(10,20,100)
+#     >>> data[5, 10, 50:100] = 1000  # add an outlier
+#     >>> data[7, 15, 75:100] = 10  # add another outlier
+#     >>> find_outliers_lof(data, 1., .9)[5:8, 10:16]
+#     array([ True,  True,  True,  True,  True])
+#
+#     """
+#     assert 0 < max_proportion <= 1, "max_proportion must be between 0 and 1"
+#     assert policy in ["increment", "toss"], ("policy must be 'increment' or "
+#                                              "'toss'")
+#
+#     n = int(round(max(data.shape[0] / (1 / max_proportion), 2)))
+#     var = np.var(data, axis=0)
+#     clf = LocalOutlierFactor(n_neighbors=n, metric="seuclidean")
+#     out = np.empty(data.shape[:-1], dtype=bool)
+#     for idx in np.ndindex(out.shape[1:]):
+#         clf.metric_params = {"V": var[idx]}
+#         idx = (slice(None),) + idx  # add slice for trials
+#         bad_indices = np.arange(data.shape[0]).tolist()
+#         clf.fit_predict(data[idx])
+#         scores_lof = clf.negative_outlier_factor_
+#         thresh = threshold
+#         while len(bad_indices) / n:
+#             bad_indices = [
+#                 i for i, v in enumerate(np.abs(scores_lof)) if v >= thresh
+#             ]
+#             thresh += .1
+#         out[idx] = np.isin(np.arange(data.shape[0]), bad_indices,
+#         invert=True)
+#
+#     return out
 
 
 def avg_no_outlier(data: np.ndarray, outliers: float = None,

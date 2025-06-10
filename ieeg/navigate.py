@@ -279,20 +279,21 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     >>> epochs = trial_ieeg(raw, ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD'],
     ... (-1, 2), preload=True, verbose=False)
     >>> outliers_to_nan(epochs, 1, verbose=False, copy=True
-    ... ).get_data()[0]
-    array([[        nan,         nan,         nan, ...,         nan,
-                    nan,         nan],
-           [-0.00030586, -0.00030625, -0.00031171, ..., -0.00016054,
-            -0.00015976, -0.00015664],
-           [        nan,         nan,         nan, ...,         nan,
-                    nan,         nan],
+    ... ).get_data()[1]
+    array([[            nan,             nan,             nan, ...,
+                        nan,             nan,             nan],
+           [-4.63276969e-04, -4.67964469e-04, -4.72261344e-04, ...,
+             1.41019078e-04,  1.22269102e-04,  9.92222578e-05],
+           [-2.84374563e-04, -3.03515188e-04, -3.08593313e-04, ...,
+             9.57034922e-05,  5.19535000e-05,  1.40628818e-05],
            ...,
-           [-0.00021483, -0.00021131, -0.00023084, ..., -0.00034295,
-            -0.00032381, -0.00031444],
-           [-0.00052188, -0.00052852, -0.00053125, ..., -0.00046211,
-            -0.00047148, -0.00047891],
-           [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
-            -0.00042341, -0.00040973]])
+           [-4.69516375e-04, -5.09750688e-04, -5.69906813e-04, ...,
+             3.45716687e-04,  3.10951125e-04,  3.25794844e-04],
+           [-1.67187703e-04, -1.95703313e-04, -2.23047047e-04, ...,
+            -2.52734531e-04, -2.89062656e-04, -2.57422031e-04],
+           [-1.98796781e-04, -2.79265281e-04, -3.31218250e-04, ...,
+            -2.73129219e-05, -1.52703172e-04, -2.52702875e-04]],
+          shape=(98, 3001))
     >>> outliers_to_nan(epochs, .1, verbose=False, copy=True,
     ... deviation=None).get_data()[0] # doctest: +SKIP
     """
@@ -310,10 +311,10 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
         out_data = trials.get_data(picks, verbose=False, copy=False)
 
     # bool array of where to keep data trials X channels
-    if deviation is None or center is None:
-        keep = stats.find_outliers_lof(data, outliers)
-    else:
-        keep = stats.find_outliers(data, outliers, deviation, center)
+    # if deviation is None or center is None:
+    #     keep = stats.find_outliers_lof(data, outliers)
+    # else:
+    keep = stats.find_outliers(data, outliers, deviation, center)
 
     # set outliers to nan if not keep
     data = np.where(keep[..., None], out_data, np.nan)
