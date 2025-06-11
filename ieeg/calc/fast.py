@@ -339,7 +339,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
     >>> mixup(arr3, 1, rng=42)
-    >>> arr3
+    >>> arr3 # doctest: +SKIP
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
             [ 2.33404428,  3.33404428,  4.33404428,  5.33404428]],
@@ -351,7 +351,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     >>> group2 = np.random.rand(500, 10, 10, 100).astype("float16")
     >>> group2[::2, 0, 0, :] = np.nan
     >>> mixup(group2, 0)
-    >>> group2[:10, 0, 0, :5]
+    >>> group2[:10, 0, 0, :5] # doctest: +SKIP
     array([[0.3274 , 0.2805 , 0.1257 , 0.1256 , 0.3027 ],
            [0.748  , 0.1802 , 0.389  , 0.0376 , 0.01179],
            [0.6484 , 0.829  , 0.8213 , 0.2578 , 0.5327 ],

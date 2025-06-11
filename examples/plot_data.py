@@ -18,6 +18,7 @@ The provided examples:
  while you should use example 3 to load CoganLab data.
 
 """
+# sphinx_gallery_failing_thumbnail = False
 
 # %%
 # Example 1 (BrainVision)
@@ -59,7 +60,8 @@ layout = get_data("SentenceRep", root=LAB_root)
 subjects = layout.get(return_type="id", target="subject")
 
 for subject in subjects:
-    raw = raw_from_layout(layout, subject=subject, preload=True)
+    raw = raw_from_layout(layout, subject=subject, preload=True,
+                          extension='.edf')
     # do stuff with each subject data
 
 print(subjects)
