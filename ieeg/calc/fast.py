@@ -120,7 +120,7 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     array([0.        , 1.01680311, 0.        , 1.10431526, 0.        ])
     >>> import cupy as cp # doctest: +SKIP
     >>> group1 = cp.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]
-    ...) # doctest: +SKIP
+    ... ) # doctest: +SKIP
     >>> group2 = cp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]) # doctest: +SKIP
     >>> ttest(group1, group2, 1) # doctest: +SKIP
     array([      nan, 1.2004901])
