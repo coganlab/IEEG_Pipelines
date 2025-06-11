@@ -118,10 +118,11 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     array([      nan, 1.2004901])
     >>> ttest(group1, group2, 0)
     array([0.        , 1.01680311, 0.        , 1.10431526, 0.        ])
-    >>> import cupy as cp
-    >>> group1 = cp.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]])
-    >>> group2 = cp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
-    >>> ttest(group1, group2, 1)
+    >>> import cupy as cp # doctest: +SKIP
+    >>> group1 = cp.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]
+    ...) # doctest: +SKIP
+    >>> group2 = cp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]) # doctest: +SKIP
+    >>> ttest(group1, group2, 1) # doctest: +SKIP
     array([      nan, 1.2004901])
     """
     if xp is None:
@@ -323,7 +324,6 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
 
     Examples
     --------
-    >>> np.random.seed(0)
     >>> arr = np.array([[1, 2],
     ...                 [4, 5],
     ...                 [7, 8],
@@ -347,6 +347,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
+    >>> np.random.seed(0)
     >>> group2 = np.random.rand(500, 10, 10, 100).astype("float16")
     >>> group2[::2, 0, 0, :] = np.nan
     >>> mixup(group2, 0)

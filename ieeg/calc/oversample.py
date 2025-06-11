@@ -468,10 +468,10 @@ def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
         axis += arr.ndim
     if sfreq == new_sfreq:
         return arr
-    elif not sfreq.is_integer():
+    elif not sfreq % 1 == 0:
         num, denom = Decimal(str(sfreq)).as_integer_ratio()
         return resample(arr, num, new_sfreq * denom, axis)
-    elif not new_sfreq.is_integer():
+    elif not new_sfreq % 1 == 0:
         num, denom = Decimal(str(new_sfreq)).as_integer_ratio()
         return resample(arr, sfreq * denom, num, axis)
     else:
