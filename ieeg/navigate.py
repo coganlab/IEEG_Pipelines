@@ -278,8 +278,8 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     Reading 0 ... 269079  =      0.000 ...   269.079 secs...
     >>> epochs = trial_ieeg(raw, ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD'],
     ... (-1, 2), preload=True, verbose=False)
-    >>> outliers_to_nan(epochs, 1, verbose=False, copy=True
-    ... ).get_data()[1]
+    >>> outliers_to_nan(epochs, 1, True, [0], verbose=False,
+    ... ).get_data()[1] # doctest: +ELLIPSIS
     array([[            nan,             nan,             nan, ...,
                         nan,             nan,             nan],
            [-4.63276969e-04, -4.67964469e-04, -4.72261344e-04, ...,
@@ -292,8 +292,7 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
            [-1.67187703e-04, -1.95703313e-04, -2.23047047e-04, ...,
             -2.52734531e-04, -2.89062656e-04, -2.57422031e-04],
            [-1.98796781e-04, -2.79265281e-04, -3.31218250e-04, ...,
-            -2.73129219e-05, -1.52703172e-04, -2.52702875e-04]],
-          shape=(98, 3001))
+            -2.73129219e-05, -1.52703172e-04, -2.52702875e-04]])
     >>> outliers_to_nan(epochs, .1, verbose=False, copy=True,
     ... deviation=None).get_data()[0] # doctest: +SKIP
     """

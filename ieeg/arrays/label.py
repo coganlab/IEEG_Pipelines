@@ -1,5 +1,4 @@
 import functools
-import os.path
 from collections.abc import Iterable
 
 import mne
@@ -928,7 +927,8 @@ class LabeledArray(np.ndarray):
         return self[index]
 
     def concatenate(self, other: 'LabeledArray', axis: int = 0,
-                    mismatch: str = 'raise', **kwargs) -> 'LabeledArray':
+                    mismatch: str = 'raise', ids: tuple[str, str] = ('0', '1'),
+                    **kwargs) -> 'LabeledArray':
         """Concatenate two LabeledArrays along an axis.
 
         Parameters
@@ -942,6 +942,8 @@ class LabeledArray(np.ndarray):
             (default) will raise a ValueError, 'shrink' will shrink the labels
             to the smallest size, and 'expand' (not implemented) will expand
             the labels to the largest size, filling in with NaNs.
+        ids : tuple[str, str], optional
+            The identifiers for the two arrays, used to create unique labels
         kwargs : dict
             Additional keyword arguments to pass to np.concatenate.
 
@@ -990,10 +992,24 @@ class LabeledArray(np.ndarray):
         ...
         NotImplementedError: Base array must the same size or smaller than i...
         Base size:(2, 3), Input size: (2, 2)
+        >>> arr1.concatenate(arr3, 0, mismatch='expand')
+        array([[ 1.,  2., nan],
+               [ 3.,  4., nan],
+               [ 5.,  6.,  9.],
+               [ 7.,  8., 10.]])
+        labels(['0-a', '0-b', '1-a', '1-b']
+               ['c', 'd', 'e'])
         """
 
         while axis < 0:
             axis += self.ndim
+
+        if mismatch == 'expand':
+            ids = tuple(map(str, ids))
+            all_dict = {ids[0]: self.to_dict(), ids[1]: other.to_dict()}
+            combined = combine(all_dict, (0, axis + 1),
+                               self.labels[0].delimiter)
+            return LabeledArray.from_dict(combined)
 
         new_labels = list(self.labels)
         idx = [slice(None)] * self.ndim
@@ -1001,7 +1017,7 @@ class LabeledArray(np.ndarray):
         for i in range(self.ndim):
             if i == axis:
                 if not is_unique(new):
-                    new_labels[i] = _make_array_unique(
+                    new_labels[i] = make_array_unique(
                         new.astype(str), self.labels[i].delimiter)
                 else:
                     new_labels[i] = new
@@ -1194,8 +1210,8 @@ class Labels(np.char.chararray):
                 if len(common) == 0:
                     common = np.unique(row).tolist()
                 new_labels[i][j] = self.delimiter.join(common)
-            new_labels[i] = _make_array_unique(np.array(new_labels[i]),
-                                               self.delimiter)
+            new_labels[i] = make_array_unique(np.array(new_labels[i]),
+                                              self.delimiter)
         return list(map(Labels, new_labels))
 
     def find(self, value) -> int | tuple[int]:
@@ -1243,7 +1259,7 @@ class Labels(np.char.chararray):
             return Labels([lab.join() for lab in labs], self.delimiter)
 
 
-def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
+def make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     """Make an array unique by appending a number to duplicate values.
 
     Parameters
@@ -1261,10 +1277,12 @@ def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     Examples
     --------
     >>> arr = np.array(['a', 'b', 'c', 'a', 'b', 'c'])
-    >>> _make_array_unique(arr, '-')
+    >>> make_array_unique(arr, '-')
     array(['a-0', 'b-0', 'c-0', 'a-1', 'b-1', 'c-1'], dtype='<U3')
+    >>> make_array_unique(arr[:-1], '-')
+    array(['a-0', 'b-0', 'c', 'a-1', 'b-1'], dtype='<U3')
     >>> arr = np.array(['a', 'b', 'c', 'd', 'e', 'f'])
-    >>> _make_array_unique(arr, '-')
+    >>> make_array_unique(arr, '-')
     array(['a', 'b', 'c', 'd', 'e', 'f'], dtype='<U1')
     """
     unique, inverse = np.unique(arr, return_inverse=True)
@@ -1443,6 +1461,8 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     levels: tuple[int, int]
         The levels to combine, e.g. (0, 1) will combine the 1st and 2nd level
         of the dict keys into one level at the 2nd level.
+    delim: str, optional
+        The delimiter to use when combining keys, by default '-'
 
     Returns
     -------
