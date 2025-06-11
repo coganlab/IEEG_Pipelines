@@ -1,6 +1,3 @@
-from typing import Any, Generator
-
-from numpy import ndarray
 from sklearn import config_context
 try:
     import cupy as cp
@@ -29,6 +26,25 @@ class Decoder(MinimumNaNSplit):
                  min_samples: int = 1,
                  which: str = 'test',
                  **kwargs):
+        """Initialize the Decoder.
+
+        Parameters
+        ----------
+        categories : dict
+            Dictionary mapping category names to category indices.
+        n_splits : int, optional
+            Number of splits for cross-validation, by default 5.
+        n_repeats : int, optional
+            Number of repetitions for cross-validation, by default 1.
+        min_samples : int, optional
+            Minimum number of samples required for each category, by default 1.
+        which : str, optional
+            Which set to use for validation ('test' or 'train'), by default
+             'test'.
+        **kwargs
+            Additional keyword arguments passed to the PcaLdaClassification
+             model.
+        """
         # self.model = PcaLdaClassification(**kwargs)
         self.kwargs = kwargs
         MinimumNaNSplit.__init__(self, n_splits, n_repeats,
@@ -183,6 +199,38 @@ class Decoder(MinimumNaNSplit):
 
 def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
           step, oversample, model_kwargs):
+    """Process a single fold of data for cross-validation.
+
+    Parameters
+    ----------
+    train_idx : Array
+        Indices of the training data.
+    test_idx : Array
+        Indices of the test data.
+    lab : Array
+        Labels for the data.
+    orig_data : Array
+        The original data to be processed.
+    pid : int
+        Process ID, used to determine repetition and fold.
+    n_splits : int
+        Number of splits for cross-validation.
+    cats : dict
+        Dictionary mapping category names to category indices.
+    window : int or None
+        Window size for time sliding. If None, no windowing is applied.
+    step : int
+        Step size for time sliding.
+    oversample : bool
+        Whether to oversample the training data.
+    model_kwargs : dict
+        Keyword arguments for the PcaLdaClassification model.
+
+    Returns
+    -------
+    tuple
+        Confusion matrix, repetition index, and fold index.
+    """
     xp = array_namespace(orig_data)
     label_cats = xp.asarray(list(cats.values()))
     x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data,
@@ -191,6 +239,18 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
     model = PcaLdaClassification(**model_kwargs)
 
     def _fit_predict(x_flat):
+        """Fit model on training data and predict on test data.
+
+        Parameters
+        ----------
+        x_flat : Array
+            Flattened input data containing both training and test data.
+
+        Returns
+        -------
+        Array
+            Confusion matrix of predictions.
+        """
         x_train, x_test = (x_flat[:train_idx.shape[0]],
                            x_flat[train_idx.shape[0]:])
         # fit model and score results
@@ -318,58 +378,50 @@ def confusion_matrix(
     return cm
 
 
-def get_scores(array, decoder: Decoder, idxs: list[list[int]],
-               conds: list[str], names: list[str], on_gpu: bool = False,
-               **decoder_kwargs) -> Generator[ndarray, Any, None]:
-    ax = array.ndim - 2
-    for i, idx in enumerate(idxs):
-        all_conds = flatten_list(conds)
-        x_data = extract(array, all_conds, ax, idx, decoder.n_splits,
-                         False)
-
-        for cond in conds:
-            if isinstance(cond, list):
-                X = concatenate_conditions(x_data, cond, 0, ax-1)
-                cond = "-".join(cond)
-            else:
-                X = x_data[cond,].dropna()
-            cats, labels = classes_from_labels(X.labels[ax-2],
-                                               crop=slice(0, 4),
-                                               cats=decoder.categories)
-
-            # Decoding
-            decoder.current_job = "-".join([names[i], cond])
-            if on_gpu:
-                if cp is None:
-                    raise ImportError("CuPy is not installed.")
-                with config_context(array_api_dispatch=True,
-                                    enable_metadata_routing=True,
-                                    skip_parameter_validation=True):
-                    data = cp.asarray(X.__array__())
-                    labels = cp.asarray(labels)
-                    score = decoder.cv_cm(data, labels, **decoder_kwargs)
-                yield score.get()
-            else:
-                yield decoder.cv_cm(X.__array__(), labels, **decoder_kwargs)
-
-
-def extract(array: LabeledArray, conds: list[str], trial_ax: int,
-            idx: list[int] = slice(None), common: int = 5,
-            crop_nan: bool = False) -> LabeledArray:
-    """Extract data from GroupData object"""
-    reduced = array[conds, ][:, :, idx]
-    reduced = reduced.dropna()
-    # also sorts the trials by nan or not
-    reduced = nan_common_denom(reduced, True, trial_ax, common, 2, crop_nan)
-    comb = reduced.combine((1, trial_ax))
-    return comb.dropna()
-
-
 def nan_common_denom(array: LabeledArray, sort: bool = True,
                      trials_ax: int = 1, min_trials: int = 0,
                      ch_ax: int = 0, crop_trials: bool = True,
                      verbose: bool = False) -> LabeledArray:
-    """Remove trials with NaNs from all channels"""
+    """Remove trials with NaNs from all channels.
+
+    This function processes a LabeledArray to remove trials containing NaN
+     values, with options for sorting, specifying axes, and setting minimum
+      trial counts.
+
+    Parameters
+    ----------
+    array : LabeledArray
+        The input array to process.
+    sort : bool, optional
+        Whether to sort trials by NaN presence, by default True.
+    trials_ax : int, optional
+        The axis containing trials, by default 1.
+    min_trials : int, optional
+        Minimum number of trials to keep, by default 0.
+    ch_ax : int, optional
+        The axis containing channels, by default 0.
+    crop_trials : bool, optional
+        Whether to crop trials to the minimum number, by default True.
+    verbose : bool, optional
+        Whether to print verbose output, by default False.
+
+    Returns
+    -------
+    LabeledArray
+        The processed array with NaN trials removed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from ieeg.arrays.label import LabeledArray
+    >>> data = np.array([[1, 2, np.nan], [4, 5, 6], [7, np.nan, 9]])
+    >>> labels = [['ch1', 'ch2', 'ch3'], ['trial1', 'trial2', 'trial3']]
+    >>> array = LabeledArray(data, labels)
+    >>> processed_array = nan_common_denom(array, sort=True, trials_ax=1,
+    ... ch_ax=0, min_trials=3, crop_trials=True, verbose=True)
+    Lowest trials 2 at ch1
+    Channels excluded (too few trials): ['ch1', 'ch3']
+    """
     others = [i for i in range(array.ndim) if ch_ax != i != trials_ax]
     isn = np.isnan(array.__array__())
     nan_trials = np.any(isn, axis=tuple(others))
@@ -410,6 +462,32 @@ def nan_common_denom(array: LabeledArray, sort: bool = True,
 def sample_fold(train_idx: Array, test_idx: Array,
                 x_data: Array, labels: Array, unique: Array,
                 axis: int, oversample: bool, xp) -> tuple[Array, Array, Array]:
+    """Sample a fold of data for cross-validation.
+
+    Parameters
+    ----------
+    train_idx : Array
+        Indices of the training data.
+    test_idx : Array
+        Indices of the test data.
+    x_data : Array
+        The data to be sampled.
+    labels : Array
+        Labels corresponding to the data.
+    unique : Array
+        Unique labels to be used for oversampling.
+    axis : int
+        Axis along which to stack the data.
+    oversample : bool
+        Whether to oversample the training data.
+    xp : module
+        The array namespace (numpy or cupy).
+
+    Returns
+    -------
+    tuple[Array, Array, Array]
+        Stacked data, training labels, and test labels.
+    """
 
     # make first and only copy of x_data
     idx_stacked = xp.concatenate((train_idx, test_idx))
@@ -458,17 +536,37 @@ def sample_fold(train_idx: Array, test_idx: Array,
     return x_stacked, y_train, y_test
 
 
-def concatenate_conditions(data, conditions, axis=1, trial_axis=2):
-    """Concatenate data for all conditions"""
-    concatenated_data = np.take(data, conditions[0], axis=axis)
-    for condition in conditions[1:]:
-        cond_data = np.take(data, condition, axis=axis)
-        concatenated_data = concatenated_data.concatenate(cond_data,
-                                                          axis=trial_axis - 1)
-    return concatenated_data
-
-
 def flatten_features(arr: np.ndarray, obs_axs: int = -2) -> np.ndarray:
+    """Flatten features in an array.
+
+    This function swaps the first axis with the observation axis and reshapes
+    the array to flatten all dimensions except the first one.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        The input array to flatten.
+    obs_axs : int, optional
+        The axis containing observations, by default -2.
+
+    Returns
+    -------
+    np.ndarray
+        The flattened array with shape (n_observations, n_features).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> np.random.seed(0)
+    >>> arr = np.random.rand(4, 3, 2)
+    >>> flatten_features(arr, obs_axs=-2)
+    array([[0.5488135 , 0.71518937, 0.43758721, 0.891773  , 0.56804456,
+            0.92559664, 0.77815675, 0.87001215],
+           [0.60276338, 0.54488318, 0.96366276, 0.38344152, 0.07103606,
+            0.0871293 , 0.97861834, 0.79915856],
+           [0.4236548 , 0.64589411, 0.79172504, 0.52889492, 0.0202184 ,
+            0.83261985, 0.46147936, 0.78052918]])
+    """
     out = arr.swapaxes(0, obs_axs)
     return out.reshape(out.shape[0], -1)
 
@@ -476,6 +574,38 @@ def flatten_features(arr: np.ndarray, obs_axs: int = -2) -> np.ndarray:
 def classes_from_labels(labels: np.ndarray, delim: str = '-', which: int = 0,
                         crop: slice = slice(None), cats: dict = None
                         ) -> tuple[dict, np.ndarray]:
+    """Extract class IDs from string labels.
+
+    This function processes string labels to extract class IDs using a
+     delimiter, and returns a dictionary mapping class names to indices and an
+      array of class indices.
+
+    Parameters
+    ----------
+    labels : np.ndarray
+        Array of string labels to process.
+    delim : str, optional
+        Delimiter to split the labels, by default '-'.
+    which : int, optional
+        Which part of the split label to use, by default 0.
+    crop : slice, optional
+        Slice to apply to each label part, by default slice(None).
+    cats : dict, optional
+        Existing category mapping to use. If None, a new mapping is created.
+
+    Returns
+    -------
+    tuple[dict, np.ndarray]
+        A tuple containing:
+        - Dictionary mapping class names to indices
+        - Array of class indices corresponding to the input labels
+
+    Examples
+    --------
+    >>> labels = np.array(['cat-dog', 'dog-cat', 'cat-bird'])
+    >>> classes_from_labels(labels, delim='-')
+    ({'cat': 0, 'dog': 1}, array([0, 1, 0]))
+    """
     class_ids = np.array([k.split(delim, )[which][crop] for k in labels])
     if cats is None:
         classes = {k: i for i, k in enumerate(np.unique(class_ids))}
@@ -484,11 +614,27 @@ def classes_from_labels(labels: np.ndarray, delim: str = '-', which: int = 0,
         return cats, np.array([cats[k] for k in class_ids])
 
 
-def scale(X, xmax: float, xmin: float):
-    return (X - xmin) / (xmax - xmin)
-
-
 def flatten_list(nested_list: list[list[str] | str]) -> list[str]:
+    """Flatten a nested list of strings.
+
+    This function takes a list that may contain both strings and lists of
+    strings, and returns a single flat list containing all the strings.
+
+    Parameters
+    ----------
+    nested_list : list[list[str] | str]
+        A list containing strings and/or lists of strings.
+
+    Returns
+    -------
+    list[str]
+        A flattened list containing all strings from the input.
+
+    Examples
+    --------
+    >>> flatten_list(['a', ['b', 'c'], 'd'])
+    ['a', 'b', 'c', 'd']
+    """
     flat_list = []
     for element in nested_list:
         if isinstance(element, list):
@@ -498,23 +644,43 @@ def flatten_list(nested_list: list[list[str] | str]) -> list[str]:
     return flat_list
 
 
-def decode_and_score(decoder, data, labels, scorer='acc', **decoder_kwargs):
-    """Perform decoding and scoring"""
-    mats = decoder.cv_cm(data.__array__(), labels, **decoder_kwargs)
-    if scorer == 'acc':
-        score = np.mean(mats.T[np.eye(len(decoder.categories)).astype(bool)].T,
-                        axis=-1)
-    else:
-        raise NotImplementedError("Only accuracy is implemented")
-    return score
-
-
 def plot_all_scores(all_scores: dict[str, np.ndarray],
                     conds: list[str], idxs: dict[str, list[int]],
                     colors: list[list[float]], suptitle: str = None,
                     fig: plt.Figure = None, axs: plt.Axes = None,
                     ylims: tuple[float, float] = (0.1, 0.8), **plot_kwargs
                     ) -> tuple[plt.Figure, plt.Axes]:
+    """Plot scores for different conditions and categories.
+
+    This function creates plots of scores for different experimental conditions
+    and categories, setting up appropriate axes and labels.
+
+    Parameters
+    ----------
+    all_scores : dict[str, np.ndarray]
+        Dictionary mapping score names to score arrays.
+    conds : list[str]
+        List of condition names to plot.
+    idxs : dict[str, list[int]]
+        Dictionary mapping category names to indices.
+    colors : list[list[float]]
+        List of colors for each category.
+    suptitle : str, optional
+        Super title for the figure, by default None.
+    fig : plt.Figure, optional
+        Existing figure to plot on, by default None.
+    axs : plt.Axes, optional
+        Existing axes to plot on, by default None.
+    ylims : tuple[float, float], optional
+        Y-axis limits, by default (0.1, 0.8).
+    **plot_kwargs
+        Additional keyword arguments passed to plot_dist.
+
+    Returns
+    -------
+    tuple[plt.Figure, plt.Axes]
+        The figure and axes objects containing the plots.
+    """
     names = list(idxs.keys())
     if fig is None and axs is None:
         fig, axs = plt.subplots(1, len(conds))
