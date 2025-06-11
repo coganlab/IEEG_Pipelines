@@ -6,8 +6,8 @@ Takes high gamma filtered data with event labels from multiple subjects and
 performs joint pca decoding
 """
 
-from ieeg.decoding.decoders import PcaLdaClassification
-from ieeg.calc.mat import LabeledArray
+from ieeg.decoding.models import PcaLdaClassification
+from ieeg.arrays.label import LabeledArray
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from ieeg.calc.oversample import MinimumNaNSplit
 from ieeg.calc.fast import mixup

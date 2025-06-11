@@ -9,6 +9,7 @@ from ieeg.navigate import channel_outlier_marker, trial_ieeg
 from ieeg.timefreq.utils import crop_pad
 from ieeg.timefreq import gamma
 from ieeg.calc import stats
+from ieeg.calc.fast import mean_diff
 import matplotlib.pyplot as plt
 import mne
 
@@ -73,5 +74,5 @@ fig1 = plt.imshow(mask1)
 # trim the response data to match the baseline with [..., :-1]
 mask2 = stats.window_averaged_shuffle(resp._data[..., :-1], base._data,
                                       n_perm=1000,
-                                      stat_func=stats.mean_diff)
+                                      stat_func=mean_diff)
 fig2 = plt.imshow(0.05 >= mask2[:, None])

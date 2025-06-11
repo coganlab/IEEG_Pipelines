@@ -16,3 +16,4 @@ ieeg.egg-info/*
 ieeg/**/*.pyd
 ieeg/**/*.c
 !ieeg/calc/_fast/ufuncs.c
+!ieeg/calc/_fast/nanconcat.c

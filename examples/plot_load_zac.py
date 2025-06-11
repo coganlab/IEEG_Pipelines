@@ -12,7 +12,7 @@ from ieeg.io import raw_from_layout
 from ieeg.timefreq.utils import crop_pad
 from ieeg.timefreq import gamma
 from ieeg.decoding.joint_pca.alignment_methods import JointPCADecomp
-from ieeg.calc.mat import Labels
+from ieeg.arrays.label import Labels
 from bids import BIDSLayout
 import mne
 import numpy as np

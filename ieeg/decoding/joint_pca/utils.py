@@ -8,7 +8,7 @@ import pickle
 
 import numpy as np
 
-from ieeg.calc.mat import Labels
+from ieeg.arrays.label import Labels
 
 
 def cnd_avg(data, labels):

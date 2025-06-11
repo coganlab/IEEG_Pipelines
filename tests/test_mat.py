@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from ieeg.calc.mat import LabeledArray, Labels, combine, iter_nest_dict
+from ieeg.arrays.label import LabeledArray, Labels, combine, iter_nest_dict
 from ieeg.calc.fast import concatenate_arrays
 
 
@@ -17,7 +17,7 @@ from ieeg.calc.fast import concatenate_arrays
      np.array([[1, 0], [1, 0], [np.nan, 0]])),
 
     # Test case 3: Empty input arrays
-    ((np.array([]), np.array([])), 0, None),
+    ((np.array([]), np.array([])), 0, np.array([])),
 
     # Test case 4: Concatenate along axis 2
     ((np.array([[[1]], [[2]]]), np.array([[[3], [4]], [[5], [6]]])),

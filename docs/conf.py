@@ -26,11 +26,11 @@ from mne.viz import Brain # noqa, needed for mne.viz._brain._BrainScraper
 # -- Project information -----------------------------------------------------
 
 project = 'IEEG_Pipelines'
-copyright = '2024, Aaron Earle-Richardson'
+copyright = '2025, Aaron Earle-Richardson'
 author = 'Aaron Earle-Richardson'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1'
+release = '0.7.0'
 
 
 # -- General configuration ---------------------------------------------------

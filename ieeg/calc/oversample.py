@@ -5,7 +5,10 @@ from numpy.typing import NDArray
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
+from functools import partial
 from ieeg.calc.fast import mixup, norm
+from ieeg.arrays.api import array_namespace, is_numpy, intersect1d, setdiff1d
+from decimal import Decimal
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
 Vector = NDArray[Literal[1]]
@@ -34,28 +37,28 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     >>> msn = MinimumNaNSplit(2, 3)
     >>> for train, test in msn.split(X, y):
     ...     print("train:", train, "test:", test)
-    train: [1 3 4 6] test: [0 2 5 7]
-    train: [0 2 5 7] test: [1 3 4 6]
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    train: [2 3 4 5] test: [0 1 6 7]
+    train: [0 1 6 7] test: [2 3 4 5]
+    >>> msn = MinimumNaNSplit(2, 3, which='test', min_non_nan=1)
+    >>> for train, test in msn.split(X, y):
+    ...     print("train:", train, "test:", test)
     train: [1 3 4 7] test: [0 2 5 6]
     train: [0 2 5 6] test: [1 3 4 7]
     train: [0 3 5 7] test: [1 2 4 6]
     train: [1 2 4 6] test: [0 3 5 7]
-    >>> msn = MinimumNaNSplit(2, 3, which='test', min_non_nan=1)
-    >>> for train, test in msn.split(X, y):
-    ...     print("train:", train, "test:", test)
-    train: [2 3 4 5] test: [0 1 6 7]
-    train: [0 1 6 7] test: [2 3 4 5]
-    train: [0 1 2 7] test: [3 4 5 6]
-    train: [3 4 5 6] test: [0 1 2 7]
-    train: [3 4 5 7] test: [0 1 2 6]
-    train: [0 1 2 6] test: [3 4 5 7]
+    train: [1 2 5 6] test: [0 3 4 7]
+    train: [0 3 4 7] test: [1 2 5 6]
     """
 
     def __init__(self, n_splits: int, n_repeats: int = 10,
                  random_state: int = None, min_non_nan: int = 2,
                  which: str = 'train'):
-        super().__init__(n_splits=n_splits, n_repeats=n_repeats,
-                         random_state=random_state)
+        super(MinimumNaNSplit, self).__init__(
+            n_splits=n_splits, n_repeats=n_repeats, random_state=random_state)
         self.n_splits = n_splits
         self.min_non_nan = min_non_nan
         if which not in ('train', 'test'):
@@ -64,29 +67,32 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
     def split(self, X, y=None, groups=None):
 
+        xp = array_namespace(*[a for a in (X, y, groups) if a is not None])
+
         # find where the nans are
-        where = np.isnan(X).any(axis=tuple(range(X.ndim))[1:])
-        not_where = np.where(~where)[0]
-        where = np.where(where)[0]
+        where = xp.isnan(X).any(axis=tuple(range(X.ndim))[1:])
+        not_where = xp.nonzero(~where)[0]
+        where = xp.nonzero(where)[0]
+
+        splits = self._splits(X, y, groups, xp)
 
         # if there are no nans, then just split the data
         if len(where) == 0:
-            yield from super(MinimumNaNSplit, self).split(X, y, groups)
+            yield from splits
             return
         elif (n_non_nan := not_where.shape[0]) < (n_min := self.min_non_nan +
                                                   1):
             raise ValueError(f"Need at least {n_min} non-nan values, but only"
                              f" have {n_non_nan}")
 
-        check = {'train': lambda t: np.setdiff1d(not_where, t,
-                                                 assume_unique=True),
-                 'test': lambda t: np.intersect1d(not_where, t,
-                                                  assume_unique=True)}
-
-        splits = super().split(X, y, groups)
+        check = {'train': lambda t: setdiff1d(not_where, t, xp=xp,
+                                              assume_unique=True),
+                 'test': lambda t: intersect1d(not_where, t, xp=xp,
+                                               assume_unique=True)}
 
         # check that all training sets for each kfold within each repetition
         # have at least min_non_nan non-nan values
+        idxs = [xp.nonzero(i == y)[0] for i in xp.unique(y)]
         kfold_set = [None] * self.n_splits
         while element := next(splits, False):
             for i in range(self.n_splits):
@@ -98,16 +104,25 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
                 # if any test set has more non-nan values than the total number
                 # of non-nan values minus the minimum number of non-nan values,
                 # then throw out the split and append an extra repetition
-                if check[self.which](test).shape[0] < self.min_non_nan:
+                if all(intersect1d(check[self.which](test), i, xp=xp,
+                                   assume_unique=True).shape[0] <
+                       self.min_non_nan for i in idxs):
                     for _ in range(i + 1, self.n_splits):
                         next(splits)
-                    extra = super().split(X, y, groups)
+                    extra = self._splits(X, y, groups, xp)
                     one_rep = itertools.islice(extra, self.n_splits)
                     splits = itertools.chain(one_rep, splits)
                     break
                 kfold_set[i] = (train, test)
             else:
                 yield from kfold_set
+
+    def _splits(self, X, y, groups, xp):
+        splits = super(MinimumNaNSplit, self).split(X, y, groups)
+        if not is_numpy(xp):
+            splits = ((xp.asarray(train), xp.asarray(test)) for
+                      train, test in splits)
+        return splits
 
     @staticmethod
     def oversample(arr: np.ndarray, func: callable = mixup,
@@ -181,16 +196,17 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         >>> labels
         array([1, 1, 0, 0])
         """
-        cats = np.unique(labels)
+        xp = array_namespace(arr)
+        cats = xp.unique(labels)
         gt_labels = [0] * cats.shape[0]
         min_trials *= self.n_splits
         i = 0
         while not all(g >= min_trials for g in gt_labels):
-            np.random.shuffle(labels)
+            xp.random.shuffle(labels)
             for j, l in enumerate(cats):
-                eval_arr = np.take(arr, np.flatnonzero(labels == l), trials_ax)
-                gt_labels[j] = np.min(np.sum(
-                    np.all(~np.isnan(eval_arr), axis=2), axis=trials_ax))
+                eval_arr = xp.take(arr, xp.flatnonzero(labels == l), trials_ax)
+                gt_labels[j] = xp.min(xp.sum(
+                    xp.all(~xp.isnan(eval_arr), axis=2), axis=trials_ax))
             if sum(gt_labels) < min_trials * cats.shape[0]:
                 raise ValueError("Not enough non-nan trials to shuffle")
             i += 1
@@ -303,7 +319,8 @@ def find_nan_indices(arr: np.ndarray, obs_axis: int) -> tuple:
 
 
 def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
-    """Generate random numbers using sort-based sampling
+    """Generate random numbers using sort-based sampling, resulting in a random
+    choice generation without replacement along the first axis.
 
     Parameters
     ----------
@@ -325,13 +342,23 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
     [1] `stackoverflow link <https://stackoverflow.com/questions/31955660/effic
     iently-generating-multiple-instances-of-numpy-random-choice-without-replace
     /31958263#31958263>`_
+
+    Examples
+    --------
+    >>> np.random.seed(0)
+    >>> sortbased_rand(10, 5, 3)
+    array([[9, 4, 6],
+           [6, 4, 5],
+           [4, 6, 9],
+           [4, 0, 2],
+           [3, 7, 6]])
     """
     return np.argsort(np.random.rand(iterations, n_range), axis=1
                       )[:, :n_picks]
 
 
 def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
-           alpha: float = 1., seed: int = None) -> None:
+           alpha: float = 1., seed: int = None, _isnan=None) -> None:
     """Mixup the data using the labels
 
     Parameters
@@ -360,27 +387,106 @@ def mixup2(arr: np.ndarray, labels: np.ndarray, obs_axis: int,
            [7.        , 8.        ],
            [6.03943491, 7.03943491]])
            """
+    if _isnan is None:
+        isnan = np.isnan(arr).any(-1)
+    else:
+        isnan = _isnan
     if arr.ndim > 2:
         arr = arr.swapaxes(obs_axis, -2)
+        isnan = isnan.swapaxes(obs_axis, -1)
         for i in range(arr.shape[0]):
-            mixup2(arr[i], labels, obs_axis, alpha, seed)
+            if isnan[i].any():
+                mixup2(arr[i], labels, obs_axis, alpha, seed, isnan[i])
     else:
         if seed is not None:
             np.random.seed(seed)
         if obs_axis == 1:
             arr = arr.T
 
-        is_nan = np.isnan(arr).any(axis=1)
-        n_nan = np.where(is_nan)[0]
-        n_non_nan = np.where(~is_nan)[0]
+        n_nan = np.where(isnan)[0]
+        n_non_nan = np.where(~isnan)[0]
 
         for i in n_nan:
             l_class = labels[i]
             possible_choices = np.nonzero(np.logical_and(
-                ~is_nan, labels == l_class))[0]
+                ~isnan, labels == l_class))[0]
             choice1 = np.random.choice(possible_choices)
             choice2 = np.random.choice(n_non_nan)
             lam = np.random.beta(alpha, alpha)
             if lam < .5:
                 lam = 1 - lam
             arr[i] = lam * arr[choice1] + (1 - lam) * arr[choice2]
+
+
+def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
+             axis: int = -1) -> np.ndarray:
+    """Resample an array through linear interpolation.
+
+    Parameters
+    ----------
+    arr : array
+        The array to resample.
+    sfreq : int
+        The original sampling frequency.
+    new_sfreq : int
+        The new sampling frequency.
+
+    Returns
+    -------
+    resampled : array
+        The resampled array.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> arr = np.arange(10)
+    >>> resample(arr, 10, 5)
+    array([0.  , 2.25, 4.5 , 6.75, 9.  ])
+    >>> resample(arr, 10.2, 5.1)
+    array([0.  , 2.25, 4.5 , 6.75, 9.  ])
+    >>> resample(arr, 10, 20)
+    array([0.        , 0.47368421, 0.94736842, 1.42105263, 1.89473684,
+           2.36842105, 2.84210526, 3.31578947, 3.78947368, 4.26315789,
+           4.73684211, 5.21052632, 5.68421053, 6.15789474, 6.63157895,
+           7.10526316, 7.57894737, 8.05263158, 8.52631579, 9.        ])
+    >>> resample(arr, 10, 7)
+    array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ])
+    >>> arr = np.arange(30).reshape(5, 6)
+    >>> resample(arr, 6, 10)
+    array([[ 0.        ,  0.55555556,  1.11111111,  1.66666667,  2.22222222,
+             2.77777778,  3.33333333,  3.88888889,  4.44444444,  5.        ],
+           [ 6.        ,  6.55555556,  7.11111111,  7.66666667,  8.22222222,
+             8.77777778,  9.33333333,  9.88888889, 10.44444444, 11.        ],
+           [12.        , 12.55555556, 13.11111111, 13.66666667, 14.22222222,
+            14.77777778, 15.33333333, 15.88888889, 16.44444444, 17.        ],
+           [18.        , 18.55555556, 19.11111111, 19.66666667, 20.22222222,
+            20.77777778, 21.33333333, 21.88888889, 22.44444444, 23.        ],
+           [24.        , 24.55555556, 25.11111111, 25.66666667, 26.22222222,
+            26.77777778, 27.33333333, 27.88888889, 28.44444444, 29.        ]])
+    """
+    while axis < 0:
+        axis += arr.ndim
+    if sfreq == new_sfreq:
+        return arr
+    elif not sfreq % 1 == 0:
+        num, denom = Decimal(str(sfreq)).as_integer_ratio()
+        return resample(arr, num, new_sfreq * denom, axis)
+    elif not new_sfreq % 1 == 0:
+        num, denom = Decimal(str(new_sfreq)).as_integer_ratio()
+        return resample(arr, sfreq * denom, num, axis)
+    else:
+        # Directly calculate the new sample points
+        seconds = arr.shape[axis] / sfreq
+        o_indices = np.arange(arr.shape[axis])
+        new_samps = int(round(new_sfreq * seconds))
+        indices = np.linspace(0, arr.shape[axis] - 1, new_samps)
+        if arr.ndim == 1:
+            return np.interp(indices, o_indices, arr)
+
+        # for multi-dimensional arrays, we flatten non-axis dimensions, then
+        # apply the 1d interpolation, then reshape
+        func = partial(np.interp, indices, o_indices)
+        arr_in = np.swapaxes(arr, axis, -1).reshape(-1, arr.shape[axis])
+        out_flat = np.apply_along_axis(func, 1, arr_in)
+        out_shape = arr.shape[:axis] + (new_samps,) + arr.shape[axis + 1:]
+        return out_flat.reshape(out_shape)

@@ -11,48 +11,69 @@ ctypedef float DTYPE_t
 ctypedef cnp.uint8_t BOOL_t
 ctypedef cnp.complex64_t DTYPE_C_t
 
-cpdef tuple filterbank_hilbert_first_half_wrapper(cnp.ndarray[DTYPE_t, ndim=2] x, int fs, DTYPE_t minf, DTYPE_t maxf):
-    return filterbank_hilbert_first_half_inner(x, fs, minf, maxf)
+def get_centers(tuple[float, float] Wn, float octSpace = 1. / 7, float f0 = 0.018,
+                float a1 = np.log10(0.39), float a2 = 0.5) -> np.ndarray:
+    """Get center frequencies for filter bank.
+
+    Parameters
+    ----------
+    Wn : tuple
+        Frequency range to use for filter bank.
+
+    Returns
+    -------
+    cfs : list
+        Center frequencies for filter bank.
+        """
+
+    # create filter bank
+    minf, maxf = Wn
+    if minf >= maxf:
+        raise ValueError(
+            f'Upper bound of frequency range must be greater than lower '
+            f'bound, but got lower bound of {minf} and upper bound of {maxf}')
+    maxfo = np.log2(maxf / f0)  # octave of max freq
+
+    cfs = [f0]
+    sigma_f = 10 ** (a1 + a2 * np.log10(f0))
+
+    while np.log2(cfs[-1] / f0) < maxfo:
+
+        if cfs[-1] < 4:
+            cfs.append(cfs[-1] + sigma_f)
+        else:  # switches to log spacing at 4 Hz
+            cfo = np.log2(cfs[-1] / f0)  # current freq octave
+            cfo += octSpace  # new freq octave
+            cfs.append(f0 * (2 ** (cfo)))
+
+        sigma_f = 10 ** (a1 + a2 * np.log10(cfs[-1]))
+
+    cfs = np.array(cfs, dtype='float32')
+    locator = np.logical_and(cfs >= minf, cfs <= maxf)
+    if locator.sum() == 0:
+        raise ValueError(
+            f'Frequency band is too narrow, so no filters in filterbank are '
+            f'placed inside. Try a wider frequency band.')
+
+    # choose those that lie in the input freqRange
+    return cfs[locator]
+
+cpdef tuple filterbank_hilbert_first_half_wrapper(cnp.ndarray[DTYPE_t, ndim=2] x, int fs, DTYPE_t minf, DTYPE_t maxf,
+                                                  DTYPE_t oct_space = 1. / 7, float f0 = 0.018,
+                                                  float a1 = log10f(0.39), float a2 = 0.5):
+    cdef cnp.ndarray[DTYPE_t, ndim=1] cfs = get_centers((minf, maxf), oct_space, f0, a1, a2)
+    return filterbank_hilbert_first_half_inner(x, fs, cfs, a1, a2)
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-cdef tuple filterbank_hilbert_first_half_inner(cnp.ndarray[DTYPE_t, ndim=2] x, int fs, DTYPE_t minf, DTYPE_t maxf):
-    cdef DTYPE_t f0 = 0.018, octSpace = 1./7
-    cdef DTYPE_t[::1] a = np.array([log10f(0.39), 0.5], dtype='float32')
-    cdef DTYPE_t sigma_f = 0.39 * sqrtf(f0)
+cdef tuple filterbank_hilbert_first_half_inner(cnp.ndarray[DTYPE_t, ndim=2] x, int fs, cnp.ndarray[DTYPE_t, ndim=1] cfs, float a1 = log10f(0.39), float a2 = 0.5):
+    cdef DTYPE_t[::1] a = np.array([a1, a2], dtype='float32')
     cdef cnp.ndarray[DTYPE_C_t, ndim=1] h
     cdef cnp.ndarray[DTYPE_C_t, ndim=2] h_T
-    cdef cnp.ndarray[DTYPE_t, ndim=1] cfs, exponent, sigma_fs, sds, freqs
+    cdef cnp.ndarray[DTYPE_t, ndim=1] exponent, sigma_fs, sds, freqs
     cdef cnp.ndarray[DTYPE_C_t, ndim=2] Xf
     cdef int N = x.shape[0]
-    cdef Py_ssize_t len_cfs = 1, i = 1
-    
-    while f0 < maxf:
-        if f0 < 4:
-            f0 += sigma_f
-            sigma_f = 0.39 * sqrtf(f0)
-        else:
-            f0 *= 2**octSpace
-        len_cfs += 1
-    f0 = 0.018
-    sigma_f = 0.39 * np.sqrt(f0)
-    cfs = np.zeros(len_cfs, dtype='float32')
-    cfs[0] = f0
-    while f0 < maxf:
-        if f0 < 4:
-            f0 += sigma_f
-            sigma_f = 0.39 * sqrtf(f0)
-        else:
-            f0 *= 2**octSpace
-        cfs[i] = f0
-        i += 1
-
-    if len_cfs == 1 or cfs[len_cfs - 2] < minf:
-        raise ValueError(
-            (f'Frequency band [{minf}, {maxf}] is too narrow, so no filters in'
-             ' filterbank are placed inside. Try a wider frequency band.'))
-    cfs = cfs[np.logical_and(cfs >= minf, cfs <= maxf)]
 
     exponent = np.concatenate(
         (np.ones((len(cfs), 1), dtype='float32'), np.log10(cfs)[:, np.newaxis]), axis=1) @ a
@@ -95,12 +116,12 @@ cdef cnp.ndarray[DTYPE_t] extract_channel_inner(cnp.ndarray[DTYPE_C_t, ndim=1] X
 @cython.cdivision(True)
 cdef double complex[:, ::1] extract_H(const int N, double[::1] freqs, double[::1] cfs, double[::1] sds, double[::1] h):
     cdef double complex[:, ::1] H = np.empty((N, cfs.shape[0]), dtype='complex64')
-    cdef Py_ssize_t i, j
+    cdef Py_ssize_t i, j, c = cfs.shape[0], f = freqs.shape[0]
 
     with nogil:
-        for j in range(cfs.shape[0]):
+        for j in range(c):
             H[0, j] = 0.
-        for i in range(1, freqs.shape[0]):
+        for i in range(1, f):
             for j in range(cfs.shape[0]):
                 H[i, j] = e ** (-0.5 * ((freqs[i] - cfs[j]) / sds[j]) ** 2) * h[i]
         for i in range(freqs.shape[0], N):

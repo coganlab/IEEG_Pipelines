@@ -1,6 +1,6 @@
 bids>=0.0
 mne
-mne-bids>=0.16
+mne-bids @ git+https://github.com/Aaronearlerichardson/mne-bids.git
 numpy
 matplotlib
 scipy
@@ -16,3 +16,5 @@ h5io
 dipy
 mne-qt-browser
 edfio
+array-api-compat
+array-api-extra

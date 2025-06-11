@@ -3,6 +3,7 @@ import numpy as np
 from bids import BIDSLayout
 from mne.utils import fill_doc, verbose
 from scipy.signal import detrend
+from sklearn.neighbors import LocalOutlierFactor
 
 from ieeg import Doubles, Signal
 from ieeg.calc import stats
@@ -156,10 +157,93 @@ def channel_outlier_marker(input_raw: Signal, outlier_sd: float = 3,
     return bads
 
 
+def find_bad_channels_lof(
+    raw,
+    *,
+    picks=None,
+    metric="seuclidean",
+    threshold=1.5,
+    return_scores=False,
+    **kwargs
+):
+    """Find bad channels using Local Outlier Factor (LOF) algorithm.
+
+    Parameters
+    ----------
+    raw : instance of Raw
+        Raw data to process.
+    n_neighbors : int
+        Number of neighbors defining the local neighborhood (default is 20).
+        Smaller values will lead to higher LOF scores.
+    %(picks_good_data)s
+    metric : str
+        Metric to use for distance computation. Default is “euclidean”,
+        see :func:`sklearn.metrics.pairwise.distance_metrics` for details.
+    threshold : float
+        Threshold to define outliers. Theoretical threshold ranges anywhere
+        between 1.0 and any positive integer. Default: 1.5
+        It is recommended to consider this as an hyperparameter to optimize.
+    return_scores : bool
+        If ``True``, return a dictionary with LOF scores for each
+        evaluated channel. Default is ``False``.
+    %(verbose)s
+
+    Returns
+    -------
+    noisy_chs : list
+        List of bad M/EEG channels that were automatically detected.
+    scores : ndarray, shape (n_picks,)
+        Only returned when ``return_scores`` is ``True``. It contains the
+        LOF outlier score for each channel in ``picks``.
+
+    See Also
+    --------
+    maxwell_filter
+    annotate_amplitude
+
+    Notes
+    -----
+    See :footcite:`KumaravelEtAl2022` and :footcite:`BreunigEtAl2000` for background on
+    choosing ``threshold``.
+
+    .. versionadded:: 1.7
+
+    References
+    ----------
+    .. footbibliography::
+    """  # noqa: E501
+
+    if metric == "seuclidean":
+        kwargs.setdefault("metric_params",
+                          {"V": np.var(raw.get_data(), axis=0)})
+    # Get the channel types
+    picks = list(range(len(raw.ch_names))) if picks is None else picks
+    ch_names = [raw.ch_names[pick] for pick in picks]
+    data = raw.get_data(picks=picks)
+    clf = LocalOutlierFactor(n_neighbors=len(raw.ch_names) // 5, metric=metric,
+                             **kwargs)
+    bad_channel_indices = picks
+    clf.fit_predict(data)
+    scores_lof = clf.negative_outlier_factor_
+    while len(bad_channel_indices) / len(picks) > 0.2:
+        bad_channel_indices = [
+            i for i, v in enumerate(np.abs(scores_lof)) if v >= threshold
+        ]
+        threshold += 1
+    bads = [ch_names[idx] for idx in bad_channel_indices]
+    if return_scores:
+        return bads, scores_lof
+    else:
+        return bads
+
+
 @verbose
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
                     copy: bool = False, picks: list = 'data',
-                    verbose=None) -> mne.epochs.BaseEpochs:
+                    deviation: callable = np.std,
+                    center: callable = np.mean, tmin: int | float = None,
+                    tmax: int | float = None, verbose=None
+                    ) -> mne.epochs.BaseEpochs:
     """Set outliers to nan.
 
     Parameters
@@ -167,12 +251,16 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     trials : mne.epochs.BaseEpochs
         The trials to remove outliers from.
     outliers : float
-        The number of standard deviations above the mean to be considered an
-        outlier.
+        The number of deviations above the mean to be considered an outlier.
     copy : bool, optional
         Whether to copy the data, by default False
     picks : list, optional
         The channels to remove outliers from, by default 'data'
+    deviation: callable, optional
+        Metric function to determine the deviation from the center. Default is
+        median absolute deviation.
+    center : callable, optional
+        Metric function to determine the center of the data. Default is median.
 
     Returns
     -------
@@ -188,35 +276,47 @@ def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
     ... extension=".vhdr", verbose=False)
     Reading 0 ... 269079  =      0.000 ...   269.079 secs...
-    >>> epochs = trial_ieeg(raw, "AD1-4, ATT1,2", (-1, 2), preload=True,
-    ... verbose=False)
-    >>> epochs = outliers_to_nan(epochs, 3, verbose=False)
-    >>> epochs['AD1-4, ATT1,2'].get_data()[0]
-    array([[        nan,         nan,         nan, ...,         nan,
-                    nan,         nan],
-           [-0.00030586, -0.00030625, -0.00031171, ..., -0.00016054,
-            -0.00015976, -0.00015664],
-           [        nan,         nan,         nan, ...,         nan,
-                    nan,         nan],
+    >>> epochs = trial_ieeg(raw, ['AD1-4, ATT1,2', 'AST1,3', 'G16', 'PD'],
+    ... (-1, 2), preload=True, verbose=False)
+    >>> outliers_to_nan(epochs, 1, True, [0], verbose=False,
+    ... ).get_data()[1] # doctest: +ELLIPSIS
+    array([[            nan,             nan,             nan, ...,
+                        nan,             nan,             nan],
+           [-4.63276969e-04, -4.67964469e-04, -4.72261344e-04, ...,
+             1.41019078e-04,  1.22269102e-04,  9.92222578e-05],
+           [-2.84374563e-04, -3.03515188e-04, -3.08593313e-04, ...,
+             9.57034922e-05,  5.19535000e-05,  1.40628818e-05],
            ...,
-           [-0.00021483, -0.00021131, -0.00023084, ..., -0.00034295,
-            -0.00032381, -0.00031444],
-           [-0.00052188, -0.00052852, -0.00053125, ..., -0.00046211,
-            -0.00047148, -0.00047891],
-           [-0.00033708, -0.00028005, -0.00020934, ..., -0.00040934,
-            -0.00042341, -0.00040973]])
+           [-4.69516375e-04, -5.09750688e-04, -5.69906813e-04, ...,
+             3.45716687e-04,  3.10951125e-04,  3.25794844e-04],
+           [-1.67187703e-04, -1.95703313e-04, -2.23047047e-04, ...,
+            -2.52734531e-04, -2.89062656e-04, -2.57422031e-04],
+           [-1.98796781e-04, -2.79265281e-04, -3.31218250e-04, ...,
+            -2.73129219e-05, -1.52703172e-04, -2.52702875e-04]])
+    >>> outliers_to_nan(epochs, .1, verbose=False, copy=True,
+    ... deviation=None).get_data()[0] # doctest: +SKIP
     """
     if copy:
         trials = trials.copy()
     picks = mne.io.pick._picks_to_idx(trials.info, picks)
-    trials.load_data()
-    data = trials.get_data(picks=picks, verbose=verbose)
+    if isinstance(trials, mne.time_frequency.BaseTFR):
+        data = trials.get_data(picks, tmin=tmin, tmax=tmax)
+        out_data = trials.get_data(picks)
+    else:
+        if not isinstance(trials, mne.epochs.EpochsArray):
+            trials.load_data()
+        data = trials.get_data(picks, tmin=tmin, tmax=tmax, verbose=verbose,
+                               copy=False)
+        out_data = trials.get_data(picks, verbose=False, copy=False)
 
     # bool array of where to keep data trials X channels
-    keep = stats.find_outliers(data, outliers)
+    # if deviation is None or center is None:
+    #     keep = stats.find_outliers_lof(data, outliers)
+    # else:
+    keep = stats.find_outliers(data, outliers, deviation, center)
 
     # set outliers to nan if not keep
-    data = np.where(keep[..., None], data, np.nan)
+    data = np.where(keep[..., None], out_data, np.nan)
     trials._data[:, picks] = data
 
     return trials
@@ -307,14 +407,14 @@ if __name__ == "__main__":
     sub_num = 29
     subj = "D" + str(sub_num).zfill(4)
     # layout, raw, D_dat_raw, D_dat_filt = get_data(sub_num, TASK)
-    bids_root = LAB_root + "/BIDS-1.0_SentenceRep/BIDS"
+    bids_root = LAB_root + "/BIDS-1.4_SentenceRep/BIDS"
     layout = BIDSLayout(bids_root, derivatives=True)
-    filt = raw_from_layout(layout.derivatives['filt'], subject=subj,
-                           extension='.edf', desc='filt', preload=True)
+    filt = raw_from_layout(layout.derivatives['clean'], subject=subj,
+                           extension='.edf', desc='clean', preload=True)
     raw = raw_from_layout(layout, subject=subj, extension='.edf', desc=None,
                           preload=True)
     events, event_id = mne.events_from_annotations(filt)
     auds = mne.Epochs(filt, events, event_id['Audio'], baseline=None, tmin=-2,
                       tmax=5, preload=True, detrend=1)
-    bads = channel_outlier_marker(auds)
-    auds.info['bads'] = bads
+    # bads = channel_outlier_marker(auds)
+    # auds.info['bads'] = bads

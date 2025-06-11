@@ -44,4 +44,4 @@ crop_pad(spectra, "0.5s")
 # %%
 # Plot data
 # ---------
-chan_grid(spectra, vlim=(0, 2), cmap=parula_map)
+chan_grid(spectra, vlim=(0.7, 1.4), cmap=parula_map)

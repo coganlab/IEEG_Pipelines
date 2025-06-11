@@ -1,15 +1,21 @@
 from typing import Union
 
-import numpy as np
 from mne.epochs import BaseEpochs
-from mne.evoked import Evoked
 from mne.io import base
-from mne.time_frequency import EpochsTFR, tfr
+from mne.time_frequency import EpochsTFRArray
 from mne.utils import fill_doc, verbose
+from mne import Evoked
 
 from ieeg import Signal
-from ieeg.process import ensure_int, parallelize, validate_type
+from ieeg.process import ensure_int, validate_type
+from ieeg.calc.oversample import resample
 from joblib import delayed, Parallel
+import numpy as np
+# from ieeg.process import parallelize
+# from scipy.fft import fft, ifft, fftfreq
+# from functools import partial
+# from mne.evoked import Evoked
+# from mne.time_frequency import tfr_array_stockwell as tas
 
 
 def to_samples(time_length: Union[str, int], sfreq: float) -> int:
@@ -94,10 +100,98 @@ def crop_pad(inst: Signal, pad: str, copy: bool = False) -> Signal:
     return out
 
 
+# @verbose
+# def cwt(inst: BaseEpochs, f_low: float, f_high: float, n_fft: int,
+#         width: float = 1.0, n_jobs: int = 1, decim: int = 1, verbose=10
+#         ) -> EpochsTFRArray:
+#     """Compute the wavelet scaleogram.
+#
+#
+#
+#     Parameters
+#     ----------
+#     inst : instance of Raw, Epochs, or Evoked
+#         The instance to compute the wavelet scaleogram for.
+#     f_low : float
+#         The lowest frequency to compute the scaleogram for.
+#     f_high : float
+#         The highest frequency to compute the scaleogram for.
+#     k0 : int
+#         The wavelet parameter.
+#     n_jobs : int
+#         The number of jobs to run in parallel.
+#     decim : int
+#         The decimation factor.
+#     verbose : int
+#         The verbosity level.
+#
+#     Returns
+#     -------
+#     scaleogram : instance of EpochsTFR
+#         The wavelet scaleogram.
+#
+#     Notes
+#     -----
+#     Similar to https://www.mathworks.com/help/wavelet/ref/cwt.html
+#
+#     Examples
+#     --------
+#     >>> import mne
+#     >>> from ieeg.io import raw_from_layout
+#     >>> from ieeg.navigate import trial_ieeg
+#     >>> from bids import BIDSLayout
+#     # >>> with mne.use_log_level(0):
+#     >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+#     >>> layout = BIDSLayout(bids_root)
+#     >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+#     ... extension=".vhdr", verbose=False)
+#     >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=False)
+#     >>> cwt(epochs, n_jobs=1, decim=10, n_fft=40) # doctest: +ELLIPSIS
+#     Using data from preloaded Raw for 2 events and 3001 original time...
+#         Getting epoch for 85800-88801
+#         Getting epoch for 90760-93761
+#     0 bad epochs dropped
+#     Data is self data: False
+#     <TFR from Epochs, unknown method | 2 epochs × 98 channels × 46 freqs ...
+#
+#     """
+#
+#     ins = ((ti, chi, a[None, None]) for ti, b in enumerate(inst) for chi,
+#     a in enumerate(b))
+#     proc = Parallel(n_jobs=n_jobs, verbose=verbose, require="sharedmem",
+#                     return_as="generator_unordered")(
+#         delayed(tas_wrap)(i, j, x, inst.info['sfreq'], f_low, f_high, n_fft,
+#                           width, decim, False, 1) for i, j, x in ins)
+#     out0, _, freqs = tas(inst[0, 0], inst.info['sfreq'], f_low, f_high,
+#     n_fft,
+#                          width, decim, False, 1)
+#
+#     out = np.empty((len(inst), len(inst.ch_names), *out0.data.shape),
+#     dtype=np.float32)
+#     out[0, 0] = out0
+#     for ti, chi, (x, _, _) in proc:
+#         out[ti, chi] = x
+#
+#     return EpochsTFRArray(inst.info, out, inst.times[::decim], freqs)
+#     # data = inst.get_data(copy=False)
+#     # wave, _, freqs = tfr_array_stockwell(data, inst.info['sfreq'], f_low,
+#     f_high,
+#     #                              n_jobs=n_jobs, decim=decim,
+#     return_itc=False,
+#     #                              average=False, width=width,
+#     verbose=verbose,
+#     #                                      n_fft=n_fft)
+#     #
+#     # return EpochsTFRArray(inst.info, wave, inst.times[::decim], freqs)
+#
+#
+# def tas_wrap(i, j, *args, **kwargs):
+#     return i, j, tas(*args, **kwargs)
+
 @verbose
 def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
                        f_high: float = 1000, k0: int = 6, n_jobs: int = 1,
-                       decim: int = 1, verbose=10) -> EpochsTFR:
+                       decim: int = 1, verbose=10) -> EpochsTFRArray:
     """Compute the wavelet scaleogram.
 
 
@@ -134,13 +228,13 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     >>> from ieeg.io import raw_from_layout
     >>> from ieeg.navigate import trial_ieeg
     >>> from bids import BIDSLayout
-    >>> with mne.use_log_level(0):
-    ...     bids_root = mne.datasets.epilepsy_ecog.data_path()
-    ...     layout = BIDSLayout(bids_root)
-    ...     raw = raw_from_layout(layout, subject="pt1", preload=True,
-    ...     extension=".vhdr", verbose=False)
-    ...     epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=False)
-    >>> wavelet_scaleogram(epochs, n_jobs=-2, decim=10) # doctest: +ELLIPSIS
+    >>> bids_root = mne.datasets.epilepsy_ecog.data_path()
+    >>> layout = BIDSLayout(bids_root)
+    >>> raw = raw_from_layout(layout, subject="pt1", preload=True,
+    ... extension=".vhdr", verbose=False)
+    Reading 0 ... 269079  =      0.000 ...   269.079 secs...
+    >>> epochs = trial_ieeg(raw, ['AST1,3', 'G16'], (-1, 2), verbose=False)
+    >>> wavelet_scaleogram(epochs, n_jobs=1, decim=10) # doctest: +ELLIPSIS
     Using data from preloaded Raw for 2 events and 3001 original time points...
         Getting epoch for 85800-88801
         Getting epoch for 90760-93761
@@ -150,7 +244,6 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
 
     """
     data = inst.get_data(copy=False)
-
     f = np.fft.fft(data - np.mean(data, axis=-1, keepdims=True))
 
     daughter, period = calculate_wavelets(inst.info['sfreq'], f_high, f_low,
@@ -173,7 +266,8 @@ def wavelet_scaleogram(inst: BaseEpochs, f_low: float = 2,
     # parallelize(_ifft_abs, ins, require='sharedmem', n_jobs=n_jobs,
     #             verbose=verbose)
 
-    return EpochsTFR(inst.info, wave, inst.times[::decim], 1 / period)
+    return EpochsTFRArray(inst.info, wave, inst.times[::decim], 1 / period,
+                          events=inst.events, event_id=inst.event_id)
 
 
 def calculate_wavelets(sfreq: float, f_high: float, f_low: float,
@@ -244,65 +338,245 @@ def roundup(x: float) -> int:
     return int(n) + (d > 0)
 
 
-@verbose
-def cwt(inst: BaseEpochs, f_low: float = 2,
-        f_high: float = 1000, n_jobs: int = 1, k0: int = 6,
-        decim: int = 1, verbose=10) -> EpochsTFR:
-    """Compute the wavelet scaleogram.
-
-
-
-    Parameters
-    ----------
-    inst : instance of Raw, Epochs, or Evoked
-        The instance to compute the wavelet scaleogram for.
-    f_low : float
-        The lowest frequency to compute the scaleogram for.
-    f_high : float
-        The highest frequency to compute the scaleogram for.
-    k0 : int
-        The wavelet parameter.
-    n_jobs : int
-        The number of jobs to run in parallel.
-    decim : int
-        The decimation factor.
-    verbose : int
-        The verbosity level.
-
-    Returns
-    -------
-    scaleogram : instance of EpochsTFR
-        The wavelet scaleogram.
-
-    Notes
-    -----
-    Similar to https://www.mathworks.com/help/wavelet/ref/cwt.html
-    """
-    data = inst.get_data()  # (trials X channels X timepoints)
-    data -= np.mean(data, axis=-1, keepdims=True)
-
-    # Ws, period = calculate_wavelets(inst.info['sfreq'], f_high, f_low,
-    # data.shape[-1])
-    freqs = np.logspace(np.log10(f_low), np.log10(f_high), 50)
-    common_factor = (data.shape[-1] + 1) * np.pi / 5 / inst.info['sfreq']
-    n_cycles = np.min(freqs) * common_factor
-    wavelets = tfr.morlet(inst.info['sfreq'], freqs, n_cycles=n_cycles,
-                          zero_mean=True)
-    wave = np.empty((data.shape[0], data.shape[1], len(freqs),
-                     roundup(data.shape[2] / decim)), dtype=np.float64)
-
-    def _cwt(x, i):
-        wave[i] = tfr.cwt(x, wavelets, use_fft=True, decim=decim)
-
-    # perform the cwt across trials and channels
-    # iterate through fisrt and second dimension
-    ins = ((d, i) for i, d in enumerate(data))
-    parallelize(_cwt, ins, require='sharedmem', n_jobs=n_jobs,
-                verbose=verbose)
-
-    return EpochsTFR(inst.info, wave, inst.times[::decim], freqs)
-
-
+# def _check_input_st(x_in, n_fft):
+#     """Aux function."""
+#     # flatten to 2 D and memorize original shape
+#     n_times = x_in.shape[-1]
+#
+#     def _is_power_of_two(n):
+#         return not (n > 0 and (n & (n - 1)))
+#
+#     if n_fft is None or (not _is_power_of_two(n_fft) and n_times > n_fft):
+#         # Compute next power of 2
+#         n_fft = 2 ** int(np.ceil(np.log2(n_times)))
+#     elif n_fft < n_times:
+#         raise ValueError(
+#             f"n_fft cannot be smaller than signal size. Got {n_fft} <
+#             {n_times}."
+#         )
+#     if n_times < n_fft:
+#         # logger.info(
+#         #     f'The input signal is shorter ({x_in.shape[-1]}) than "n_fft"
+#         ({n_fft}). '
+#         #     "Applying zero padding."
+#         # )
+#         zero_pad = n_fft - n_times
+#         pad_array = np.zeros(x_in.shape[:-1] + (zero_pad,), x_in.dtype)
+#         x_in = np.concatenate((x_in, pad_array), axis=-1)
+#     else:
+#         zero_pad = 0
+#     return x_in, n_fft, zero_pad
+#
+#
+# def _precompute_st_windows(n_samp, start_f, stop_f, sfreq, width):
+#     """Precompute stockwell Gaussian windows (in the freq domain)."""
+#     tw = fftfreq(n_samp, 1.0 / sfreq) / n_samp
+#     tw = np.r_[tw[:1], tw[1:][::-1]]
+#
+#     k = width  # 1 for classical stowckwell transform
+#     f_range = np.arange(start_f, stop_f, 1)
+#     windows = np.empty((len(f_range), len(tw)), dtype=np.complex128)
+#     for i_f, f in enumerate(f_range):
+#         if f == 0.0:
+#             window = np.ones(len(tw))
+#         else:
+#             window = (f / (np.sqrt(2.0 * np.pi) * k)) * np.exp(
+#                 -0.5 * (1.0 / k**2.0) * (f**2.0) * tw**2.0
+#             )
+#         window /= window.sum()  # normalisation
+#         windows[i_f] = fft(window)
+#     return windows
+#
+#
+# def _st_power_itc(x, start_f, compute_itc, zero_pad, decim, W, average):
+#     """Aux function."""
+#     decim = slice(None, None, decim)
+#     n_samp = x.shape[-1]
+#     decim_indices = decim.indices(n_samp - zero_pad)
+#     n_out = len(range(*decim_indices))
+#     out_shape = (len(W), n_out) if average else (x.shape[0], len(W), n_out)
+#     psd = np.empty(out_shape)
+#     itc = np.empty_like(psd) if compute_itc else None
+#     X = fft(x)
+#     XX = np.concatenate([X, X], axis=-1)
+#     for i_f, window in enumerate(W):
+#         f = start_f + i_f
+#         ST = ifft(XX[:, f : f + n_samp] * window)
+#         TFR = ST[:, slice(*decim_indices)]
+#         TFR_abs = np.abs(TFR)
+#         TFR_abs[TFR_abs == 0] = 1.0
+#         if compute_itc:
+#             TFR /= TFR_abs
+#             itc[i_f] = np.abs(np.mean(TFR, axis=0))
+#         TFR_abs *= TFR_abs
+#         if average:
+#             psd[i_f] = np.mean(TFR_abs, axis=0)
+#         else:
+#             psd[..., i_f, :] = TFR_abs
+#     return psd, itc
+#
+#
+# def _compute_freqs_st(fmin, fmax, n_fft, sfreq):
+#     """Compute the frequencies for the Stockwell transform.
+#
+#     Parameters
+#     ----------
+#     fmin
+#     fmax
+#     n_fft
+#     sfreq
+#
+#     Returns
+#     -------
+#     start_f
+#     stop_f
+#     freqs
+#
+#     Examples
+#     --------
+#     >>> _compute_freqs_st(30, 500, 200, 2048)
+#
+#     """
+#     from scipy.fft import fftfreq
+#
+#     freqs = fftfreq(n_fft, 1.0 / sfreq)
+#     if fmin is None:
+#         fmin = freqs[freqs > 0][0]
+#     if fmax is None:
+#         fmax = freqs.max()
+#
+#     start_f = np.abs(freqs - fmin).argmin()
+#     stop_f = np.abs(freqs - fmax).argmin()
+#     freqs = freqs[start_f:stop_f]
+#     return start_f, stop_f, freqs
+#
+#
+# def compute_freqs_st(fmin, fmax, n_fft, sfreq):
+#     """Compute the frequencies for the Stockwell transform.
+#
+#     Parameters
+#     ----------
+#     fmin
+#     fmax
+#     n_fft
+#     sfreq
+#
+#     Returns
+#     -------
+#     start_f
+#     stop_f
+#     freqs
+#
+#     Examples
+#     --------
+#     >>> compute_freqs_st(30, 500, 40, 2048)
+#
+#     """
+#     start_f, stop_f, freqs = _compute_freqs_st(fmin, fmax, n_fft, sfreq)
+#     temp = n_fft
+#     while stop_f - start_f < n_fft:
+#         temp += 1
+#         start_f, stop_f, freqs = _compute_freqs_st(fmin, fmax, temp, sfreq)
+#     return start_f, stop_f, freqs
+#
+#
+# @verbose
+# def tfr_array_stockwell(
+#     data,
+#     sfreq,
+#     fmin=None,
+#     fmax=None,
+#     n_fft=None,
+#     width=1.0,
+#     decim=1,
+#     return_itc=False,
+#     n_jobs=None,
+#     average=True,
+#     *,
+#     verbose=None,
+# ):
+#     """Compute power and intertrial coherence using Stockwell (S) transform.
+#
+#     Same computation as `~mne.time_frequency.tfr_stockwell`, but operates on
+#     :class:`NumPy arrays <numpy.ndarray>` instead of `~mne.Epochs` objects.
+#
+#     See :footcite:`Stockwell2007,MoukademEtAl2014,WheatEtAl2010,JonesEtAl2006
+#     for more information.
+#
+#     Parameters
+#     ----------
+#     data : ndarray, shape (n_epochs, n_channels, n_times)
+#         The signal to transform.
+#     sfreq : float
+#         The sampling frequency.
+#     fmin : None, float
+#         The minimum frequency to include. If None defaults to the minimum fft
+#         frequency greater than zero.
+#     fmax : None, float
+#         The maximum frequency to include. If None defaults to the maximum fft
+#     n_fft : int | None
+#         The length of the windows used for FFT. If None, it defaults to the
+#         next power of 2 larger than the signal length.
+#     width : float
+#         The width of the Gaussian window. If < 1, increased temporal
+#         resolution, if > 1, increased frequency resolution. Defaults to 1.
+#         (classical S-Transform).
+#     %(decim_tfr)s
+#     return_itc : bool
+#         Return intertrial coherence (ITC) as well as averaged power.
+#     %(n_jobs)s
+#     %(verbose)s
+#
+#     Returns
+#     -------
+#     st_power : ndarray
+#         The multitaper power of the Stockwell transformed data.
+#         The last two dimensions are frequency and time.
+#     itc : ndarray
+#         The intertrial coherence. Only returned if return_itc is True.
+#     freqs : ndarray
+#         The frequencies.
+#
+#     See Also
+#     --------
+#     mne.time_frequency.tfr_stockwell
+#     mne.time_frequency.tfr_multitaper
+#     mne.time_frequency.tfr_array_multitaper
+#     mne.time_frequency.tfr_morlet
+#     mne.time_frequency.tfr_array_morlet
+#
+#     References
+#     ----------
+#     .. footbibliography::
+#     """
+#     if data.ndim != 3:
+#         raise ValueError(
+#             "data must be 3D with shape (n_epochs, n_channels, n_times), "
+#             f"got {data.shape}"
+#         )
+#
+#     trials, n_channels, n_out = data[..., ::decim].shape
+#     start_f, stop_f, freqs = compute_freqs_st(fmin, fmax, n_fft, sfreq)
+#
+#     W = _precompute_st_windows(data.shape[-1], start_f, stop_f, sfreq, width)
+#     n_freq = stop_f - start_f
+#     out_shape = (n_channels, n_freq, n_out) if average else \
+#         (trials, n_channels, n_freq, n_out)
+#     psd = np.empty(out_shape)
+#     itc = np.empty(out_shape) if return_itc else None
+#
+#     ins = (data[:, c, :] for c in range(n_channels))
+#     myfunc = partial(_st_power_itc, start_f=start_f, compute_itc=return_itc,
+#                      zero_pad=0, decim=decim, W=W, average=average)
+#     tfrs = Parallel(n_jobs=n_jobs, verbose=verbose, return_as='generator')(
+#         delayed(myfunc)(x) for x in ins)
+#     for c, (this_psd, this_itc) in enumerate(iter(tfrs)):
+#         psd[..., c, :, :] = this_psd
+#         if this_itc is not None:
+#             itc[c] = this_itc
+#
+#     return psd, itc, freqs
+#
 def _check_filterable(x: Union[Signal, np.ndarray],
                       kind: str = 'filtered',
                       alternative: str = 'filter') -> np.ndarray:
@@ -330,9 +604,35 @@ def _check_filterable(x: Union[Signal, np.ndarray],
     return x
 
 
+def resample_tfr(tfr, sfreq, o_sfreq=None, copy=False):
+    """Resample a TFR object to a new sampling frequency"""
+    if copy:
+        tfr = tfr.copy()
+
+    if o_sfreq is None:
+        # o_sfreq = len(tfr.times) / (tfr.tmax - tfr.tmin)
+        o_sfreq = tfr.info["sfreq"]
+
+    tfr._data = resample(tfr._data, o_sfreq, sfreq, axis=-1)
+    lowpass = tfr.info.get("lowpass")
+    lowpass = np.inf if lowpass is None else lowpass
+    with tfr.info._unlock():
+        tfr.info["lowpass"] = min(lowpass, sfreq / 2)
+        tfr.info["sfreq"] = sfreq
+    new_times = resample(tfr.times, o_sfreq, sfreq, axis=-1)
+    # adjust indirectly affected variables
+    tfr._set_times(new_times)
+    tfr._raw_times = tfr.times
+    tfr._update_first_last()
+    return tfr
+
+
 if __name__ == "__main__":
     # Description: Produce spectrograms for each subject
     from ieeg.io import get_data, raw_from_layout
+    from ieeg.calc.scaling import rescale
+    from ieeg.viz.ensemble import chan_grid
+    from ieeg.viz.parula import parula_map
     from ieeg.navigate import trial_ieeg, crop_empty_data, \
         outliers_to_nan
     import os
@@ -350,12 +650,13 @@ if __name__ == "__main__":
         layout = get_data("SentenceRep", root=LAB_root)
         subjects = layout.get(return_type="id", target="subject")
 
+    data = dict()
     for sub in subjects:
-        if sub != "D0029":
+        if sub != "D0005":
             continue
         # Load the data
-        filt = raw_from_layout(layout.derivatives['clean'], subject=sub,
-                               extension='.edf', desc='clean', preload=False)
+        filt = raw_from_layout(layout.derivatives['notch'], subject=sub,
+                               extension='.edf', desc='notch', preload=False)
 
         # Crop raw data to minimize processing time
         good = crop_empty_data(filt, ).copy()
@@ -368,7 +669,7 @@ if __name__ == "__main__":
         good.set_eeg_reference(ref_channels="average", ch_type=ch_type)
 
         # Remove intermediates from mem
-        good.plot()
+        # good.plot()
 
         # epoching and trial outlier removal
 
@@ -378,21 +679,39 @@ if __name__ == "__main__":
             os.makedirs(save_dir)
 
         for epoch, t, name in zip(
-                ("Start", "Word/Response/LS", "Word/Audio/LS", "Word/Audio/LM",
-                 "Word/Audio/JL", "Word/Go/LS", "Word/Go/LM",
-                 "Word/Go/JL"),
-                ((-0.5, 0), (-1, 1), (-0.5, 1.5), (-0.5, 1.5), (-0.5, 1.5),
-                 (-0.5, 1.5), (-0.5, 1.5), (-0.5, 1.5)),
+                ("Start", "Word/Response/LS"),
+                ((-0.5, 0), (-1, 1)),
                 (
-                        "base", "resp", "aud_ls", "aud_lm", "aud_jl", "go_ls",
-                        "go_lm",
-                        "go_jl")):
+                        "base", "resp")):
+            trials = trial_ieeg(good, epoch, t, preload=False)
+            n_samps = trials.times.shape[-1]
+            n_fft = 2 ** int(np.ceil(np.log2(n_samps)))
             times = [None, None]
-            times[0] = t[0] - 0.5
-            times[1] = t[1] + 0.5
+            offset = n_fft - n_samps / 2 / good.info['sfreq']
+            times[0] = t[0] - offset
+            times[1] = t[1] + offset
             trials = trial_ieeg(good, epoch, times, preload=True)
             outliers_to_nan(trials, outliers=10)
-            # spec = wavelet_scaleogram(trials, n_jobs=-2, decim=int(
-            #     good.info['sfreq'] / 100))
-            spec = cwt(trials, n_jobs=-2, decim=int(
+            spec = wavelet_scaleogram(trials, n_jobs=-2, decim=int(
                 good.info['sfreq'] / 100))
+            # spec = cwt(trials, 30, 500, n_fft, 1, -1, 4)
+            crop_pad(spec, "0.5s")
+            # spec = spec.decimate(2, 1)
+            del trials
+
+            # if spec.sfreq % 100 == 0:
+            #     factor = spec.sfreq // 100
+            #     offset = len(spec.times) % factor
+            #     spec = spec.decimate(factor, offset)
+            resample_tfr(spec, 100,
+                         spec.times.shape[0] / (spec.tmax - spec.tmin))
+
+            if name == "base":
+                base = spec.copy().crop(-0.5, 0)
+            else:
+                data[name] = spec
+
+    # Plot the spectrogram
+    result = rescale(data['resp'], base, mode='ratio', copy=True)
+    avg = result.average(lambda x: np.nanmean(x, axis=0))
+    chan_grid(avg, size=(20, 10), vlim=(-.5, 3.), cmap=parula_map)

@@ -12,8 +12,8 @@ _numpy_abs = np.get_include()  # get the numpy include path
 def get_file_list(path, ext):
     all_files = glob.glob(op.join(path, f"*{ext}"))
     for file in all_files:
-        elem = op.split(file)
-        name = op.splitext(".".join(elem))[0]
+        # Convert file path to module name by replacing path separators with dots
+        name = op.splitext(file)[0].replace('\\', '.').replace('/', '.')
         yield name, [file]
 
 
@@ -79,7 +79,7 @@ extensions += [
 
 setup(
     name='ieeg',
-    version='0.6.0',
+    version='0.7.0',
     packages=find_packages(
         where='.',
         include=['ieeg*'],

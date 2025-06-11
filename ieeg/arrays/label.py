@@ -10,7 +10,7 @@ from numpy.typing import ArrayLike
 import ieeg
 
 
-def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
+def iter_nest_dict(d: dict, iter_arrays: bool = False) -> Iterable[tuple]:
     """Iterate over a nested dictionary, yielding the key and value.
 
     Parameters
@@ -32,15 +32,42 @@ def iter_nest_dict(d: dict, _lvl: int = 0, _coords=()):
     ('a', 'c') 2
     ('d', 'e') 3
     ('d', 'f') 4
+    >>> d = {'a': {'b': np.array([1, 2]), 'c': 2}, 'd': {'e': 3, 'f': 4}}
+    >>> for k, v in iter_nest_dict(d, iter_arrays=False):
+    ...     print(k, v)
+    ('a', 'b') [1 2]
+    ('a', 'c') 2
+    ('d', 'e') 3
+    ('d', 'f') 4
+    >>> for k, v in iter_nest_dict(d, iter_arrays=True):
+    ...     print(k, v)
+    ('a', 'b', 0) 1
+    ('a', 'b', 1) 2
+    ('a', 'c') 2
+    ('d', 'e') 3
+    ('d', 'f') 4
     """
-    for k, v in d.items():
-        if isinstance(v, dict):
-            yield from iter_nest_dict(v, _lvl + 1, _coords + (k,))
-        elif isinstance(v, np.ndarray):
-            yield from iter_nest_dict({i: val for i, val in enumerate(v)
-                                       }, _lvl + 1, _coords + (k,))
-        else:
-            yield _coords + (k,), v
+    stack = [(d, [])]
+    if not iter_arrays:
+        while stack:
+            current, path = stack.pop()
+            if isinstance(current, dict):
+                # Reverse to maintain order
+                for k, v in reversed(current.items()):
+                    stack.append((v, path + [k]))
+            else:
+                yield tuple(path), current
+    else:
+        while stack:
+            current, path = stack.pop()
+            if isinstance(current, dict):
+                for k, v in reversed(current.items()):
+                    stack.append((v, path + [k]))
+            elif isinstance(current, np.ndarray):
+                for i, val in reversed(list(enumerate(current))):
+                    stack.append((val, path + [i]))
+            else:
+                yield tuple(path), current
 
 
 def lcs(*strings: str) -> str:
@@ -122,7 +149,7 @@ class LabeledArray(np.ndarray):
     --------
     >>> import numpy as np
     >>> np.set_printoptions(legacy='1.21')
-    >>> from ieeg.calc.mat import LabeledArray
+    >>> from ieeg.arrays.label import LabeledArray
     >>> arr = np.ones((2, 3, 4), dtype=int)
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
     >>> la = LabeledArray(arr, labels)
@@ -324,10 +351,52 @@ class LabeledArray(np.ndarray):
         labels(['a', 'd']
                ['b']
                ['c', 'e'])
+        >>> data = {'a': {'b': np.array([[1, 2, 3]]), 'c' : [[4, 5], [6, 7]]},}
+        >>> LabeledArray.from_dict(data) # doctest: +ELLIPSIS
+        array([[[[ 1.,  2.,  3.],
+                 [nan, nan, nan]],
+        <BLANKLINE>
+                [[ 4.,  5., nan],
+                 [ 6.,  7., nan]]]])
+        labels(['a']
+               ['b', 'c']
+               ['0', '1']
+               ['0', '1', '2'])
+        >>> data = {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'e': 6}}
+        >>> LabeledArray.from_dict(data)
+        array([[ 1.,  2.,  3.],
+               [ 4., nan,  6.]])
+        labels(['b', 'f']
+               ['c', 'd', 'e'])
         """
 
-        arr = inner_array(data)
         keys = inner_all_keys(data)
+        # each key layer is unique by definition
+        # also non-homogenous shape sequence would have failed by now
+        # example: {'c' : [[4, 5], [6]]}
+        dtype = kwargs.pop('dtype', None)
+        tmp = data
+        if dtype is None:
+            for key in keys:
+                tmp = tmp[key[0]]
+            dtype = get_float_type(type(tmp))
+
+        shape = tuple(len(keys[i]) for i in range(len(keys)))
+        #   try to create output array, fall back to memory map if too large
+        try:
+            arr = np.full(shape, np.nan, dtype=dtype)
+        except MemoryError:
+            arr = np.memmap('data.dat', dtype=dtype, mode='w+', shape=shape)
+            arr[...] = np.nan
+
+        # slightly faster than using keys[i].index(key), O(n+m) vs O(n*m)
+        keys_dict = tuple({k: i for i, k in enumerate(ks)} for ks in keys)
+        for k, v in iter_nest_dict(data):
+            coords = tuple(keys_dict[i][key] for i, key in enumerate(k))
+            if isinstance(v, (list, tuple, np.ndarray)):
+                v = np.asarray(v)
+                coords += tuple(slice(0, s) for s in v.shape)
+            arr[coords] = v
         return cls(arr, keys, **kwargs)
 
     @classmethod
@@ -407,6 +476,61 @@ class LabeledArray(np.ndarray):
             case _:
                 raise TypeError(f"Unexpected data type: {type(sig)}")
         return cls(arr, labels, **kwargs)
+
+    def tofile(self, fid: str, **kwargs) -> None:
+        """Save the LabeledArray to a file.
+
+        Parameters
+        ----------
+        file : str
+            The file to save the LabeledArray to.
+        **kwargs
+            Additional arguments to pass to np.save.
+
+        Examples
+        --------
+        >>> arr = np.arange(24).reshape((2, 3, 4))
+        >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+        >>> la = LabeledArray(arr, labels)
+        >>> la.tofile('data')
+        >>> la2 = LabeledArray.fromfile('data')
+        >>> la == la2
+        True
+        """
+        files = {str(i): l for i, l in enumerate(self.labels)}
+        np.save(fid + '.npy', self.__array__())
+        np.savez(fid + '_labels.npz', **files)
+
+    @classmethod
+    def fromfile(cls, file: str, **kwargs) -> 'LabeledArray':
+        """Create a LabeledArray from a file.
+
+        Parameters
+        ----------
+        file : str
+            The file to load the LabeledArray from.
+        **kwargs
+            Additional arguments to pass to np.load.
+
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray created from the file.
+
+        Examples
+        --------
+        >>> arr = np.arange(24).reshape((2, 3, 4))
+        >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+        >>> la = LabeledArray(arr, labels)
+        >>> la.tofile('data')
+        >>> la2 = LabeledArray.fromfile('data')
+        >>> la == la2
+        True
+        """
+        kwargs['allow_pickle'] = False
+        files = np.load(file + '_labels.npz', **kwargs)
+        labels = list(map(tuple, files.values()))
+        return cls(np.load(file + '.npy', **kwargs), labels)
 
     def _parse_index(self, keys: list) -> list:
         ndim = self.ndim
@@ -695,6 +819,11 @@ class LabeledArray(np.ndarray):
         kwargs : dict
             Additional keyword arguments to pass to np.take.
 
+        Returns
+        -------
+        LabeledArray
+            The LabeledArray with the selected elements.
+
         Examples
         --------
         >>> arr = np.arange(24).reshape((2, 3, 4))
@@ -706,16 +835,42 @@ class LabeledArray(np.ndarray):
         [['a', 'b'], ['c', 'd', 'e'], ['f', 'g']]
         >>> np.take(ad, np.array([[0,2], [1,3]]), axis=2).labels
         [['a', 'b'], ['c', 'd', 'e'], ['f-h', 'g-i'], ['f-g', 'h-i']]
+        >>> np.take(ad, np.array(['f','g']), axis=2)
+        array([[[ 0,  1],
+                [ 4,  5],
+                [ 8,  9]],
+        <BLANKLINE>
+               [[12, 13],
+                [16, 17],
+                [20, 21]]])
+        labels(['a', 'b']
+               ['c', 'd', 'e']
+               ['f', 'g'])
+        >>> np.take(ad, 'f', axis=2).labels
+        [['a', 'b'], ['c', 'd', 'e']]
+        >>> np.take(ad, ('c','e'), axis=1).labels
+        [['a', 'b'], ['c', 'e'], ['f', 'g', 'h', 'i']]
         """
 
         idx = [slice(None)] * self.ndim
+        if isinstance(indices, str):
+            indices = self.labels[axis].find(indices)
+        elif not isinstance(indices, int):
+            indices = np.array(indices)
 
         if axis is None:
             return self.flat[indices]
         elif isinstance(axis, int):
+            if not isinstance(indices, int):
+                if indices.dtype.kind == 'U':
+                    indices = np.array(
+                        [self.labels[axis].find(idx) for idx in indices])
             idx[axis] = indices
         elif len(indices) == len(axis):
             for i, ax in enumerate(axis):
+                if indices.dtype.kind == 'U':
+                    indices = np.array(
+                        [self.labels[ax].find(idx) for idx in indices])
                 idx[ax] = indices[i]
         else:
             raise ValueError("indices and axis must have the same length")
@@ -772,7 +927,8 @@ class LabeledArray(np.ndarray):
         return self[index]
 
     def concatenate(self, other: 'LabeledArray', axis: int = 0,
-                    mismatch: str = 'raise', **kwargs) -> 'LabeledArray':
+                    mismatch: str = 'raise', ids: tuple[str, str] = ('0', '1'),
+                    **kwargs) -> 'LabeledArray':
         """Concatenate two LabeledArrays along an axis.
 
         Parameters
@@ -786,6 +942,8 @@ class LabeledArray(np.ndarray):
             (default) will raise a ValueError, 'shrink' will shrink the labels
             to the smallest size, and 'expand' (not implemented) will expand
             the labels to the largest size, filling in with NaNs.
+        ids : tuple[str, str], optional
+            The identifiers for the two arrays, used to create unique labels
         kwargs : dict
             Additional keyword arguments to pass to np.concatenate.
 
@@ -834,10 +992,24 @@ class LabeledArray(np.ndarray):
         ...
         NotImplementedError: Base array must the same size or smaller than i...
         Base size:(2, 3), Input size: (2, 2)
+        >>> arr1.concatenate(arr3, 0, mismatch='expand')
+        array([[ 1.,  2., nan],
+               [ 3.,  4., nan],
+               [ 5.,  6.,  9.],
+               [ 7.,  8., 10.]])
+        labels(['0-a', '0-b', '1-a', '1-b']
+               ['c', 'd', 'e'])
         """
 
         while axis < 0:
             axis += self.ndim
+
+        if mismatch == 'expand':
+            ids = tuple(map(str, ids))
+            all_dict = {ids[0]: self.to_dict(), ids[1]: other.to_dict()}
+            combined = combine(all_dict, (0, axis + 1),
+                               self.labels[0].delimiter)
+            return LabeledArray.from_dict(combined)
 
         new_labels = list(self.labels)
         idx = [slice(None)] * self.ndim
@@ -845,7 +1017,7 @@ class LabeledArray(np.ndarray):
         for i in range(self.ndim):
             if i == axis:
                 if not is_unique(new):
-                    new_labels[i] = _make_array_unique(
+                    new_labels[i] = make_array_unique(
                         new.astype(str), self.labels[i].delimiter)
                 else:
                     new_labels[i] = new
@@ -884,6 +1056,8 @@ class LabeledArray(np.ndarray):
         out = np.concatenate((self.__array__(), reordered), axis, **kwargs)
         return LabeledArray(out, new_labels, dtype=self.dtype)
 
+    # def swapaxes(self):
+
 
 def is_unique(arr: np.ndarray) -> bool:
     """Check if an array is unique.
@@ -909,7 +1083,13 @@ def is_unique(arr: np.ndarray) -> bool:
 
 
 class Labels(np.char.chararray):
-    """A class for storing labels for a LabeledArray."""
+    """A class for storing labels for a LabeledArray.
+
+    Examples
+    --------
+    >>> Labels(['D21']) @ Labels(['a', 'b', 'c',])
+    [['D21-a', 'D21-b', 'D21-c']]
+    """
     delimiter: str
 
     # __slots__ = ['delimiter', '__dict__']
@@ -977,6 +1157,36 @@ class Labels(np.char.chararray):
         # Return the result as a Labels object
         return Labels(out)
 
+    def split(
+        self,
+        sep: str = None,
+        maxsplit: int = -1,
+    ):
+        """
+        Return a list of the words in the string, using sep as the delimiter
+         string.
+
+        sep
+            The delimiter according which to split the string.
+            None (the default value) means split according to the given
+            delimiter
+        maxsplit
+            Maximum number of splits to do.
+            -1 (the default value) means no limit.
+
+        Examples
+        --------
+        >>> Labels(['a-b-c', 'd-e-f']).split('-')
+        array([['a', 'b', 'c'],
+               ['d', 'e', 'f']], dtype='<U1')
+        >>> Labels(['a-b-c', 'd-e-f'], '-').split()
+        array([['a', 'b', 'c'],
+               ['d', 'e', 'f']], dtype='<U1')
+        """
+        if sep is None:
+            sep = self.delimiter
+        return np.array(super(Labels, self).split(sep, maxsplit).tolist())
+
     def decompose(self) -> list['Labels', ...]:
         """Decompose a Labels object into a list of 1d Labels objects.
 
@@ -1000,8 +1210,8 @@ class Labels(np.char.chararray):
                 if len(common) == 0:
                     common = np.unique(row).tolist()
                 new_labels[i][j] = self.delimiter.join(common)
-            new_labels[i] = _make_array_unique(np.array(new_labels[i]),
-                                               self.delimiter)
+            new_labels[i] = make_array_unique(np.array(new_labels[i]),
+                                              self.delimiter)
         return list(map(Labels, new_labels))
 
     def find(self, value) -> int | tuple[int]:
@@ -1049,7 +1259,7 @@ class Labels(np.char.chararray):
             return Labels([lab.join() for lab in labs], self.delimiter)
 
 
-def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
+def make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     """Make an array unique by appending a number to duplicate values.
 
     Parameters
@@ -1067,10 +1277,12 @@ def _make_array_unique(arr: np.ndarray, delimiter: str) -> np.ndarray:
     Examples
     --------
     >>> arr = np.array(['a', 'b', 'c', 'a', 'b', 'c'])
-    >>> _make_array_unique(arr, '-')
+    >>> make_array_unique(arr, '-')
     array(['a-0', 'b-0', 'c-0', 'a-1', 'b-1', 'c-1'], dtype='<U3')
+    >>> make_array_unique(arr[:-1], '-')
+    array(['a-0', 'b-0', 'c', 'a-1', 'b-1'], dtype='<U3')
     >>> arr = np.array(['a', 'b', 'c', 'd', 'e', 'f'])
-    >>> _make_array_unique(arr, '-')
+    >>> make_array_unique(arr, '-')
     array(['a', 'b', 'c', 'd', 'e', 'f'], dtype='<U1')
     """
     unique, inverse = np.unique(arr, return_inverse=True)
@@ -1196,7 +1408,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
             if np.isscalar(d):
                 continue
             inner_all_keys(d, keys, lvl + 1)
-    elif isinstance(data, np.ndarray):
+    elif isinstance(data, (np.ndarray, list, tuple)):
         data = np.atleast_1d(data)
         rows = range(data.shape[0])
         if len(keys) < lvl + 1:
@@ -1211,52 +1423,17 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
     return tuple(map(tuple, keys))
 
 
-def inner_array(data: dict | np.ndarray) -> np.ndarray | None:
-    """Convert a nested dictionary to a nested array.
-
-    Parameters
-    ----------
-    data : dict or np.ndarray
-        The nested dictionary to convert.
-
-    Returns
-    -------
-    np.ndarray or None
-        The converted nested array.
-
-    Examples
-    --------
-    >>> data = {'a': {'b': {'c': 1}}}
-    >>> inner_array(data)
-    array([[[1.]]])
-    >>> data = {'a': {'b': {'c': 1}}, 'd': {'b': {'c': 2, 'e': 3}}}
-    >>> inner_array(data)
-    array([[[ 1., nan]],
-    <BLANKLINE>
-           [[ 2.,  3.]]])
-    >>> data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3}, 'f': {'c': 4, 'd': 5}}}
-    >>> inner_array(data)
-    array([[[ 1.,  2.,  3.],
-            [ 4.,  5., nan]]])
-    """
-    if np.isscalar(data):
-        return data
-    elif isinstance(data, dict):
-        gen_arr = (inner_array(d) for d in data.values())
-        arr = [a for a in gen_arr if a is not None]
-        if len(arr) > 0:
-            return concatenate_arrays(arr, axis=None)
-
-    # Call np.atleast_1d once and store the result in a variable
-    data_1d = np.atleast_1d(data)
-
-    # Use the stored result to check the length of data
-    if len(data_1d) == 0:
-        return
-    elif len(data_1d) == 1:
-        return data
+def get_float_type(int_type):
+    if int_type == np.int16:
+        return np.float16
+    elif int_type == np.int32:
+        return np.float32
+    elif int_type == np.int64 or int_type is int:
+        return np.float64
+    elif np.issubdtype(int_type, np.floating):
+        return int_type
     else:
-        return np.array(data)
+        raise ValueError("Unsupported integer type:" + str(int_type))
 
 
 def _combine_arrays(*arrays, delim: str = '-') -> np.ndarray:
@@ -1284,6 +1461,8 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     levels: tuple[int, int]
         The levels to combine, e.g. (0, 1) will combine the 1st and 2nd level
         of the dict keys into one level at the 2nd level.
+    delim: str, optional
+        The delimiter to use when combining keys, by default '-'
 
     Returns
     -------
@@ -1423,31 +1602,36 @@ def events_in_order(inst: mne.BaseEpochs) -> list[str]:
 
 
 if __name__ == "__main__":
-    import os
-    from ieeg.io import get_data
-    import mne
+    # import os
+    # from ieeg.io import get_data
+    # import mne
+    #
+    # conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5),
+    #                                                       "Audio/LS"),
+    #          "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),
+    #                                                          "Audio/JL"),
+    #          "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM")
+    #          "go_jl": ((-0.5, 1.5), "Go/JL")}
+    # task = "SentenceRep"
+    # root = os.path.expanduser("~/Box/CoganLab")
+    # # layout = get_data(task, root=root)
+    # folder = 'stats_old'
+    # mne.set_log_level("ERROR")
+    #
+    # arr = np.arange(24).reshape((2, 3, 4))
+    # labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
+    # ad = LabeledArray(arr, labels)
+    # Labels(['a', 'b', 'c']) @ Labels(['d', 'e', 'f'])
+    #
+    # labels = Labels(np.arange(1000))
+    # l2d = labels @ labels
+    # x = l2d.reshape((10, -1)).decompose()
+    # x = np.moveaxis(ad, 0, 1)
 
-    conds = {"resp": ((-1, 1), "Response/LS"), "aud_ls": ((-0.5, 1.5),
-                                                          "Audio/LS"),
-             "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),
-                                                             "Audio/JL"),
-             "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
-             "go_jl": ((-0.5, 1.5), "Go/JL")}
-    task = "SentenceRep"
-    root = os.path.expanduser("~/Box/CoganLab")
-    # layout = get_data(task, root=root)
-    folder = 'stats_old'
-    mne.set_log_level("ERROR")
-
-    arr = np.arange(24).reshape((2, 3, 4))
-    labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
-    ad = LabeledArray(arr, labels)
-    Labels(['a', 'b', 'c']) @ Labels(['d', 'e', 'f'])
-
-    labels = Labels(np.arange(1000))
-    l2d = labels @ labels
-    x = l2d.reshape((10, -1)).decompose()
-    x = np.moveaxis(ad, 0, 1)
+    test_list = ["delay/word/5", "delay/word/6", "delay/word/7",
+                 "stim/word/5", "stim/word/6", "stim/word/7",]
+    labels = Labels(test_list, delim="/")
+    functools.reduce(np.setdiff1d, labels.split())
 
 
 def _cat_test():

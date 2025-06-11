@@ -3,15 +3,19 @@ from joblib import Parallel, delayed, cpu_count
 from mne.utils import logger
 from scipy import stats as st
 from scipy import ndimage
+import inspect
+from sklearn.neighbors import LocalOutlierFactor
 
 from ieeg import Doubles
-from ieeg.calc.reshape import make_data_same
-from ieeg.calc.fast import mean_diff, permgt as permgtnd
+from ieeg.arrays.api import array_namespace, Array, is_numpy
+from ieeg.arrays.reshape import make_data_same
+from ieeg.calc.fast import permgt, ttest
 from ieeg.process import get_mem, iterate_axes
 
 
-def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
-         where: np.ndarray = None) -> Doubles:
+def dist(mat: np.ndarray, axis: int = None, mode: str = 'sem', ddof: int = 0,
+         where: np.ndarray = None, keepdims: bool = False, xp=None
+         ) -> Doubles:
     """ Calculate the mean and standard deviation of a matrix.
 
     This function calculates the mean and standard deviation of a matrix along
@@ -39,32 +43,49 @@ def dist(mat: np.ndarray, axis: int = 0, mode: str = 'sem',
     --------
     >>> import numpy as np
     >>> mat = np.arange(24).reshape(4,6)
-    >>> dist(mat)[1] # doctest: +NORMALIZE_WHITESPACE
-    array([3.87298335, 3.87298335, 3.87298335, 3.87298335, 3.87298335,
-           3.87298335])
-    >>> dist(mat, mode='std')[1]
+    >>> dist(mat, 0)[1] # doctest: +NORMALIZE_WHITESPACE
+    array([3.35410197, 3.35410197, 3.35410197, 3.35410197, 3.35410197,
+           3.35410197])
+    >>> dist(mat, 0, mode='std')[1]
     array([6.70820393, 6.70820393, 6.70820393, 6.70820393, 6.70820393,
            6.70820393])
     """
 
     assert mode in ('sem', 'std'), "mode must be 'sem' or 'std'"
 
+    if xp is None:
+        xp = array_namespace(mat)
+
     if where is None:
-        where = np.ones(mat.shape, dtype=bool)
-
-    where = np.logical_and(where, ~np.isnan(mat))
-
-    mean = np.mean(mat, axis=axis, where=where)
-    if mode == 'sem':
-        std = st.sem(mat, axis=axis, nan_policy='omit')
+        where = ~xp.isnan(mat)
     else:
-        std = np.std(mat, axis=axis, where=where)
+        where = xp.logical_and(where, ~xp.isnan(mat))
 
-    return mean, std
+    if is_numpy(xp):
+        mean = np.mean(mat, axis=axis, where=where, keepdims=True)
+        np_version = tuple(map(int, np.__version__.split('.')[:2]))
+        if np_version >= (2, 0):  # NumPy 2.0 or later
+            std = np.std(mat, axis=axis, where=where, ddof=ddof, keepdims=True,
+                         mean=mean)
+        else:
+            std = np.std(mat, axis=axis, where=where, ddof=ddof, keepdims=True)
+    else:
+        mean = xp.nanmean(mat, axis=axis)
+        std = xp.nanstd(mat, axis=axis, ddof=ddof)
+
+    if mode == 'sem':
+        std /= xp.sqrt(xp.sum(where, axis=axis, keepdims=True, dtype=xp.intp))
+    dtype = 'f' + str(mat.nbytes // mat.size)
+
+    if keepdims:
+        return mean.astype(dtype), std.astype(dtype)
+    else:
+        return mean.astype(dtype).squeeze(), std.astype(dtype).squeeze()
 
 
 def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
-                   axis: int = 0) -> tuple[tuple[int, int]]:
+                   axis: int = 0, deviation: callable = np.std,
+                   center: callable = np.mean) -> tuple[tuple[int, int]]:
     """ Remove outliers from data and repeat until no outliers are left.
 
     This function removes outliers from data and repeats until no outliers are
@@ -111,8 +132,8 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
     axes = tuple(i for i in range(data.ndim) if not i == axis)
 
     # Initialize stats loop
-    sig = np.std(R2, axes)  # take standard deviation of each channel
-    cutoff = (sd * np.std(sig)) + np.mean(sig)  # outlier cutoff
+    sig = deviation(R2, axes)  # take standard deviation of each channel
+    cutoff = (sd * deviation(sig)) + center(sig)  # outlier cutoff
     i = 1
 
     # remove bad channels and re-calculate variance until no outliers are left
@@ -124,12 +145,14 @@ def outlier_repeat(data: np.ndarray, sd: float, rounds: int = np.inf,
 
         # re-calculate per channel variance
         R2 = R2[..., np.where(sig < cutoff)[0], :]
-        sig = np.std(R2, axes)
-        cutoff = (sd * np.std(sig)) + np.mean(sig)
+        sig = deviation(R2, axes)  # take standard deviation of each channel
+        cutoff = (sd * deviation(sig)) + center(sig)  # outlier cutoff
         i += 1
 
 
-def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
+def find_outliers(data: np.ndarray, outliers: float,
+                  deviation: callable = np.std,
+                  center: callable = np.mean) -> np.ndarray[bool]:
     """ Find outliers in data matrix.
 
     This function finds outliers in a data matrix. Outliers are defined as any
@@ -140,9 +163,14 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
     Parameters
     ----------
     data : np.ndarray
-        Data to find outliers in.
+        Data to find outliers in. (trials X channels X (frequency) X time)
     outliers : float
-        Number of standard deviations from the mean to consider an outlier.
+        Number of deviations from the mean to consider an outlier.
+    deviation: callable, optional
+        Metric function to determine the deviation from the center. Default is
+        median absolute deviation.
+    center : callable, optional
+        Metric function to determine the center of the data. Default is median.
 
     Returns
     -------
@@ -156,17 +184,100 @@ def find_outliers(data: np.ndarray, outliers: float) -> np.ndarray[bool]:
     >>> data = np.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]).T
     >>> find_outliers(data, 1)
     array([ True, False,  True,  True,  True])
-    >>> find_outliers(data, 3)
+    >>> find_outliers(data, 10)
     array([ True,  True,  True,  True,  True])
     >>> find_outliers(data, 0.1)
     array([ True, False,  True, False,  True])
+    >>> find_outliers(data, 0.1, np.std)
+    array([ True, False,  True, False,  True])
+    >>> data = np.array([[1, 1, np.nan, 1, 1], [0, 60, 0, 10, 0]]).T
+    >>> find_outliers(data, 0.1, st.median_abs_deviation)
+    array([ True, False,  True, False,  True])
     """
+    where = np.isfinite(data)  # (trials X channels X (frequency) X time)
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
-    max = np.max(dat, axis=-1)  # (trials X channels X (frequency))
-    std = np.std(dat, axis=(-1, 0))  # (channels X (frequency))
-    mean = np.mean(dat, axis=(-1, 0))  # (channels X (frequency))
+    # (trials X channels X (frequency))
+    max = np.max(dat, axis=-1, where=where, initial=0)
+    kwargs = {}
+    if 'where' in inspect.signature(center).parameters:
+        kwargs['where'] = where
+    elif 'nan_policy' in inspect.signature(center).parameters:
+        kwargs['nan_policy'] = 'omit'
+    mean = center(dat, axis=(-1, 0), **kwargs)  # (channels X (frequency))
+    _ = kwargs.pop('where', None)
+    _ = kwargs.pop('nan_policy', None)
+    if 'center' in inspect.signature(deviation).parameters:
+        kwargs['center'] = center
+    if 'where' in inspect.signature(deviation).parameters:  # numpy
+        kwargs['where'] = where
+        std = deviation(dat, axis=(-1, 0), **kwargs)  # channels X (frequency)
+    elif 'nan_policy' in inspect.signature(deviation).parameters:  # scipy
+        kwargs['nan_policy'] = 'omit'
+        std = np.empty(dat.shape[slice(1, dat.ndim-1)], dtype=dat.dtype)
+        for idx in np.ndindex(std.shape):
+            # (channels X (frequency))
+            std[idx] = deviation(dat[(slice(None),) + idx],
+                                 axis=None, **kwargs)
+    else:
+        std = deviation(dat, axis=(-1, 0), **kwargs)  # channels X (frequency)
     keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
     return keep
+
+
+# def find_outliers_lof(data: np.ndarray, threshold: int | float = 1.5,
+#                       max_proportion: float = 0.9, policy: str = "increment"
+#                       ):
+#     """Remove outliers from data.
+#
+#     Uses Scikit-learn's LocalOutlierFactor to remove outliers from data. The
+#     function will remove outliers from the data, assuming that there are not
+#     more outliers in the data than the max_proportion.
+#
+#     Parameters
+#     ----------
+#     data
+#     max_proportion
+#     policy
+#     kwargs
+#
+#     Returns
+#     -------
+#
+#     Examples
+#     --------
+#     >>> import numpy as np
+#     >>> np.random.seed(42)
+#     >>> data = np.random.rand(10,20,100)
+#     >>> data[5, 10, 50:100] = 1000  # add an outlier
+#     >>> data[7, 15, 75:100] = 10  # add another outlier
+#     >>> find_outliers_lof(data, 1., .9)[5:8, 10:16]
+#     array([ True,  True,  True,  True,  True])
+#
+#     """
+#     assert 0 < max_proportion <= 1, "max_proportion must be between 0 and 1"
+#     assert policy in ["increment", "toss"], ("policy must be 'increment' or "
+#                                              "'toss'")
+#
+#     n = int(round(max(data.shape[0] / (1 / max_proportion), 2)))
+#     var = np.var(data, axis=0)
+#     clf = LocalOutlierFactor(n_neighbors=n, metric="seuclidean")
+#     out = np.empty(data.shape[:-1], dtype=bool)
+#     for idx in np.ndindex(out.shape[1:]):
+#         clf.metric_params = {"V": var[idx]}
+#         idx = (slice(None),) + idx  # add slice for trials
+#         bad_indices = np.arange(data.shape[0]).tolist()
+#         clf.fit_predict(data[idx])
+#         scores_lof = clf.negative_outlier_factor_
+#         thresh = threshold
+#         while len(bad_indices) / n:
+#             bad_indices = [
+#                 i for i, v in enumerate(np.abs(scores_lof)) if v >= thresh
+#             ]
+#             thresh += .1
+#         out[idx] = np.isin(np.arange(data.shape[0]), bad_indices,
+#         invert=True)
+#
+#     return out
 
 
 def avg_no_outlier(data: np.ndarray, outliers: float = None,
@@ -239,53 +350,12 @@ def avg_no_outlier(data: np.ndarray, outliers: float = None,
         logger.info(msg)
     return np.mean(data, axis=0, where=keep[..., np.newaxis])
 
-# def perm_test(group1: np.ndarray, group2: np.ndarray, n_perm: int = 1000,
-#               axis: int=-1):
-#     """Calculate the permutation test.
-#
-#     This function calculates the permutation test between two groups of
-#     observations. The permutation test is a non-parametric test that compares
-#     the mean difference between two groups of observations to the mean
-#     difference between two groups of observations that have been randomly
-#     permuted. The function returns the p-value of the observed difference.
-#
-#     Parameters
-#     ----------
-#     group1 : array, shape (..., time)
-#         The first group of observations.
-#     group2 : array, shape (..., time)
-#         The second group of observations.
-#     n_perm : int, optional
-#         The number of permutations to perform.
-#     axis : int, optional
-#         The axis along which to calculate the statistic function.
-#
-#     Returns
-#     -------
-#     p : float
-#         The p-value of the observed difference.
-#
-#     Examples
-#     --------
-#     >>> import numpy as np
-#     >>> seed = 43; rng = np.random.default_rng(seed)
-#     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
-#     ... for _ in range(50)])
-#     >>> sig2 = rng.random((100, 15)) * 2
-#     >>> perm_test(sig1, sig2, n_perm=1000000, axis=0) # doctest: +ELLIPSIS
-#     0.0
-#     """
-#     in1 = np.moveaxis(group1, axis, -1).astype('double')
-#     in2 = np.moveaxis(group2, axis, -1).astype('double')
-#
-#     return _perm_test(in1, in2, n_perm)
-
 
 def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
                             n_perm: int = 100000, tails: int = 1,
                             obs_axis: int = 0, window_axis: int = -1,
-                            stat_func: callable = mean_diff, seed: int = None,
-                            ) -> np.ndarray[bool]:
+                            stat_func: callable = ttest,
+                            seed: int = None) -> np.ndarray[bool]:
     """Calculate the window averaged shuffle distribution.
 
     Essentially a wrapper for:
@@ -319,13 +389,13 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     Examples
     --------
     >>> import numpy as np
-    >>> seed = 43; rng = np.random.default_rng(seed)
+    >>> seed = 42; rng = np.random.default_rng(seed)
     >>> sig1 = np.array([[0,1,1,2,2,2.5,3,3,3,2.5,2,2,1,1,0]
     ... for _ in range(50)])
-    >>> sig2 = rng.random((100, 15)) * 3.2
-    >>> window_averaged_shuffle(sig1, sig2, n_perm=1000000, seed=seed
-    ... ) # doctest: +ELLIPSIS
-    0.99...
+    >>> sig2 = rng.random((100, 15)) * 6
+    >>> float(window_averaged_shuffle(sig1, sig2, n_perm=100000, seed=seed
+    ... )) # doctest: +ELLIPSIS
+    9.99...
     """
 
     # average the windows
@@ -357,12 +427,15 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     return res.pvalue
 
 
-def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
+def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
                       p_cluster: float = None, n_perm: int = 1000,
                       tails: int = 1, axis: int = 0,
-                      stat_func: callable = mean_diff,
+                      stat_func: callable = ttest,
                       ignore_adjacency: tuple[int] | int = None,
-                      n_jobs: int = -1, seed: int = None
+                      permutation_type='independent',
+                      vectorized: bool = True,
+                      n_jobs: int = -1, seed: int = None,
+                      verbose: int = 40
                       ) -> (np.ndarray[bool], np.ndarray[float]):
     """Calculate significant clusters using permutation testing and cluster
     correction.
@@ -404,6 +477,17 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         The axis or axes to ignore when finding clusters. For example, if
         sig1.shape = (trials, channels, time), and you want to find clusters
         across time, but not channels, you would set ignore_adjacency = 1.
+    permutation_type : {‘independent’, ‘samples’, ‘pairings’}, optional
+        The type of permutations to be performed, in accordance with the null
+        hypothesis. The first two permutation types are for paired sample
+        statistics, in which all samples contain the same number of
+        observations and observations with corresponding indices along
+        axis are considered to be paired; the third is for independent sample
+        statistics. See: https://docs.scipy.org/doc/scipy/reference/generated/s
+        cipy.stats.permutation_test.html#permutation-test
+    vectorized : bool, optional
+        Whether to use the vectorized version of the permutation test. Default
+        is True.
     n_jobs : int, optional
         The number of jobs to run in parallel. -1 for all processors. Default
         is -1.
@@ -430,10 +514,10 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
     >>> sig2 = np.array([[0] * 15 for _ in range(100)]) + rng.random(
     ... (100, 15))
     >>> time_perm_cluster(sig1, sig2, 0.05, n_perm=100000, seed=seed)[0]
-    array([False, False, False,  True,  True,  True,  True,  True,  True,
+    array([False, False, False, False,  True,  True,  True,  True,  True,
             True,  True, False, False, False, False])
     >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=100000, seed=seed)[0]
-    array([False, False, False, False,  True,  True,  True,  True,  True,
+    array([False, False, False, False, False,  True,  True,  True,  True,
             True, False, False, False, False, False])
     """
     # check inputs
@@ -449,7 +533,46 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         p_cluster = p_thresh
     if p_cluster > 1 or p_cluster < 0 or p_thresh > 1 or p_thresh < 0:
         raise ValueError('p_thresh and p_cluster must be between 0 and 1')
-    if isinstance(ignore_adjacency, int):
+
+    # set process parameters
+    xp = array_namespace(sig1, sig2)
+    if False:  # is_cupy(xp):
+        rng = xp.random
+    else:
+        rng = xp.random.default_rng(seed)
+    sig2 = make_data_same(sig2, sig1.shape, axis, -1, True, rng)
+    sample_size = sig1.nbytes + sig2.nbytes
+    batch_size = get_mem() // sample_size
+    # https://github.com/scipy/scipy/blob/5cf433589639f28cbf5c3911061b07f0c6d
+    # 6bd68/scipy/stats/_resampling.py#L22-L23
+    if vectorized:
+        batch_size //= 2  # halve memory because scipy copys data once
+
+    kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
+                  axis=axis, vectorized=vectorized, random_state=rng,
+                  permutation_type=permutation_type)
+
+    stat_func = _handle_stat_func(stat_func, alt, axis, sig1, sig2)
+
+    # Create binary clusters using the p value threshold
+    def _proc(pid: int, sig1: Array, sig2: Array
+              ) -> (int, np.ndarray[int], np.ndarray[float]):
+        res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
+        p_act = res.pvalue
+        diff = res.null_distribution
+
+        # Calculate the p value of the permutation distribution
+        p_perm = proportion(diff, tail=tails, axis=axis)
+
+        # Create binary clusters using the p value threshold
+        b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
+        b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
+
+        return pid, time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
+
+    if ignore_adjacency is None:
+        return _proc(0, sig1, sig2)[1:]
+    elif isinstance(ignore_adjacency, int):
         ignore_adjacency = (ignore_adjacency,)
     if isinstance(ignore_adjacency, tuple):
         assert axis not in ignore_adjacency, ValueError(
@@ -458,61 +581,50 @@ def time_perm_cluster(sig1: np.ndarray, sig2: np.ndarray, p_thresh: float,
         nprocs = sum(sig1.shape[i] for i in ignore_adjacency)
         n_jobs += cpu_count() + 1 if n_jobs < 0 else 0
     else:
-        nprocs = 1
+        raise ValueError('ignore_adjacency must be None or a tuple of ints')
 
-    # set process parameters
-    sig2 = make_data_same(sig2, sig1.shape, axis)
-    sample_size = sig1.nbytes + sig2.nbytes
-    batch_size = get_mem() // sample_size
-    small_enough = batch_size > n_perm ** 2
-    kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
-                  axis=axis, vectorized=True)
+    # axes where adjacency is ignored can be computed independently
+    out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
+    out1 = xp.zeros(out_shape, dtype=int)
+    out2 = xp.zeros(out_shape, dtype=float)
+    ins = ((i[:axis] + i[axis + 1:], sig1[i], sig2[i]
+            ) for i in iterate_axes(sig1, ignore_adjacency))
+    if nprocs > 1:
+        proc = Parallel(n_jobs, "threading", 'generator_unordered', verbose)(
+            delayed(_proc)(*i) for i in ins)
+    else:
+        proc = (_proc(*i) for i in ins)
 
-    if isinstance(stat_func(np.array([1]), np.array([1]), axis), tuple):
+    for idx, iout1, iout2 in proc:
+        out1[idx], out2[idx] = iout1, iout2
+    return out1, out2
+
+
+def _handle_stat_func(stat_func, alt, axis, *sigs):
+
+    xp = array_namespace(*sigs)
+    if 'alternative' in stat_func.__code__.co_varnames:
+        func = stat_func
+
+        def stat_func(*args, **kwargs):
+            kwargs['alternative'] = alt
+            return func(*args, **kwargs)
+
+    if 'xp' in stat_func.__code__.co_varnames:
+        func = stat_func
+
+        def stat_func(*args, **kwargs):
+            kwargs['xp'] = xp
+            return func(*args, **kwargs)
+
+    if isinstance(stat_func(xp.array([1]), xp.array([1]), 0), tuple):
         logger.warning('stat_func returns a tuple. Taking the first element')
         func = stat_func
 
         def stat_func(*args, **kwargs):
             return func(*args, **kwargs)[0]
 
-    # Create binary clusters using the p value threshold
-    def _proc(sig1: np.ndarray, sig2: np.ndarray
-              ) -> tuple[np.ndarray[int], np.ndarray[float]]:
-        res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
-        p_act = res.pvalue
-        diff = res.null_distribution
-
-        # Calculate the p value of the permutation distribution
-        if small_enough:
-            p_perm = np.mean(tail_compare(diff[:, None], diff[None], tails),
-                             axis=0)
-        elif tails == 1:
-            p_perm = permgtnd(diff, axis=0)
-        else:
-            p_perm = proportion(diff, tail=tails, axis=0)
-
-        # Create binary clusters using the p value threshold
-        b_act = tail_compare(1. - p_act, 1. - p_thresh, tails)
-        b_perm = tail_compare(p_perm, 1. - p_thresh, tails)
-
-        return time_cluster(b_act, b_perm, 1 - p_cluster, tails), p_act
-
-    # axes where adjacency is ignored can be computed independently in
-    # parallel
-    if nprocs > 1:
-        out_shape = sig1.shape[:axis] + sig1.shape[axis + 1:]
-        out1 = np.zeros(out_shape, dtype=int)
-        out2 = np.zeros(out_shape, dtype=float)
-        ins = ((sig1[i], sig2[i]) for i in iterate_axes(
-            sig1, ignore_adjacency))
-        axis -= sum(1 for i in ignore_adjacency if i < axis)
-        proc = Parallel(n_jobs, return_as='generator', verbose=40,)(
-            delayed(_proc)(*i) for i in ins)
-        for i, iout in enumerate(proc):
-            out1[i], out2[i] = iout
-        return out1, out2
-    else:
-        return _proc(sig1, sig2)
+    return stat_func
 
 
 def proportion(val: np.ndarray[float, ...] | float,
@@ -573,7 +685,8 @@ def proportion(val: np.ndarray[float, ...] | float,
 
     match tail:
         case 1:
-            pass
+            if comp is None:
+                return permgt(val, axis=axis if axis is not None else 0)
         case 2:
             val = np.abs(val)
             if comp is not None:
@@ -586,24 +699,25 @@ def proportion(val: np.ndarray[float, ...] | float,
             raise ValueError('tail must be 1, 2, or -1')
 
     if axis is None and comp is None:
-        return _perm_gt_1d(val)
+        return _comp_by_sort(val)
     elif comp is None:
-        return _perm_gt_1d(val, axis=axis)
+        return _comp_by_sort(val, axis=axis)
     else:
         raise NotImplementedError()
 
 
-# @guvectorize(['void(f8[::1], f8[::1])'], '(n)->(n)', nopython=True)
-def _perm_gt_1d(diff, axis=0):
+def _comp_by_sort(diff, axis=0):
     m = diff.shape[axis] - 1
-    sorted_indices = diff.argsort(axis=axis)  # Get sorted indices
+    # Get sorted indices
+    sorted_indices = diff.argsort(axis=axis, stable=False)
     proportions = np.arange(diff.shape[axis]) / m  # Create proportions array
     # Rearrange to match original order
-    return proportions[sorted_indices.argsort(axis=axis)]
+    return proportions[sorted_indices.argsort(axis=axis, stable=False)]
 
 
-def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
-                 tails: int = 1) -> np.ndarray:
+def time_cluster(act: Array, perm: Array, p_val: float = None,
+                 tails: int = 1, ignore: tuple | int = None
+                 ) -> np.ndarray[bool]:
     """Cluster correction for time series data.
 
     1. Creates an index of all the binary clusters in the active and permuted
@@ -645,7 +759,7 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
 
     # Create an index of all the binary clusters in the active and permuted
     # passive data
-    footprint = ndimage.generate_binary_structure(act.ndim, 1)
+    footprint = make_structure(act.ndim, ignore)
     perm_footprint = np.stack((np.zeros_like(footprint), footprint,
                                np.zeros_like(footprint)))
     act_clusters = ndimage.label(act, footprint)[0]
@@ -676,6 +790,68 @@ def time_cluster(act: np.ndarray, perm: np.ndarray, p_val: float = None,
         return tail_compare(cluster_p_values, p_val, tails)
     else:
         return cluster_p_values
+
+
+def make_structure(ndim: int, ignore: tuple[int, ...] | int = None):
+    """Make a binary structure with connectivity over every dimension not in
+     ignore
+
+    Parameters
+    ----------
+    ndim: int
+        number of dimensions
+    ignore : tuple, optional
+        dimensions to ignore
+
+    Returns
+    -------
+    structure : array
+        binary structure
+
+    Examples
+    --------
+    >>> make_structure(1).astype(int)
+    array([1, 1, 1])
+    >>> make_structure(2).astype(int)
+    array([[0, 1, 0],
+           [1, 1, 1],
+           [0, 1, 0]])
+    >>> make_structure(2, 1).astype(int)
+    array([[0, 1, 0],
+           [0, 1, 0],
+           [0, 1, 0]])
+    >>> make_structure(3, (0, 2)).astype(int)
+    array([[[0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]],
+    <BLANKLINE>
+           [[0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0]],
+    <BLANKLINE>
+           [[0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]]])
+    """
+    if ignore is None:
+        return ndimage.generate_binary_structure(ndim, 1)
+    elif isinstance(ignore, int):
+        ignore = (ignore,)
+
+    if 0 in ignore:
+        base = np.array([0, 1, 0])
+    else:
+        base = np.array([1, 1, 1])
+    i = 1
+    while i < ndim:
+        stack = np.zeros_like(base)
+        idx = (1,) * stack.ndim
+        if i not in ignore:
+            stack[idx] = 1
+
+        base = np.stack((stack, base, stack), -1)
+        i += 1
+    return base
 
 
 def tail_compare(diff: np.ndarray | float | int,
@@ -942,31 +1118,36 @@ if __name__ == '__main__':
     from timeit import timeit
 
     rng = np.random.default_rng(seed=42)
-    sig1 = np.array([[0, 1, 2, 3, 3] for _ in range(50)]) - rng.random(
-        (50, 5)) * 5
-    sig2 = np.array([[0] * 5 for _ in range(100)]) + rng.random((100, 5))
-    diff = shuffle_test(sig1, sig2, 3000, 0)
-    act = mean_diff(sig1, sig2, axis=0)
+    n = 1000
+    orig = np.array([0, 1, 2, 3, 3])
+    interped = np.interp(np.linspace(0, 4, n), np.arange(5), orig)
+    sig1 = (np.array([[interped for _ in range(50)] for _ in range(100)]) -
+            rng.random((100, 50, n)) * 5)
+    sig1 = sig1.transpose(1, 2, 0)
+    sig2 = (np.array([[[0] * n for _ in range(100)] for _ in range(100)]) +
+            rng.random((100, 100, n)))
+    sig2 = sig2.transpose(1, 2, 0)
+    diff = window_averaged_shuffle(sig1, sig2, 30000, 0)
+    act = ttest(sig1, sig2, 0, 'greater')
 
     # Calculate the p value of the permutation distribution and compare
     # execution times
 
-    # p_perm1 = _perm_gt(diff, diff)
+    # p_perm1 = calculate_p_perm(diff, 1, 0)
     p_perm2 = np.sum(diff[None] > diff[:, None], axis=0) / (diff.shape[0] - 1)
-    # p_perm3 = (_perm_gt(diff, diff[:, None], axis=0) * diff.shape[0] /
-    #            (diff.shape[0] - 1))
+    p_perm3 = permgt(diff, axis=0)
     p_perm4 = proportion(diff, axis=0)
 
     # Time the functions
-    runs = 20
-    # time1 = timeit('_perm_gt(diff, diff)', globals=globals(), number=runs)
+    runs = 2000
+    # time1 = timeit('calculate_p_perm(diff, 1, 0)', globals=globals(),
+    # number=runs)
     time2 = timeit('np.sum(diff > diff[:, np.newaxis], axis=0) / '
                    '(diff.shape[0] - 1)', globals=globals(), number=runs)
-    # time3 = timeit('_perm_gt(diff[:, None], diff, axis=0) * diff.shape[0]'
-    #                '/ (diff.shape[0] - 1)', globals=globals(), number=runs)
+    time3 = timeit('permgtnd(diff, axis=0)', globals=globals(), number=runs)
     time4 = timeit('proportion(diff, axis=0)', globals=globals(), number=runs)
 
-    # print(f'Time for _perm_gt_2: {time1 / runs:.6f} seconds per run')
+    # print(f'Time for calculate_p_perm: {time1 / runs:.6f} seconds per run')
     print(f'Time for sum method: {time2 / runs:.6f} seconds per run')
-    # print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
+    print(f'Time for _perm_gt: {time3 / runs:.6f} seconds per run')
     print(f'Time for perm_gt: {time4 / runs:.6f} seconds per run')

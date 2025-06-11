@@ -11,7 +11,7 @@ from mne.utils import config, logger
 from scipy.signal import get_window
 
 
-def iterate_axes(arr: np.ndarray, axes: tuple[int, ...], index=(), axis=0):
+def iterate_axes(arr: np.ndarray, axes: tuple[int, ...]):
     """Iterate over all possible indices for a set of axes
 
     Parameters
@@ -34,21 +34,28 @@ def iterate_axes(arr: np.ndarray, axes: tuple[int, ...], index=(), axis=0):
     --------
     >>> arr = np.arange(24).reshape(2, 3, 4)
     >>> for sl in iterate_axes(arr, (0, 1)):
-    ...     print(arr[sl])
-    [0 1 2 3]
-    [4 5 6 7]
-    [ 8  9 10 11]
-    [12 13 14 15]
-    [16 17 18 19]
-    [20 21 22 23]
+    ...     print(arr[sl], sl)
+    [0 1 2 3] (0, 0, slice(None, None, None))
+    [4 5 6 7] (0, 1, slice(None, None, None))
+    [ 8  9 10 11] (0, 2, slice(None, None, None))
+    [12 13 14 15] (1, 0, slice(None, None, None))
+    [16 17 18 19] (1, 1, slice(None, None, None))
+    [20 21 22 23] (1, 2, slice(None, None, None))
+    >>> for sl in iterate_axes(arr, (0, 2)):
+    ...    print(arr[sl], sl)
+    [0 4 8] (0, slice(None, None, None), 0)
+    [1 5 9] (0, slice(None, None, None), 1)
+    [ 2  6 10] (0, slice(None, None, None), 2)
+    [ 3  7 11] (0, slice(None, None, None), 3)
+    [12 16 20] (1, slice(None, None, None), 0)
+    [13 17 21] (1, slice(None, None, None), 1)
+    [14 18 22] (1, slice(None, None, None), 2)
+    [15 19 23] (1, slice(None, None, None), 3)
     """
-    if axis < len(axes):
-        for i in range(arr.shape[axes[axis]]):
-            yield from iterate_axes(arr, axes, index + (i,), axis + 1)
-    else:
-        # Create a tuple of slices for all axes
+    shape = [arr.shape[a] for a in axes]
+    for idx in np.ndindex(*shape):
         slices = [slice(None)] * arr.ndim
-        for axis, i in zip(axes, index):
+        for axis, i in zip(axes, idx):
             slices[axis] = i
         yield tuple(slices)
 
@@ -310,7 +317,7 @@ def parallelize(func: callable, ins: Iterable, verbose: int = 10,
             x_, **kwargs) for x_ in ins)
 
 
-def get_mem() -> int:
+def get_mem(n_jobs: int = None) -> int:
     """Get the amount of memory to use for parallelization.
 
     Returns
@@ -318,9 +325,13 @@ def get_mem() -> int:
     float | int
         The amount of memory to use for parallelization
     """
-    from psutil import virtual_memory
-    ram_per = virtual_memory().total >> 0 // cpu_count()
-    return ram_per
+    from psutil import virtual_memory, swap_memory
+    ram_per = virtual_memory().available + swap_memory().free
+    if n_jobs is None or n_jobs == -1:
+        return ram_per
+    while n_jobs < 0:
+        n_jobs += cpu_count()
+    return ram_per // cpu_count() * n_jobs
 
 
 def sliding_window(x_data: np.ndarray, labels: np.ndarray,

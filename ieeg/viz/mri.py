@@ -330,6 +330,9 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         fig = Brain(average, subjects_dir=subj_dir, cortex='low_contrast',
                     alpha=transparency, background=background, surf=surface,
                     hemi=hemi, units=units, show=show)
+    if picks is not None:
+        if len(picks) == 0:
+            return fig
 
     if isinstance(sigs, (Signal, mne.Info)):
         sigs = [sigs]
@@ -630,13 +633,15 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
 def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
                        idx: list[int], colors: list,
-                       mode: str = 'both', max_size: float = 2):
+                       mode: str = 'both', max_size: float = 2,
+                       fig_dims: tuple[int, int] = None) -> None:
     """Plots the electrodes with a gradient of colors
 
     """
-    min_size = int(np.ceil(np.sqrt(W.shape[0])))
-    min_size = [int(np.ceil(np.sqrt(W.shape[0] / min_size))), min_size]
-    plotter = BackgroundPlotter(shape=min_size)
+    if fig_dims is None:
+        min_size = int(np.ceil(np.sqrt(W.shape[0])))
+        fig_dims = (int(np.ceil(np.sqrt(W.shape[0] / min_size))), min_size)
+    plotter = BackgroundPlotter(shape=fig_dims)
     scale = W.copy()
     scale[scale > max_size] = max_size
 
@@ -649,7 +654,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         colors = _create_color_alpha_matrix(colors, scale / scale.max())
 
     for i in range(W.shape[0]):
-        j, k = divmod(i, min_size[1])
+        j, k = divmod(i, fig_dims[1])
         plotter.subplot(j, k)
         brain = plot_on_average(subjects, picks=list(idx), size=size[i],
                                 hemi='both', color=colors[i], show=False,
