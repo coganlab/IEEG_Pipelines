@@ -211,7 +211,7 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
     for i, ar in enumerate(arrays):
         slices = tuple(slice(start, start + ar.shape[ax]) if ax == axis else
                        slice(ar.shape[ax]) for ax in range(ar.ndim))
-        out[*slices] = ar
+        out[slices] = ar
         start += ar.shape[axis]
     return out
 

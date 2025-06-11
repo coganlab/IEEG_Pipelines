@@ -216,7 +216,8 @@ def find_outliers(data: np.ndarray, outliers: float,
         std = np.empty(dat.shape[slice(1, dat.ndim-1)], dtype=dat.dtype)
         for idx in np.ndindex(std.shape):
             # (channels X (frequency))
-            std[idx] = deviation(dat[:,  *idx], axis=None, **kwargs)
+            std[idx] = deviation(dat[(slice(None),) + idx],
+                                 axis=None, **kwargs)
     else:
         std = deviation(dat, axis=(-1, 0), **kwargs)  # channels X (frequency)
     keep = max < ((outliers * std) + mean)  # (trials X channels X (frequency))
