@@ -1,3 +1,10 @@
+"""
+Bias simulation in permutation tests
+===================================
+
+Shows how to simulate bias in permutation tests by varying the sampling
+ proportions and standard deviations of two groups.
+"""
 import ieeg.viz
 import matplotlib.pyplot as plt
 from ieeg.calc.fast import ttest
