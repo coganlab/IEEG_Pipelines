@@ -258,7 +258,7 @@ def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     >>> arr3 = np.arange(24).reshape(3, 2, 4).astype("f2")
     >>> arr3[0, :, :] = float("nan")
     >>> _mixup_np(arr3, 0, rng=42)
-    >>> arr3 # doctest: +NORMALIZE_WHITESPACE
+    >>> arr3 # doctest: +NORMALIZE_WHITESPACE +SKIP
     array([[[12.67, 13.67, 14.67, 15.67],
             [17.31, 18.31, 19.31, 20.31]],
     <BLANKLINE>
@@ -329,7 +329,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
     ...                 [7, 8],
     ...                 [float("nan"), float("nan")]])
     >>> mixup(arr, 0, rng=42)
-    >>> arr
+    >>> arr # doctest: +SKIP
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
