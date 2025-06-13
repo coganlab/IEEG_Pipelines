@@ -601,25 +601,21 @@ def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
 
 
 def _handle_stat_func(stat_func, alt, axis, *sigs):
-
     xp = array_namespace(*sigs)
-    if 'alternative' in inspect.signature(stat_func).parameters:
-        func = stat_func
+    func = stat_func  # Preserve the original function reference
 
+    if 'alternative' in inspect.signature(stat_func).parameters:
         def stat_func(*args, **kwargs):
             kwargs['alternative'] = alt
             return func(*args, **kwargs)
 
     if 'xp' in inspect.signature(stat_func).parameters:
-        func = stat_func
-
         def stat_func(*args, **kwargs):
             kwargs['xp'] = xp
             return func(*args, **kwargs)
 
-    if isinstance(stat_func(xp.array([1]), xp.array([1]), 0), tuple):
+    if isinstance(func(xp.array([1]), xp.array([1]), 0), tuple):
         logger.warning('stat_func returns a tuple. Taking the first element')
-        func = stat_func
 
         def stat_func(*args, **kwargs):
             return func(*args, **kwargs)[0]
