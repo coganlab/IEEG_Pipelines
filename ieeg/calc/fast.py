@@ -128,7 +128,17 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     if xp is None:
         xp = array_namespace(group1, group2)
     if is_numpy(xp):
-        return _ttest(group1, group2, axes=[axis, axis])
+        # return _ttest(group1, group2, axes=[axis, axis])
+        kwargs = dict(axis=axis, keepdims=True)
+        w1 = ~xp.isnan(group1)
+        w2 = ~xp.isnan(group2)
+        n1 = xp.sum(w1, **kwargs)
+        n2 = xp.sum(w2, **kwargs)
+        mean1 = xp.sum(group1, **kwargs, where=w1) / n1
+        mean2 = xp.sum(group2, **kwargs, where=w2) / n2
+        var1 = np.var(group1, **kwargs, where=w1, mean=mean1)
+        var2 = np.var(group2, **kwargs, where=w2, mean=mean2)
+        return np.squeeze((mean1 - mean2) / xp.sqrt(var1 / (n1 - 1) + var2 / (n2 - 1)))
     elif is_cupy(xp):
         n1 = xp.sum(~xp.isnan(group1), axis=axis)
         n2 = xp.sum(~xp.isnan(group2), axis=axis)
@@ -512,16 +522,24 @@ def mean_diff(group1: Array, group2: Array,
 if __name__ == "__main__":
     import numpy as np
     from timeit import timeit
+    from scipy import stats
+    from ieeg.calc.fast import ttest
 
-    np.random.seed(0)
-    n = 300
-    group1 = np.random.rand(100, 100, 100)
-    group2 = np.random.rand(500, 100, 100).astype('f2')
-    group2[::2] = np.nan
+    # np.random.seed(0)
+    rng = np.random.default_rng()
+    rvs1 = stats.norm.rvs(loc=5, scale=10, size=500, random_state=rng)
+    # group2[::2] = np.nan
+    rvs3 = stats.norm.rvs(loc=8, scale=5, size=2000, random_state=rng)
+    res1 = stats.ttest_ind(rvs1, rvs3)
+    res2 = stats.ttest_ind(rvs1, rvs3, equal_var=False)
+    res3 = ttest(rvs1, rvs3, 0)
 
-    kwargs = dict(globals=globals(), number=n)
-    time1 = timeit('mixup(group2.copy(), 0)', **kwargs)
-    time2 = timeit('mixup3(group2.copy(), 0)', **kwargs)
+    # result1 = ttest(group1, group2, axis=0)
+    # result2 = ttest_ind(group1, group2, axis=0, nan_policy='omit', equal_var=False).statistic
 
-    print(f"ttest: {time1 / n:.3g} per run")
-    print(f"meandiff: {time2 / n:.3g} per run")
+    # kwargs = dict(globals=globals(), number=n)
+    # time1 = timeit('mixup(group2.copy(), 0)', **kwargs)
+    # time2 = timeit('mixup3(group2.copy(), 0)', **kwargs)
+    #
+    # print(f"ttest: {time1 / n:.3g} per run")
+    # print(f"meandiff: {time2 / n:.3g} per run")

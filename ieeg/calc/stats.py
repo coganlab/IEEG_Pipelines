@@ -197,7 +197,7 @@ def find_outliers(data: np.ndarray, outliers: float,
     where = np.isfinite(data)  # (trials X channels X (frequency) X time)
     dat = np.abs(data)  # (trials X channels X (frequency) X time)
     # (trials X channels X (frequency))
-    max = np.max(dat, axis=-1, where=where, initial=0)
+    max = np.nanmax(dat, axis=-1, where=where, initial=0)
     kwargs = {}
     if 'where' in inspect.signature(center).parameters:
         kwargs['where'] = where
