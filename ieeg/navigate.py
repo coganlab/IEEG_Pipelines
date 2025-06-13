@@ -240,8 +240,8 @@ def find_bad_channels_lof(
 @verbose
 def outliers_to_nan(trials: mne.epochs.BaseEpochs, outliers: float,
                     copy: bool = False, picks: list = 'data',
-                    deviation: callable = np.std,
-                    center: callable = np.mean, tmin: int | float = None,
+                    deviation: callable = np.nanstd,
+                    center: callable = np.nanmean, tmin: int | float = None,
                     tmax: int | float = None, verbose=None
                     ) -> mne.epochs.BaseEpochs:
     """Set outliers to nan.

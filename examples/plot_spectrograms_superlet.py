@@ -121,7 +121,7 @@ for epoch, t in zip(
     times = [None, None]
     times[0] = t[0] - 0.5
     times[1] = t[1] + 0.5
-    trials = trial_ieeg(good, epoch, times, preload=True)
+    trials = trial_ieeg(good, epoch, times, preload=True, picks=[0])
     outliers_to_nan(trials, outliers=10)
     freqs = np.geomspace(4, 500, 80)
     spec = superlet_tfr(trials, freqs, 1., (15, 15))
@@ -129,11 +129,11 @@ for epoch, t in zip(
     if epoch == "onset":
         base = spec.copy()
         continue
-    spec_a = rescale(spec, base, copy=True, mode='ratio').average(
+    spec_a = rescale(spec, base, copy=True, mode='logratio').average(
         lambda x: np.nanmean(x, axis=0), copy=True)
-    spec_a._data = np.log10(spec_a._data) * 20
+    spec_a._data = spec_a._data * 20
 
 # %%
 # Plot data
 # ---------
-chan_grid(spec_a, vlim=(0, 20), cmap=parula_map, yscale='log')
+chan_grid(spec_a, vlim=(0, 20), cmap=parula_map, yscale='log', n_cols=1, n_rows=1)

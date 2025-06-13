@@ -603,14 +603,14 @@ def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
 def _handle_stat_func(stat_func, alt, axis, *sigs):
 
     xp = array_namespace(*sigs)
-    if 'alternative' in stat_func.__code__.co_varnames:
+    if 'alternative' in inspect.signature(stat_func).parameters:
         func = stat_func
 
         def stat_func(*args, **kwargs):
             kwargs['alternative'] = alt
             return func(*args, **kwargs)
 
-    if 'xp' in stat_func.__code__.co_varnames:
+    if 'xp' in inspect.signature(stat_func).parameters:
         func = stat_func
 
         def stat_func(*args, **kwargs):
