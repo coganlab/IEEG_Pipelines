@@ -134,23 +134,46 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
         w2 = ~xp.isnan(group2)
         n1 = xp.sum(w1, **kwargs)
         n2 = xp.sum(w2, **kwargs)
-        mean1 = xp.sum(group1, **kwargs, where=w1) / n1
-        mean2 = xp.sum(group2, **kwargs, where=w2) / n2
-        var1 = np.var(group1, **kwargs, where=w1, mean=mean1)
-        var2 = np.var(group2, **kwargs, where=w2, mean=mean2)
-        return np.squeeze((mean1 - mean2) / xp.sqrt(var1 / (n1 - 1) + var2 / (n2 - 1)))
+        m1 = xp.sum(group1, **kwargs, where=w1) / n1
+        m2 = xp.sum(group2, **kwargs, where=w2) / n2
+        vn1 = np.sum((group1 - m1) ** 2, **kwargs, where=w1) / ((n1 - 1) * n1)
+        vn2 = np.sum((group2 - m2) ** 2, **kwargs, where=w2) / ((n2 - 1) * n2)
+        return np.squeeze((m1 - m2) / xp.sqrt(vn1 + vn2))
     elif is_cupy(xp):
         n1 = xp.sum(~xp.isnan(group1), axis=axis)
         n2 = xp.sum(~xp.isnan(group2), axis=axis)
         mean1 = xp.nansum(group1, axis=axis) / n1
         mean2 = xp.nansum(group2, axis=axis) / n2
-        var1 = xp.nanvar(group1, axis=axis)
-        var2 = xp.nanvar(group2, axis=axis)
-        return (mean1 - mean2) / xp.sqrt(var1 / (n1 - 1) + var2 / (n2 - 1))
+        var1 = xp.nanvar(group1, axis=axis, ddof=1)
+        var2 = xp.nanvar(group2, axis=axis, ddof=1)
+        return (mean1 - mean2) / xp.sqrt(var1 / n1 + var2 / n2)
     else:
         raise NotImplementedError("T-test is not implemented for this array"
                                   " type.")
 
+def _var_mean(array, mean, axis, where, n, ddof=1):
+    """Calculate the variance of an array along a specified axis, taking
+    advantage of the precalculated mean.
+
+    Parameters
+    ----------
+    array : np.ndarray
+        The input array.
+    mean : np.ndarray
+        The mean of the array along the specified axis.
+    axis : int or tuple of ints
+        Axis or axes along which the variance is computed.
+    where : np.ndarray
+        A boolean array that specifies where to compute the variance.
+    n: int
+        The number of elements in the array.
+
+    Returns
+    -------
+    np.ndarray
+        The variance of the array along the specified axis.
+    """
+    return np.sum((array - mean) ** 2, axis=axis, where=where) / (n - ddof)
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
                        ) -> np.ndarray:
