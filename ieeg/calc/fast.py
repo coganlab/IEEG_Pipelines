@@ -137,7 +137,9 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
         m1 = xp.sum(group1, **kwargs, where=w1) / n1
         m2 = xp.sum(group2, **kwargs, where=w2) / n2
         vn1 = np.sum((group1 - m1) ** 2, **kwargs, where=w1) / ((n1 - 1) * n1)
+        vn1[n1 == 1] = 0
         vn2 = np.sum((group2 - m2) ** 2, **kwargs, where=w2) / ((n2 - 1) * n2)
+        vn2[n2 == 1] = 0
         return np.squeeze((m1 - m2) / xp.sqrt(vn1 + vn2))
     elif is_cupy(xp):
         n1 = xp.sum(~xp.isnan(group1), axis=axis)
