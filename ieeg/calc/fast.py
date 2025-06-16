@@ -87,6 +87,23 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     return np.squeeze(wbfn)
 
 
+def _compute_mean_and_variance_np(group, axis, keepdims = True, ddof = 1):
+    """Helper function to compute mean and variance with NaN handling."""
+    mask = ~np.isnan(group)
+    n = np.sum(mask, axis=axis, keepdims=keepdims)
+
+    # calculate mean
+    mean = np.sum(group, axis=axis, where=mask, keepdims=keepdims) / n
+    mean[n == 0] = np.nan  # Set mean to NaN where n == 0
+
+    # calculate variance
+    variance = np.sum((group - mean) ** 2, axis=axis, where=mask,
+                      keepdims=keepdims) / ((n - ddof) * n)
+    variance[n == 1] = 0  # Set variance to 0 where n == 1
+    variance[n == 0] = np.nan  # Set variance to NaN where n == 0
+    return mean, variance
+
+
 def ttest(group1: np.ndarray, group2: np.ndarray,
           axis: int, xp=None) -> np.ndarray:
     """Calculate the t-statistic between two groups.
@@ -129,18 +146,18 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
         xp = array_namespace(group1, group2)
     if is_numpy(xp):
         # return _ttest(group1, group2, axes=[axis, axis])
-        kwargs = dict(axis=axis, keepdims=True)
-        w1 = ~xp.isnan(group1)
-        w2 = ~xp.isnan(group2)
-        n1 = xp.sum(w1, **kwargs)
-        n2 = xp.sum(w2, **kwargs)
-        m1 = xp.sum(group1, **kwargs, where=w1) / n1
-        m2 = xp.sum(group2, **kwargs, where=w2) / n2
-        vn1 = np.sum((group1 - m1) ** 2, **kwargs, where=w1) / ((n1 - 1) * n1)
-        vn1[n1 == 1] = 0
-        vn2 = np.sum((group2 - m2) ** 2, **kwargs, where=w2) / ((n2 - 1) * n2)
-        vn2[n2 == 1] = 0
-        return np.squeeze((m1 - m2) / xp.sqrt(vn1 + vn2))
+
+        with np.errstate(divide='ignore'):
+            mean1, var1 = _compute_mean_and_variance_np(group1, axis)
+            mean2, var2 = _compute_mean_and_variance_np(group2, axis)
+
+        denom = np.sqrt(var1 + var2)
+
+        # Handle cases where the denominator is zero
+        denom[denom == 0] = np.nan
+        t_stat = (mean1 - mean2) / denom
+
+        return np.squeeze(t_stat)
     elif is_cupy(xp):
         n1 = xp.sum(~xp.isnan(group1), axis=axis)
         n2 = xp.sum(~xp.isnan(group2), axis=axis)
@@ -153,29 +170,6 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
         raise NotImplementedError("T-test is not implemented for this array"
                                   " type.")
 
-def _var_mean(array, mean, axis, where, n, ddof=1):
-    """Calculate the variance of an array along a specified axis, taking
-    advantage of the precalculated mean.
-
-    Parameters
-    ----------
-    array : np.ndarray
-        The input array.
-    mean : np.ndarray
-        The mean of the array along the specified axis.
-    axis : int or tuple of ints
-        Axis or axes along which the variance is computed.
-    where : np.ndarray
-        A boolean array that specifies where to compute the variance.
-    n: int
-        The number of elements in the array.
-
-    Returns
-    -------
-    np.ndarray
-        The variance of the array along the specified axis.
-    """
-    return np.sum((array - mean) ** 2, axis=axis, where=where) / (n - ddof)
 
 def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
                        ) -> np.ndarray:
@@ -548,23 +542,26 @@ if __name__ == "__main__":
     import numpy as np
     from timeit import timeit
     from scipy import stats
-    from ieeg.calc.fast import ttest
+    from ieeg.calc.fast import ttest, _ttest
 
     # np.random.seed(0)
     rng = np.random.default_rng()
-    rvs1 = stats.norm.rvs(loc=5, scale=10, size=500, random_state=rng)
+    rvs1 = np.array([
+        stats.norm.rvs(loc=5, scale=10, size=500, random_state=rng)
+        for _ in range(100)])
     # group2[::2] = np.nan
-    rvs3 = stats.norm.rvs(loc=8, scale=5, size=2000, random_state=rng)
-    res1 = stats.ttest_ind(rvs1, rvs3)
-    res2 = stats.ttest_ind(rvs1, rvs3, equal_var=False)
-    res3 = ttest(rvs1, rvs3, 0)
+    rvs3 = np.array([
+        stats.norm.rvs(loc=8, scale=5, size=2000, random_state=rng)
+        for _ in range(100)])
+    res1 = stats.ttest_ind(rvs1, rvs3, axis=1)
+    res2 = stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)
+    res3 = ttest(rvs1, rvs3, 1)
 
-    # result1 = ttest(group1, group2, axis=0)
-    # result2 = ttest_ind(group1, group2, axis=0, nan_policy='omit', equal_var=False).statistic
-
-    # kwargs = dict(globals=globals(), number=n)
-    # time1 = timeit('mixup(group2.copy(), 0)', **kwargs)
-    # time2 = timeit('mixup3(group2.copy(), 0)', **kwargs)
-    #
-    # print(f"ttest: {time1 / n:.3g} per run")
-    # print(f"meandiff: {time2 / n:.3g} per run")
+    n = 1000
+    kwargs = dict(globals=globals(), number=n)
+    time1 = timeit('ttest(rvs1, rvs3, 1)', **kwargs)
+    print(f"ttest: {time1 / n:.3g} per run")
+    time2 = timeit('stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)', **kwargs)
+    print(f"scipy: {time2 / n:.3g} per run")
+    time3 = timeit('_ttest(rvs1, rvs3, axes=[1,1])', **kwargs)
+    print(f"_ttest: {time3 / n:.3g} per run")
