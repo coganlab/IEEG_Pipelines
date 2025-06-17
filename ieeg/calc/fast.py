@@ -97,18 +97,17 @@ def _compute_mean_and_variance_np(group, axis, ddof=1):
 
     # calculate mean
     mean = np.sum(group, axis=axis, keepdims=True) / n
-    mean[n == 0] = np.nan  # Set mean to NaN where n == 0
 
     # calculate variance
-    group[mask] -= np.broadcast_to(mean, group.shape)[mask]
-    denom = n - ddof
-    denom *= n
     indices = ''.join(chr(105 + i) for i in range(group.ndim))
     formula = f"{indices},{indices}->{indices[:axis]}{indices[axis+1:]}"
     ind = tuple(slice(None) if i != axis else None for i in range(group.ndim))
-    variance = np.einsum(formula, group, group)[ind] / denom
+    variance = np.einsum(formula, group, group)[ind]
+    variance -= np.square(mean) * n
     variance[n == ddof] = 0  # Set variance to 0 where n == 1
     variance[n < ddof] = np.nan  # Set variance to NaN where n == 0
+    variance[n > ddof] /= ((n - ddof) * n)[n > ddof]
+    mean[n == 0] = np.nan
     return mean, variance
 
 
@@ -556,11 +555,11 @@ if __name__ == "__main__":
     rng = np.random.default_rng()
     rvs1 = np.array([
         stats.norm.rvs(loc=5, scale=10, size=500, random_state=rng)
-        for _ in range(100)])
+        for _ in range(100)]) / 10000
     # group2[::2] = np.nan
     rvs3 = np.array([
         stats.norm.rvs(loc=8, scale=5, size=2000, random_state=rng)
-        for _ in range(100)])
+        for _ in range(100)]) / 10000
     res1 = stats.ttest_ind(rvs1, rvs3, axis=1)
     res2 = stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)
     res3 = ttest(rvs1, rvs3, 1)
