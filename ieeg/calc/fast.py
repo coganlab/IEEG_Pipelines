@@ -87,20 +87,28 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     return np.squeeze(wbfn)
 
 
-def _compute_mean_and_variance_np(group, axis, keepdims = True, ddof = 1):
+def _compute_mean_and_variance_np(group, axis, ddof=1):
     """Helper function to compute mean and variance with NaN handling."""
     mask = ~np.isnan(group)
-    n = np.sum(mask, axis=axis, keepdims=keepdims)
+    n = np.sum(mask, axis=axis, keepdims=True)
+
+    # copy the group to avoid modifying the original data
+    group = np.where(mask, group, 0.)
 
     # calculate mean
-    mean = np.sum(group, axis=axis, where=mask, keepdims=keepdims) / n
+    mean = np.sum(group, axis=axis, keepdims=True) / n
     mean[n == 0] = np.nan  # Set mean to NaN where n == 0
 
     # calculate variance
-    variance = np.sum((group - mean) ** 2, axis=axis, where=mask,
-                      keepdims=keepdims) / ((n - ddof) * n)
-    variance[n == 1] = 0  # Set variance to 0 where n == 1
-    variance[n == 0] = np.nan  # Set variance to NaN where n == 0
+    group[mask] -= np.broadcast_to(mean, group.shape)[mask]
+    denom = n - ddof
+    denom *= n
+    indices = ''.join(chr(105 + i) for i in range(group.ndim))
+    formula = f"{indices},{indices}->{indices[:axis]}{indices[axis+1:]}"
+    ind = tuple(slice(None) if i != axis else None for i in range(group.ndim))
+    variance = np.einsum(formula, group, group)[ind] / denom
+    variance[n == ddof] = 0  # Set variance to 0 where n == 1
+    variance[n < ddof] = np.nan  # Set variance to NaN where n == 0
     return mean, variance
 
 
@@ -557,11 +565,11 @@ if __name__ == "__main__":
     res2 = stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)
     res3 = ttest(rvs1, rvs3, 1)
 
-    n = 1000
+    n = 10000
     kwargs = dict(globals=globals(), number=n)
     time1 = timeit('ttest(rvs1, rvs3, 1)', **kwargs)
     print(f"ttest: {time1 / n:.3g} per run")
-    time2 = timeit('stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)', **kwargs)
-    print(f"scipy: {time2 / n:.3g} per run")
+    # time2 = timeit('stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)', **kwargs)
+    # print(f"scipy: {time2 / n:.3g} per run")
     time3 = timeit('_ttest(rvs1, rvs3, axes=[1,1])', **kwargs)
     print(f"_ttest: {time3 / n:.3g} per run")
