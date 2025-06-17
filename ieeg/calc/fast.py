@@ -151,6 +151,8 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     """
     if xp is None:
         xp = array_namespace(group1, group2)
+    while axis < 0:
+        axis += group1.ndim
     if is_numpy(xp):
         # return _ttest(group1, group2, axes=[axis, axis])
 
