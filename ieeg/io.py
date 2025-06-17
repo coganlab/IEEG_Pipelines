@@ -103,6 +103,8 @@ class DataLoader:
         mat = get_data_from_inst(sig, tmin=times[0], tmax=times[1])
         if dtype is not None:
             mat = mat.astype(dtype)
+        if self.value_type == "power":
+            mat /= np.nanstd(mat)
 
         for i, ch in enumerate(sig.ch_names):
             if (self.suffix.split('.')[0].endswith("epo") or
