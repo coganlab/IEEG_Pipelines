@@ -104,7 +104,7 @@ class DataLoader:
         if dtype is not None:
             mat = mat.astype(dtype)
         if self.value_type == "power":
-            mat /= np.nanstd(mat)
+            mat /= np.nanstd(mat.astype('f4'))
 
         for i, ch in enumerate(sig.ch_names):
             if (self.suffix.split('.')[0].endswith("epo") or
