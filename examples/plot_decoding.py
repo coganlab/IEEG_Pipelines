@@ -95,7 +95,6 @@ decoder = Decoder(cats, explained_variance=0.80,
                   n_splits=5, n_repeats=100)
 cm = decoder.cv_cm(arr.__array__().swapaxes(0, 1), labels,
                    normalize='true', oversample=True)
-cm = np.mean(cm, axis=0)
 
 # %% Plot the Confusion Matrix
 
