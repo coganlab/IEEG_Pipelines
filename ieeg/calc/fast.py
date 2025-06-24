@@ -87,6 +87,30 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     return np.squeeze(wbfn)
 
 
+def _compute_mean_and_variance_np(group, axis, ddof=1):
+    """Helper function to compute mean and variance with NaN handling."""
+    mask = ~np.isnan(group)
+    n = np.sum(mask, axis=axis, keepdims=True)
+
+    # copy the group to avoid modifying the original data
+    group = np.where(mask, group, 0.)
+
+    # calculate mean
+    mean = np.sum(group, axis=axis, keepdims=True) / n
+
+    # calculate variance
+    indices = ''.join(chr(105 + i) for i in range(group.ndim))
+    formula = f"{indices},{indices}->{indices[:axis]}{indices[axis+1:]}"
+    ind = tuple(slice(None) if i != axis else None for i in range(group.ndim))
+    variance = np.einsum(formula, group, group)[ind]
+    variance -= np.square(mean) * n
+    variance[n == ddof] = 0  # Set variance to 0 where n == 1
+    variance[n < ddof] = np.nan  # Set variance to NaN where n == 0
+    variance[n > ddof] /= ((n - ddof) * n)[n > ddof]
+    mean[n == 0] = np.nan
+    return mean, variance
+
+
 def ttest(group1: np.ndarray, group2: np.ndarray,
           axis: int, xp=None) -> np.ndarray:
     """Calculate the t-statistic between two groups.
@@ -127,16 +151,30 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     """
     if xp is None:
         xp = array_namespace(group1, group2)
+    while axis < 0:
+        axis += group1.ndim
     if is_numpy(xp):
-        return _ttest(group1, group2, axes=[axis, axis])
+        # return _ttest(group1, group2, axes=[axis, axis])
+
+        with np.errstate(divide='ignore'):
+            mean1, var1 = _compute_mean_and_variance_np(group1, axis)
+            mean2, var2 = _compute_mean_and_variance_np(group2, axis)
+
+        denom = np.sqrt(var1 + var2)
+
+        # Handle cases where the denominator is zero
+        denom[denom == 0] = np.nan
+        t_stat = (mean1 - mean2) / denom
+
+        return np.squeeze(t_stat)
     elif is_cupy(xp):
         n1 = xp.sum(~xp.isnan(group1), axis=axis)
         n2 = xp.sum(~xp.isnan(group2), axis=axis)
         mean1 = xp.nansum(group1, axis=axis) / n1
         mean2 = xp.nansum(group2, axis=axis) / n2
-        var1 = xp.nanvar(group1, axis=axis)
-        var2 = xp.nanvar(group2, axis=axis)
-        return (mean1 - mean2) / xp.sqrt(var1 / (n1 - 1) + var2 / (n2 - 1))
+        var1 = xp.nanvar(group1, axis=axis, ddof=1)
+        var2 = xp.nanvar(group2, axis=axis, ddof=1)
+        return (mean1 - mean2) / xp.sqrt(var1 / n1 + var2 / n2)
     else:
         raise NotImplementedError("T-test is not implemented for this array"
                                   " type.")
@@ -512,16 +550,28 @@ def mean_diff(group1: Array, group2: Array,
 if __name__ == "__main__":
     import numpy as np
     from timeit import timeit
+    from scipy import stats
+    from ieeg.calc.fast import ttest, _ttest
 
-    np.random.seed(0)
-    n = 300
-    group1 = np.random.rand(100, 100, 100)
-    group2 = np.random.rand(500, 100, 100).astype('f2')
-    group2[::2] = np.nan
+    # np.random.seed(0)
+    rng = np.random.default_rng()
+    rvs1 = np.array([
+        stats.norm.rvs(loc=5, scale=10, size=500, random_state=rng)
+        for _ in range(100)]) / 10000
+    # group2[::2] = np.nan
+    rvs3 = np.array([
+        stats.norm.rvs(loc=8, scale=5, size=2000, random_state=rng)
+        for _ in range(100)]) / 10000
+    res1 = stats.ttest_ind(rvs1, rvs3, axis=1)
+    res2 = stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)
+    res3 = ttest(rvs1, rvs3, 1)
 
+    n = 10000
     kwargs = dict(globals=globals(), number=n)
-    time1 = timeit('mixup(group2.copy(), 0)', **kwargs)
-    time2 = timeit('mixup3(group2.copy(), 0)', **kwargs)
-
+    time1 = timeit('ttest(rvs1, rvs3, 1)', **kwargs)
     print(f"ttest: {time1 / n:.3g} per run")
-    print(f"meandiff: {time2 / n:.3g} per run")
+    # time2 = timeit('stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)',
+    # **kwargs)
+    # print(f"scipy: {time2 / n:.3g} per run")
+    time3 = timeit('_ttest(rvs1, rvs3, axes=[1,1])', **kwargs)
+    print(f"_ttest: {time3 / n:.3g} per run")
