@@ -126,6 +126,8 @@ def chan_grid(inst: Signal, n_cols: int = 10, n_rows: int = 6,
     for i in range(numfigs):
         fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols, frameon=False,
                                 figsize=size)
+        if isinstance(axs, plt.Axes):
+            axs = np.array([[axs]])
 
         select = partial(_onclick_select, inst=inst, axs=fig.axes)
         text_spec = dict(fontsize=12, weight="extra bold")
