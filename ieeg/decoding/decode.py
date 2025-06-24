@@ -107,7 +107,7 @@ class Decoder(MinimumNaNSplit):
                [0.03333333, 0.        , 0.50666667, 0.46      ],
                [0.03125   , 0.        , 0.5       , 0.46875   ]])
         >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5,
-        ...     shuffle=True)[0]
+        ...     shuffle=True, oversample=True)[0]
         array([[0.        , 0.12222222, 0.52222222, 0.35555556],
                [0.01      , 0.12      , 0.5       , 0.37      ],
                [0.00666667, 0.10666667, 0.50666667, 0.38      ],
