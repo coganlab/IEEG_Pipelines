@@ -570,7 +570,8 @@ if __name__ == "__main__":
     kwargs = dict(globals=globals(), number=n)
     time1 = timeit('ttest(rvs1, rvs3, 1)', **kwargs)
     print(f"ttest: {time1 / n:.3g} per run")
-    # time2 = timeit('stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)', **kwargs)
+    # time2 = timeit('stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)',
+    # **kwargs)
     # print(f"scipy: {time2 / n:.3g} per run")
     time3 = timeit('_ttest(rvs1, rvs3, axes=[1,1])', **kwargs)
     print(f"_ttest: {time3 / n:.3g} per run")
