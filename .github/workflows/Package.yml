@@ -63,8 +63,8 @@ jobs:
   publish-to-pypi:
     name: >-
       Publish Python 🐍 distribution 📦 to PyPI
-#    needs:
-#    - publish-to-testpypi
+    needs:
+    - build
     runs-on: ubuntu-latest
     environment: release
     permissions:
