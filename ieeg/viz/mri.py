@@ -347,7 +347,7 @@ def plot_on_average(sigs: Signal | str | mne.Info | list[Signal | str, ...],
         elif isinstance(inst, Signal):
             new = inst.info.copy()
         elif isinstance(inst, str):
-            new = subject_to_info(subj)
+            new = subject_to_info(subj, subj_dir)
             new['subject_info'] = dict(his_id=f"sub-{inst}")
         else:
             raise TypeError(type(inst))
@@ -1035,7 +1035,7 @@ if __name__ == "__main__":
     #                    [[1, 0, 0], [0, 1, 0]], mode='both')
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
-    # plot_subj("D5")
+    plot_subj("D5")
     # colors = np.concatenate([np.array([[1,0,0]] * 48), (np.arange(48) / 48)[
     # :, None]], axis=1)
     # brain = plot_subj("D5", color=colors)

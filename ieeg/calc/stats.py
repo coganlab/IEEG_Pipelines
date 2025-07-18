@@ -4,7 +4,7 @@ from mne.utils import logger
 from scipy import stats as st
 from scipy import ndimage
 import inspect
-from sklearn.neighbors import LocalOutlierFactor
+import warnings
 
 from ieeg import Doubles
 from ieeg.arrays.api import array_namespace, Array, is_numpy
@@ -547,6 +547,10 @@ def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
     # 6bd68/scipy/stats/_resampling.py#L22-L23
     if vectorized:
         batch_size //= 2  # halve memory because scipy copys data once
+    if batch_size == 0:
+        warnings.warn("Not enough memory to run permutation test. Will try"
+                      " to run with batch_size=1. ")
+        batch_size = 1
 
     kwargs = dict(n_resamples=n_perm, alternative=alt, batch=batch_size,
                   axis=axis, vectorized=vectorized, random_state=rng,
