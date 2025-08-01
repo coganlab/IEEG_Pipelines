@@ -114,6 +114,7 @@ class DataLoader:
                     out_cond.setdefault(ev, {}).setdefault(ch, {})
                     if isinstance(sig, mne.time_frequency.BaseTFR):
                         for j, f in enumerate(sig.freqs):
+                            f = str(round(float(f), 5))
                             out_cond[ev][ch].setdefault(f, {})
                             out_cond[ev][ch][f] = mat[sig.events[:, 2] == id,
                                                       i, j]
@@ -121,6 +122,7 @@ class DataLoader:
                         out_cond[ev][ch] = mat[sig.events[:, 2] == id, i]
             elif isinstance(sig, mne.time_frequency.AverageTFR):
                 for j, f in enumerate(sig.freqs):
+                    f = str(round(float(f), 5))
                     out_cond.setdefault(ch, {}).setdefault(f, {})
                     out_cond[ch][f] = mat[i, j]
             else:
