@@ -1,10 +1,11 @@
-from sklearn import config_context
 try:
     import cupy as cp
 except ImportError:
     cp = None
 
-from ieeg.decoding.models import PcaLdaClassification
+from sklearn import config_context
+from sklearn.base import BaseEstimator, clone
+from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
 from ieeg.arrays.api import array_namespace, Array, is_torch, is_numpy
@@ -25,7 +26,7 @@ class Decoder(MinimumNaNSplit):
                  n_repeats: int = 1,
                  min_samples: int = 1,
                  which: str = 'test',
-                 **kwargs):
+                 model: BaseEstimator = PcaLdaClassification()):
         """Initialize the Decoder.
 
         Parameters
@@ -45,8 +46,7 @@ class Decoder(MinimumNaNSplit):
             Additional keyword arguments passed to the PcaLdaClassification
              model.
         """
-        # self.model = PcaLdaClassification(**kwargs)
-        self.kwargs = kwargs
+        self.model = model
         MinimumNaNSplit.__init__(self, n_splits, n_repeats,
                                  None, min_samples, which)
         self.categories = categories
@@ -89,29 +89,35 @@ class Decoder(MinimumNaNSplit):
 
         Examples
         --------
-        >>> np.random.seed(42)
-        >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
-        ...             5, 10, explained_variance=0.8, da_type='lda')
-        >>> X = np.random.randn(100, 50, 100)
+        >>> np.random.seed(42); conds = {'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4}
+        >>> model = PcaLdaClassification(0.8, 'lda')
+        >>> decoder = Decoder(conds, 5, 2, model=model)
+        >>> X = np.random.randn(5, 50, 20, 100)
         >>> labels = np.random.randint(1, 5, 50)
-        >>> decoder.cv_cm(X, labels, normalize='true')
-        array([[0.11111111, 0.        , 0.03333333, 0.85555556],
-               [0.1       , 0.        , 0.04      , 0.86      ],
-               [0.10666667, 0.        , 0.04      , 0.85333333],
-               [0.10625   , 0.        , 0.03125   , 0.8625    ]])
-        >>> decoder = Decoder({'heat': 1, 'hoot': 2, 'hot': 3, 'hut': 4},
-        ...             5, 10, explained_variance=0.8, da_type='lda')
-        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5)[0]
-        array([[0.04444444, 0.        , 0.36666667, 0.58888889],
-               [0.02      , 0.01      , 0.41      , 0.56      ],
-               [0.03333333, 0.        , 0.50666667, 0.46      ],
-               [0.03125   , 0.        , 0.5       , 0.46875   ]])
+        >>> decoder.cv_cm(X, labels, normalize='true', obs_axs=1)
+        array([[0.        , 0.05555556, 0.94444444, 0.        ],
+               [0.        , 0.05      , 0.9       , 0.05      ],
+               [0.        , 0.1       , 0.9       , 0.        ],
+               [0.        , 0.09375   , 0.90625   , 0.        ]])
         >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5,
-        ...     shuffle=True, oversample=True)[0]
-        array([[0.        , 0.12222222, 0.52222222, 0.35555556],
-               [0.01      , 0.12      , 0.5       , 0.37      ],
-               [0.00666667, 0.10666667, 0.50666667, 0.38      ],
-               [0.        , 0.09375   , 0.525     , 0.38125   ]])
+        ... obs_axs=1)[0]
+        array([[0.11111111, 0.55555556, 0.27777778, 0.05555556],
+               [0.1       , 0.5       , 0.35      , 0.05      ],
+               [0.06666667, 0.6       , 0.33333333, 0.        ],
+               [0.03125   , 0.53125   , 0.375     , 0.0625    ]])
+        >>> decoder.cv_cm(X, labels, normalize='true', window=20, step=5,
+        ...     shuffle=True, oversample=True, obs_axs=1)[0]
+        array([[0.        , 0.        , 0.44444444, 0.55555556],
+               [0.        , 0.        , 0.4       , 0.6       ],
+               [0.        , 0.        , 0.36666667, 0.63333333],
+               [0.        , 0.        , 0.53125   , 0.46875   ]])
+        >>> model = PcaLdaClassification(0.5, 'lda', loopwise=2)
+        >>> decoder = Decoder(conds, 5, 2, model=model)
+        >>> decoder.cv_cm(X, labels, normalize='true', obs_axs=1)
+        array([[0.     , 0.     , 0.     , 1.     ],
+               [0.     , 0.     , 0.     , 1.     ],
+               [0.     , 0.     , 0.     , 1.     ],
+               [0.     , 0.     , 0.09375, 0.90625]])
         >>> import cupy as cp # doctest: +SKIP
         >>> X = cp.random.randn(100, 100, 50, 100) # doctest: +SKIP
         >>> X[0, 0, 0, :] = np.nan # doctest: +SKIP
@@ -136,7 +142,7 @@ class Decoder(MinimumNaNSplit):
 
         if shuffle:
             isnan = xp.isnan(data)
-            std = float(xp.nanstd(data, dtype='f8'))
+            std = float(xp.std(data[isnan], dtype='f8'))
             data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan,
                                                                   dtype='i8')))
             # shuffled label pool
@@ -163,14 +169,14 @@ class Decoder(MinimumNaNSplit):
         if n_jobs == 1:
             results = (_proc(train_idx, test_idx, l, data, i,
                              self.n_splits, self.categories, window, step,
-                             oversample, self.kwargs)
+                             oversample, clone(self.model))
                        for i, ((train_idx, test_idx), l) in enumerate(idxs))
         else:
             results = Parallel(n_jobs=n_jobs, verbose=0, require='sharedmem',
                                return_as="generator_unordered")(
                     delayed(_proc)(train_idx, test_idx, l, data, i,
                                    self.n_splits, self.categories, window,
-                                   step, oversample, self.kwargs)
+                                   step, oversample, clone(self.model))
                     for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
         # Collect the results
@@ -198,7 +204,7 @@ class Decoder(MinimumNaNSplit):
 
 
 def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
-          step, oversample, model_kwargs):
+          step, oversample, model):
     """Process a single fold of data for cross-validation.
 
     Parameters
@@ -231,12 +237,6 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
     tuple
         Confusion matrix, repetition index, and fold index.
     """
-    xp = array_namespace(orig_data)
-    label_cats = xp.asarray(list(cats.values()))
-    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data,
-                                             lab, label_cats, 0, oversample,
-                                             xp)
-    model = PcaLdaClassification(**model_kwargs)
 
     def _fit_predict(x_flat):
         """Fit model on training data and predict on test data.
@@ -258,19 +258,34 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
         pred = model.predict(x_test)
         return confusion_matrix(y_test, pred, label_cats, namespace=xp)
 
+    xp = array_namespace(orig_data)
+    label_cats = xp.asarray(list(cats.values()))
+    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data,
+                                             lab, label_cats, 0, oversample,
+                                             xp)
+
+    first_step = getattr(model, 'model', PcaLdaClassification()).steps[0][1]
+    if isinstance(first_step, LoopwiseTransformer):
+        x_stacked = x_stacked.swapaxes(1, first_step.loop_dim)
+        first_step.loop_dim = 1
+        in_shape = x_stacked.shape[:2] + (-1,)
+    else:
+        in_shape = x_stacked.shape[:1] + (-1,)
+
     rep, fold = divmod(pid, n_splits)
     if window is None:
-        x_flattened = x_stacked.reshape(x_stacked.shape[0], -1)
+        x_flattened = x_stacked.reshape(in_shape)
         return _fit_predict(x_flattened), rep, fold
 
     windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[
                ..., ::step, :]
-    swapped = xp.moveaxis(windowed.swapaxes(-1, -2).reshape(
-        windowed.shape[0], -1, windowed.shape[-2]), -1, 0)
 
     if is_numpy(xp):
+        swapped = xp.moveaxis(windowed.swapaxes(-1, -2).reshape(
+            in_shape + (windowed.shape[-2],)), -1, 0)
+        signature = f"({','.join('abc'[:len(in_shape)])}) -> (d,d)"
         func = np.vectorize(_fit_predict,
-                            signature='(a,b) -> (d,d)',
+                            signature=signature,
                             otypes=[xp.uint8])
         out = func(swapped)
     else:
@@ -278,7 +293,7 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
                         label_cats.shape[0]), dtype=xp.uint8)
         for i in range(windowed.shape[-2]):
             x_window = windowed[..., i, :]
-            out[i] = _fit_predict(x_window.reshape(x_window.shape[0], -1))
+            out[i] = _fit_predict(x_window.reshape(in_shape))
 
     return out, rep, fold
 

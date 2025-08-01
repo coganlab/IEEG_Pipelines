@@ -14,7 +14,7 @@ from sklearn.svm import SVC  # For support vector classification (SVM)
 from sklearn.decomposition import PCA  # For PCA decomposition (PCA - LDA)
 from sklearn import \
     discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.metrics import accuracy_score
 
 # Used for naive bayes decoder
@@ -1753,6 +1753,62 @@ class XGBoostClassification(object):
         y_test_predicted = bst.predict(dtest)  # Make prediction
         return y_test_predicted
 
+# %% Looping pipeline for classification
+
+class LoopwiseTransformer(BaseEstimator, TransformerMixin):
+    """Transformer that applies loop-wise transformations.
+
+    This transformer applies a base transformer to each loop dimension
+    of the input data independently. It is useful for scenarios where
+    the input data has a loop structure, such as time series data with
+    multiple time steps or trials, and you want to apply the same
+    transformation to each loop independently.
+
+    Parameters
+    ----------
+    base_transformer : object
+        The base transformer to apply to each loop dimension.
+        This should be a scikit-learn compatible transformer.
+    loop_dim : int, optional, default=1
+        The dimension along which the loops are defined in the input data.
+        For example, if the input data has shape (n_samples, n_loops, n_features),
+        then loop_dim=1 means that the loops are along the second dimension.
+     """
+    def __init__(self, base_transformer, loop_dim: int = 1):
+        self.base_transformer = base_transformer
+        self.loop_dim = loop_dim
+
+    def idx(self, ndim, i):
+        """Create an index for the loop dimension."""
+        return tuple(
+            slice(None) if d != self.loop_dim else i
+            for d in range(ndim)
+        )
+
+    def fit(self, X, y=None):
+        n_loops = X.shape[self.loop_dim]
+        self.transformers_ = []
+        for i in range(n_loops):
+            transformer = clone(self.base_transformer)
+            transformer.fit(X[self.idx(X.ndim, i)], y)
+            self.transformers_.append(transformer)
+        return self
+
+    def transform(self, X):
+        transformed = [t.transform(X[self.idx(X.ndim, i)])
+                       for i, t in enumerate(self.transformers_)]
+        return np.concatenate(transformed, axis=self.loop_dim)
+
+    def set_output(self, *, transform=None):
+        """Set the output type of the transformer."""
+        if hasattr(self, 'transformers_'):
+            for transformer in self.transformers_:
+                transformer.set_output(transform=transform)
+        elif hasattr(self.base_transformer, 'set_output'):
+            self.base_transformer.set_output(transform=transform)
+        else:
+            raise ValueError("Base transformer does not support set_output.")
+        return self
 
 # %% PRINCIPAL COMPONENT ANALYSIS - LINEAR DISCRIMINANT CLASSIFIER
 
@@ -1768,9 +1824,10 @@ class PcaLdaClassification(BaseEstimator):
         type of discriminant analysis; lda or qda
 
     """
+    model: Pipeline
 
     def __init__(self, explained_variance=0.8, da_type='lda', PCA_kwargs={},
-                 DA_kwargs={}):
+                 loopwise: int = None, DA_kwargs={}):
         # choose discriminant type
         if (da_type == 'lda'):
             # linear discriminant analysis
@@ -1778,41 +1835,59 @@ class PcaLdaClassification(BaseEstimator):
         else:
             # Quadratic discriminant analysis
             da_model = da.QuadraticDiscriminantAnalysis(**DA_kwargs)
+
         PCA_kwargs['n_components'] = explained_variance
+        if loopwise is not None:
+            pca_transformer = LoopwiseTransformer(
+                PCA(**PCA_kwargs), loop_dim=loopwise)
+        else:
+            pca_transformer = PCA(**PCA_kwargs)
+
         # Create a pipeline classifier
         self.model = Pipeline(steps=[
-            ('pca', PCA(**PCA_kwargs)),
-            ('discriminant', da_model)])
+            ('pca', pca_transformer),
+            ('discriminant', da_model)
+        ])
 
         # set default outputs to numpy
         self.model.set_output(transform="default")
 
-    def fit(self, X_flat_train, y_train):
+    def __sklearn_clone__(self):
+        """Clone the model for sklearn compatibility."""
+        obj = super(PcaLdaClassification, self).__new__(PcaLdaClassification)
+        obj.model = Pipeline(steps=[
+            ('pca', clone(self.model['pca'])),
+            ('discriminant', clone(self.model['discriminant']))
+        ])
+        obj.model.set_output(transform="default")
+        return obj
+
+    def fit(self, X, y=None, **params):
 
         """Train PCA - LDA classifier
 
         Parameters
         ----------
-        X_flat_train: numpy 2d array of shape [n_samples,n_features]
+        X: numpy 2d array of shape [n_samples,n_features]
             This is the neural data.
             See example file for an example of how to format the neural data
             correctly
 
-        y_train: numpy 1d array of shape (n_samples), with integers
+        y: numpy 1d array of shape (n_samples), with integers
         representing classes
             This is the outputs that are being predicted
         """
 
         # Fit the model
-        self.model.fit(X_flat_train, y_train)
+        self.model.fit(X, y, **params)
 
-    def predict(self, X_flat_test):
+    def predict(self, X, **params):
 
         """Predict outcomes using trained PCA LDA Decoder
 
         Parameters
         ----------
-        X_flat_test: numpy 2d array of shape [n_samples,n_features]
+        X: numpy 2d array of shape [n_samples,n_features]
             This is the neural data being used to predict outputs.
 
         Returns
@@ -1821,9 +1896,7 @@ class PcaLdaClassification(BaseEstimator):
             The predicted outputs
         """
 
-        pca_lda_fit = self.model  # Get fit model
-        y_test_predicted = pca_lda_fit.predict(X_flat_test)  # Make prediction
-        return y_test_predicted
+        return self.model.predict(X, **params)
 
     def get_scores(self, deep=True):
         """Get scores of pca and lda model
@@ -1842,7 +1915,7 @@ class PcaLdaClassification(BaseEstimator):
         scores['discriminant'] = da.coef_
         return scores
 
-    def score(self, X, y, sample_weight=None):
+    def score(self, X, y=None, sample_weight=None, **params):
         """Returns the mean accuracy on the given test data and labels.
 
         In multi-label classification, this is the subset accuracy
@@ -1867,7 +1940,7 @@ class PcaLdaClassification(BaseEstimator):
 
         """
         from sklearn.metrics import accuracy_score
-        return accuracy_score(y, self.predict(X), sample_weight=sample_weight)
+        return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
 
     # %% PRINCIPAL COMPONENT ANALYSIS Wrapper for classification function
 
