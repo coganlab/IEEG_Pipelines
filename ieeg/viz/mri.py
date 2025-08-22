@@ -3,6 +3,7 @@ import os.path as op
 from collections import OrderedDict, namedtuple
 from collections.abc import Iterable, Sequence
 from functools import singledispatch
+from itertools import combinations
 
 import mne
 import nibabel as nib
@@ -632,7 +633,7 @@ def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
 
 
 def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
-                       idx: list[int], colors: list,
+                       idx: list[int | str], colors: list,
                        mode: str = 'both', max_size: float = 2,
                        fig_dims: tuple[int, int] = None) -> None:
     """Plots the electrodes with a gradient of colors
@@ -658,6 +659,70 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         plotter.subplot(j, k)
         brain = plot_on_average(subjects, picks=list(idx), size=size[i],
                                 hemi='both', color=colors[i], show=False,
+                                transparency=0.15)
+        for actor in brain.plotter.actors.values():
+            plotter.add_actor(actor, reset_camera=False)
+        plotter.camera = brain.plotter.camera
+        plotter.camera_position = brain.plotter.camera_position
+    plotter.link_views()
+
+
+def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
+                            idx: list[int | str], colormap: str = 'coolwarm',
+                            max_size: float = 2,
+                            fig_dims: tuple[int, int] = None) -> None:
+    """
+    Plots brains for all unique pairs of components in W.
+    Electrode color is determined by the ratio of the two weights (W[i]/W[j]),
+    mapped to a color gradient. Electrode size is determined by W[i]+W[j].
+    Parameters
+    ----------
+    subjects : list
+        List of subject identifiers or Signal objects.
+    W : np.ndarray
+        n_components x n_channels weight matrix.
+    idx : list
+        List of channel names corresponding to columns of W.
+    colormap : str
+        Name of matplotlib colormap to use for ratio mapping.
+    max_size : float
+        Maximum electrode size.
+    fig_dims : tuple[int, int], optional
+        Figure grid dimensions (rows, cols).
+    """
+    n_components = W.shape[0]
+    pairs = list(combinations(range(n_components), 2))
+    n_pairs = len(pairs)
+    if fig_dims is None:
+        min_size = int(np.ceil(np.sqrt(n_pairs)))
+        fig_dims = (int(np.ceil(n_pairs / min_size)), min_size)
+    plotter = BackgroundPlotter(shape=fig_dims)
+    cmap = matplotlib.colormaps.get_cmap(colormap)
+    # Compute ratios and sums for all pairs
+    for i, (a, b) in enumerate(pairs):
+        # Avoid division by zero
+        ratio = np.divide(W[a], W[b], out=np.zeros_like(W[a]), where=W[b]!=0)
+        # Normalize ratio to [0,1] for colormap
+        norm_ratio = (ratio - np.min(ratio)) / (np.max(ratio) - np.min(ratio))
+        colors = [cmap(val)[:3] for val in norm_ratio]
+        # Electrode size: sum of weights, clipped to max_size
+        size = np.clip(W[a] + W[b], 0, max_size)
+        # Optional: scale size for visualization
+        size = size / size.max() * max_size if size.max() > 0 else size
+        size /= 2
+        j, k = divmod(i, fig_dims[1])
+        plotter.subplot(j, k)
+        # trim the weights, colors, sizes, and idx by a minimum size threshold
+        min_size = 0.05
+        mask = size >= min_size
+        colors = [colors[i] for i in range(len(colors)) if mask[i]]
+        size = [size[i] for i in range(len(size)) if mask[i]]
+        idx_masked = [idx[i] for i in range(len(idx)) if mask[i]]
+        if not colors:
+            continue
+
+        brain = plot_on_average(subjects, picks=idx_masked, size=size,
+                                hemi='both', color=colors, show=False,
                                 transparency=0.15)
         for actor in brain.plotter.actors.values():
             plotter.add_actor(actor, reset_camera=False)

@@ -3,7 +3,6 @@ from functools import partial
 
 import numpy as np
 from joblib import cpu_count
-from matplotlib import gridspec
 from mne.io import Raw
 
 from ieeg import Doubles, Signal
@@ -206,7 +205,8 @@ def plot_dist(mat: iter, axis: int = 0, mode: str = 'sem',
     p = ax.plot(tscale, mean, label=label, color=color, **kwargs)
     if color is None:
         color = p[-1].get_color()
-    ax.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
+    if mat.shape[0] != 1:
+        ax.fill_between(tscale, mean - std, mean + std, alpha=0.2, color=color)
     return ax
 
 

@@ -16,6 +16,7 @@ from sklearn import \
     discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.metrics import accuracy_score
+from joblib import Memory
 
 # Used for naive bayes decoder
 try:
@@ -1847,7 +1848,8 @@ class PcaLdaClassification(BaseEstimator):
         self.model = Pipeline(steps=[
             ('pca', pca_transformer),
             ('discriminant', da_model)
-        ])
+        ],
+        memory=Memory())
 
         # set default outputs to numpy
         self.model.set_output(transform="default")
@@ -1858,7 +1860,8 @@ class PcaLdaClassification(BaseEstimator):
         obj.model = Pipeline(steps=[
             ('pca', clone(self.model['pca'])),
             ('discriminant', clone(self.model['discriminant']))
-        ])
+        ],
+        memory=Memory())
         obj.model.set_output(transform="default")
         return obj
 
@@ -1961,47 +1964,57 @@ class PcaEstimateDecoder(BaseEstimator):
         {'param_name': value})
 
     """
-
-    def __init__(self, explained_variance=0.8, clf=SVC(), clf_params=None):
+    model: Pipeline
+    def __init__(self, explained_variance=0.8, clf=SVC(), clf_params={}):
         self.explained_variance = explained_variance
         self.clf = clf
         self.clf_params = clf_params
-        self._initialize_model()
 
-    def _initialize_model(self):
-        self.pca = PCA(n_components=self.explained_variance)
-        if self.clf_params is not None:
+        # Create a pipeline classifier
+        self.model = Pipeline(steps=[
+            ('pca', PCA(n_components=self.explained_variance)),
+            ('clf', clone(self.clf))
+        ],
+        memory=Memory())
 
-            self.model = Pipeline(steps=[('pca', self.pca), (
-                'model', self.clf.set_params(**self.clf_params))])
-        else:
-            print('No initial parameters')
-            self.model = Pipeline(
-                steps=[('pca', self.pca), ('model', self.clf)])
+        # set default outputs to numpy
+        self.model.set_output(transform="default")
 
-    def fit(self, X_flat_train, y_train):
+    def __sklearn_clone__(self):
+        """Clone the model for sklearn compatibility."""
+        obj = super(PcaEstimateDecoder, self).__new__(PcaEstimateDecoder)
+        obj.model = Pipeline(steps=[
+            ('pca', clone(self.model['pca'])),
+            ('clf', clone(self.model['clf']))
+        ],
+        memory=Memory())
+        obj.model.set_output(transform="default")
+        return obj
+
+    def fit(self, X, y=None, **params):
         """Train PCA - SVM classifier
 
         Parameters
         ----------
-        X_flat_train: numpy 2d array of shape [n_samples, n_features]
+        X: numpy 2d array of shape [n_samples,n_features]
             This is the neural data.
             See example file for an example of how to format the neural data
             correctly
 
-        y_train: numpy 1d array of shape (n_samples), with integers
+        y: numpy 1d array of shape (n_samples), with integers
         representing classes
             This is the outputs that are being predicted
         """
-        self._initialize_model()
-        self.model.fit(X_flat_train, y_train)
 
-    def predict(self, X_flat_test):
-        """Predict outcomes using trained PCA - SVM Decoder
+        # Fit the model
+        self.model.fit(X, y, **params)
+
+    def predict(self, X, **params):
+        """Predict outcomes using trained PCA SVM Decoder
 
         Parameters
         ----------
-        X_flat_test: numpy 2d array of shape [n_samples, n_features]
+        X: numpy 2d array of shape [n_samples,n_features]
             This is the neural data being used to predict outputs.
 
         Returns
@@ -2009,17 +2022,39 @@ class PcaEstimateDecoder(BaseEstimator):
         y_test_predicted: numpy 1d array with integers as classes
             The predicted outputs
         """
-        return self.model.predict(X_flat_test)
 
-    def score(self, X, y, sample_weight=None):
+        return self.model.predict(X, **params)
+
+    def get_scores(self, deep=True):
+        """Get scores of pca and svm model
+
+        Args:
+            deep (bool, optional): Defaults to True.
+
+        Returns:
+            scores: dict
+            Returns fitted scores of PCA and SVM
+        """
+        pca = self.model['pca']
+        svm = self.model['clf']
+        scores = dict()
+        scores['pca'] = pca.components_
+        scores['svm'] = svm.coef_
+        return scores
+
+    def score(self, X, y=None, sample_weight=None, **params):
         """Returns the mean accuracy on the given test data and labels.
+
+        In multi-label classification, this is the subset accuracy
+        which is a harsh metric since you require for each sample that
+        each label set be correctly predicted.
 
         Parameters
         ----------
         X : array-like, shape = (n_samples, n_features)
             Test samples.
 
-        y : array-like, shape = (n_samples,) or (n_samples, n_outputs)
+        y : array-like, shape = (n_samples) or (n_samples, n_outputs)
             True labels for X.
 
         sample_weight : array-like, shape = [n_samples], optional
@@ -2031,4 +2066,6 @@ class PcaEstimateDecoder(BaseEstimator):
             Mean accuracy of self.predict(X) wrt. y.
 
         """
-        return accuracy_score(y, self.predict(X), sample_weight=sample_weight)
+        from sklearn.metrics import accuracy_score
+        return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
+

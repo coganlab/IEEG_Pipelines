@@ -183,18 +183,18 @@ def _extract_inst(inst: Signal, fs: int, copy: bool, **kwargs) -> Signal:
 @extract.register
 def _(inst: base.BaseRaw, fs: int = None,
       passband: tuple[int, int] = (70, 150),
-      copy: bool = True, n_jobs=-1, verbose: bool = True) -> Raw:
+      copy: bool = True, spacing: float = 1/7, n_jobs=-1, verbose: bool = True) -> Raw:
     """Extract gamma band envelope from Raw object."""
-    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
+    return _extract_inst(inst, fs, copy, spacing=spacing, passband=passband, n_jobs=n_jobs,
                          verbose=verbose)
 
 
 @extract.register
 def _(inst: BaseEpochs, fs: int = None,
       passband: tuple[int, int] = (70, 150),
-      copy: bool = True, n_jobs=-1, verbose: bool = True) -> Epochs:
+      copy: bool = True, spacing: float = 1/7, n_jobs=-1, verbose: bool = True) -> Epochs:
     """Extract gamma band envelope from Epochs object."""
-    return _extract_inst(inst, fs, copy, passband=passband, n_jobs=n_jobs,
+    return _extract_inst(inst, fs, copy, spacing=spacing, passband=passband, n_jobs=n_jobs,
                          verbose=verbose)
 
 

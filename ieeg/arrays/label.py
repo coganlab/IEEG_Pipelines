@@ -916,13 +916,15 @@ class LabeledArray(np.ndarray):
                ['0', '1'])
         """
         new_labels = list(self.labels)
+        isnan = np.isnan(self.__array__())
         idx = []
         for i in range(self.ndim):
             axes = tuple(j for j in range(self.ndim) if j != i)
-            mask = np.all(np.isnan(np.array(self)), axis=axes)
+            mask = np.all(isnan, axis=axes)
+            not_mask = ~mask
             if np.any(mask):
-                new_labels[i] = tuple(np.array(new_labels[i])[~mask])
-            idx.append(~mask)
+                new_labels[i] = tuple(np.array(new_labels[i])[not_mask])
+            idx.append(not_mask)
         index = np.ix_(*idx)
         return self[index]
 

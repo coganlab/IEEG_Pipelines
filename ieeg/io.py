@@ -36,7 +36,7 @@ class DataLoader:
         self.reader, self.suffix = self._get_reader_and_suffix(ext)
 
     def _get_reader_and_suffix(self, ext):
-        allowed = ["zscore", "power", "significance", "pval"]
+        allowed = ["zscore", "power", "significance", "pval", "mask"]
         assert ext in ('.fif', '.h5'), "ext must be one of ('.fif', '.h5')"
 
         match self.value_type:
@@ -61,6 +61,14 @@ class DataLoader:
                     suffix += "-tfr" + ext
                     reader = mne.time_frequency.read_tfrs
             case "significance":
+                suffix = "mask"
+                if ext == ".fif":
+                    suffix += "-ave" + ext
+                    reader = mne.read_evokeds
+                else:
+                    suffix += "-tfr" + ext
+                    reader = mne.time_frequency.read_tfrs
+            case "mask":
                 suffix = "mask"
                 if ext == ".fif":
                     suffix += "-ave" + ext
