@@ -6,7 +6,7 @@ except ImportError:
 from sklearn import config_context
 from sklearn.base import BaseEstimator, clone
 from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
-from ieeg.arrays.label import LabeledArray
+from ieeg.arrays.label import LabeledArray, normalize_index
 from ieeg.calc.oversample import MinimumNaNSplit
 from ieeg.arrays.api import array_namespace, Array, is_torch, is_numpy
 from ieeg.arrays.reshape import sliding_window_view
@@ -471,7 +471,7 @@ def nan_common_denom(array: LabeledArray, sort: bool = True,
            else np.arange(s) for i, s in enumerate(array.shape)]
     idx[ch_ax] = np.where([ch_tnum >= ntrials])[1]
 
-    return data[np.ix_(*idx)]
+    return data[normalize_index(np.ix_(*idx))]
 
 
 def sample_fold(train_idx: Array, test_idx: Array,

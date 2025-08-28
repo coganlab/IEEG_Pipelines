@@ -70,6 +70,93 @@ def iter_nest_dict(d: dict, iter_arrays: bool = False) -> Iterable[tuple]:
                 yield tuple(path), current
 
 
+def normalize_index(idx):
+    """
+    Normalize a numpy indexing scheme:
+    - Keep basic indices (slices, ints, None, Ellipsis) unchanged.
+    - Convert advanced indices (list/ndarray) into slices when they
+      form a contiguous positive arithmetic progression (including
+      the single-element case).
+    - Convert boolean masks into slices when the positions of True
+      values form an arithmetic progression (including empty or all True).
+    - Leave other advanced indices unchanged.
+
+    Parameters
+    ----------
+    idx : tuple, list, int, slice, ndarray
+        Index or indices to normalize.
+
+    Returns
+    -------
+    tuple
+        Normalized index tuple.
+    """
+    if not isinstance(idx, tuple):
+        idx = (idx,)
+
+    normalized = []
+    for key in idx:
+        # Already a slice → keep
+        if isinstance(key, slice):
+            normalized.append(key)
+            continue
+
+        # Integer → keep
+        if isinstance(key, (int, np.integer)):
+            normalized.append(key)
+            continue
+
+        # Ellipsis or None → keep
+        if key is Ellipsis or key is None:
+            normalized.append(key)
+            continue
+
+        # Numpy array or list
+        if isinstance(key, (list, np.ndarray)):
+            arr = np.array(key)
+
+            # Case A: Boolean mask
+            if arr.dtype == bool:
+                true_idx = np.flatnonzero(arr)
+                if true_idx.size == 0:
+                    normalized.append(slice(0, 0, 1))  # empty selection
+                    continue
+                if true_idx.size == 1:
+                    normalized.append(slice(true_idx[0], true_idx[0] + 1, 1))
+                    continue
+                diffs = np.diff(true_idx)
+                if np.all(diffs == diffs[0]):
+                    step = diffs[0]
+                    start = true_idx[0]
+                    stop = true_idx[-1] + step
+                    normalized.append(slice(start, stop, step))
+                    continue
+                normalized.append(key)
+                continue
+
+            # Case B: Integer indices
+            if arr.ndim == 1 and arr.size > 0:
+                if arr.size == 1:
+                    normalized.append(slice(arr[0], arr[0] + 1, 1))
+                    continue
+
+                diffs = np.diff(arr)
+                if np.all(diffs == diffs[0]):
+                    step = diffs[0]
+                    if step > 0:  # only positive indices
+                        start = arr[0]
+                        stop = arr[-1] + step
+                        normalized.append(slice(start, stop, step))
+                        continue
+
+            normalized.append(key)
+            continue
+
+        # Fallback
+        normalized.append(key)
+
+    return tuple(normalized)
+
 def lcs(*strings: str) -> str:
     """Find the longest common substring in a list of strings.
 
