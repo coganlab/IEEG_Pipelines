@@ -669,7 +669,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
 
 def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
                             idx: list[int | str], colormap: str = 'coolwarm',
-                            max_size: float = 2,
+                            max_size: float = 1,
                             fig_dims: tuple[int, int] = None) -> None:
     """
     Plots brains for all unique pairs of components in W.
@@ -702,21 +702,22 @@ def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
     for i, (a, b) in enumerate(pairs):
         # Avoid division by zero
         ratio = np.divide(W[a], W[b], out=np.zeros_like(W[a]), where=W[b]!=0)
+        # clip extreme ratios for better color scaling
+        ratio = np.clip(np.log10(ratio), -4, 4)
         # Normalize ratio to [0,1] for colormap
-        norm_ratio = (ratio - np.min(ratio)) / (np.max(ratio) - np.min(ratio))
-        colors = [cmap(val)[:3] for val in norm_ratio]
+        norm_ratio = (ratio - np.nanmin(ratio)) / (np.nanmax(ratio) - np.nanmin(ratio))
+        colors = [cmap(val) for val in norm_ratio]
         # Electrode size: sum of weights, clipped to max_size
         size = np.clip(W[a] + W[b], 0, max_size)
         # Optional: scale size for visualization
         size = size / size.max() * max_size if size.max() > 0 else size
-        size /= 2
         j, k = divmod(i, fig_dims[1])
         plotter.subplot(j, k)
         # trim the weights, colors, sizes, and idx by a minimum size threshold
-        min_size = 0.05
+        min_size = 0.1
         mask = size >= min_size
         colors = [colors[i] for i in range(len(colors)) if mask[i]]
-        size = [size[i] for i in range(len(size)) if mask[i]]
+        size = [size[i] / 2 for i in range(len(size)) if mask[i]]
         idx_masked = [idx[i] for i in range(len(idx)) if mask[i]]
         if not colors:
             continue
