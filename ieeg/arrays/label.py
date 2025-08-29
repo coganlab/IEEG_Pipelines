@@ -3,6 +3,7 @@ from collections.abc import Iterable
 
 import mne
 from ieeg.calc.fast import concatenate_arrays
+from ieeg.arrays.labeledarray import LabeledArray as cla
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -207,7 +208,7 @@ def lcs(*strings: str) -> str:
     return common_substr
 
 
-class LabeledArray(np.ndarray):
+class LabeledArray(cla):
     """ A numpy array with labeled dimensions, acting like a dictionary.
 
     A numpy array with labeled dimensions. This class is useful for storing
@@ -234,13 +235,9 @@ class LabeledArray(np.ndarray):
 
     Examples
     --------
-    >>> import numpy as np
-    >>> np.set_printoptions(legacy='1.21')
-    >>> from ieeg.arrays.label import LabeledArray
-    >>> arr = np.ones((2, 3, 4), dtype=int)
+    >>> import numpy as np; np.set_printoptions(legacy='1.21')
     >>> labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
-    >>> la = LabeledArray(arr, labels)
-    >>> la
+    >>> (la := LabeledArray(np.ones((2, 3, 4), dtype=int), labels))
     array([[[1, 1, 1, 1],
             [1, 1, 1, 1],
             [1, 1, 1, 1]],
@@ -317,27 +314,14 @@ class LabeledArray(np.ndarray):
     [1] https://numpy.org/doc/stable/user/basics.subclassing.html
     [2] https://numpy.org/doc/stable/user/basics.indexing.html
     """
+    labels: tuple[tuple[str, ...], ...]
 
-    labels: list = []
-
-    def __new__(cls, input_array, labels: list[tuple[str, ...], ...] = (),
-                delimiter: str = '-', **kwargs):
-        obj = np.asarray(input_array, **kwargs).view(cls)
-        labels = list(labels)
-        for i in range(obj.ndim):
-            if len(labels) < i + 1:
-                labels.append(tuple(range(obj.shape[i])))
-        obj.labels = list(map(lambda lab: Labels(lab, delimiter), labels))
-        assert tuple(map(len, obj.labels)) == obj.shape, \
-            f"labels must have the same length as the shape of the array, " \
-            f"instead got {tuple(map(len, obj.labels))} and {obj.shape}"
-        return obj
-
-    def __array_finalize__(self, obj, *args, **kwargs):
-        if obj is None:
-            return
-        self.labels = getattr(obj, 'labels', kwargs.pop('labels', ()))
-        super(LabeledArray, self).__array_finalize__(obj, *args, **kwargs)
+    # def __new__(cls, input_array, labels=None, **kwargs):
+    #     # This calls the C tp_new with type=cls; C code sets labels internally.
+    #     if labels is not None:
+    #         return super().__new__(cls, input_array, labels=labels)
+    #     else:
+    #         return super().__new__(cls, input_array)
 
     def __reduce__(self):
         # Get the parent's __reduce__ tuple
@@ -352,49 +336,6 @@ class LabeledArray(np.ndarray):
         self.labels = state[-1]  # Set the info attribute
         # Call the parent's __setstate__ with the other tuple elements.
         super(LabeledArray, self).__setstate__(state[0:-1])
-
-    def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
-        la_inputs = (i for i in inputs if isinstance(i, LabeledArray))
-        labels = next(la_inputs).labels.copy()
-        inputs = tuple(i.view(np.ndarray) if isinstance(i, LabeledArray)
-                       else i for i in inputs)
-        if out is not None:
-            kwargs['out'] = tuple(o.view(np.ndarray) if
-                                  isinstance(o, LabeledArray)
-                                  else o for o in out)
-        if method == 'reduce':
-            axis = kwargs.get('axis', None)
-            if axis is None:
-                axis = range(inputs[0].ndim)
-            elif np.isscalar(axis):
-                axis = (axis,)
-            else:
-                axis = tuple(axis)
-            i = 0
-            for ax in axis:
-                if ax > 0:
-                    ax -= i
-                labels = list(labels)
-                if kwargs.get('keepdims', False):
-                    labels[ax] = ("-".join(labels[ax]),)
-                else:
-                    labels.pop(ax)
-                    i += 1
-                labels = tuple(labels)
-
-        outputs = super(LabeledArray, self).__array_ufunc__(
-            ufunc, method, *inputs, **kwargs)
-        if isinstance(outputs, tuple):
-            outputs = tuple(LabeledArray(o, labels)
-                            if isinstance(o, np.ndarray)
-                            else o for o in outputs)
-        elif isinstance(outputs, np.ndarray):
-            outputs = LabeledArray(outputs, labels)
-        return outputs
-
-    @property
-    def T(self):
-        return LabeledArray(self.__array__().T, self.labels[::-1])
 
     def swapaxes(self, axis1, axis2):
         new = list(self.labels)
@@ -619,111 +560,6 @@ class LabeledArray(np.ndarray):
         labels = list(map(tuple, files.values()))
         return cls(np.load(file + '.npy', **kwargs), labels)
 
-    def _parse_index(self, keys: list) -> list:
-        ndim = self.ndim
-        new_keys = [range(self.shape[i]) for i in range(ndim)]
-        dim = 0
-        newaxis_count = 0
-        for i, key in enumerate(keys):
-            key_type = type(key)
-            if np.issubdtype(key_type, str):
-                key = self.labels[dim - newaxis_count].find(key)
-                keys[i] = key  # set original keys as well
-            elif key is Ellipsis:
-                num_ellipsis_dims = ndim - len(keys) + 1
-                while dim < num_ellipsis_dims:
-                    dim += 1
-                continue
-            elif key_type is slice:
-                key = new_keys[dim][key]
-            elif key is np.newaxis or key is None:
-                new_keys.insert(dim, None)
-                newaxis_count += 1
-                dim += 1
-                continue
-            elif (key_type in (list, tuple) or
-                  np.issubdtype(key_type, np.ndarray)):
-                key = list(key)
-                for j, k in enumerate(key):
-                    if np.issubdtype(type(k), str):
-                        key[j] = self.labels[dim - newaxis_count].find(k)
-                if np.issubdtype(key_type, np.ndarray):
-                    keys[i] = np.array(key)
-                else:
-                    keys[i] = key_type(key)
-            elif np.isscalar(key):  # key should be an int
-                while key < 0:
-                    key += self.shape[dim - newaxis_count]
-            else:
-                raise TypeError(f"Unexpected key type: {key_type}")
-
-            new_keys[dim] = key
-            dim += 1
-        return new_keys
-
-    def _to_coords(self, orig_keys):
-
-        if np.isscalar(orig_keys) or np.issubdtype(
-                (dtype := getattr(orig_keys, 'dtype', None)), np.integer):
-            keys = [orig_keys]
-            l_keys = self._parse_index(keys)
-            return keys[0], tuple(l_keys)
-        elif dtype == np.bool_ and is_broadcastable(
-                getattr(orig_keys, 'shape', ()), self.shape):
-            l_keys = np.where(np.reshape(orig_keys, self.shape))
-            return orig_keys, l_keys
-        else:
-            if isinstance(orig_keys, slice):
-                keys = [orig_keys]
-            else:
-                keys = list(orig_keys)
-            l_keys = self._parse_index(keys)
-            return tuple(keys), tuple(l_keys)
-
-    def __getitem__(self, orig_keys):
-        keys, label_keys = self._to_coords(orig_keys)
-        out = super(LabeledArray, self).__getitem__(keys)
-        if out.ndim == 0:
-            return out[()]
-
-        # determine the new labels
-        new_labels = [None] * out.ndim
-        j = 0
-        k = 0
-        for i, label_key in enumerate(label_keys):
-
-            if label_key is None:
-                new_labels[i - k] = Labels(['1'])
-                j += 1
-            elif np.isscalar(label_key):  # basic indexing triggered
-                k += 1
-            elif i - k >= out.ndim:
-                raise IndexError(f"Too many indices for array: "
-                                 f"array is {out.ndim}-dimensional, "
-                                 f"but {i + 1} were indexed")
-            else:
-                if isinstance(label_key, tuple):
-                    label_key = np.asarray(label_key)
-                labels = np.atleast_1d(np.squeeze(self.labels[i - j][label_key]
-                                                  ))
-                if labels.ndim > 1:
-                    lab_list = labels.decompose()
-                    new_labels[i - k:i - k + len(labels)] = lab_list
-                    k += len(lab_list) - 1
-                else:
-                    new_labels[i - k] = labels
-
-        if any(l_none := lab is None for lab in new_labels):
-            raise IndexError(f"Too few indices for array: array is {out.ndim}"
-                             f"-dimensional, but {sum(~l_none)} were indexed")
-
-        setattr(out, 'labels', new_labels)
-        return out
-
-    def __setitem__(self, keys, value):
-        keys, _ = self._to_coords(keys)
-        super(LabeledArray, self).__setitem__(keys, value)
-
     def __repr__(self):
         return repr(self.__array__()) + f"\nlabels({self._label_formatter()})"
 
@@ -734,7 +570,7 @@ class LabeledArray(np.ndarray):
         def _liststr(x):
             return f"\n       ".join(x)
 
-        return _liststr([str(lab) for lab in self.labels])
+        return _liststr([str(list(lab)) for lab in self.labels])
 
     def memory(self):
         size = self.nbytes
@@ -827,7 +663,7 @@ class LabeledArray(np.ndarray):
         [['0-1-2-3-4-5-6-7-8-9'], ['0-1-2-3-4', '5-6-7-8-9'], ['0-5', '1-6',...
         """
         new_array = super(LabeledArray, self).reshape(*shape, order=order)
-        lab_mat = functools.reduce(lambda x, y: x @ y, self.labels)
+        lab_mat = functools.reduce(lambda x, y: Labels(x) @ Labels(y), self.labels, Labels(['']))
         new_labels = lab_mat.reshape(*shape, order=order).decompose()
         return LabeledArray(new_array, new_labels)
 
@@ -882,13 +718,13 @@ class LabeledArray(np.ndarray):
         new_labels.pop(levels[0])
 
         new_labels[levels[1] - 1] = (
-                self.labels[levels[0]] @ self.labels[levels[1]]).flatten()
+                Labels(self.labels[levels[0]]) @ Labels(self.labels[levels[1]])).flatten()
 
         all_idx = ([slice(None) if i != levels[0] else sl for i in
                     range(self.ndim)] for sl in range(self.shape[levels[0]]))
 
         arrs = [self.__array__()[tuple(idx)] for idx in all_idx]
-        new_array = concatenate_arrays(arrs, axis=levels[1] - 1)
+        new_array = concatenate_arrays(arrs, axis=levels[1] - 1).astype(self.dtype)
 
         return LabeledArray(new_array, new_labels, dtype=self.dtype)
 
@@ -941,7 +777,7 @@ class LabeledArray(np.ndarray):
 
         idx = [slice(None)] * self.ndim
         if isinstance(indices, str):
-            indices = self.labels[axis].find(indices)
+            indices = self.find(indices, axis)
         elif not isinstance(indices, int):
             indices = np.array(indices)
 
@@ -951,19 +787,19 @@ class LabeledArray(np.ndarray):
             if not isinstance(indices, int):
                 if indices.dtype.kind == 'U':
                     indices = np.array(
-                        [self.labels[axis].find(idx) for idx in indices])
+                        [self.find(idx, axis) for idx in indices])
             idx[axis] = indices
         elif len(indices) == len(axis):
             for i, ax in enumerate(axis):
                 if indices.dtype.kind == 'U':
                     indices = np.array(
-                        [self.labels[ax].find(idx) for idx in indices])
+                        [self.find(idx, ax) for idx in indices])
                 idx[ax] = indices[i]
         else:
             raise ValueError("indices and axis must have the same length")
 
         out = super(LabeledArray, self).take(indices, axis, **kwargs)
-        labels = [l[i] for i, l in zip(idx, self.labels)
+        labels = [l[i] for i, l in zip(idx, map(Labels, self.labels))
                   if not np.isscalar(l[i])]
         for i, l in enumerate(labels):
             if l.ndim > 1:
@@ -1097,27 +933,28 @@ class LabeledArray(np.ndarray):
             ids = tuple(map(str, ids))
             all_dict = {ids[0]: self.to_dict(), ids[1]: other.to_dict()}
             combined = combine(all_dict, (0, axis + 1),
-                               self.labels[0].delimiter)
+                               '-')
             return LabeledArray.from_dict(combined)
 
-        new_labels = list(self.labels)
+        new_labels = list(map(Labels, self.labels))
         idx = [slice(None)] * self.ndim
         new = np.hstack((self.labels[axis], other.labels[axis]))
         for i in range(self.ndim):
             if i == axis:
                 if not is_unique(new):
                     new_labels[i] = make_array_unique(
-                        new.astype(str), self.labels[i].delimiter)
+                        new.astype(str), '-')
+                        # self.labels[i].delimiter)
                 else:
                     new_labels[i] = new
-            elif not (is_unique(new_labels[i]) and is_unique(other.labels[i])):
+            elif not (is_unique(new_labels[i]) and is_unique(Labels(other.labels[i]))):
                 raise NotImplementedError(
                     "Cannot concatenate arrays with non-unique labels "
                     f"{new_labels[i]}, {other.labels[i]}")
             elif self.shape[i] == other.shape[i]:
                 if np.any(self.labels[i] != other.labels[i]):
                     idx[i] = get_subset_reorder_indices(
-                        other.labels[i], self.labels[i])
+                        Labels(other.labels[i]), Labels(self.labels[i]))
             elif mismatch == 'raise':
                 raise ValueError(
                     "When mismatch is 'raise', the base array must the same "
@@ -1125,15 +962,15 @@ class LabeledArray(np.ndarray):
                     f"axis, but along dimension {i} the base array has size "
                     f"{self.shape[i]} and the input array has size "
                     f"{other.shape[i]}")
-            elif self.labels[i].shape[0] < other.labels[i].shape[0]:
+            elif len(self.labels[i]) < len(other.labels[i]):
                 if mismatch == 'shrink':
                     idx[i] = get_subset_reorder_indices(
-                        other.labels[i], self.labels[i])
+                        np.array(other.labels[i]), np.array(self.labels[i]))
                 else:
                     raise NotImplementedError(
                         f"No method associated with mismatch = '{mismatch}',"
                         " try setting mismatch to 'shrink' or 'raise'")
-            elif self.labels[i].shape[0] > other.labels[i].shape[0]:
+            elif len(self.labels[i]) > len(other.labels[i]):
                 raise NotImplementedError(
                     "Base array must the same size or smaller than input "
                     "array in all but the concatination axes. \nBase size:"
@@ -1252,8 +1089,7 @@ class Labels(np.char.chararray):
         maxsplit: int = -1,
     ):
         """
-        Return a list of the words in the string, using sep as the delimiter
-         string.
+        Return a list of the words in the string, using sep as the delimiter string.
 
         sep
             The delimiter according which to split the string.
@@ -1460,7 +1296,7 @@ def add_to_list_if_not_present(lst: list, element: Iterable):
     lst.extend(x for x in element if not (x in seen or seen.add(x)))
 
 
-def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
+def inner_all_keys(data: dict | np.ndarray | list, keys: list = None, lvl: int = 0):
     """Get all keys of a nested dictionary.
 
     Parameters
@@ -1497,7 +1333,7 @@ def inner_all_keys(data: dict, keys: list = None, lvl: int = 0):
             if np.isscalar(d):
                 continue
             inner_all_keys(d, keys, lvl + 1)
-    elif isinstance(data, (np.ndarray, list, tuple)):
+    elif isinstance(data, (np.ndarray, list)):
         data = np.atleast_1d(data)
         rows = range(data.shape[0])
         if len(keys) < lvl + 1:
@@ -1550,8 +1386,6 @@ def combine(data: dict, levels: tuple[int, int], delim: str = '-') -> dict:
     levels: tuple[int, int]
         The levels to combine, e.g. (0, 1) will combine the 1st and 2nd level
         of the dict keys into one level at the 2nd level.
-    delim: str, optional
-        The delimiter to use when combining keys, by default '-'
 
     Returns
     -------
@@ -1699,7 +1533,7 @@ if __name__ == "__main__":
     #                                                       "Audio/LS"),
     #          "aud_lm": ((-0.5, 1.5), "Audio/LM"), "aud_jl": ((-0.5, 1.5),
     #                                                          "Audio/JL"),
-    #          "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM")
+    #          "go_ls": ((-0.5, 1.5), "Go/LS"), "go_lm": ((-0.5, 1.5), "Go/LM"),
     #          "go_jl": ((-0.5, 1.5), "Go/JL")}
     # task = "SentenceRep"
     # root = os.path.expanduser("~/Box/CoganLab")

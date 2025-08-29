@@ -449,7 +449,7 @@ def nan_common_denom(array: LabeledArray, sort: bool = True,
                      for i in range(array.ndim)]
         order = np.reshape(order, new_shape)
         data = np.take_along_axis(array.__array__(), order, axis=trials_ax)
-        data = LabeledArray(data, array.labels.copy())
+        data = LabeledArray(data, array.labels)
     else:
         data = array
 
