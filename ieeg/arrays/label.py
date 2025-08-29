@@ -314,40 +314,7 @@ class LabeledArray(cla):
     [1] https://numpy.org/doc/stable/user/basics.subclassing.html
     [2] https://numpy.org/doc/stable/user/basics.indexing.html
     """
-    labels: tuple[tuple[str, ...], ...]
-
-    # def __new__(cls, input_array, labels=None, **kwargs):
-    #     # This calls the C tp_new with type=cls; C code sets labels internally.
-    #     if labels is not None:
-    #         return super().__new__(cls, input_array, labels=labels)
-    #     else:
-    #         return super().__new__(cls, input_array)
-
-    def __reduce__(self):
-        # Get the parent's __reduce__ tuple
-        pickled_state = super(LabeledArray, self).__reduce__()
-        # Create our own tuple to pass to __setstate__
-        new_state = pickled_state[2] + (self.labels,)
-        # Return a tuple that replaces the parent's __setstate__
-        # tuple with our own
-        return (pickled_state[0], pickled_state[1], new_state)
-
-    def __setstate__(self, state):
-        self.labels = state[-1]  # Set the info attribute
-        # Call the parent's __setstate__ with the other tuple elements.
-        super(LabeledArray, self).__setstate__(state[0:-1])
-
-    def swapaxes(self, axis1, axis2):
-        new = list(self.labels)
-        new[axis1], new[axis2] = new[axis2], new[axis1]
-        arr = super(LabeledArray, self).swapaxes(axis1, axis2)
-        return LabeledArray(arr, new)
-
-    def transpose(self, axes):
-        axes = np._core.numeric.normalize_axis_tuple(axes, self.ndim)
-        new_labels = [self.labels[i] for i in axes]
-        arr_t = super(LabeledArray, self).transpose(axes)
-        return LabeledArray(arr_t, new_labels)
+    labels: tuple['Labels', ...]
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
@@ -570,7 +537,7 @@ class LabeledArray(cla):
         def _liststr(x):
             return f"\n       ".join(x)
 
-        return _liststr([str(list(lab)) for lab in self.labels])
+        return _liststr([str(Labels(lab)) for lab in self.labels])
 
     def memory(self):
         size = self.nbytes
@@ -710,23 +677,7 @@ class LabeledArray(cla):
         array([3.5, 5.5])
         labels(['c', 'd'])
         """
-
-        assert levels[0] >= 0, "first level must be >= 0"
-        assert levels[1] > levels[0], "second level must be > first level"
-
-        new_labels = list(self.labels).copy()
-        new_labels.pop(levels[0])
-
-        new_labels[levels[1] - 1] = (
-                Labels(self.labels[levels[0]]) @ Labels(self.labels[levels[1]])).flatten()
-
-        all_idx = ([slice(None) if i != levels[0] else sl for i in
-                    range(self.ndim)] for sl in range(self.shape[levels[0]]))
-
-        arrs = [self.__array__()[tuple(idx)] for idx in all_idx]
-        new_array = concatenate_arrays(arrs, axis=levels[1] - 1).astype(self.dtype)
-
-        return LabeledArray(new_array, new_labels, dtype=self.dtype)
+        return super(LabeledArray, self).combine(levels)
 
     def take(self, indices, axis=None, **kwargs):
         """Take elements from an array along an axis.
@@ -775,36 +726,7 @@ class LabeledArray(cla):
         [['a', 'b'], ['c', 'e'], ['f', 'g', 'h', 'i']]
         """
 
-        idx = [slice(None)] * self.ndim
-        if isinstance(indices, str):
-            indices = self.find(indices, axis)
-        elif not isinstance(indices, int):
-            indices = np.array(indices)
-
-        if axis is None:
-            return self.flat[indices]
-        elif isinstance(axis, int):
-            if not isinstance(indices, int):
-                if indices.dtype.kind == 'U':
-                    indices = np.array(
-                        [self.find(idx, axis) for idx in indices])
-            idx[axis] = indices
-        elif len(indices) == len(axis):
-            for i, ax in enumerate(axis):
-                if indices.dtype.kind == 'U':
-                    indices = np.array(
-                        [self.find(idx, ax) for idx in indices])
-                idx[ax] = indices[i]
-        else:
-            raise ValueError("indices and axis must have the same length")
-
-        out = super(LabeledArray, self).take(indices, axis, **kwargs)
-        labels = [l[i] for i, l in zip(idx, map(Labels, self.labels))
-                  if not np.isscalar(l[i])]
-        for i, l in enumerate(labels):
-            if l.ndim > 1:
-                labels = labels[:i] + l.decompose()
-        return LabeledArray(out, labels, dtype=self.dtype)
+        return super(LabeledArray, self).take(indices, axis, **kwargs)
 
     def dropna(self) -> 'LabeledArray':
         """Remove all nan values from the array.
@@ -838,18 +760,7 @@ class LabeledArray(cla):
                ['0', '1']
                ['0', '1'])
         """
-        new_labels = list(self.labels)
-        isnan = np.isnan(self.__array__())
-        idx = []
-        for i in range(self.ndim):
-            axes = tuple(j for j in range(self.ndim) if j != i)
-            mask = np.all(isnan, axis=axes)
-            not_mask = ~mask
-            if np.any(mask):
-                new_labels[i] = tuple(np.array(new_labels[i])[not_mask])
-            idx.append(not_mask)
-        index = np.ix_(*idx)
-        return self[index]
+        return super(LabeledArray, self).dropna()
 
     def concatenate(self, other: 'LabeledArray', axis: int = 0,
                     mismatch: str = 'raise', ids: tuple[str, str] = ('0', '1'),
@@ -1139,8 +1050,13 @@ class Labels(np.char.chararray):
                                               self.delimiter)
         return list(map(Labels, new_labels))
 
-    def find(self, value) -> int | tuple[int]:
-        """Get the index of the first instance of a value in the Labels"""
+    def find(self, value, **kwargs) -> int | tuple[int]:
+        """Get the index of the first instance of a value in the Labels
+
+        Parameters
+        ----------
+        **kwargs
+        """
         idx = np.where(self == value)[0]
         if (n := len(idx)) == 0:
             if self.delimiter in self[0]:

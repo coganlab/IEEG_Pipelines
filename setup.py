@@ -21,11 +21,11 @@ npymath_path = op.normpath(op.join(_numpy_abs, '..', 'lib'))
 npyrandom_path = op.normpath(op.join(_numpy_abs, '..', '..', 'random', 'lib'))
 lib_path = [npymath_path, npyrandom_path]
 if sys.platform == 'win32':
-    compile_args = ["/O2"]
+    compile_args = ["/O2", "/GL", "/arch:AVX2", "/DNDEBUG", "/openmp"]
 elif sys.platform == 'linux':
-    compile_args = ["-O3"]
+    compile_args = ["-O3", "-march=native", "-flto", "-fomit-frame-pointer", "-DNDEBUG", "-fopenmp"]
 elif sys.platform == 'darwin':
-    compile_args = ["-O3"]
+    compile_args = ["-O3", "-march=native", "-flto", "-DNDEBUG"]
 else:
     raise NotImplementedError(f"Platform {sys.platform} not supported.")
 
