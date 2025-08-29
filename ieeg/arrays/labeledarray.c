@@ -97,14 +97,11 @@ axhash_find(const AxisHash *ah, const char *key, Py_ssize_t *out)
     uint64_t h = fnv1a64(key ? key : "");
     size_t m = ah->cap - 1;
     size_t pos = (size_t)h & m;
-    const uint64_t *hashes = ah->hashes;
-    const char *const *keys = ah->keys;
-    const int *vals = ah->vals;
     while (1) {
-        const char *k = keys[pos];
+        const char *k = ah->keys[pos];
         if (k == NULL) return 1; /* empty slot => not found */
-        if (hashes[pos] == h && strcmp(k, key) == 0) {
-            *out = (Py_ssize_t)vals[pos];
+        if (ah->hashes[pos] == h && strcmp(k, key) == 0) {
+            *out = (Py_ssize_t)ah->vals[pos];
             return 0;
         }
         pos = (pos + 1) & m;
@@ -208,22 +205,15 @@ labelsblock_from_py(PyObject *labels_in, PyArrayObject *arr)
         if (!lb->axis_labels[ax]) { Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
         for (Py_ssize_t i = 0; i < n; ++i) {
             PyObject *it = PyTuple_GET_ITEM(axis_seq, i);
-            const char *c = NULL;
-            PyObject *s_tmp = NULL;
-            if (PyUnicode_Check(it)) {
-                c = PyUnicode_AsUTF8(it);
-                if (!c) { Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-            } else {
-                s_tmp = PyObject_Str(it);
-                if (!s_tmp) { Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-                c = PyUnicode_AsUTF8(s_tmp);
-                if (!c) { Py_DECREF(s_tmp); Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-            }
+            PyObject *s = PyObject_Str(it);
+            if (!s) { Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
+            const char *c = PyUnicode_AsUTF8(s);
+            if (!c) { Py_DECREF(s); Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
             size_t L = strlen(c) + 1;
             lb->axis_labels[ax][(int)i] = (char *)malloc(L);
-            if (!lb->axis_labels[ax][(int)i]) { if (s_tmp) Py_DECREF(s_tmp); Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
+            if (!lb->axis_labels[ax][(int)i]) { Py_DECREF(s); Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
             memcpy(lb->axis_labels[ax][(int)i], c, L);
-            if (s_tmp) Py_DECREF(s_tmp);
+            Py_DECREF(s);
         }
         Py_DECREF(axis_seq);
         if (axhash_build(&lb->axis_hash[ax], (const char **)lb->axis_labels[ax], (int)n) < 0) { Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
@@ -260,20 +250,16 @@ labelsblock_find(const LabelsBlock *lb, int axis, PyObject *value, Py_ssize_t *o
         if (!c) return -1;
         return axhash_find(&lb->axis_hash[axis], c, out);
     }
-    /* fallback scan for non-unicode keys: convert value once */
-    PyObject *tmp = PyObject_Str(value);
-    if (!tmp) return -1;
-    const char *vc = PyUnicode_AsUTF8(tmp);
-    if (!vc) { Py_DECREF(tmp); return -1; }
+    /* fallback scan for non-unicode keys */
     int n = lb->axis_len[axis];
     for (int i = 0; i < n; ++i) {
-        if (strcmp(vc, lb->axis_labels[axis][i]) == 0) {
-            *out = i;
-            Py_DECREF(tmp);
-            return 0;
-        }
+        PyObject *tmp = PyUnicode_FromString(lb->axis_labels[axis][i]);
+        if (!tmp) return -1;
+        int eq = PyObject_RichCompareBool(value, tmp, Py_EQ);
+        Py_DECREF(tmp);
+        if (eq == 1) { *out = i; return 0; }
+        if (eq < 0) return -1;
     }
-    Py_DECREF(tmp);
     return 1;
 }
 
@@ -511,40 +497,6 @@ static PyObject *
 LabeledArray_subscript(PyObject *self, PyObject *key)
 {
     LabeledArrayObject *obj = (LabeledArrayObject *)self;
-    /* hot path: single integer index (iteration common case) */
-    if (PyLong_Check(key)) {
-        PyObject *res = PyArray_Type.tp_as_mapping->mp_subscript(self, key);
-        if (!res) return NULL;
-        if (PyArray_Check(res)) {
-            PyObject *target = res;
-            if (!PyObject_TypeCheck(res, (PyTypeObject *)Py_TYPE(self))) {
-                PyObject *viewres = PyArray_View((PyArrayObject *)res, NULL, (PyTypeObject *)Py_TYPE(self));
-                Py_DECREF(res);
-                if (!viewres) return NULL;
-                target = viewres;
-            }
-            LabelsBlock *parent_lb = obj->labels_block;
-            if (parent_lb) {
-                PyObject *ck = PyTuple_Pack(1, key);
-                if (!ck) { Py_DECREF(target); return NULL; }
-                LabelsBlock *child = labelsblock_slice(parent_lb, ck, (PyArrayObject *)target);
-                Py_DECREF(ck);
-                if (child) {
-                    LabeledArrayObject *tobj = (LabeledArrayObject *)target;
-                    LabelsBlock *old = tobj->labels_block;
-                    tobj->labels_block = child;
-                    labelsblock_decref(old);
-                }
-            }
-            if (PyArray_NDIM((PyArrayObject *)target) == 0) {
-                PyObject *scalar = PyObject_CallMethod(target, "item", NULL);
-                Py_DECREF(target);
-                return scalar;
-            }
-            return target;
-        }
-        return res;
-    }
     PyObject *ck = expand_and_convert_key_c(obj, key);
     if (!ck) return NULL;
     PyObject *res = PyArray_Type.tp_as_mapping->mp_subscript(self, ck);
@@ -643,9 +595,7 @@ array_wrap(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     if (!PyArray_Check(out_arr)) { Py_INCREF(out_arr); return out_arr; }
 
     if (PyArray_NDIM((PyArrayObject *)out_arr) == 0) {
-        if (return_scalar == NULL || PyObject_IsTrue(return_scalar)) {
-            return PyObject_CallMethod(out_arr, "item", NULL);
-        }
+        return PyObject_CallMethod(out_arr, "item", NULL);
     }
 
     PyObject *view = PyArray_View((PyArrayObject *)out_arr, NULL, (PyTypeObject *)Py_TYPE(self_obj));
