@@ -14,8 +14,8 @@ from sklearn.svm import SVC  # For support vector classification (SVM)
 from sklearn.decomposition import PCA  # For PCA decomposition (PCA - LDA)
 from sklearn import \
     discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
-from sklearn.base import BaseEstimator, TransformerMixin, clone
-from sklearn.metrics import accuracy_score
+from sklearn.base import BaseEstimator, TransformerMixin, clone  # For weighted PCA (WPCA - LDA)
+from ieeg.decoding.wpca import WPCA
 from joblib import Memory
 
 # Used for naive bayes decoder
@@ -1786,12 +1786,19 @@ class LoopwiseTransformer(BaseEstimator, TransformerMixin):
             for d in range(ndim)
         )
 
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, **fit_params):
         n_loops = X.shape[self.loop_dim]
         self.transformers_ = []
+        # Extract loop-wise weights if provided
+        weights = fit_params.pop('weights', None)
         for i in range(n_loops):
             transformer = clone(self.base_transformer)
-            transformer.fit(X[self.idx(X.ndim, i)], y)
+            if weights is not None:
+                transformer.fit(X[self.idx(X.ndim, i)], y,
+                                weights=weights[self.idx(weights.ndim, i)],
+                                **fit_params)
+            else:
+                transformer.fit(X[self.idx(X.ndim, i)], y, **fit_params)
             self.transformers_.append(transformer)
         return self
 
@@ -1821,14 +1828,16 @@ class PcaLdaClassification(BaseEstimator):
     explained variance: integer, optional, default=80
         the number of modes that explain the cumulative variance of the dataset
 
-    da_type: string, optional, default=lda
+    da_type: string, optional, de    fault=lda
         type of discriminant analysis; lda or qda
 
     """
     model: Pipeline
 
     def __init__(self, explained_variance=0.8, da_type='lda', PCA_kwargs={},
-                 loopwise: int = None, DA_kwargs={}):
+                 loopwise: int = None, weighted: bool = False, DA_kwargs={}):
+        # expose whether this estimator is configured for weighted PCA
+        self.weighted = weighted
         # choose discriminant type
         if (da_type == 'lda'):
             # linear discriminant analysis
@@ -1841,6 +1850,8 @@ class PcaLdaClassification(BaseEstimator):
         if loopwise is not None:
             pca_transformer = LoopwiseTransformer(
                 PCA(**PCA_kwargs), loop_dim=loopwise)
+        elif weighted:
+            pca_transformer = WPCA(**PCA_kwargs)
         else:
             pca_transformer = PCA(**PCA_kwargs)
 
@@ -1863,6 +1874,9 @@ class PcaLdaClassification(BaseEstimator):
         ],
         memory=Memory())
         obj.model.set_output(transform="default")
+        # preserve configuration flags
+        if hasattr(self, 'weighted'):
+            obj.weighted = self.weighted
         return obj
 
     def fit(self, X, y=None, **params):
@@ -2068,4 +2082,9 @@ class PcaEstimateDecoder(BaseEstimator):
         """
         from sklearn.metrics import accuracy_score
         return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
+
+if __name__ == "__main__":
+    pca = PcaLdaClassification()
+    wpca = WPCA()
+    wpca.set_output()
 
