@@ -278,7 +278,8 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
         fit_params = {}
         if w_flat is not None:
             w = np.where(np.isnan(x_train), 0., w_flat[:train_idx.shape[0]])
-            fit_params['pca__weights'] = w
+            # route weights to the PCA step inside the pipeline
+            fit_params['weights'] = w
         model.fit(x_train, y_train, **fit_params)
         pred = model.predict(x_test)
         return confusion_matrix(y_test, pred, label_cats, namespace=xp)

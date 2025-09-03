@@ -1852,6 +1852,8 @@ class PcaLdaClassification(BaseEstimator):
                 PCA(**PCA_kwargs), loop_dim=loopwise)
         elif weighted:
             pca_transformer = WPCA(**PCA_kwargs)
+            pca_transformer.set_fit_request(weights=True)
+            pca_transformer.set_transform_request(weights=True)
         else:
             pca_transformer = PCA(**PCA_kwargs)
 
@@ -1877,6 +1879,14 @@ class PcaLdaClassification(BaseEstimator):
         # preserve configuration flags
         if hasattr(self, 'weighted'):
             obj.weighted = self.weighted
+        # Ensure WPCA requests 'weights' metadata after cloning
+        try:
+            p = obj.model['pca']
+            if isinstance(p, WPCA):
+                p.set_fit_request(weights=True)
+                p.set_transform_request(weights=True)
+        except Exception:
+            pass
         return obj
 
     def fit(self, X, y=None, **params):
