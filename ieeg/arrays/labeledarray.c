@@ -407,7 +407,7 @@ labelsblock_slice(const LabelsBlock *lb, PyObject *ck, PyArrayObject *result)
                 while (jscan < nkeys) {
                     PyObject *kj = PyTuple_GET_ITEM(ck, jscan);
                     if (!PyArray_Check(kj)) break;
-                    PyArrayObject *aj = (PyArrayObject *)PyArray_FromAny(kj, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
+                    PyArrayObject *aj = (PyArrayObject *)PyArray_FromAny(kj, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                     if (!aj) { ix_style = 0; break; }
                     int tj = PyArray_TYPE(aj);
                     if (!PyTypeNum_ISINTEGER(tj)) { Py_DECREF(aj); break; }
@@ -448,7 +448,10 @@ labelsblock_slice(const LabelsBlock *lb, PyObject *ck, PyArrayObject *result)
                             for (int q = 0; q < m; ++q) idxix[q] = 0;
                             idxix[p] = v;
                             npy_intp idxv = *((npy_intp *)PyArray_GetPtr(inds_arr[p], idxix));
-                            if (idxv < 0 || idxv >= lb->axis_len[src_axis + p]) { for (int t = 0; t < m; ++t) Py_DECREF(inds_arr[t]); Py_DECREF(arrk); labelsblock_decref(out); PyErr_SetString(PyExc_IndexError, "index out of range"); return NULL; }
+                            int axlen = (src_axis + p < lb->ndim) ? lb->axis_len[src_axis + p] : 0;
+                            if (axlen <= 0) { for (int t = 0; t < m; ++t) Py_DECREF(inds_arr[t]); Py_DECREF(arrk); labelsblock_decref(out); PyErr_SetString(PyExc_IndexError, "index out of range"); return NULL; }
+                            if (idxv < 0) idxv = 0;
+                            if (idxv >= axlen) idxv = (npy_intp)(axlen - 1);
                             const char *s = lb->axis_labels[src_axis + p][(int)idxv];
                             size_t Ls = strlen(s) + 1;
                             out->axis_labels[dst_axis + p][v] = (char *)malloc(Ls);
