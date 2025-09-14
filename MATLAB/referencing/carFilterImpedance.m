@@ -22,9 +22,9 @@ function [ieegFilt, meanIeeg] = carFilterImpedance(ieeg, badChan)
 goodChan = setdiff(1:size(ieeg, 1), badChan);
 
 % Subtract the mean of each channel across trials from the EEG data (excluding bad channels)
-ieegFilt = ieeg - mean(ieeg(goodChan, :, :), 1);
+ieegFilt = ieeg - mean(ieeg(goodChan, :, :), 1,"omitnan");
 
 % Calculate the mean of the filtered EEG data across good channels
-meanIeeg = squeeze(mean(ieeg(goodChan, :, :), 1));
+meanIeeg = squeeze(mean(ieeg(goodChan, :, :), 1,"omitnan"));
 
 end

@@ -30,6 +30,23 @@ function ax = visTimeGenAcc1DCluster_v2(decodeStruct,decodeStructShuffle,timeEpo
 %   options = struct('pVal2Cutoff', 0.05, 'timePad', 0, 'clabel', "Output Value", ...);
 %   ax = visTimeGenAcc1DCluster_v2(decodeStruct, decodeStructShuffle, timeEpoch, options);
 
+
+arguments
+    decodeStruct   
+    decodeStructShuffle
+    timeEpoch
+    options.pVal2Cutoff double = 0.05;    
+    options.timePad double = 0.1;
+    options.clabel string = "Output Value"
+    options.axisLabel string = ""
+    options.clowLimit double = 0
+    options.maxVal = 1;
+    options.chanceVal = 0.1111;
+    options.colval = [0 0 1]
+    options.labels = {'Auditory','Go','ResponseOnset'}
+    options.tileaxis = [];
+end
+
 % Extract options
 pVal2Cutoff = options.pVal2Cutoff;
 timePad = options.timePad;

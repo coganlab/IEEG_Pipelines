@@ -418,7 +418,7 @@ xstd2 = sqrt(sum(conj(xc).*xc,1)/(n2-1));
 
 sx1x2 = sqrt(xstd1.^2/n1 + xstd2.^2/n2);
 
-t = (xmean1 - xmean2) ./ sx1x2;
+t = (xmean1 - xmean2)./sx1x2 ;
 df = n1+n2-2;
 
 end

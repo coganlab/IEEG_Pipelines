@@ -1,4 +1,4 @@
-function ieegStructAll = extractRawDataWithROI(Subject,options)
+function ieegStructAll = extractRawDataWithROI(Subject, options)
 % Extracts raw data based on specified options for each subject in the Subject structure
 % and returns the extracted data in the ieegStructAll structure.
 %
@@ -25,6 +25,9 @@ function ieegStructAll = extractRawDataWithROI(Subject,options)
 %           Response time threshold to remove faster response trials
 %       - remWMchannels: logical (default: true)
 %           True to remove white matter channels
+%       - remNoiseThreshold: double (default: 10)
+%           True to remove white matter channels
+%
 %
 % Returns:
 %   ieegStructAll: struct
@@ -37,39 +40,43 @@ arguments
     options.roi = '' % anatomical extraction; e.g., {'precentral', 'superiortemporal'}
     options.subsetElec cell = '' % subset of electrodes to select from stats 
     options.isCAR logical = true; % true to perform CAR subtraction
-    options.remNoiseTrials logical = true; % true to remove all noisy trials
-    options.remNoResponseTrials logical = true; % true to remove all no-response trials    
-    options.remFastResponseTimeTrials double = -1; % response time threshold to remove all faster response trials    
+    options.remNoiseTrials logical = false; % true to remove all noisy trials
+    options.remNoResponseTrials logical = false; % true to remove all no-response trials    
+    options.remFastResponseTimeTrials double = 0; % response time threshold to remove all faster response trials   
+    options.remlongDurationTrials double = inf % response duration threshold to remove longer duration trials   
+    options.remNoiseThreshold double = -1; % noise threshold to remove noisy trials
     options.remWMchannels logical = true; % remove white matter channels
+    options.isiGap double = 1;
 end
 
-% Iterate over each subject
-for iSubject = 1:length(Subject)
-    Subject(iSubject).Name
+% Precompute subject-specific data that does not depend on the options
+numSubjects = length(Subject);
+ieegStructAll = struct('ieegStruct', cell(1, numSubjects), ...
+                       'channelName', cell(1, numSubjects), ...
+                       'trialInfo', cell(1, numSubjects));
+                   
+for iSubject = 1:numSubjects
+    currentSubject = Subject(iSubject);
+    disp(currentSubject.Name);
     
     % Extract relevant information for the current subject
-    Trials = Subject(iSubject).Trials;
+    Trials = currentSubject.Trials;
     numTrials = length(Trials);
-    chanIdx = Subject(iSubject).goodChannels;
-    
-    % Initialize counters and index arrays
-    counterN = 0;
-    counterNR = 0;
-    noiseIdx = zeros(1, numTrials);
-    noResponseIdx = zeros(1, numTrials);
-    negResponseIdx = zeros(1, numTrials);
+    goodChan = currentSubject.goodChannels;
     
     % Extract anatomical and channel names from the subject information
-    anatName = {Subject(iSubject).ChannelInfo.Location};
+    anatName = {currentSubject.ChannelInfo.Location};    
     anatName(cellfun(@isempty, anatName)) = {'dummy'};
     
-    channelName = {Subject(iSubject).ChannelInfo.Name};
-    channelName(cellfun(@isempty, channelName)) = {'dummy'};
+    channelName = {currentSubject.ChannelInfo.Name};
+    chanIdx = ismember(1:length(channelName),goodChan);
+%     channelName(cellfun(@isempty, channelName)) = {'dummy'};
+    chanIdx(cellfun(@isempty, channelName)) = 0;
     assert(length(channelName) == length(anatName), 'Channel Dimension mismatch')
     
     % Identify white matter channels
     whiteMatterIds = false(size(channelName));
-    whiteMatterIds(Subject(iSubject).WM) = true;
+    whiteMatterIds(currentSubject.WM) = true;
     
     % Filter anatomical and channel names based on the selected channels
     anatName = anatName(chanIdx);
@@ -78,15 +85,15 @@ for iSubject = 1:length(Subject)
     
     % Select channels based on the specified region of interest (ROI)
     if (~isempty(options.roi))
-        anatChanId = false(size(chanIdx));
         roirequested = options.roi;
-        for iRoi = 1:length(roirequested)
+        anatChanId = contains(anatName, roirequested{1});
+        for iRoi = 2:length(roirequested)
             anatChanId = anatChanId | contains(anatName, roirequested{iRoi});
         end
         disp(['Selecting desired anatomy: ' num2str(sum(anatChanId))])
     else
         disp('No specified anatomy; Extracting all channels')
-        anatChanId = true(size(chanIdx));
+        anatChanId = true(size(anatName));
     end
     
     % Select channels based on the specified subset of electrodes
@@ -95,7 +102,7 @@ for iSubject = 1:length(Subject)
         disp(['Selecting desired input channel: ' num2str(sum(selectChanId))])
     else
         disp('No specified input channels; Extracting all channels')
-        selectChanId = true(size(chanIdx));
+        selectChanId = true(size(channelName));
     end
     
     % Remove white matter channels if specified
@@ -103,7 +110,7 @@ for iSubject = 1:length(Subject)
         disp(['Removing white matter channels: ' num2str(sum(whiteMatterIds))])
         nonwhiteMatterId = ~whiteMatterIds;
     else
-        nonwhiteMatterId = true(size(chanIdx));
+        nonwhiteMatterId = true(size(whiteMatterIds));
     end
     
     % Combine channel selection criteria
@@ -112,8 +119,6 @@ for iSubject = 1:length(Subject)
     % Check if any channels are selected for extraction
     if (isempty(find(chan2select, 1)))
         disp('No requested channels found; Iterating to the next subject');
-        ieegStructAll(iSubject).ieegStruct = [];
-        ieegStructAll(iSubject).channelName = [];
         continue;  % Forces the iteration for the next subject
     else
         disp(['Total number of selected channels: ' num2str(sum(chan2select))]);
@@ -121,66 +126,100 @@ for iSubject = 1:length(Subject)
     
     % Extract relevant information for selected channels
     channelNameAnat = channelName(chan2select);
-    
+    responseTime = nan(1,length(Trials));
+    responseDuration = nan(1,length(Trials));
     % Remove noisy, no-response, and fast response time trials if specified
-    if (options.remNoiseTrials || options.remNoResponseTrials || options.remFastResponseTimeTrials >= 0)
-        % Iterate over trials and identify noisy, no-response, and negative response time trials
-        for iTrials = 1:length(Trials)
-            if (options.remNoiseTrials && Trials(iTrials).Noisy == 1)
-                counterN = counterN + 1;
-                noiseIdx(counterN) = iTrials;
-            end
-            
-            if (options.remNoResponseTrials && Trials(iTrials).NoResponse == 1)
-                counterNR = counterNR + 1;
-                noResponseIdx(counterNR) = iTrials;
-            end
-            
-            if (options.remFastResponseTimeTrials >= 0)
-                if (~isempty(Trials(iTrials).ResponseStart))
-                    RespTime = (Trials(iTrials).ResponseStart - Trials(iTrials).Go) ./ 30000;
-                else
-                    RespTime = 0;
-                end
-                if (RespTime < options.remFastResponseTimeTrials)
-                    negResponseIdx(iTrials) = 1;
+    negResponseTrials = false(1, numTrials);
+    longResponseTrials = false(1, numTrials);
+    noisyTrials = false(1, numTrials);
+    noResponseTrials = false(1, numTrials);
+    if (options.remNoiseTrials)
+         noisyTrials = [Trials.Noisy] == 1;
+    end
+    if (options.remNoResponseTrials)
+         noResponseTrials = [Trials.Noisy] == 1;
+    end
+     baseRemoveTrials = [];
+     for iTrials = 1:numTrials
+        if (~isempty(Trials(iTrials).ResponseStart))
+            RespTime = (Trials(iTrials).ResponseStart - Trials(iTrials).Go) ./ 30000;
+            RespDuration = (Trials(iTrials).ResponseEnd - Trials(iTrials).ResponseStart) ./ 30000;
+        else
+            RespTime = nan;
+            RespDuration = nan;
+        end
+        if (RespTime < options.remFastResponseTimeTrials)
+            negResponseTrials(iTrials) = true;
+        end
+        if (RespDuration >= options.remlongDurationTrials)
+            longResponseTrials(iTrials) = true;
+        end
+        responseTime(iTrials) = RespTime;
+        responseDuration(iTrials) = RespDuration;
+
+         if(strcmp(options.Epoch,'Start'))
+            if(iTrials>1)
+                startTrial = Trials(iTrials).Start./30000;
+                prevEndTrial = Trials(iTrials-1).ResponseEnd./30000;
+                if(~isempty(prevEndTrial)&&((startTrial-prevEndTrial)<options.isiGap))
+                    baseRemoveTrials = [baseRemoveTrials iTrials];
                 end
             end
         end
-        
-        disp(['Removing Noisy trials: ' num2str(counterN)])
-        disp(['Removing Trials with no-response: ' num2str(counterNR)])
-        disp(['Removing Trials with negative response time: ' num2str(sum(negResponseIdx))])
-    end
+     end
+
+   
     
+
+    
+   
+    disp(['Removing Noisy trials: ' num2str(sum(noisyTrials))])
+    disp(['Removing Trials with no-response: ' num2str(sum(noResponseTrials))])
+    disp(['Removing Trials with negative response time: ' num2str(sum(negResponseTrials))])
+    disp(['Removing Trials with longer Duration: ' num2str(sum(longResponseTrials))])
+    disp(['Removing Trials with shorter baseline ISI: ' num2str(length(baseRemoveTrials))])
     % Combine trial indices to remove into a single array
-    trials2remove = unique([noiseIdx, noResponseIdx, find(negResponseIdx)]);
-    
-    % Use logical indexing to select desired trials
+    trials2remove = unique([find(noisyTrials), find(noResponseTrials), find(negResponseTrials), find(longResponseTrials), baseRemoveTrials]);
     trials2select = setdiff(1:numTrials, trials2remove);
-    TrialSelect = Trials(trials2select);
+    
     
     % Extract epoch data for selected trials and channels
-    ieegEpoch = trialIEEG(TrialSelect, chanIdx, options.Epoch, options.Time .* 1000);
+    ieegEpoch = trialIEEG(Trials(trials2select), find(chanIdx), options.Epoch, options.Time .* 1000);
     ieegEpoch = permute(ieegEpoch, [2, 1, 3]);
-    fs = Subject(iSubject).Experiment.processing.ieeg.sample_rate```matlab
+
+    fs = currentSubject.Experiment.processing.ieeg.sample_rate;
     ieegStruct = ieegStructClass(ieegEpoch, fs, options.Time, [1, fs/2], options.Epoch);
     
     % Perform common average referencing (CAR) if specified
     if (options.isCAR)
         ieegStruct = extractCar(ieegStruct);
+        %ieegStruct = extractCableCar(ieegStruct,channelName);
     end
+    
+    % Removing noisy trials
+    if options.remNoiseThreshold > 0
+        [~, goodtrialIds] = remove_bad_trials(ieegStruct.data, threshold = options.remNoiseThreshold);
+        %goodTrialsCommon = extractCommonTrials(goodtrials);
+    else
+        goodtrialIds = ones(size(ieegEpoch,1),size(ieegEpoch,2));
+    end
+
+    for iChan = 1:size(ieegEpoch,1)
+        % Assigning noisy trials to values of 0
+        ieegStruct.data(iChan,~goodtrialIds(iChan,:),:) = nan;
+    end
+    
     
     % Filter data based on selected channels
     ieegStruct.data = ieegStruct.data(chan2select, :, :);
     assert(length(channelNameAnat) == size(ieegStruct.data, 1), 'Channel mismatch');
-    assert(length(TrialSelect) == size(ieegStruct.data, 2), 'Trial mismatch');
     
     % Store the extracted data in the output structure
     ieegStructAll(iSubject).ieegStruct = ieegStruct;
     ieegStructAll(iSubject).channelName = channelNameAnat;
-    ieegStructAll(iSubject).trialInfo = Subject(iSubject).trialInfo(trials2select);
+    ieegStructAll(iSubject).trialInfo = currentSubject.trialInfo(trials2select);
+    
+    ieegStructAll(iSubject).responseTime = responseTime(trials2select);
+    ieegStructAll(iSubject).responseDuration = responseDuration(trials2select);
 end
 end
-
-

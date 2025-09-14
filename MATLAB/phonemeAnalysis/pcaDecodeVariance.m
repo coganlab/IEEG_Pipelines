@@ -27,7 +27,7 @@ function [lossMod,Cmat,yhat,aucVect,nModes,modelweights] = pcaDecodeVariance(sig
 %          tempLogistic = templateLinear('Learner','svm');
 %           linearModel = fitcecoc((scoreTrainGrid),YTrain,'CrossVal','off','Learners',tempLogistic,'Coding','allpairs');
         [yhat,yscore] = predict(linearModel,scoreTestGrid);
-        labUnique = unique(YTest);
+        labUnique = unique(YTest)
         aucVect = [];
         if(isauc)
             for t = 1:length(labUnique)

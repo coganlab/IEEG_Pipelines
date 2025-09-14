@@ -17,11 +17,11 @@ function goodTrialsCommon = extractCommonTrials(goodTrials)
 %   goodTrialsCommon = extractCommonTrials(goodTrials);
 %
     % Initialize the common trials with the first set of good trials
-    goodTrialsCommon = goodTrials{1};
+    goodTrialsCommon = find(goodTrials(1,:));
     
     % Iterate through the remaining sets of good trials
-    for na = 2:length(goodTrials)
+    for na = 2:size(goodTrials,1)
         % Find the intersection of the current set with the common trials
-        goodTrialsCommon = intersect(goodTrialsCommon, goodTrials{na});
+        goodTrialsCommon = intersect(goodTrialsCommon, find(goodTrials(na,:)));
     end
 end
