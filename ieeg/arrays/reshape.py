@@ -114,7 +114,7 @@ def merge(mat1: ArrayLike, mat2: ArrayLike, overlap: int, axis: int = 0
 
 
 def make_data_same(data_fix: ArrayLike, shape: tuple | list, stack_ax: int = 0,
-                   pad_ax: int = -1, make_stacks_same: bool = True,
+                   pad_ax: int = -1, make_stacks_same: bool = False,
                    rng: np.random.Generator = None) -> ArrayLike:
     """Force the last dimension of data_fix to match the last dimension of
     shape.

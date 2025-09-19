@@ -416,13 +416,17 @@ def window_averaged_shuffle(sig1: np.ndarray, sig2: np.ndarray,
     out_mem = (sig1.size + sig2.size) * 8
     batch_size = get_mem() // out_mem
 
-    # Create shuffle distribution
-    res = st.permutation_test(samples, stat_func,
-                              n_resamples=n_perm,
-                              alternative=alt,
-                              batch=batch_size,
-                              axis=obs_axis,
-                              random_state=seed)
+    # Create shuffle distribution; handle singleton case
+    if samples[0].shape[obs_axis] == 1 or samples[1].shape[obs_axis] == 1:
+        res = permutation_test_singleton_group(tuple(samples), stat_func,
+                                               tails, axis=obs_axis)
+    else:
+        res = st.permutation_test(samples, stat_func,
+                                  n_resamples=n_perm,
+                                  alternative=alt,
+                                  batch=batch_size,
+                                  axis=obs_axis,
+                                  random_state=seed)
 
     return res.pvalue
 
@@ -519,6 +523,7 @@ def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
     >>> time_perm_cluster(sig1, sig2, 0.01, n_perm=100000, seed=seed)[0]
     array([False, False, False, False, False,  True,  True,  True,  True,
             True, False, False, False, False, False])
+    >>> time_perm_cluster(sig1[:1], sig2, 0.01, n_perm=100000, seed=seed)[0]
     """
     # check inputs
     if tails == 1:
@@ -540,7 +545,7 @@ def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
         rng = xp.random
     else:
         rng = xp.random.default_rng(seed)
-    sig2 = make_data_same(sig2, sig1.shape, axis, -1, True, rng)
+    sig2 = make_data_same(sig2, sig1.shape, axis, -1, False, rng)
     sample_size = sig1.nbytes + sig2.nbytes
     batch_size = get_mem() // sample_size
     # https://github.com/scipy/scipy/blob/5cf433589639f28cbf5c3911061b07f0c6d
@@ -561,7 +566,15 @@ def time_perm_cluster(sig1: Array, sig2: Array, p_thresh: float,
     # Create binary clusters using the p value threshold
     def _proc(pid: int, sig1: Array, sig2: Array
               ) -> (int, np.ndarray[int], np.ndarray[float]):
-        res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
+        # Use exact singleton-group permutation when needed; otherwise SciPy
+        if sig1.shape[axis] == 1 or sig2.shape[axis] == 1:
+            if sig1.shape[axis] == 1 and sig2.shape[axis] == 1:
+                raise ValueError(f"Both groups cannot have size 1 along "
+                                 f"dim {axis}")
+            res = permutation_test_singleton_group((sig1, sig2), stat_func,
+                                                   tails, axis=axis)
+        else:
+            res = st.permutation_test([sig1, sig2], stat_func, **kwargs)
         p_act = res.pvalue
         diff = res.null_distribution
 
@@ -627,6 +640,85 @@ def _handle_stat_func(stat_func, alt, axis, *sigs):
     return stat_func
 
 
+def permutation_test_singleton_group(data: tuple[np.ndarray, np.ndarray],
+                                     stat_func: callable,
+                                     tail: int = 1,
+                                     axis: int = 0):
+    """Exact permutation test for the special case when one sample has size 1.
+
+    Parameters
+    ----------
+    data : tuple of arrays
+        Two samples (sample_a, sample_b). Exactly one must have size 1 along
+        `axis`.
+    stat_func : callable
+        Function of signature stat_func(x, y, axis=axis) returning the
+        statistic for comparison between x and y.
+    alternative : {'two-sided','greater','less'}
+        Alternative hypothesis.
+    axis : int
+        Observations axis.
+
+    Returns
+    -------
+    result : object
+        Object with attributes `statistic`, `pvalue`, and `null_distribution`.
+    """
+    a, b = data
+    axis = axis if axis >= 0 else a.ndim + axis
+
+    if a.shape[axis] == 1 and b.shape[axis] >= 1:
+        singleton_is_a = True
+        singleton, other = a, b
+    elif b.shape[axis] == 1 and a.shape[axis] >= 1:
+        singleton_is_a = False
+        singleton, other = b, a
+    else:
+        raise ValueError("Exactly one of the samples must have size 1 along axis.")
+
+    # Observed statistic using original order
+    observed_stat = stat_func(a, b, axis=axis)
+
+    # Move observations axis to front for permutation construction
+    singleton_m = np.moveaxis(singleton, axis, 0)
+    other_m = np.moveaxis(other, axis, 0)
+    combined = np.concatenate((singleton_m, other_m), axis=0)
+    total_n = combined.shape[0]  # n + 1
+
+    null_stats = []
+    for k in range(total_n):
+        perm_singleton = combined[k:k + 1, ...]
+        if k == 0:
+            perm_other = combined[1:, ...]
+        elif k == total_n - 1:
+            perm_other = combined[:k, ...]
+        else:
+            perm_other = np.concatenate((combined[:k, ...], combined[k + 1:, ...]), axis=0)
+
+        # Order of arguments must match the original order of (a, b)
+        if singleton_is_a:
+            # original (a, b) == (singleton, other)
+            perm_stat = stat_func(perm_singleton, perm_other, axis=0)
+        else:
+            # original (a, b) == (other, singleton)
+            perm_stat = stat_func(perm_other, perm_singleton, axis=0)
+        null_stats.append(perm_stat)
+
+    null_distribution = np.stack(null_stats, axis=0)
+
+    p_value = 1 - proportion(observed_stat, null_distribution, tail, 0)
+
+    class _Result:
+        __slots__ = ("statistic", "pvalue", "null_distribution")
+
+        def __init__(self, statistic, pvalue, null_distribution):
+            self.statistic = statistic
+            self.pvalue = pvalue
+            self.null_distribution = null_distribution
+
+    return _Result(observed_stat, p_value, null_distribution)
+
+
 def proportion(val: np.ndarray[float, ...] | float,
                comp: np.ndarray[float, ...] = None, tail: int = 1,
                axis: int = None) -> np.ndarray[float, ...] | float:
@@ -671,10 +763,11 @@ def proportion(val: np.ndarray[float, ...] | float,
     >>> proportion(diff2, axis=0)
     array([[1., 1., 0., 0.],
            [0., 0., 1., 1.]])
-    >>> val = 0.5
+    >>> val = 0.55
     >>> compare = np.array([0.2, 0.4, 0.5, 0.7, 0.9])
     >>> proportion(compare)
     array([0.  , 0.25, 0.5 , 0.75, 1.  ])
+    >>> proportion(val, compare)
     >>> val = np.full(5, 0.5)
     >>> compare = np.array([[0.2, 0.4, 0.4, 0.7, 0.9],
     ...                     [0.1, 0.3, 0.6, 0.5, 0.9]])
@@ -698,12 +791,28 @@ def proportion(val: np.ndarray[float, ...] | float,
         case _:
             raise ValueError('tail must be 1, 2, or -1')
 
-    if axis is None and comp is None:
-        return _comp_by_sort(val)
-    elif comp is None:
+    if comp is None:
         return _comp_by_sort(val, axis=axis)
+    elif axis is None:
+        ins = np.array(val).flat
+        new = np.concatenate([np.array(val).flat, comp.flat])
+        val_len = len(ins)
+        out = proportion(new, tail=tail)
     else:
-        raise NotImplementedError()
+        new = np.concatenate([np.expand_dims(val, axis), comp], axis=axis)
+        val_len = new.shape[axis] - comp.shape[axis]
+        out = proportion(new, axis=axis, tail=tail)
+    # split the output
+    sl = [slice(None)] * out.ndim
+    if val_len > 1:
+        sl[axis if axis is not None else 0] = slice(0, val_len)
+        return out[tuple(sl)]
+    elif axis is None:
+        sl[0] = 0
+        return out[tuple(sl)].item()
+    else:
+        sl[axis] = 0
+        return out[tuple(sl)]
 
 
 def _comp_by_sort(diff, axis=0):
