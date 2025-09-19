@@ -67,8 +67,9 @@ def crop_empty_data(raw: mne.io.Raw, bound: str = 'boundary',
         # remove boundary events from annotations
         no_bound = None
         for an in block_an:
-            # if not an['extras']:
-            #     an.pop('extras')
+            if 'extras' in an.keys():
+                if not an['extras']:
+                    an.pop('extras')
             if bound not in an['description']:
                 if no_bound is None:
                     no_bound = mne.Annotations(**an)
