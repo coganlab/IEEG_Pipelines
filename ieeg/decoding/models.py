@@ -9,8 +9,7 @@ from scipy.spatial.distance import cdist
 import math
 from sklearn.pipeline import Pipeline
 from sklearn import linear_model  # For Wiener Filter and Wiener Cascade
-from sklearn.svm import SVR  # For support vector regression (SVR)
-from sklearn.svm import SVC  # For support vector classification (SVM)
+from sklearn.svm import SVR, SVC  # For support vector regression (SVR)
 from sklearn.decomposition import PCA  # For PCA decomposition (PCA - LDA)
 from sklearn import \
     discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
@@ -61,6 +60,15 @@ except ImportError:
     print(
         "\nWARNING: Keras package is not installed. You will be unable to use"
         "all neural net decoders")
+    pass
+
+# pytorch imports
+try:
+    from ieeg.decoding.models_torch import SimpleDecoder, CNNTransformer
+except ImportError:
+    print(
+        "\nWARNING: PyTorch package is not installed. You will be unable to use"
+        "all PyTorch decoders")
     pass
 
 
@@ -1989,7 +1997,7 @@ class PcaEstimateDecoder(BaseEstimator):
 
     """
     model: Pipeline
-    def __init__(self, explained_variance=0.8, clf=SVC(), clf_params={}):
+    def __init__(self, explained_variance=0.8, clf=SVC, clf_params={}):
         self.explained_variance = explained_variance
         self.clf = clf
         self.clf_params = clf_params
@@ -1997,7 +2005,7 @@ class PcaEstimateDecoder(BaseEstimator):
         # Create a pipeline classifier
         self.model = Pipeline(steps=[
             ('pca', PCA(n_components=self.explained_variance)),
-            ('clf', clone(self.clf))
+            ('clf', clf(**clf_params))
         ],
         memory=Memory())
 
@@ -2092,6 +2100,8 @@ class PcaEstimateDecoder(BaseEstimator):
         """
         from sklearn.metrics import accuracy_score
         return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
+
+
 
 if __name__ == "__main__":
     pca = PcaLdaClassification()

@@ -146,7 +146,7 @@ class Decoder(MinimumNaNSplit):
         # if isinstance(self.model, (PcaLdaClassification, PcaEstimateDecoder)) and weights is not None:
         #     params = copy(self.model['pca'].get_params())
         #     self.model['pca'] = WPCA(**params)
-        assert all(lab in self.categories.values() for lab in labels), \
+        assert all(lab in self.categories.values() for lab in labels.tolist()), \
             "Labels must be in the categories"
         xp = array_namespace(x_data)
         n_cats = len(self.categories)
@@ -700,16 +700,18 @@ def flatten_list(nested_list: list[list[str] | str]) -> list[str]:
 
     Examples
     --------
-    >>> flatten_list(['a', ['b', 'c'], 'd'])
+    >>> flatten_list(['a', ['b', 'c'], 'd', 'd'])
     ['a', 'b', 'c', 'd']
     """
-    flat_list = []
-    for element in nested_list:
-        if isinstance(element, list):
-            flat_list.extend(element)
+    result = []
+    for item in nested_list:
+        if isinstance(item, str):
+            result.append(item)
+        elif isinstance(item, (list, tuple, set)):
+            result.extend(flatten_list(item))
         else:
-            flat_list.append(element)
-    return flat_list
+            raise TypeError(f"Unsupported type: {type(item)}")
+    return sorted(set(result), key=result.index)
 
 
 def plot_all_scores(all_scores: dict[str, np.ndarray],
