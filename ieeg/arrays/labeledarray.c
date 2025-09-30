@@ -397,8 +397,8 @@ labelsblock_set_axis_copy(LabelsBlock *lb, int ax, char **src_labels, int n)
     }
     if (axhash_build(&lb->axis_hash[ax], (const char **)lb->axis_labels[ax], n) < 0) return -1;
     if (labelsblock_finalize_axis_from_c(lb, ax) < 0) return -1;
-    return 0;
-}
+            return 0;
+        }
 
 /* Set axis to numeric labels 0..n-1 with hash */
 static NPY_INLINE int
@@ -1680,8 +1680,7 @@ array_function(PyObject *self_obj, PyObject *args)
         if (!PyArray_Check(first)) { Py_RETURN_NOTIMPLEMENTED; }
         nd = PyArray_NDIM((PyArrayObject *)first);
     }
-    if (is_take) {
-        /* Handle np.take with label indices by translating strings to ints and slicing */
+    /* Handlers for transpose/swapaxes/take_along_axis */
     if (is_transpose) {
         PyObject *obj0 = PyTuple_GET_ITEM(fargs, 0);
         if (!PyObject_TypeCheck(obj0, &LabeledArray_Type)) { Py_RETURN_NOTIMPLEMENTED; }
@@ -1803,6 +1802,7 @@ array_function(PyObject *self_obj, PyObject *args)
         Py_DECREF(ck);
         return view;
     }
+    if (is_take) {
         if (!PyTuple_Check(fargs) || PyTuple_GET_SIZE(fargs) < 2) { Py_RETURN_NOTIMPLEMENTED; }
         PyObject *obj = PyTuple_GET_ITEM(fargs, 0);
         PyObject *indices = PyTuple_GET_ITEM(fargs, 1);
