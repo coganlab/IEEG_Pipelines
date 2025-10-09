@@ -14,7 +14,7 @@ from sklearn.decomposition import PCA  # For PCA decomposition (PCA - LDA)
 from sklearn import \
     discriminant_analysis as da  # For LDA decomposition (PCA - LDA)
 from sklearn.base import BaseEstimator, TransformerMixin, clone  # For weighted PCA (WPCA - LDA)
-from ieeg.decoding.wpca import WPCA
+# from ieeg.decoding.wpca import WPCA
 from joblib import Memory
 
 # Used for naive bayes decoder
@@ -33,7 +33,7 @@ try:
     patch_sklearn(["PCA"])
 except ImportError:
     print(
-        "\nWARNING: sklearnex is not installed. You will be unable to use the"
+        "\nWARNING: sklearnex is not installed. You will be unable to use the "
         "PCA decoder acceleration")
     pass
 # Import XGBoost if the package is installed
@@ -1843,9 +1843,7 @@ class PcaLdaClassification(BaseEstimator):
     model: Pipeline
 
     def __init__(self, explained_variance=0.8, da_type='lda', PCA_kwargs={},
-                 loopwise: int = None, weighted: bool = False, DA_kwargs={}):
-        # expose whether this estimator is configured for weighted PCA
-        self.weighted = weighted
+                 loopwise: int = None, DA_kwargs={}):
         # choose discriminant type
         if (da_type == 'lda'):
             # linear discriminant analysis
@@ -1858,10 +1856,6 @@ class PcaLdaClassification(BaseEstimator):
         if loopwise is not None:
             pca_transformer = LoopwiseTransformer(
                 PCA(**PCA_kwargs), loop_dim=loopwise)
-        elif weighted:
-            pca_transformer = WPCA(**PCA_kwargs)
-            pca_transformer.set_fit_request(weights=True)
-            pca_transformer.set_transform_request(weights=True)
         else:
             pca_transformer = PCA(**PCA_kwargs)
 
@@ -1887,14 +1881,6 @@ class PcaLdaClassification(BaseEstimator):
         # preserve configuration flags
         if hasattr(self, 'weighted'):
             obj.weighted = self.weighted
-        # Ensure WPCA requests 'weights' metadata after cloning
-        try:
-            p = obj.model['pca']
-            if isinstance(p, WPCA):
-                p.set_fit_request(weights=True)
-                p.set_transform_request(weights=True)
-        except Exception:
-            pass
         return obj
 
     def fit(self, X, y=None, **params):
@@ -1997,14 +1983,15 @@ class PcaEstimateDecoder(BaseEstimator):
 
     """
     model: Pipeline
-    def __init__(self, explained_variance=0.8, clf=SVC, clf_params={}):
+    def __init__(self, explained_variance=0.8, clf=SVC, clf_params={},
+                 pca=PCA, PCA_kwargs={}):
         self.explained_variance = explained_variance
         self.clf = clf
         self.clf_params = clf_params
 
         # Create a pipeline classifier
         self.model = Pipeline(steps=[
-            ('pca', PCA(n_components=self.explained_variance)),
+            ('pca', pca(n_components=self.explained_variance, **PCA_kwargs)),
             ('clf', clf(**clf_params))
         ],
         memory=Memory())
@@ -2105,6 +2092,4 @@ class PcaEstimateDecoder(BaseEstimator):
 
 if __name__ == "__main__":
     pca = PcaLdaClassification()
-    wpca = WPCA()
-    wpca.set_output()
 

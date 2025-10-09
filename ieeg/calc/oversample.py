@@ -6,8 +6,8 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 
 import itertools
 from functools import partial
-from ieeg.calc.fast import mixup, norm
-from ieeg.arrays.api import array_namespace, is_numpy, intersect1d, setdiff1d, Array
+from ieeg.calc.fast import mixup, norm, mixup2
+from ieeg.arrays.api import array_namespace, is_numpy, intersect1d, setdiff1d
 from decimal import Decimal
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
@@ -32,11 +32,11 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     --------
     >>> import numpy as np
     >>> np.random.seed(0)
-    >>> X = np.vstack((np.arange(1, 9).reshape(4, 2), np.full((4, 2), np.nan)))
-    >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1])
-    >>> msn = MinimumNaNSplit(2, 3)
+    >>> X = np.vstack((np.arange(1, 13).reshape(6, 2), np.full((6, 2), np.nan)))
+    >>> y = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1])
+    >>> msn = MinimumNaNSplit(5, 10, min_non_nan=2)
     >>> for train, test in msn.split(X, y):
-    ...     print("train:", train, "test:", test)
+    ...     print("train:", train, X[train, 0], y[train], "test:", test)
     train: [2 3 4 5] test: [0 1 6 7]
     train: [0 1 6 7] test: [2 3 4 5]
     train: [2 3 4 5] test: [0 1 6 7]
@@ -45,7 +45,7 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
     train: [0 1 6 7] test: [2 3 4 5]
     >>> msn = MinimumNaNSplit(2, 3, which='test', min_non_nan=1)
     >>> for train, test in msn.split(X, y):
-    ...     print("train:", train, "test:", test)
+    ...     print("train:", train, "test:", test, X[test, 0], y[test])
     train: [1 3 4 7] test: [0 2 5 6]
     train: [0 2 5 6] test: [1 3 4 7]
     train: [0 3 5 7] test: [1 2 4 6]
@@ -357,184 +357,184 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
                       )[:, :n_picks]
 
 
-def mixup2(arr: Array, labels: Array, obs_axis: int,
-           alpha: float = 1., seed: int = None, _isnan=None,
-           _time_ax: int = -1) -> None:
-    """Mixup the data using the labels
-
-    Parameters
-    ----------
-    arr : array
-        The data to mixup.
-    labels : array
-        The labels to use for mixing.
-    obs_axis : int
-        The axis along which to apply func.
-    alpha : float
-        The alpha value for the beta distribution.
-    seed : int
-        The seed for the random number generator.
-
-    Examples
-    --------
-    >>> np.random.seed(0)
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
-    >>> labels = np.array([0, 0, 1, 1])
-    >>> mixup2(arr[None], labels, 1)
-    >>> arr
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [6.03943491, 7.03943491]])
-    >>> arr3 = np.arange(24, dtype=float).reshape(2,3,4)
-    >>> arr3[:, 2, :] = float("nan")
-    >>> mixup2(arr3, np.array([1, 0, 1]), 1, seed=42)
-    >>> arr3
-    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
-            [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ 1.99984539,  2.99984539,  3.99984539,  4.99984539]],
-    <BLANKLINE>
-           [[12.        , 13.        , 14.        , 15.        ],
-            [16.        , 17.        , 18.        , 19.        ],
-            [12.25137354, 13.25137354, 14.25137354, 15.25137354]]])
-    >>> import cupy as cp
-    >>> arr4 = cp.array([[1, 2],[3,4], [5, 6],
-    ... [7, 8], [9, 10], [cp.nan, cp.nan]])
-    >>> labels4 = cp.array([0, 0, 0, 1, 1, 1, 1])
-    >>> mixup2(arr4, labels4, 0, seed=0)
-    >>> arr4
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [4.54459201, 5.54459201]])
-    >>> arr4 = cp.array([[1, 2, 3, 4],[3,4, 5, 6], [5, 6, 7, 8],
-    ... [7, 8, 9, 10], [9, 10, 11, 12], [cp.nan, cp.nan, cp.nan, cp.nan]])
-    >>> new = cp.stack(cp.stack(tuple(arr4 for _ in range(1000))) for _ in range(1000))
-    >>> mixup2(new, labels4, 2, seed=0)
-    >>> new[0, 0]
-    array([[ 1.        ,  2.        ,  3.        ,  4.        ],
-           [ 3.        ,  4.        ,  5.        ,  6.        ],
-           [ 5.        ,  6.        ,  7.        ,  8.        ],
-           [ 7.        ,  8.        ,  9.        , 10.        ],
-           [ 9.        , 10.        , 11.        , 12.        ],
-           [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
-    >>> new = cp.ascontiguousarray(cp.stack(cp.stack(tuple(arr4 for _ in range(1000))) for _ in range(1000)).swapaxes(1,2))
-    >>> list(mixup2(new.copy(), labels4, 1, seed=0) for _ in range(100))
-    >>> mixup2(new, labels4, 1, seed=0)
-    >>> new[0, -1, 0:10]
-    array([[ 1.        ,  2.        ,  3.        ,  4.        ],
-           [ 3.        ,  4.        ,  5.        ,  6.        ],
-           [ 5.        ,  6.        ,  7.        ,  8.        ],
-           [ 7.        ,  8.        ,  9.        , 10.        ],
-           [ 9.        , 10.        , 11.        , 12.        ],
-           [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
-           """
-
-    xp = array_namespace(arr, labels)
-
-    if seed is not None:
-        xp.random.seed(seed)
-
-    arr_moved = xp.moveaxis(arr, [obs_axis, _time_ax], [-2, -1])
-
-    if _isnan is None:
-        isnan = xp.isnan(arr_moved).any(-1)
-    else:
-        isnan = _isnan.swapaxes(obs_axis, -1)
-
-    # get any and all in single call
-    isn_sum = isnan.sum(-1, dtype='uintp')
-    if (isn_sum == isnan.shape[-1]).any():
-        raise ValueError("Cannot mixup if any rows are completely NaN")
-
-    unique_labels, label_ids = xp.unique(labels, return_inverse=True)
-
-    mask = isn_sum > 0
-    # Precompute nan and non-nan indices for all batches in one pass
-    batch_shape = isnan.shape[:-1]
-    B = int(xp.prod(xp.asarray(batch_shape)))
-    obs = isnan.shape[-1]
-    mask_flat = mask.reshape(B)
-    isnan_flat = isnan.reshape(B, obs)
-
-    proc_flat = xp.flatnonzero(mask_flat)
-    if proc_flat.size == 0:
-        return
-    selected = isnan_flat[proc_flat]
-
-    # Partition flattened mask once to separate non-NaN (False) and NaN (True)
-    total_elems = selected.size
-    num_non_nan = int((~selected).sum())
-    flat_mask = selected.ravel().astype(bool)
-    if num_non_nan == 0:
-        nn_flat = flat_mask[:0]
-        n_flat = xp.arange(total_elems)
-    elif num_non_nan == total_elems:
-        nn_flat = xp.arange(total_elems)
-        n_flat = flat_mask[:0]
-    else:
-        flat_order = xp.argpartition(flat_mask, num_non_nan - 1)
-        nn_flat = flat_order[:num_non_nan]
-        n_flat = flat_order[num_non_nan:]
-
-    # Recover per-batch row indices and observation indices
-    rows_nn, cols_nn = divmod(nn_flat, obs)
-    rows_n, cols_n = divmod(n_flat, obs)
-
-    # Per-batch counts and offsets (for choices2 sampling)
-    counts_nn = xp.bincount(rows_nn, minlength=proc_flat.shape[0])
-    counts_n = xp.bincount(rows_n, minlength=proc_flat.shape[0])
-    offsets_nn = xp.empty(counts_nn.shape[0] + 1, dtype=counts_nn.dtype)
-    offsets_nn[0] = 0
-    offsets_nn[1:] = xp.cumsum(counts_nn)
-
-    # Sanity: any batch with nans must have at least one non-nan candidate
-    if xp.any((counts_n > 0) & (counts_nn == 0)):
-        raise ValueError("Not enough non-nan values to mixup")
-
-    # Precompute choices2 for all targets at once using offsets into cols_nn
-    if rows_n.size:
-        pool_sizes = counts_nn[rows_n]
-        r2_all = (xp.random.random(rows_n.shape[0]) * pool_sizes).astype(offsets_nn.dtype)
-        pos = offsets_nn[rows_n] + r2_all
-        choices2_all = cols_nn[pos]
-    else:
-        choices2_all = rows_n  # empty
-
-    # Build first-choice (same-class, same-batch) indices for all targets at once
-    K = int(unique_labels.shape[0])
-    target_class_ids = label_ids[cols_n]
-    non_class_ids = label_ids[cols_nn]
-    comp = rows_nn * K + non_class_ids
-    max_len = int(proc_flat.shape[0]) * K
-    counts_comp = xp.bincount(comp, minlength=max_len)
-    offsets_comp = xp.empty(counts_comp.shape[0] + 1, dtype=counts_comp.dtype)
-    offsets_comp[0] = 0
-    offsets_comp[1:] = xp.cumsum(counts_comp)
-    order_comp = xp.argsort(comp)
-    cols_nn_sorted = cols_nn[order_comp]
-    comp_targets = rows_n * K + target_class_ids
-    pool_sizes1 = counts_comp[comp_targets]
-    if xp.any(pool_sizes1 == 0):
-        raise ValueError("Not enough non-nan values to mixup")
-    r1_all = (xp.random.random(rows_n.shape[0]) * pool_sizes1).astype(offsets_comp.dtype)
-    pos1 = offsets_comp[comp_targets] + r1_all
-    choices1_all = cols_nn_sorted[pos1]
-
-    # Mixup coefficients for all targets
-    lam_all = xp.random.beta(alpha, alpha, size=rows_n.shape[0]).astype(arr.dtype)
-    xp.maximum(lam_all, 1 - lam_all, out=lam_all)
-
-    # Vectorized in-place assignment using multi-indexing (no reshape)
-    batch_coords = xp.unravel_index(proc_flat, batch_shape)
-    batch_index_tuple = tuple(coord[rows_n] for coord in batch_coords)
-    lam_all = lam_all[:, None]  # for broadcasting
-    arr_moved[batch_index_tuple + (cols_n,)] = \
-        lam_all * arr_moved[batch_index_tuple + (choices1_all,)]
-    xp.subtract(1, lam_all, out=lam_all)
-    arr_moved[batch_index_tuple + (cols_n,)] += \
-        lam_all * arr_moved[batch_index_tuple + (choices2_all,)]
+# def mixup2(arr: Array, labels: Array, obs_axis: int,
+#            alpha: float = 1., seed: int = None, _isnan=None,
+#            _time_ax: int = -1) -> None:
+#     """Mixup the data using the labels
+#
+#     Parameters
+#     ----------
+#     arr : array
+#         The data to mixup.
+#     labels : array
+#         The labels to use for mixing.
+#     obs_axis : int
+#         The axis along which to apply func.
+#     alpha : float
+#         The alpha value for the beta distribution.
+#     seed : int
+#         The seed for the random number generator.
+#
+#     Examples
+#     --------
+#     >>> np.random.seed(0)
+#     >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+#     ... [float("nan"), float("nan")]])
+#     >>> labels = np.array([0, 0, 1, 1])
+#     >>> mixup2(arr[None], labels, 1)
+#     >>> arr
+#     array([[1.        , 2.        ],
+#            [4.        , 5.        ],
+#            [7.        , 8.        ],
+#            [6.03943491, 7.03943491]])
+#     >>> arr3 = np.arange(24, dtype=float).reshape(2,3,4)
+#     >>> arr3[:, 2, :] = float("nan")
+#     >>> mixup2(arr3, np.array([1, 0, 1]), 1, seed=42)
+#     >>> arr3
+#     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
+#             [ 4.        ,  5.        ,  6.        ,  7.        ],
+#             [ 1.99984539,  2.99984539,  3.99984539,  4.99984539]],
+#     <BLANKLINE>
+#            [[12.        , 13.        , 14.        , 15.        ],
+#             [16.        , 17.        , 18.        , 19.        ],
+#             [12.25137354, 13.25137354, 14.25137354, 15.25137354]]])
+#     >>> import cupy as cp
+#     >>> arr4 = cp.array([[1, 2],[3,4], [5, 6],
+#     ... [7, 8], [9, 10], [cp.nan, cp.nan]])
+#     >>> labels4 = cp.array([0, 0, 0, 1, 1, 1, 1])
+#     >>> mixup2(arr4, labels4, 0, seed=0)
+#     >>> arr4
+#     array([[1.        , 2.        ],
+#            [4.        , 5.        ],
+#            [7.        , 8.        ],
+#            [4.54459201, 5.54459201]])
+#     >>> arr4 = cp.array([[1, 2, 3, 4],[3,4, 5, 6], [5, 6, 7, 8],
+#     ... [7, 8, 9, 10], [9, 10, 11, 12], [cp.nan, cp.nan, cp.nan, cp.nan]])
+#     >>> new = cp.stack(cp.stack(tuple(arr4 for _ in range(1000))) for _ in range(1000))
+#     >>> mixup2(new, labels4, 2, seed=0)
+#     >>> new[0, 0]
+#     array([[ 1.        ,  2.        ,  3.        ,  4.        ],
+#            [ 3.        ,  4.        ,  5.        ,  6.        ],
+#            [ 5.        ,  6.        ,  7.        ,  8.        ],
+#            [ 7.        ,  8.        ,  9.        , 10.        ],
+#            [ 9.        , 10.        , 11.        , 12.        ],
+#            [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
+#     >>> new = cp.ascontiguousarray(cp.stack(cp.stack(tuple(arr4 for _ in range(1000))) for _ in range(1000)).swapaxes(1,2))
+#     >>> list(mixup2(new.copy(), labels4, 1, seed=0) for _ in range(100))
+#     >>> mixup2(new, labels4, 1, seed=0)
+#     >>> new[0, -1, 0:10]
+#     array([[ 1.        ,  2.        ,  3.        ,  4.        ],
+#            [ 3.        ,  4.        ,  5.        ,  6.        ],
+#            [ 5.        ,  6.        ,  7.        ,  8.        ],
+#            [ 7.        ,  8.        ,  9.        , 10.        ],
+#            [ 9.        , 10.        , 11.        , 12.        ],
+#            [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
+#            """
+#
+#     xp = array_namespace(arr, labels)
+#
+#     if seed is not None:
+#         xp.random.seed(seed)
+#
+#     arr_moved = xp.moveaxis(arr, [obs_axis, _time_ax], [-2, -1])
+#
+#     if _isnan is None:
+#         isnan = xp.isnan(arr_moved).any(-1)
+#     else:
+#         isnan = _isnan.swapaxes(obs_axis, -1)
+#
+#     # get any and all in single call
+#     isn_sum = isnan.sum(-1, dtype='uintp')
+#     if (isn_sum == isnan.shape[-1]).any():
+#         raise ValueError("Cannot mixup if any rows are completely NaN")
+#
+#     unique_labels, label_ids = xp.unique(labels, return_inverse=True)
+#
+#     mask = isn_sum > 0
+#     # Precompute nan and non-nan indices for all batches in one pass
+#     batch_shape = isnan.shape[:-1]
+#     B = int(xp.prod(xp.asarray(batch_shape)))
+#     obs = isnan.shape[-1]
+#     mask_flat = mask.reshape(B)
+#     isnan_flat = isnan.reshape(B, obs)
+#
+#     proc_flat = xp.flatnonzero(mask_flat)
+#     if proc_flat.size == 0:
+#         return
+#     selected = isnan_flat[proc_flat]
+#
+#     # Partition flattened mask once to separate non-NaN (False) and NaN (True)
+#     total_elems = selected.size
+#     num_non_nan = int((~selected).sum())
+#     flat_mask = selected.ravel().astype(bool)
+#     if num_non_nan == 0:
+#         nn_flat = flat_mask[:0]
+#         n_flat = xp.arange(total_elems)
+#     elif num_non_nan == total_elems:
+#         nn_flat = xp.arange(total_elems)
+#         n_flat = flat_mask[:0]
+#     else:
+#         flat_order = xp.argpartition(flat_mask, num_non_nan - 1)
+#         nn_flat = flat_order[:num_non_nan]
+#         n_flat = flat_order[num_non_nan:]
+#
+#     # Recover per-batch row indices and observation indices
+#     rows_nn, cols_nn = divmod(nn_flat, obs)
+#     rows_n, cols_n = divmod(n_flat, obs)
+#
+#     # Per-batch counts and offsets (for choices2 sampling)
+#     counts_nn = xp.bincount(rows_nn, minlength=proc_flat.shape[0])
+#     counts_n = xp.bincount(rows_n, minlength=proc_flat.shape[0])
+#     offsets_nn = xp.empty(counts_nn.shape[0] + 1, dtype=counts_nn.dtype)
+#     offsets_nn[0] = 0
+#     offsets_nn[1:] = xp.cumsum(counts_nn)
+#
+#     # Sanity: any batch with nans must have at least one non-nan candidate
+#     if xp.any((counts_n > 0) & (counts_nn == 0)):
+#         raise ValueError("Not enough non-nan values to mixup")
+#
+#     # Precompute choices2 for all targets at once using offsets into cols_nn
+#     if rows_n.size:
+#         pool_sizes = counts_nn[rows_n]
+#         r2_all = (xp.random.random(rows_n.shape[0]) * pool_sizes).astype(offsets_nn.dtype)
+#         pos = offsets_nn[rows_n] + r2_all
+#         choices2_all = cols_nn[pos]
+#     else:
+#         choices2_all = rows_n  # empty
+#
+#     # Build first-choice (same-class, same-batch) indices for all targets at once
+#     K = int(unique_labels.shape[0])
+#     target_class_ids = label_ids[cols_n]
+#     non_class_ids = label_ids[cols_nn]
+#     comp = rows_nn * K + non_class_ids
+#     max_len = int(proc_flat.shape[0]) * K
+#     counts_comp = xp.bincount(comp, minlength=max_len)
+#     offsets_comp = xp.empty(counts_comp.shape[0] + 1, dtype=counts_comp.dtype)
+#     offsets_comp[0] = 0
+#     offsets_comp[1:] = xp.cumsum(counts_comp)
+#     order_comp = xp.argsort(comp)
+#     cols_nn_sorted = cols_nn[order_comp]
+#     comp_targets = rows_n * K + target_class_ids
+#     pool_sizes1 = counts_comp[comp_targets]
+#     if xp.any(pool_sizes1 == 0):
+#         raise ValueError("Not enough non-nan values to mixup")
+#     r1_all = (xp.random.random(rows_n.shape[0]) * pool_sizes1).astype(offsets_comp.dtype)
+#     pos1 = offsets_comp[comp_targets] + r1_all
+#     choices1_all = cols_nn_sorted[pos1]
+#
+#     # Mixup coefficients for all targets
+#     lam_all = xp.random.beta(alpha, alpha, size=rows_n.shape[0]).astype(arr.dtype)
+#     xp.maximum(lam_all, 1 - lam_all, out=lam_all)
+#
+#     # Vectorized in-place assignment using multi-indexing (no reshape)
+#     batch_coords = xp.unravel_index(proc_flat, batch_shape)
+#     batch_index_tuple = tuple(coord[rows_n] for coord in batch_coords)
+#     lam_all = lam_all[:, None]  # for broadcasting
+#     arr_moved[batch_index_tuple + (cols_n,)] = \
+#         lam_all * arr_moved[batch_index_tuple + (choices1_all,)]
+#     xp.subtract(1, lam_all, out=lam_all)
+#     arr_moved[batch_index_tuple + (cols_n,)] += \
+#         lam_all * arr_moved[batch_index_tuple + (choices2_all,)]
 
 
 def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,

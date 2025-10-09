@@ -7,7 +7,7 @@ from sklearn import config_context
 from sklearn.base import BaseEstimator, clone
 from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
 from ieeg.arrays.label import LabeledArray
-from ieeg.calc.oversample import MinimumNaNSplit
+from ieeg.calc.oversample import MinimumNaNSplit, mixup2
 from ieeg.arrays.api import array_namespace, Array, is_torch, is_numpy
 from ieeg.arrays.reshape import sliding_window_view
 from ieeg.calc.fast import mixup
@@ -51,6 +51,7 @@ class Decoder(MinimumNaNSplit):
                                  None, min_samples, which)
         self.categories = categories
         self.current_job = "Repetitions"
+        self.t = None
 
     def cv_cm(self, x_data: Array, labels: Array, weights: Array = None,
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
@@ -201,11 +202,18 @@ class Decoder(MinimumNaNSplit):
                     for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
         # Collect the results
-        t = tqdm(desc=self.current_job, total=self.n_splits * self.n_repeats)
+        if self.t is None:
+            t = tqdm(desc=self.current_job, total=self.n_splits * self.n_repeats)
+        else:
+            t = self.t
+            t.desc = self.current_job
+
         for result, rep, fold in results:
             mats[..., rep, fold, :, :] = result
             t.update()
-        t.close()
+
+        if self.t is None:
+            t.close()
 
         # average the repetitions
         if average_repetitions:
@@ -576,22 +584,22 @@ def sample_fold(train_idx: Array, test_idx: Array,
     idx2 = tuple(slice(None) if i != axis else slice(sep, None)
                  for i in range(x_data.ndim))
     x_train, x_test = x_stacked[idx1], x_stacked[idx2]
-    # mixup2(x_train, labels[:sep], axis)
-    idx = [slice(None) for _ in range(x_data.ndim)]
-    for i in unique:
-        # fill in train data nans with random combinations of
-        # existing train data trials (mixup)
-        isin = y_train == i
-        idx[axis] = isin
-        out = x_train[tuple(idx)]
-        if out.size != 0:
-            mixup(out, axis)
-            if is_torch(xp):
-                idx3 = tuple(None if j != axis else
-                             slice(None) for j in range(x_data.ndim))
-                x_train.masked_scatter_(isin[idx3], out)
-            else:
-                x_train[tuple(idx)] = out
+    mixup2(x_train, y_train, axis)
+    # idx = [slice(None) for _ in range(x_data.ndim)]
+    # for i in unique:
+    #     # fill in train data nans with random combinations of
+    #     # existing train data trials (mixup)
+    #     isin = y_train == i
+    #     idx[axis] = isin
+    #     out = x_train[tuple(idx)]
+    #     if out.size != 0:
+    #         mixup(out, axis)
+    #         if is_torch(xp):
+    #             idx3 = tuple(None if j != axis else
+    #                          slice(None) for j in range(x_data.ndim))
+    #             x_train.masked_scatter_(isin[idx3], out)
+    #         else:
+    #             x_train[tuple(idx)] = out
 
     # fill in test data nans with noise from distribution
     is_nan = xp.isnan(x_test)
