@@ -7,10 +7,10 @@ from sklearn import config_context
 from sklearn.base import BaseEstimator, clone
 from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
 from ieeg.arrays.label import LabeledArray
-from ieeg.calc.oversample import MinimumNaNSplit, mixup2
+from ieeg.calc.oversample import MinimumNaNSplit
 from ieeg.arrays.api import array_namespace, Array, is_torch, is_numpy
 from ieeg.arrays.reshape import sliding_window_view
-from ieeg.calc.fast import mixup
+from ieeg.calc.fast import mixup, mixup2
 import numpy as np
 import matplotlib.pyplot as plt
 from ieeg.viz.ensemble import plot_dist
@@ -53,9 +53,9 @@ class Decoder(MinimumNaNSplit):
         self.current_job = "Repetitions"
         self.t = None
 
-    def cv_cm(self, x_data: Array, labels: Array, weights: Array = None,
+    def cv_cm(self, x_data: Array, labels: Array,
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
-              average_repetitions: bool = True, window: int = None,
+              average_repetitions: bool = False, window: int = None,
               shuffle: bool = False, oversample: bool = True, step: int = 1
               ) -> Array:
         """Cross-validated confusion matrix
@@ -94,7 +94,6 @@ class Decoder(MinimumNaNSplit):
         >>> model = PcaLdaClassification(0.8, 'lda')
         >>> decoder = Decoder(conds, 5, 2, model=model)
         >>> X = np.random.randn(5, 50, 5, 30)
-        >>> weights = np.random.randn(5, 50, 5, 30)
         >>> labels = np.random.randint(1, 5, 50)
         >>> decoder.cv_cm(X, labels, normalize='true', obs_axs=1)
         array([[0.        , 0.05555556, 0.94444444, 0.        ],
@@ -113,9 +112,9 @@ class Decoder(MinimumNaNSplit):
                [0.        , 0.        , 0.4       , 0.6       ],
                [0.        , 0.        , 0.36666667, 0.63333333],
                [0.        , 0.        , 0.53125   , 0.46875   ]])
-        >>> model = PcaLdaClassification(0.8, 'lda', weighted=True)
+        >>> model = PcaLdaClassification(0.8, 'lda')
         >>> decoder = Decoder(conds, 5, 2, model=model)
-        >>> decoder.cv_cm(X, labels, weights, normalize='true', obs_axs=1)
+        >>> decoder.cv_cm(X, labels, normalize='true', obs_axs=1)
 
         >>> model = PcaLdaClassification(0.5, 'lda', loopwise=2)
         >>> decoder = Decoder(conds, 5, 2, model=model)
@@ -126,7 +125,6 @@ class Decoder(MinimumNaNSplit):
                [0.     , 0.     , 0.09375, 0.90625]])
         >>> import cupy as cp
         >>> X = cp.random.randn(10, 10, 50, 100)
-        >>> weights = cp.random.randn(10, 10, 50, 100)
         >>> X[0, 0, 0, :] = np.nan
         >>> labels = cp.random.randint(1, 5, 50)
         >>> with config_context(array_api_dispatch=True):
@@ -135,18 +133,13 @@ class Decoder(MinimumNaNSplit):
                [0.        , 0.32777778, 0.67222222, 0.        ],
                [0.        , 0.33157895, 0.66842105, 0.        ],
                [0.        , 0.35714286, 0.64285714, 0.        ]])
-        >>> model = PcaLdaClassification(0.8, 'lda', weighted=True)
+        >>> model = PcaLdaClassification(0.8, 'lda')
         >>> decoder = Decoder(conds, 5, 2, model=model)
         >>> with config_context(array_api_dispatch=True):
-        ...     decoder.cv_cm(X, labels, weights, normalize='true')
-
-
+        ...     decoder.cv_cm(X, labels,  normalize='true')
         """
         # # if model is a pipeline containing pca and weights is not None,
         # # change pca to weighted pca
-        # if isinstance(self.model, (PcaLdaClassification, PcaEstimateDecoder)) and weights is not None:
-        #     params = copy(self.model['pca'].get_params())
-        #     self.model['pca'] = WPCA(**params)
         assert all(lab in self.categories.values() for lab in labels.tolist()), \
             "Labels must be in the categories"
         xp = array_namespace(x_data)
@@ -156,10 +149,6 @@ class Decoder(MinimumNaNSplit):
             out_shape = ((x_data.shape[-1] - window) // step + 1,) + out_shape
         mats = xp.zeros(out_shape, dtype=xp.int16)
         data = x_data.swapaxes(0, obs_axs)
-        # prepare weights if provided on Decoder
-        weights_data = None
-        if weights is not None:
-            weights_data = weights.swapaxes(0, obs_axs)
 
         if shuffle:
             isnan = xp.isnan(data)
@@ -190,15 +179,14 @@ class Decoder(MinimumNaNSplit):
         if n_jobs == 1:
             results = (_proc(train_idx, test_idx, l, data, i,
                              self.n_splits, self.categories, window, step,
-                             oversample, self.model, weights_data)
+                             oversample, self.model)
                        for i, ((train_idx, test_idx), l) in enumerate(idxs))
         else:
             results = Parallel(n_jobs=n_jobs, verbose=0, require='sharedmem',
                                return_as="generator_unordered")(
                     delayed(_proc)(train_idx, test_idx, l, data, i,
                                    self.n_splits, self.categories, window,
-                                   step, oversample, clone(self.model),
-                                   weights_data)
+                                   step, oversample, clone(self.model))
                     for i, ((train_idx, test_idx), l) in enumerate(idxs))
 
         # Collect the results
@@ -233,7 +221,7 @@ class Decoder(MinimumNaNSplit):
 
 
 def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
-          step, oversample, model, weights_data=None):
+          step, oversample, model):
     """Process a single fold of data for cross-validation.
 
     Parameters
@@ -267,7 +255,7 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
         Confusion matrix, repetition index, and fold index.
     """
 
-    def _fit_predict(x_flat, w_flat=None):
+    def _fit_predict(x_flat):
         """Fit model on training data and predict on test data.
 
         Parameters
@@ -282,13 +270,7 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
         """
         x_train, x_test = (x_flat[:train_idx.shape[0]],
                            x_flat[train_idx.shape[0]:])
-        # fit model and score results
-        fit_params = {}
-        if w_flat is not None:
-            w = np.where(np.isnan(x_train), 0., w_flat[:train_idx.shape[0]])
-            # route weights to the PCA step inside the pipeline
-            fit_params['weights'] = w
-        model.fit(x_train, y_train, **fit_params)
+        model.fit(x_train, y_train)
         pred = model.predict(x_test)
         return confusion_matrix(y_test, pred, label_cats, namespace=xp)
 
@@ -297,12 +279,6 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
     x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data,
                                              lab, label_cats, 0, oversample,
                                              xp)
-    # prepare weights stacked in the same way as x_stacked along obs axis (0)
-    w_stacked_nd = None
-    if weights_data is not None:
-        idx_stacked = xp.concatenate((train_idx, test_idx))
-        idx = tuple(slice(None) if i != 0 else idx_stacked for i in range(orig_data.ndim))
-        w_stacked_nd = weights_data[idx]
 
     first_step = getattr(model, 'model', PcaLdaClassification()).steps[0][1]
     if isinstance(first_step, LoopwiseTransformer):
@@ -315,11 +291,7 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
     rep, fold = divmod(pid, n_splits)
     if window is None:
         x_flattened = x_stacked.reshape(in_shape)
-        if w_stacked_nd is not None:
-            w_flattened = w_stacked_nd.reshape((w_stacked_nd.shape[0], -1))
-        else:
-            w_flattened = None
-        return _fit_predict(x_flattened, w_flattened), rep, fold
+        return _fit_predict(x_flattened), rep, fold
 
     windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[
                ..., ::step, :]
@@ -329,32 +301,16 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
             in_shape + (windowed.shape[-2],)), -1, 0)
         signature = f"({','.join('abc'[:len(in_shape)])}) -> (d,d)"
         # vectorize if no weights, otherwise loop per-window with windowed weights
-        if w_stacked_nd is None:
-            func = np.vectorize(_fit_predict,
-                                signature=signature,
-                                otypes=[xp.uint8])
-            out = func(swapped)
-        else:
-            out = xp.zeros((windowed.shape[-2], label_cats.shape[0],
-                            label_cats.shape[0]), dtype=xp.uint8)
-            # create windowed weights using the same sliding operation
-            w_windowed = sliding_window_view(w_stacked_nd, window, axis=-1)[..., ::step, :]
-            for i in range(windowed.shape[-2]):
-                x_window = windowed[..., i, :]
-                w_window = w_windowed[..., i, :]
-                w_flat = w_window.reshape((w_window.shape[0], -1))
-                out[i] = _fit_predict(x_window.reshape(in_shape), w_flat)
+        func = np.vectorize(_fit_predict,
+                            signature=signature,
+                            otypes=[xp.uint8])
+        out = func(swapped)
     else:
         out = xp.zeros((windowed.shape[-2], label_cats.shape[0],
                         label_cats.shape[0]), dtype=xp.uint8)
         for i in range(windowed.shape[-2]):
             x_window = windowed[..., i, :]
-            if w_stacked_nd is not None:
-                w_window = sliding_window_view(w_stacked_nd, window, axis=-1)[..., i, :]
-                w_flat = w_window.reshape((w_window.shape[0], -1))
-                out[i] = _fit_predict(x_window.reshape(in_shape), w_flat)
-            else:
-                out[i] = _fit_predict(x_window.reshape(in_shape))
+            out[i] = _fit_predict(x_window.reshape(in_shape))
 
     return out, rep, fold
 
