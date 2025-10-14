@@ -1826,9 +1826,43 @@ class LoopwiseTransformer(BaseEstimator, TransformerMixin):
             raise ValueError("Base transformer does not support set_output.")
         return self
 
+# %% PRINCIPAL COMPONENT ANALYSIS - Covariance Reducing CLASSIFIER
+
+class CovarianceReducingClassifier(BaseEstimator):
+    """Base class for PCA + downstream estimator pipelines (sklearn-compatible).
+
+    Subclasses should override _default_estimator and set estimator_step_name
+    to the name used in the Pipeline (e.g., 'discriminant' or 'clf').
+    """
+
+    model: Pipeline
+
+    def __init__(self, pca: BaseEstimator, classifier: BaseEstimator,
+                 memory=None):
+        self.pca = pca
+        self.classifier = classifier
+        self.memory = memory
+        self.model = Pipeline(
+            steps=[(pca.__class__.__name__.lower(), self.pca),
+                   (classifier.__class__.__name__.lower(), self.classifier)],
+            memory=self.memory or Memory()
+        )
+
+    def fit(self, X, y=None, **params):
+        if params:
+            self.model.set_params(**params)
+        self.model.fit(X, y)
+
+    def predict(self, X, **params):
+        return self.model.predict(X, **params)
+
+    def score(self, X, y=None, sample_weight=None, **params):
+        from sklearn.metrics import accuracy_score
+        return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
+
 # %% PRINCIPAL COMPONENT ANALYSIS - LINEAR DISCRIMINANT CLASSIFIER
 
-class PcaLdaClassification(BaseEstimator):
+class PcaLdaClassification(CovarianceReducingClassifier):
     """Class for the PCA - LDA Classifier
 
     Parameters
@@ -1840,10 +1874,16 @@ class PcaLdaClassification(BaseEstimator):
         type of discriminant analysis; lda or qda
 
     """
-    model: Pipeline
 
     def __init__(self, explained_variance=0.8, da_type='lda', PCA_kwargs={},
                  loopwise: int = None, DA_kwargs={}):
+
+        self.explained_variance = explained_variance
+        self.da_type = da_type
+        self.loopwise = loopwise
+        self.PCA_kwargs = PCA_kwargs
+        self.DA_kwargs = DA_kwargs
+
         # choose discriminant type
         if (da_type == 'lda'):
             # linear discriminant analysis
@@ -1859,114 +1899,13 @@ class PcaLdaClassification(BaseEstimator):
         else:
             pca_transformer = PCA(**PCA_kwargs)
 
-        # Create a pipeline classifier
-        self.model = Pipeline(steps=[
-            ('pca', pca_transformer),
-            ('discriminant', da_model)
-        ],
-        memory=Memory())
+        super().__init__(pca=pca_transformer, classifier=da_model,
+                         memory=Memory())
 
-        # set default outputs to numpy
-        self.model.set_output(transform="default")
-
-    def __sklearn_clone__(self):
-        """Clone the model for sklearn compatibility."""
-        obj = super(PcaLdaClassification, self).__new__(PcaLdaClassification)
-        obj.model = Pipeline(steps=[
-            ('pca', clone(self.model['pca'])),
-            ('discriminant', clone(self.model['discriminant']))
-        ],
-        memory=Memory())
-        obj.model.set_output(transform="default")
-        # preserve configuration flags
-        if hasattr(self, 'weighted'):
-            obj.weighted = self.weighted
-        return obj
-
-    def fit(self, X, y=None, **params):
-
-        """Train PCA - LDA classifier
-
-        Parameters
-        ----------
-        X: numpy 2d array of shape [n_samples,n_features]
-            This is the neural data.
-            See example file for an example of how to format the neural data
-            correctly
-
-        y: numpy 1d array of shape (n_samples), with integers
-        representing classes
-            This is the outputs that are being predicted
-        """
-
-        # Fit the model
-        self.model.fit(X, y, **params)
-
-    def predict(self, X, **params):
-
-        """Predict outcomes using trained PCA LDA Decoder
-
-        Parameters
-        ----------
-        X: numpy 2d array of shape [n_samples,n_features]
-            This is the neural data being used to predict outputs.
-
-        Returns
-        -------
-        y_test_predicted: numpy 1d array with integers as classes
-            The predicted outputs
-        """
-
-        return self.model.predict(X, **params)
-
-    def get_scores(self, deep=True):
-        """Get scores of pca and lda model
-
-        Args:
-            deep (bool, optional): Defaults to True.
-
-        Returns:
-            scores: dict
-            Returns fitted scores of PCA and LDA
-        """
-        pca = self.model['pca']
-        da = self.model['discriminant']
-        scores = dict()
-        scores['pca'] = pca.componens_
-        scores['discriminant'] = da.coef_
-        return scores
-
-    def score(self, X, y=None, sample_weight=None, **params):
-        """Returns the mean accuracy on the given test data and labels.
-
-        In multi-label classification, this is the subset accuracy
-        which is a harsh metric since you require for each sample that
-        each label set be correctly predicted.
-
-        Parameters
-        ----------
-        X : array-like, shape = (n_samples, n_features)
-            Test samples.
-
-        y : array-like, shape = (n_samples) or (n_samples, n_outputs)
-            True labels for X.
-
-        sample_weight : array-like, shape = [n_samples], optional
-            Sample weights.
-
-        Returns
-        -------
-        score : float
-            Mean accuracy of self.predict(X) wrt. y.
-
-        """
-        from sklearn.metrics import accuracy_score
-        return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
 
     # %% PRINCIPAL COMPONENT ANALYSIS Wrapper for classification function
 
-
-class PcaEstimateDecoder(BaseEstimator):
+class PcaEstimateDecoder(CovarianceReducingClassifier):
     """Class for the PCA - SVM Classifier
 
     Parameters
@@ -1982,112 +1921,19 @@ class PcaEstimateDecoder(BaseEstimator):
         {'param_name': value})
 
     """
-    model: Pipeline
     def __init__(self, explained_variance=0.8, clf=SVC, clf_params={},
                  pca=PCA, PCA_kwargs={}):
         self.explained_variance = explained_variance
         self.clf = clf
         self.clf_params = clf_params
+        self.pca = pca
+        self.PCA_kwargs = PCA_kwargs
 
-        # Create a pipeline classifier
-        self.model = Pipeline(steps=[
-            ('pca', pca(n_components=self.explained_variance, **PCA_kwargs)),
-            ('clf', clf(**clf_params))
-        ],
-        memory=Memory())
-
-        # set default outputs to numpy
-        self.model.set_output(transform="default")
-
-    def __sklearn_clone__(self):
-        """Clone the model for sklearn compatibility."""
-        obj = super(PcaEstimateDecoder, self).__new__(PcaEstimateDecoder)
-        obj.model = Pipeline(steps=[
-            ('pca', clone(self.model['pca'])),
-            ('clf', clone(self.model['clf']))
-        ],
-        memory=Memory())
-        obj.model.set_output(transform="default")
-        return obj
-
-    def fit(self, X, y=None, **params):
-        """Train PCA - SVM classifier
-
-        Parameters
-        ----------
-        X: numpy 2d array of shape [n_samples,n_features]
-            This is the neural data.
-            See example file for an example of how to format the neural data
-            correctly
-
-        y: numpy 1d array of shape (n_samples), with integers
-        representing classes
-            This is the outputs that are being predicted
-        """
-
-        # Fit the model
-        self.model.fit(X, y, **params)
-
-    def predict(self, X, **params):
-        """Predict outcomes using trained PCA SVM Decoder
-
-        Parameters
-        ----------
-        X: numpy 2d array of shape [n_samples,n_features]
-            This is the neural data being used to predict outputs.
-
-        Returns
-        -------
-        y_test_predicted: numpy 1d array with integers as classes
-            The predicted outputs
-        """
-
-        return self.model.predict(X, **params)
-
-    def get_scores(self, deep=True):
-        """Get scores of pca and svm model
-
-        Args:
-            deep (bool, optional): Defaults to True.
-
-        Returns:
-            scores: dict
-            Returns fitted scores of PCA and SVM
-        """
-        pca = self.model['pca']
-        svm = self.model['clf']
-        scores = dict()
-        scores['pca'] = pca.components_
-        scores['svm'] = svm.coef_
-        return scores
-
-    def score(self, X, y=None, sample_weight=None, **params):
-        """Returns the mean accuracy on the given test data and labels.
-
-        In multi-label classification, this is the subset accuracy
-        which is a harsh metric since you require for each sample that
-        each label set be correctly predicted.
-
-        Parameters
-        ----------
-        X : array-like, shape = (n_samples, n_features)
-            Test samples.
-
-        y : array-like, shape = (n_samples) or (n_samples, n_outputs)
-            True labels for X.
-
-        sample_weight : array-like, shape = [n_samples], optional
-            Sample weights.
-
-        Returns
-        -------
-        score : float
-            Mean accuracy of self.predict(X) wrt. y.
-
-        """
-        from sklearn.metrics import accuracy_score
-        return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
-
+        PCA_kwargs['n_components'] = explained_variance
+        pca_transformer = pca(**PCA_kwargs)
+        clf_instance = clf(**clf_params)
+        super().__init__(pca=pca_transformer, classifier=clf_instance,
+                         memory=Memory())
 
 
 if __name__ == "__main__":
