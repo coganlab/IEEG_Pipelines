@@ -5,6 +5,8 @@ except ImportError:
 
 from sklearn import config_context
 from sklearn.base import BaseEstimator, clone
+from sklearn.experimental import enable_halving_search_cv  # noqa: F401
+from typing import Optional, Callable, Iterable, Any
 from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
@@ -56,7 +58,13 @@ class Decoder(MinimumNaNSplit):
     def cv_cm(self, x_data: Array, labels: Array,
               normalize: str = None, obs_axs: int = -2, n_jobs: int = 1,
               average_repetitions: bool = False, window: int = None,
-              shuffle: bool = False, oversample: bool = True, step: int = 1
+              shuffle: bool = False, oversample: bool = True, step: int = 1,
+              # Nested CV / hyperparameter search options
+              search_factory=None,
+              random_state: int | None = None,
+              # Parallelization options
+              executor: Optional[Any] = None,
+              joblib_backend: Optional[str] = None
               ) -> Array:
         """Cross-validated confusion matrix
 
@@ -137,6 +145,28 @@ class Decoder(MinimumNaNSplit):
         >>> decoder = Decoder(conds, 5, 2, model=model)
         >>> with config_context(array_api_dispatch=True):
         ...     decoder.cv_cm(X, labels,  normalize='true')
+
+        Nested hyper-parameter search with inner CV using HalvingRandomSearchCV
+        ----------------------------------------------------------------------
+        >>> rng = np.random.RandomState(0)
+        >>> X = rng.randn(2, 20, 2, 40)  # (channels, trials, ..., features)
+        >>> y = np.array([0, 1] * 10)
+        >>> cats = {'a': 0, 'b': 1}
+        >>> model = PcaLdaClassification(0.8, 'lda')
+        >>> def factory(estimator, cv, scoring):
+        ...     from sklearn.model_selection import HalvingRandomSearchCV
+        ...     return HalvingRandomSearchCV(
+        ...         estimator=estimator,
+        ...         param_distributions={'explained_variance': [0.4, 0.95]},
+        ...         cv=cv,
+        ...         factor=2,
+        ...         random_state=0
+        ...     )
+        >>> dec = Decoder(cats, n_splits=5, n_repeats=1, model=model)
+        >>> dec.cv_cm(X, y, obs_axs=1, search_factory=factory, normalize='true')
+
+        >>> dec.cv_cm(X, y, obs_axs=1, search_factory=factory, window=20,
+        ... step=5, normalize='true')
         """
         # # if model is a pipeline containing pca and weights is not None,
         # # change pca to weighted pca
@@ -175,19 +205,41 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        # loop over folds and repetitions
-        if n_jobs == 1:
+        # loop over folds and repetitions with flexible execution
+        task_iter = (
+            (train_idx, test_idx, l, data, i)
+            for i, ((train_idx, test_idx), l) in enumerate(idxs)
+        )
+
+        if executor is not None:
+            mapped = executor.map(
+                lambda args: _proc(
+                    args[0], args[1], args[2], args[3], args[4],
+                    self.n_splits, self.categories, window, step,
+                    oversample, clone(self.model),
+                    search_factory, random_state, self.min_non_nan
+                ),
+                task_iter
+            )
+            results = mapped
+        elif n_jobs == 1:
             results = (_proc(train_idx, test_idx, l, data, i,
                              self.n_splits, self.categories, window, step,
-                             oversample, self.model)
-                       for i, ((train_idx, test_idx), l) in enumerate(idxs))
+                             oversample, self.model,
+                             search_factory, random_state, self.min_non_nan)
+                       for (train_idx, test_idx, l, data, i) in task_iter)
         else:
-            results = Parallel(n_jobs=n_jobs, verbose=0, require='sharedmem',
-                               return_as="generator_unordered")(
-                    delayed(_proc)(train_idx, test_idx, l, data, i,
-                                   self.n_splits, self.categories, window,
-                                   step, oversample, clone(self.model))
-                    for i, ((train_idx, test_idx), l) in enumerate(idxs))
+            parallel_kwargs = dict(n_jobs=n_jobs, verbose=0, require='sharedmem',
+                                   return_as="generator_unordered")
+            if joblib_backend is not None:
+                parallel_kwargs['prefer'] = joblib_backend
+            results = Parallel(**parallel_kwargs)(
+                    delayed(_proc)(
+                        train_idx, test_idx, l, data, i, self.n_splits,
+                        self.categories, window, step, oversample,
+                        clone(self.model), search_factory, random_state,
+                        self.min_non_nan
+                    ) for (train_idx, test_idx, l, data, i) in task_iter)
 
         # Collect the results
         if self.t is None:
@@ -219,9 +271,19 @@ class Decoder(MinimumNaNSplit):
             divisor = 1
         return mats / divisor
 
+    @staticmethod
+    def accuracy_score(cm: Array) -> Array:
+        """Compute the accuracy score from the confusion matrix"""
+        xp = array_namespace(cm)
+        n_classes = cm.shape[-1]
+        true_positives = xp.sum(cm.T[np.eye(n_classes).astype(bool)].T, axis=-1)
+        all_samples = xp.sum(cm, axis=(-2, -1))
+        return true_positives / all_samples
+
 
 def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
-          step, oversample, model):
+          step, oversample, model,
+          search_factory=None, random_state=None, min_non_nan_outer: int = 2):
     """Process a single fold of data for cross-validation.
 
     Parameters
@@ -270,8 +332,29 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
         """
         x_train, x_test = (x_flat[:train_idx.shape[0]],
                            x_flat[train_idx.shape[0]:])
-        model.fit(x_train, y_train)
-        pred = model.predict(x_test)
+
+        # Perform inner CV hyperparameter search if requested
+        if search_factory is not None:
+            # inner_splits is always n_splits - 1, min_non_nan reduced by 1
+            inner_rs = (xp.random.randint(65535, dtype=xp.uint16)
+                        if random_state is None else random_state)
+            splitter = MinimumNaNSplit(
+                n_splits=max(2, n_splits - 1),
+                n_repeats=1,
+                random_state=inner_rs,
+                min_non_nan=max(1, int(min_non_nan_outer) - 1),
+                which='train'
+            )
+
+            # Default scoring uses estimator.score via None
+            search = search_factory(estimator=model, cv=splitter, scoring=None)
+            search.fit(x_train, y_train)
+            best_estimator = search.best_estimator_
+            pred = best_estimator.predict(x_test)
+
+        else:
+            model.fit(x_train, y_train)
+            pred = model.predict(x_test)
         return confusion_matrix(y_test, pred, label_cats, namespace=xp)
 
     xp = array_namespace(orig_data)
@@ -296,11 +379,11 @@ def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
     windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[
                ..., ::step, :]
 
-    if is_numpy(xp):
+    if is_numpy(xp) and search_factory is None:
         swapped = xp.moveaxis(windowed.swapaxes(-1, -2).reshape(
             in_shape + (windowed.shape[-2],)), -1, 0)
         signature = f"({','.join('abc'[:len(in_shape)])}) -> (d,d)"
-        # vectorize if no weights, otherwise loop per-window with windowed weights
+        # Vectorize only when not performing nested search (estimators not serializable here)
         func = np.vectorize(_fit_predict,
                             signature=signature,
                             otypes=[xp.uint8])
