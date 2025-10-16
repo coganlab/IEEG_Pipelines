@@ -16,6 +16,9 @@ from sklearn import \
 from sklearn.base import BaseEstimator, TransformerMixin, clone  # For weighted PCA (WPCA - LDA)
 # from ieeg.decoding.wpca import WPCA
 from joblib import Memory
+from sklearn.metrics import accuracy_score
+from ieeg.calc.fast import mixup2
+from ieeg.arrays.api import array_namespace
 
 # Used for naive bayes decoder
 try:
@@ -1795,6 +1798,16 @@ class LoopwiseTransformer(BaseEstimator, TransformerMixin):
         )
 
     def fit(self, X, y=None, **fit_params):
+        # Handle degenerate or already-flattened case
+        if X.ndim <= self.loop_dim:
+            transformer = clone(self.base_transformer)
+            weights = fit_params.pop('weights', None)
+            if weights is not None:
+                transformer.fit(X, y, weights=weights, **fit_params)
+            else:
+                transformer.fit(X, y, **fit_params)
+            self.transformers_ = [transformer]
+            return self
         n_loops = X.shape[self.loop_dim]
         self.transformers_ = []
         # Extract loop-wise weights if provided
@@ -1811,9 +1824,24 @@ class LoopwiseTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
+        # If data is 2D or loop axis missing, just pass through single transformer
+        if X.ndim <= self.loop_dim or len(self.transformers_) == 1:
+            return self.transformers_[0].transform(X)
         transformed = [t.transform(X[self.idx(X.ndim, i)])
                        for i, t in enumerate(self.transformers_)]
-        return np.concatenate(transformed, axis=self.loop_dim)
+        # Harmonize feature dimension across loops, then concatenate along feature axis
+        n_feats = [arr.shape[-1] for arr in transformed]
+        target = min(n_feats)
+        xp = array_namespace(transformed[0])
+        if any(n != target for n in n_feats):
+            for i, arr in enumerate(transformed):
+                if arr.shape[-1] > target:
+                    transformed[i] = arr[..., :target]
+                elif arr.shape[-1] < target:
+                    pad = xp.zeros((arr.shape[0], target - arr.shape[-1]), dtype=arr.dtype)
+                    transformed[i] = xp.concatenate((arr, pad), axis=-1)
+        # Flatten loop dimension into features: (samples, sum(features_per_loop))
+        return xp.concatenate(transformed, axis=-1)
 
     def set_output(self, *, transform=None):
         """Set the output type of the transformer."""
@@ -1825,6 +1853,73 @@ class LoopwiseTransformer(BaseEstimator, TransformerMixin):
         else:
             raise ValueError("Base transformer does not support set_output.")
         return self
+
+class FlattenFeaturesTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, samples_axis: int = 0, loop_axis: int | None = None):
+        self.samples_axis = samples_axis
+        self.loop_axis = loop_axis
+
+    def fit(self, X, y=None, **fit_params):
+        return self
+
+    def transform(self, X):
+        xp = array_namespace(X)
+        ndim = X.ndim
+        sa = self.samples_axis % ndim
+        la = None if self.loop_axis is None else (self.loop_axis % ndim)
+        if la is not None and la == sa:
+            la = None  # loop dim cannot coincide with samples dim
+
+        # Build permutation to [samples, (loop), others...]
+        axes = list(range(ndim))
+        perm = [sa]
+        if la is not None:
+            perm.append(la)
+        for ax in axes:
+            if ax != sa and ax != la:
+                perm.append(ax)
+        Xp = xp.moveaxis(X, list(range(ndim)), perm)
+        if la is not None:
+            return Xp.reshape(Xp.shape[0], Xp.shape[1], -1)
+        return Xp.reshape(Xp.shape[0], -1)
+
+
+class OversampleTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, samples_axis: int = 0, alpha: float = 1.):
+        self.samples_axis = samples_axis
+        self.alpha = alpha
+
+    def fit(self, X, y=None, **fit_params):
+        # no params to learn
+        return self
+
+    def transform(self, X):
+        # Validation/test: fill NaNs with random normal noise based on data std
+        xp = array_namespace(X)
+        Xc = X.copy()
+        self.norm(Xc, xp)
+        return Xc
+
+    def fit_transform(self, X, y=None, **fit_params):
+        xp = array_namespace(X)
+        # copy to avoid in-place modifications on caller data
+        Xc = X.copy()
+        if y is None:
+            # Validation/test: fill NaNs with random normal noise
+            self.norm(Xc, xp)
+        # Training: label-aware mixup to impute NaNs
+        mixup2(Xc, xp.asarray(y), self.samples_axis, alpha=self.alpha)
+        return Xc
+
+    @staticmethod
+    def norm(Xc, xp):
+        isn = xp.isnan(Xc)
+        if isn.any():
+            std_val = float(xp.std(Xc[~isn], dtype='f8'))
+            if not xp.isfinite(std_val) or std_val == 0.0:
+                std_val = 1.0
+            Xc[isn] = xp.random.normal(0., std_val, int(isn.sum()))
+
 
 # %% PRINCIPAL COMPONENT ANALYSIS - Covariance Reducing CLASSIFIER
 
@@ -1838,15 +1933,22 @@ class CovarianceReducingClassifier(BaseEstimator):
     model: Pipeline
 
     def __init__(self, pca: BaseEstimator, classifier: BaseEstimator,
-                 memory=None):
+                 memory=None, samples_axis: int = 0, oversample: bool = True):
         self.pca = pca
         self.classifier = classifier
         self.memory = memory
-        self.model = Pipeline(
-            steps=[(pca.__class__.__name__.lower(), self.pca),
-                   (classifier.__class__.__name__.lower(), self.classifier)],
-            memory=self.memory or Memory()
-        )
+        self.samples_axis = samples_axis
+        self.oversample = oversample
+        steps = []
+        if oversample:
+            steps.append(('oversample', OversampleTransformer(samples_axis=self.samples_axis)))
+        loop_axis = None
+        if isinstance(self.pca, LoopwiseTransformer):
+            loop_axis = self.pca.loop_dim
+        steps.append(('flatten', FlattenFeaturesTransformer(samples_axis=self.samples_axis, loop_axis=loop_axis)))
+        steps.append(('pca', self.pca))
+        steps.append(('classifier', self.classifier))
+        self.model = Pipeline(steps=steps, memory=self.memory or Memory())
 
     def fit(self, X, y=None, **params):
         if params:
@@ -1856,9 +1958,9 @@ class CovarianceReducingClassifier(BaseEstimator):
     def predict(self, X, **params):
         return self.model.predict(X, **params)
 
-    def score(self, X, y=None, sample_weight=None, **params):
-        from sklearn.metrics import accuracy_score
-        return accuracy_score(y, self.model.predict(X), sample_weight=sample_weight, **params)
+    def score(self, X, y, sample_weight=None, **params):
+
+        return accuracy_score(y, self.predict(X), sample_weight=sample_weight, **params)
 
 # %% PRINCIPAL COMPONENT ANALYSIS - LINEAR DISCRIMINANT CLASSIFIER
 
@@ -1876,7 +1978,8 @@ class PcaLdaClassification(CovarianceReducingClassifier):
     """
 
     def __init__(self, explained_variance=0.8, da_type='lda', PCA_kwargs={},
-                 loopwise: int = None, DA_kwargs={}):
+                 loopwise: int = None, DA_kwargs={}, samples_axis: int = 0,
+                 oversample: bool = True):
 
         self.explained_variance = explained_variance
         self.da_type = da_type
@@ -1900,7 +2003,8 @@ class PcaLdaClassification(CovarianceReducingClassifier):
             pca_transformer = PCA(**PCA_kwargs)
 
         super().__init__(pca=pca_transformer, classifier=da_model,
-                         memory=Memory())
+                         memory=Memory(), samples_axis=samples_axis,
+                         oversample=oversample)
 
 
     # %% PRINCIPAL COMPONENT ANALYSIS Wrapper for classification function
@@ -1922,7 +2026,8 @@ class PcaEstimateDecoder(CovarianceReducingClassifier):
 
     """
     def __init__(self, explained_variance=0.8, clf=SVC, clf_params={},
-                 pca=PCA, PCA_kwargs={}):
+                 pca=PCA, PCA_kwargs={}, samples_axis: int = 0,
+                 oversample: bool = True):
         self.explained_variance = explained_variance
         self.clf = clf
         self.clf_params = clf_params
@@ -1933,7 +2038,8 @@ class PcaEstimateDecoder(CovarianceReducingClassifier):
         pca_transformer = pca(**PCA_kwargs)
         clf_instance = clf(**clf_params)
         super().__init__(pca=pca_transformer, classifier=clf_instance,
-                         memory=Memory())
+                         memory=Memory(), samples_axis=samples_axis,
+                         oversample=oversample)
 
 
 if __name__ == "__main__":

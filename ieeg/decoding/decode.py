@@ -6,7 +6,7 @@ except ImportError:
 from sklearn import config_context
 from sklearn.base import BaseEstimator, clone
 from sklearn.experimental import enable_halving_search_cv  # noqa: F401
-from typing import Optional, Callable, Iterable, Any
+from sklearn.metrics import balanced_accuracy_score, make_scorer
 from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
@@ -19,6 +19,9 @@ from ieeg.viz.ensemble import plot_dist
 from joblib import Parallel, delayed
 import itertools
 from tqdm import tqdm
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Callable, Literal
 
 
 class Decoder(MinimumNaNSplit):
@@ -60,10 +63,8 @@ class Decoder(MinimumNaNSplit):
               average_repetitions: bool = False, window: int = None,
               shuffle: bool = False, oversample: bool = True, step: int = 1,
               # Nested CV / hyperparameter search options
-              search_factory=None,
-              random_state: int | None = None,
-              # Parallelization options
-              joblib_backend: Optional[str] = None
+              parameter_grid=None,
+              random_state: int | None = None
               ) -> Array:
         """Cross-validated confusion matrix
 
@@ -152,19 +153,10 @@ class Decoder(MinimumNaNSplit):
         >>> y = np.array([0, 1] * 10)
         >>> cats = {'a': 0, 'b': 1}
         >>> model = PcaLdaClassification(0.8, 'lda')
-        >>> def factory(estimator, cv, scoring):
-        ...     from sklearn.model_selection import HalvingRandomSearchCV
-        ...     return HalvingRandomSearchCV(
-        ...         estimator=estimator,
-        ...         param_distributions={'explained_variance': [0.4, 0.95]},
-        ...         cv=cv,
-        ...         factor=2,
-        ...         random_state=0
-        ...     )
         >>> dec = Decoder(cats, n_splits=5, n_repeats=1, model=model)
-        >>> dec.cv_cm(X, y, obs_axs=1, search_factory=factory, normalize='true')
-
-        >>> dec.cv_cm(X, y, obs_axs=1, search_factory=factory, window=20,
+        >>> grid = {'explained_variance': [0.4, 0.95]}
+        >>> dec.cv_cm(X, y, obs_axs=1, parameter_grid=grid, normalize='true')
+        >>> dec.cv_cm(X, y, obs_axs=1, parameter_grid=grid, window=20,
         ... step=5, normalize='true')
         """
         # # if model is a pipeline containing pca and weights is not None,
@@ -172,17 +164,23 @@ class Decoder(MinimumNaNSplit):
         assert all(lab in self.categories.values() for lab in labels.tolist()), \
             "Labels must be in the categories"
         xp = array_namespace(x_data)
-        def _shape_builder(data_local, xp_local):
-            n_c = len(self.categories)
-            shape = (self.n_repeats, self.n_splits, n_c, n_c)
-            if window is not None:
-                shape = ((data_local.shape[-1] - window) // step + 1,) + shape
-            return shape, xp_local.int16
+        config = _ProcessConfig(
+            n_splits=self.n_splits,
+            n_repeats=self.n_repeats,
+            oversample=oversample,
+            categories=self.categories,
+            namespace=xp,
+            min_non_nan=self.min_non_nan,
+            mode=Mode.CM,
+            which=self.which,
+            state=random_state,
+            parameter_grid=parameter_grid,
+            window=window,
+            step=step
+        )
 
         mats = self._run_cv(
-            x_data, labels, obs_axs, n_jobs, window, shuffle, oversample,
-            step, search_factory, random_state, joblib_backend,
-            mode='cm', out_shape_builder=_shape_builder
+            x_data, labels, obs_axs, n_jobs, shuffle, config
         )
 
         # average the repetitions
@@ -205,8 +203,8 @@ class Decoder(MinimumNaNSplit):
                      obs_axs: int = -2, n_jobs: int = 1,
                      average_repetitions: bool = False, window: int = None,
                      shuffle: bool = False, oversample: bool = True, step: int = 1,
-                     search_factory=None, random_state: int | None = None,
-                     joblib_backend: Optional[str] = None) -> Array:
+                     parameter_grid=None, random_state: int | None = None
+                    ) -> Array:
         """Cross-validated balanced accuracy per fold (and window if set).
 
                 Parameters
@@ -251,16 +249,23 @@ class Decoder(MinimumNaNSplit):
         assert all(lab in self.categories.values() for lab in labels.tolist()), \
             "Labels must be in the categories"
         xp = array_namespace(x_data)
-        def _shape_builder_acc(data_local, xp_local):
-            shape = (self.n_repeats, self.n_splits)
-            if window is not None:
-                shape = ((data_local.shape[-1] - window) // step + 1,) + shape
-            return shape, xp_local.float32
+        config = _ProcessConfig(
+            n_splits=self.n_splits,
+            n_repeats=self.n_repeats,
+            oversample=oversample,
+            categories=self.categories,
+            namespace=xp,
+            min_non_nan=self.min_non_nan,
+            mode=Mode.SCORE,
+            which=self.which,
+            state=random_state,
+            parameter_grid=parameter_grid,
+            window=window,
+            step=step
+        )
 
         acc = self._run_cv(
-            x_data, labels, obs_axs, n_jobs, window, shuffle, oversample,
-            step, search_factory, random_state, joblib_backend,
-            mode='score', out_shape_builder=_shape_builder_acc
+            x_data, labels, obs_axs, n_jobs, shuffle, config
         )
 
         # average the repetitions
@@ -270,12 +275,10 @@ class Decoder(MinimumNaNSplit):
         return acc
 
     def _run_cv(self, x_data: Array, labels: Array, obs_axs: int, n_jobs: int,
-                window: int | None, shuffle: bool, oversample: bool, step: int,
-                search_factory, random_state, joblib_backend,
-                mode: str, out_shape_builder) -> Array:
-        assert all(lab in self.categories.values() for lab in labels.tolist()), \
+                shuffle: bool, config: '_ProcessConfig') -> Array:
+        assert all(lab in config.categories.values() for lab in labels.tolist()), \
             "Labels must be in the categories"
-        xp = array_namespace(x_data)
+        xp = config.namespace
         data = x_data.swapaxes(0, obs_axs)
 
         if shuffle:
@@ -283,12 +286,12 @@ class Decoder(MinimumNaNSplit):
             std = float(xp.std(data[isnan], dtype='f8'))
             data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan,
                                                                   dtype='i8')))
-            label_stack = [labels.copy() for _ in range(self.n_repeats)]
-            for i in range(self.n_repeats):
+            label_stack = [labels.copy() for _ in range(config.n_repeats)]
+            for i in range(config.n_repeats):
                 self.shuffle_labels(data, label_stack[i], 0)
             idxs = ((self.split(data, lab), lab) for lab in label_stack)
-            idxs = ((itertools.islice(s, self.n_splits),
-                     itertools.repeat(l, self.n_splits))
+            idxs = ((itertools.islice(s, config.n_splits),
+                     itertools.repeat(l, config.n_splits))
                     for s, l in idxs)
             splits, label = zip(*idxs)
             splits = itertools.chain.from_iterable(splits)
@@ -297,34 +300,30 @@ class Decoder(MinimumNaNSplit):
         else:
             idxs = ((splits, labels) for splits in self.split(data, labels))
 
-        shape, dtype = out_shape_builder(data, xp)
+        shape, dtype = config.shape_builder(data)
         out = xp.zeros(shape, dtype=dtype)
 
         task_iter = (
-            (train_idx, test_idx, l, data, i, self.n_splits, self.categories,
-             window, step, oversample, clone(self.model), xp, search_factory,
-             random_state, self.min_non_nan, mode)
+            (train_idx, test_idx, l, data, i, clone(self.model))
             for i, ((train_idx, test_idx), l) in enumerate(idxs)
         )
 
         if n_jobs == 1:
-            results = (_proc(*args) for args in task_iter)
+            results = (config.proc(*args) for args in task_iter)
         else:
             parallel_kwargs = dict(n_jobs=n_jobs, verbose=0,
                                    # require='sharedmem',
                                    return_as="generator_unordered")
-            if joblib_backend is not None:
-                parallel_kwargs['prefer'] = joblib_backend
             results = Parallel(**parallel_kwargs)(
-                    delayed(_proc)(*args) for args in task_iter)
+                    delayed(config.proc)(*args) for args in task_iter)
 
         if self.t is None:
-            t = tqdm(desc=self.current_job, total=self.n_splits * self.n_repeats)
+            t = tqdm(desc=self.current_job, total=config.n_splits * config.n_repeats)
         else:
             t = self.t
             t.desc = self.current_job
 
-        if window is None:
+        if config.window is None:
             for result, rep, fold in results:
                 out[rep, fold] = result
                 t.update()
@@ -339,78 +338,131 @@ class Decoder(MinimumNaNSplit):
         return out
 
 
-def _proc(train_idx, test_idx, lab, orig_data, pid, n_splits, cats, window,
-                  step, oversample, model, xp, search_factory=None,
-                  random_state=None, min_non_nan_outer: int = 2,
-                  mode: str = 'cm'):
-    """Generic fold processor: returns cm or score per fold/window depending on mode.
+class Mode(Enum):
+    CM = 'cm'
+    SCORE = 'score'
 
-    mode: 'cm' -> confusion matrix; 'score' -> estimator.score value.
-    """
 
-    def _eval(x_flat):
-        x_train, x_test = (x_flat[:train_idx.shape[0]],
-                           x_flat[train_idx.shape[0]:])
-        est = _get_best_estimator(x_train, y_train, model, search_factory,
-                                  n_splits, random_state, min_non_nan_outer)
-        if mode == 'cm':
-            pred = est.predict(x_test)
-            return confusion_matrix(y_test, pred, label_cats, namespace=xp)
-        elif mode == 'score':
-            return est.score(x_test, y_test)
+@dataclass(slots=True)
+class _ProcessConfig:
+    n_splits: int
+    n_repeats: int
+    oversample: bool
+    categories: dict[str, int]
+    namespace: object
+    min_non_nan: int
+    mode: Mode
+    which: str = 'train'
+    state: int | None = None
+    parameter_grid: dict | list[dict] = None
+    window: int = None
+    step: int = None
+    shape_builder: Callable = field(init=False)
+    eval: Callable = field(init=False)
+    trainer: Callable = field(init=False)
+    labels_vec: Array = field(init=False, repr=False, default=None)
+
+    def __post_init__(self):
+        if self.mode is Mode.CM:
+            self.shape_builder = self._shape_builder
+            self.eval = self._eval_cm
+        elif self.mode is Mode.SCORE:
+            self.shape_builder = self._shape_builder_acc
+            self.eval = self._eval_score
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise ValueError("mode must be Mode.CM or Mode.SCORE")
 
-    label_cats = xp.asarray(list(cats.values()))
-    x_stacked, y_train, y_test = sample_fold(train_idx, test_idx, orig_data,
-                                             lab, label_cats, 0, oversample,
-                                             xp)
+        # bind trainer once to avoid per-call branching
+        if self.parameter_grid is not None:
+            self.trainer = self._train_search
+        else:
+            self.trainer = self._train_fit
+        # cache category labels vec for CM
+        self.labels_vec = self.namespace.asarray(list(self.categories.values()))
 
-    x_stacked, in_shape = _reshape_for_loopwise(model, x_stacked)
-    rep, fold = divmod(pid, n_splits)
-    out = _map_over_windows(x_stacked, window, step, in_shape, _eval, xp)
-    return out, rep, fold
+    def _shape_builder_acc(self, data_local: Array):
+        shape = (self.n_repeats, self.n_splits)
+        if self.window is not None:
+            shape = ((data_local.shape[-1] - self.window) // self.step + 1,) + shape
+        return shape, self.namespace.float32
 
+    def _shape_builder(self, data_local: Array):
+        n_c = len(self.categories)
+        shape = (self.n_repeats, self.n_splits, n_c, n_c)
+        if self.window is not None:
+            shape = ((data_local.shape[-1] - self.window) // self.step + 1,) + shape
+        return shape, self.namespace.uint16
 
-def _reshape_for_loopwise(model, x_stacked):
-    first_step = getattr(model, 'model').steps[0][1]
-    if isinstance(first_step, LoopwiseTransformer):
-        x_stacked = x_stacked.swapaxes(1, first_step.loop_dim)
-        first_step.loop_dim = 1
-        in_shape = x_stacked.shape[:2] + (-1,)
-    else:
-        in_shape = x_stacked.shape[:1] + (-1,)
-    return x_stacked, in_shape
+    def _eval_cm(self, est: BaseEstimator, x_test: Array, y_test: Array):
+        pred = est.predict(x_test)
+        return confusion_matrix(y_test, pred, self.labels_vec,
+                                namespace=self.namespace)
 
+    def _eval_score(self, est: BaseEstimator, x_test: Array, y_test: Array):
+        return est.score(x_test, y_test)
 
-def _get_best_estimator(x_train, y_train, model, search_factory, n_splits,
-                        random_state, min_non_nan_outer):
-    if search_factory is not None:
+    def search_factory(self, estimator: BaseEstimator):
+        from sklearn.model_selection import GridSearchCV
         splitter = MinimumNaNSplit(
-            n_splits=max(2, n_splits - 1),
+            n_splits=max(2, self.n_splits - 1),
             n_repeats=1,
-            random_state=(0 if random_state is None else random_state),
-            min_non_nan=max(1, int(min_non_nan_outer) - 1),
-            which='train'
+            random_state=(0 if self.state is None else self.state),
+            min_non_nan=max(2, int(self.min_non_nan) - 1),
+            which=self.which
         )
-        search = search_factory(estimator=model, cv=splitter, scoring=None)
+        return GridSearchCV(
+            estimator=estimator,
+            param_grid=self.parameter_grid,
+            cv=splitter,
+            # factor=2,
+            # random_state=self.state,
+            n_jobs=-1,
+            scoring=make_scorer(balanced_accuracy_score)
+        )
+
+    def _train_search(self, estimator: BaseEstimator, x_train: Array, y_train: Array) -> BaseEstimator:
+        search = self.search_factory(estimator)
         search.fit(x_train, y_train)
         return search.best_estimator_
-    model.fit(x_train, y_train)
-    return model
+
+    def _train_fit(self, estimator: BaseEstimator, x_train: Array, y_train: Array) -> BaseEstimator:
+        estimator.fit(x_train, y_train)
+        return estimator
 
 
-def _map_over_windows(x_stacked, window, step, in_shape, fn, xp):
-    if window is None:
-        return fn(x_stacked.reshape(in_shape))
-    windowed = sliding_window_view(x_stacked, window, axis=-1, subok=True)[
-               ..., ::step, :]
-    outs = [fn(windowed[..., i, :].reshape(in_shape))
-            for i in range(windowed.shape[-2])]
-    first = outs[0]
-    if hasattr(first, 'shape'):
-        return xp.stack(outs, axis=0)
-    return xp.asarray(outs)
+    def proc(self, train_idx: Array, test_idx: Array, lab: Array,
+             orig_data: Array, pid: int, model: BaseEstimator):
+        """Generic fold processor: returns cm or score per fold/window depending on mode.
+
+        mode: 'cm' -> confusion matrix; 'score' -> estimator.score value.
+        """
+
+        def _eval(train: Array, test: Array):
+            # fit or inner-search using bound trainer
+            est = self.trainer(model, train, y_train)
+            return self.eval(est, test, y_test)
+
+        xp = self.namespace
+        # Build train/test views directly; oversampling/flattening are in-pipeline
+        idx_tr = (train_idx,) + tuple(slice(None) for _ in range(orig_data.ndim - 1))
+        idx_te = (test_idx,) + tuple(slice(None) for _ in range(orig_data.ndim - 1))
+        X_train = orig_data[idx_tr]
+        X_test = orig_data[idx_te]
+        y_train = lab[train_idx]
+        y_test = lab[test_idx]
+        rep, fold = divmod(pid, self.n_splits)
+        # Mapper contracts: for no-window simply call _eval once
+        if self.window is None:
+            out = _eval(X_train, X_test)
+        else:
+            # Sliding-window on the last axis before pipeline flattening
+            windowed_tr = sliding_window_view(X_train, self.window, axis=-1, subok=True)[..., ::self.step, :]
+            windowed_te = sliding_window_view(X_test, self.window, axis=-1, subok=True)[..., ::self.step, :]
+            outs = []
+            for i in range(windowed_tr.shape[-2]):
+                outs.append(_eval(windowed_tr[..., i, :], windowed_te[..., i, :]))
+            out = xp.stack(outs, axis=0)
+        return out, rep, fold
 
 
 def confusion_matrix(
@@ -589,81 +641,8 @@ def nan_common_denom(array: LabeledArray, sort: bool = True,
     return data[np.ix_(*idx)]
 
 
-def sample_fold(train_idx: Array, test_idx: Array,
-                x_data: Array, labels: Array, unique: Array,
-                axis: int, oversample: bool, xp) -> tuple[Array, Array, Array]:
-    """Sample a fold of data for cross-validation.
-
-    Parameters
-    ----------
-    train_idx : Array
-        Indices of the training data.
-    test_idx : Array
-        Indices of the test data.
-    x_data : Array
-        The data to be sampled.
-    labels : Array
-        Labels corresponding to the data.
-    unique : Array
-        Unique labels to be used for oversampling.
-    axis : int
-        Axis along which to stack the data.
-    oversample : bool
-        Whether to oversample the training data.
-    xp : module
-        The array namespace (numpy or cupy).
-
-    Returns
-    -------
-    tuple[Array, Array, Array]
-        Stacked data, training labels, and test labels.
-    """
-
-    # make first and only copy of x_data
-    idx_stacked = xp.concatenate((train_idx, test_idx))
-    idx = tuple(slice(None) if i != axis else idx_stacked
-                for i in range(x_data.ndim))
-    x_stacked = x_data[idx]
-    y_stacked = labels[idx_stacked]
-
-    # define train and test as views of x_stacked
-    sep = train_idx.shape[0]
-    y_train, y_test = y_stacked[:sep], y_stacked[sep:]
-
-    if not oversample:
-        return x_stacked, y_train, y_test
-
-    idx1 = tuple(slice(None) if i != axis else slice(None, sep)
-                 for i in range(x_data.ndim))
-    idx2 = tuple(slice(None) if i != axis else slice(sep, None)
-                 for i in range(x_data.ndim))
-    x_train, x_test = x_stacked[idx1], x_stacked[idx2]
-    mixup2(x_train, y_train, axis)
-    # idx = [slice(None) for _ in range(x_data.ndim)]
-    # for i in unique:
-    #     # fill in train data nans with random combinations of
-    #     # existing train data trials (mixup)
-    #     isin = y_train == i
-    #     idx[axis] = isin
-    #     out = x_train[tuple(idx)]
-    #     if out.size != 0:
-    #         mixup(out, axis)
-    #         if is_torch(xp):
-    #             idx3 = tuple(None if j != axis else
-    #                          slice(None) for j in range(x_data.ndim))
-    #             x_train.masked_scatter_(isin[idx3], out)
-    #         else:
-    #             x_train[tuple(idx)] = out
-
-    # fill in test data nans with noise from distribution
-    is_nan = xp.isnan(x_test)
-    if is_torch(xp):
-        normal = xp.distributions.normal.Normal(0, 1, dtype=x_data.dtype)
-        x_test.masked_scatter_(is_nan, normal.sample((xp.sum(is_nan),)))
-    else:
-        x_test[is_nan] = xp.random.normal(0, 1, int(xp.sum(is_nan)))
-
-    return x_stacked, y_train, y_test
+def sample_fold(*args, **kwargs):
+    raise NotImplementedError("sample_fold is obsolete; pipeline handles oversample/flatten.")
 
 
 def flatten_features(arr: np.ndarray, obs_axs: int = -2) -> np.ndarray:
@@ -851,3 +830,49 @@ def plot_all_scores(all_scores: dict[str, np.ndarray],
     if suptitle is not None:
         fig.suptitle(suptitle)
     return fig, axs
+
+
+if __name__ == "__main__":
+    # Minimal Dask-backed test run for cv_accuracy
+    from dask.distributed import Client
+    import joblib
+
+    # Prefer LocalCluster for a lightweight test
+    from dask.distributed import LocalCluster
+    cluster = LocalCluster(n_workers=2, threads_per_worker=1, processes=True)
+    client = Client(cluster)
+
+
+    # Synthetic data
+    rng = np.random.RandomState(0)
+    # Shape: (channels, trials, extra_dim, features)
+    X = rng.randn(2, 60, 2, 32).astype(np.float32)
+    y = rng.randint(0, 2, size=60)
+    cats = {'a': 0, 'b': 1}
+
+    # Model and decoder
+    model = PcaLdaClassification(0.8, 'lda')
+    dec = Decoder(cats, n_splits=3, n_repeats=1, model=model)
+
+    # Run with Dask joblib backend if available
+    print("Running cv_accuracy with joblib_backend='dask' (falls back if unavailable)...")
+    with joblib.parallel_backend('dask'):
+        acc = dec.cv_accuracy(
+            X, y, obs_axs=1, n_jobs=-1,
+            window=None, shuffle=False, oversample=True
+        )
+    print("cv_accuracy shape:", acc.shape)
+    print("cv_accuracy sample:", np.asarray(acc))
+
+    with joblib.parallel_backend('dask'):
+        dec = Decoder(cats, n_splits=5, n_repeats=10, model=model)
+        acc = dec.cv_cm(X, y, obs_axs=1, parameter_grid={
+            'explained_variance': np.arange(0.4, 0.95, 0.05).tolist()}, normalize='true')
+
+    print(acc)
+
+    # Clean up Dask client/cluster
+    if client is not None:
+        client.close()
+        if 'cluster' in locals():
+            cluster.close()
