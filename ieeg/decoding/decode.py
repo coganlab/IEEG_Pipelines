@@ -6,7 +6,7 @@ except ImportError:
 from sklearn import config_context
 from sklearn.base import BaseEstimator, clone
 from sklearn.experimental import enable_halving_search_cv  # noqa: F401
-from sklearn.metrics import balanced_accuracy_score, make_scorer
+from sklearn.metrics import make_scorer
 from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
@@ -402,7 +402,12 @@ class _ProcessConfig:
         return est.score(x_test, y_test)
 
     def search_factory(self, estimator: BaseEstimator):
-        from sklearn.model_selection import GridSearchCV
+        # Bayesian hyperparameter search using skopt.BayesSearchCV
+        try:
+            from skopt import BayesSearchCV
+            from skopt.space import Categorical, Integer, Real
+        except Exception as e:
+            raise ImportError("scikit-optimize is required for BayesSearchCV. Install 'scikit-optimize'.") from e
         splitter = MinimumNaNSplit(
             n_splits=max(2, self.n_splits - 1),
             n_repeats=1,
@@ -410,13 +415,33 @@ class _ProcessConfig:
             min_non_nan=max(2, int(self.min_non_nan) - 1),
             which=self.which
         )
-        return GridSearchCV(
+        # Convert simple grids (lists) to Categorical spaces; leave others as-is
+        spaces = self.parameter_grid
+        if isinstance(self.parameter_grid, dict):
+            converted = {}
+            for k, v in self.parameter_grid.items():
+                if isinstance(v, list):
+                    converted[k] = Categorical(v)
+                else:
+                    converted[k] = v
+            spaces = converted
+        elif isinstance(self.parameter_grid, list):
+            converted_list = []
+            for space in self.parameter_grid:
+                if isinstance(space, dict):
+                    conv = {}
+                    for k, v in space.items():
+                        conv[k] = Categorical(v) if isinstance(v, list) else v
+                    converted_list.append(conv)
+                else:
+                    converted_list.append(space)
+            spaces = converted_list
+
+        return BayesSearchCV(
             estimator=estimator,
-            param_grid=self.parameter_grid,
+            search_spaces=spaces,
             cv=splitter,
-            # factor=2,
-            # random_state=self.state,
-            n_jobs=-1,
+            n_jobs=splitter.n_splits,  # parallelize across folds
             scoring=make_scorer(balanced_accuracy_score)
         )
 
@@ -455,13 +480,16 @@ class _ProcessConfig:
         if self.window is None:
             out = _eval(X_train, X_test)
         else:
-            # Sliding-window on the last axis before pipeline flattening
+            # Sliding-window on the last axis before flattening and parallel evaluation per window
             windowed_tr = sliding_window_view(X_train, self.window, axis=-1, subok=True)[..., ::self.step, :]
             windowed_te = sliding_window_view(X_test, self.window, axis=-1, subok=True)[..., ::self.step, :]
-            outs = []
-            for i in range(windowed_tr.shape[-2]):
-                outs.append(_eval(windowed_tr[..., i, :], windowed_te[..., i, :]))
-            out = xp.stack(outs, axis=0)
+            n_windows = windowed_tr.shape[-2]
+            # Evaluate windows in parallel; preserve order
+            window_results = Parallel(n_jobs=-1, verbose=0)(
+                delayed(_eval)(windowed_tr[..., i, :], windowed_te[..., i, :])
+                for i in range(n_windows)
+            )
+            out = xp.stack(window_results, axis=0)
         return out, rep, fold
 
 
@@ -559,6 +587,90 @@ def confusion_matrix(
     xp.add.at(cm, (y_true_indices, y_pred_indices), 1)
     return cm
 
+
+def balanced_accuracy_score(y_true, y_pred, *, sample_weight=None, adjusted=False):
+    """Compute the balanced accuracy.
+
+    The balanced accuracy in binary and multiclass classification problems to
+    deal with imbalanced datasets. It is defined as the average of recall
+    obtained on each class.
+
+    The best value is 1 and the worst value is 0 when ``adjusted=False``.
+
+    Read more in the :ref:`User Guide <balanced_accuracy_score>`.
+
+    .. versionadded:: 0.20
+
+    Parameters
+    ----------
+    y_true : array-like of shape (n_samples,)
+        Ground truth (correct) target values.
+
+    y_pred : array-like of shape (n_samples,)
+        Estimated targets as returned by a classifier.
+
+    sample_weight : array-like of shape (n_samples,), default=None
+        Sample weights.
+
+    adjusted : bool, default=False
+        When true, the result is adjusted for chance, so that random
+        performance would score 0, while keeping perfect performance at a score
+        of 1.
+
+    Returns
+    -------
+    balanced_accuracy : float
+        Balanced accuracy score.
+
+    See Also
+    --------
+    average_precision_score : Compute average precision (AP) from prediction
+        scores.
+    precision_score : Compute the precision score.
+    recall_score : Compute the recall score.
+    roc_auc_score : Compute Area Under the Receiver Operating Characteristic
+        Curve (ROC AUC) from prediction scores.
+
+    Notes
+    -----
+    Some literature promotes alternative definitions of balanced accuracy. Our
+    definition is equivalent to :func:`accuracy_score` with class-balanced
+    sample weights, and shares desirable properties with the binary case.
+    See the :ref:`User Guide <balanced_accuracy_score>`.
+
+    References
+    ----------
+    .. [1] Brodersen, K.H.; Ong, C.S.; Stephan, K.E.; Buhmann, J.M. (2010).
+           The balanced accuracy and its posterior distribution.
+           Proceedings of the 20th International Conference on Pattern
+           Recognition, 3121-24.
+    .. [2] John. D. Kelleher, Brian Mac Namee, Aoife D'Arcy, (2015).
+           `Fundamentals of Machine Learning for Predictive Data Analytics:
+           Algorithms, Worked Examples, and Case Studies
+           <https://mitpress.mit.edu/books/fundamentals-machine-learning-predictive-data-analytics>`_.
+
+    Examples
+    --------
+    >>> from sklearn.metrics import balanced_accuracy_score
+    >>> y_true = [0, 1, 0, 0, 1, 0]
+    >>> y_pred = [0, 1, 0, 0, 0, 1]
+    >>> balanced_accuracy_score(y_true, y_pred)
+    np.float64(0.625)
+    """
+    xp = array_namespace(y_true, y_pred)
+    C = confusion_matrix(y_true, y_pred, namespace=xp)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        per_class = xp.diag(C) / C.sum(axis=1)
+    if xp.any(xp.isnan(per_class)):
+        # warnings.warn("y_pred contains classes not in y_true")
+        per_class = per_class[~np.isnan(per_class)]
+    score = xp.mean(per_class)
+    if adjusted:
+        n_classes = len(per_class)
+        chance = 1 / n_classes
+        score -= chance
+        score /= 1 - chance
+    return score
 
 def nan_common_denom(array: LabeledArray, sort: bool = True,
                      trials_ax: int = 1, min_trials: int = 0,
@@ -867,7 +979,7 @@ if __name__ == "__main__":
     with joblib.parallel_backend('dask'):
         dec = Decoder(cats, n_splits=5, n_repeats=10, model=model)
         acc = dec.cv_cm(X, y, obs_axs=1, parameter_grid={
-            'explained_variance': np.arange(0.4, 0.95, 0.05).tolist()}, normalize='true')
+            'explained_variance': (0.4, 0.99)}, normalize='true')
 
     print(acc)
 

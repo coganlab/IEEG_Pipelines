@@ -33,7 +33,7 @@ try:
     from sklearnex import patch_sklearn
 
     # The names match scikit-learn estimators
-    patch_sklearn(["PCA"])
+    patch_sklearn()
 except ImportError:
     print(
         "\nWARNING: sklearnex is not installed. You will be unable to use the "
@@ -1915,10 +1915,10 @@ class OversampleTransformer(BaseEstimator, TransformerMixin):
     def norm(Xc, xp):
         isn = xp.isnan(Xc)
         if isn.any():
-            std_val = float(xp.std(Xc[~isn], dtype='f8'))
-            if not xp.isfinite(std_val) or std_val == 0.0:
-                std_val = 1.0
-            Xc[isn] = xp.random.normal(0., std_val, int(isn.sum()))
+            # std_val = float(xp.std(Xc[~isn], dtype='f8'))
+            # if not xp.isfinite(std_val) or std_val == 0.0:
+            #     std_val = 1.0
+            Xc[isn] = xp.random.normal(0., 1., int(isn.sum()))
 
 
 # %% PRINCIPAL COMPONENT ANALYSIS - Covariance Reducing CLASSIFIER
@@ -2025,18 +2025,16 @@ class PcaEstimateDecoder(CovarianceReducingClassifier):
         {'param_name': value})
 
     """
-    def __init__(self, explained_variance=0.8, clf=SVC, clf_params={},
-                 pca=PCA, PCA_kwargs={}, samples_axis: int = 0,
+    def __init__(self, explained_variance=0.8, clf_params={},
+                 PCA_kwargs={}, samples_axis: int = 0,
                  oversample: bool = True):
         self.explained_variance = explained_variance
-        self.clf = clf
         self.clf_params = clf_params
-        self.pca = pca
         self.PCA_kwargs = PCA_kwargs
 
         PCA_kwargs['n_components'] = explained_variance
-        pca_transformer = pca(**PCA_kwargs)
-        clf_instance = clf(**clf_params)
+        pca_transformer = PCA(**PCA_kwargs)
+        clf_instance = SVC(**clf_params)
         super().__init__(pca=pca_transformer, classifier=clf_instance,
                          memory=Memory(), samples_axis=samples_axis,
                          oversample=oversample)

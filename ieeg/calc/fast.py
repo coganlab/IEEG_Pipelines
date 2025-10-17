@@ -1,5 +1,6 @@
 import numpy as np
 from ieeg.calc._fast.ufuncs import mean_diff as _md, t_test as _ttest
+from ieeg.calc._fast.ufuncs import meanvar as _meanvar
 from ieeg.calc._fast.mixup import mixupnd as cmixup, normnd as cnorm
 from ieeg.calc._fast.permgt import permgtnd as permgt
 from ieeg.arrays.api import array_namespace, is_numpy, is_torch, Array, is_cupy
@@ -7,7 +8,308 @@ from scipy.stats import rankdata
 from functools import partial
 
 __all__ = ["mean_diff", "mixup", "mixup2", "permgt", "norm", "concatenate_arrays",
-           "ttest", "brunnermunzel"]
+           "ttest", "brunnermunzel", "meanvar"]
+
+# Cached CuPy kernels for meanvar (GPU backend)
+_CUPY_MEANVAR_KERNELS = {}
+
+
+def _get_cupy_meanvar_kernel(xp, dtype):
+    key = ('meanvar', str(dtype))
+    kern = _CUPY_MEANVAR_KERNELS.get(key)
+    if kern is not None:
+        return kern
+    if dtype == xp.float64:
+        code = r"""
+        #define _CUDA_NAN_D __longlong_as_double(0x7ff8000000000000ULL)
+        extern "C" __global__ void meanvar_f64(const double* __restrict__ x,
+                                                const long long outer_size,
+                                                const int last_dim,
+                                                const double ddof,
+                                                double* __restrict__ out_mean,
+                                                double* __restrict__ out_var)
+        {
+            const long long outer_idx = blockIdx.x;
+            if (outer_idx >= outer_size) return;
+            const int tid = threadIdx.x;
+            const int nthreads = blockDim.x;
+            const double* row = x + outer_idx * (long long)last_dim;
+            double sum = 0.0;
+            double sumsq = 0.0;
+            int count = 0;
+            for (int j = tid; j < last_dim; j += nthreads) {
+                double v = row[j];
+                if (v == v) { // not NaN
+                    sum += v;
+                    sumsq += v * v;
+                    count += 1;
+                }
+            }
+            extern __shared__ unsigned char smem_raw[];
+            double* s_sum = (double*)smem_raw;
+            double* s_sumsq = (double*)(s_sum + nthreads);
+            int* s_count = (int*)(s_sumsq + nthreads);
+            s_sum[tid] = sum;
+            s_sumsq[tid] = sumsq;
+            s_count[tid] = count;
+            __syncthreads();
+            for (int offset = nthreads >> 1; offset > 0; offset >>= 1) {
+                if (tid < offset) {
+                    s_sum[tid] += s_sum[tid + offset];
+                    s_sumsq[tid] += s_sumsq[tid + offset];
+                    s_count[tid] += s_count[tid + offset];
+                }
+                __syncthreads();
+            }
+            if (tid == 0) {
+                const int n = s_count[0];
+                if (n == 0) {
+                    out_mean[outer_idx] = _CUDA_NAN_D;
+                    out_var[outer_idx] = _CUDA_NAN_D;
+                } else {
+                    const double mean = s_sum[0] / (double)n;
+                    const double denom = (double)n - ddof;
+                    if (denom <= 0.0) {
+                        out_mean[outer_idx] = mean;
+                        out_var[outer_idx] = _CUDA_NAN_D;
+                    } else {
+                        const double var_num = s_sumsq[0] - (s_sum[0] * s_sum[0]) / (double)n;
+                        out_mean[outer_idx] = mean;
+                        out_var[outer_idx] = var_num / denom;
+                    }
+                }
+            }
+        }
+        """
+        kern = xp.RawKernel(code, 'meanvar_f64')
+        _CUPY_MEANVAR_KERNELS[key] = kern
+        return kern
+    else:
+        code = r"""
+        #define _CUDA_NAN_F __int_as_float(0x7fffffff)
+        extern "C" __global__ void meanvar_f32(const float* __restrict__ x,
+                                                const long long outer_size,
+                                                const int last_dim,
+                                                const float ddof,
+                                                float* __restrict__ out_mean,
+                                                float* __restrict__ out_var)
+        {
+            const long long outer_idx = blockIdx.x;
+            if (outer_idx >= outer_size) return;
+            const int tid = threadIdx.x;
+            const int nthreads = blockDim.x;
+            const float* row = x + outer_idx * (long long)last_dim;
+            float sum = 0.0f;
+            float sumsq = 0.0f;
+            int count = 0;
+            for (int j = tid; j < last_dim; j += nthreads) {
+                float v = row[j];
+                if (v == v) { // not NaN
+                    sum += v;
+                    sumsq += v * v;
+                    count += 1;
+                }
+            }
+            extern __shared__ unsigned char smem_raw[];
+            float* s_sum = (float*)smem_raw;
+            float* s_sumsq = (float*)(s_sum + nthreads);
+            int* s_count = (int*)(s_sumsq + nthreads);
+            s_sum[tid] = sum;
+            s_sumsq[tid] = sumsq;
+            s_count[tid] = count;
+            __syncthreads();
+            for (int offset = nthreads >> 1; offset > 0; offset >>= 1) {
+                if (tid < offset) {
+                    s_sum[tid] += s_sum[tid + offset];
+                    s_sumsq[tid] += s_sumsq[tid + offset];
+                    s_count[tid] += s_count[tid + offset];
+                }
+                __syncthreads();
+            }
+            if (tid == 0) {
+                const int n = s_count[0];
+                if (n == 0) {
+                    out_mean[outer_idx] = _CUDA_NAN_F;
+                    out_var[outer_idx] = _CUDA_NAN_F;
+                } else {
+                    const float mean = s_sum[0] / (float)n;
+                    const float denom = (float)n - ddof;
+                    if (denom <= 0.0f) {
+                        out_mean[outer_idx] = mean;
+                        out_var[outer_idx] = _CUDA_NAN_F;
+                    } else {
+                        const float var_num = s_sumsq[0] - (s_sum[0] * s_sum[0]) / (float)n;
+                        out_mean[outer_idx] = mean;
+                        out_var[outer_idx] = var_num / denom;
+                    }
+                }
+            }
+        }
+        """
+        kern = xp.RawKernel(code, 'meanvar_f32')
+        _CUPY_MEANVAR_KERNELS[key] = kern
+        return kern
+
+
+def _get_cupy_ttest_kernel(xp, dtype):
+    key = ('ttest', str(dtype))
+    kern = _CUPY_MEANVAR_KERNELS.get(key)
+    if kern is not None:
+        return kern
+    if dtype == xp.float64:
+        code = r"""
+        #define _CUDA_NAN_D __longlong_as_double(0x7ff8000000000000ULL)
+        extern "C" __global__ void ttest_f64(const double* __restrict__ a,
+                                              const double* __restrict__ b,
+                                              const long long outer_size,
+                                              const int last_dim,
+                                              double* __restrict__ out)
+        {
+            const long long outer_idx = blockIdx.x;
+            if (outer_idx >= outer_size) return;
+            const int tid = threadIdx.x;
+            const int nthreads = blockDim.x;
+            const double* row_a = a + outer_idx * (long long)last_dim;
+            const double* row_b = b + outer_idx * (long long)last_dim;
+            double sum_a = 0.0, sumsq_a = 0.0;
+            double sum_b = 0.0, sumsq_b = 0.0;
+            int cnt_a = 0, cnt_b = 0;
+            for (int j = tid; j < last_dim; j += nthreads) {
+                double va = row_a[j];
+                if (va == va) { sum_a += va; sumsq_a += va * va; cnt_a += 1; }
+                double vb = row_b[j];
+                if (vb == vb) { sum_b += vb; sumsq_b += vb * vb; cnt_b += 1; }
+            }
+            extern __shared__ unsigned char smem_raw[];
+            double* s_sum_a = (double*)smem_raw;
+            double* s_sumsq_a = (double*)(s_sum_a + nthreads);
+            int* s_cnt_a = (int*)(s_sumsq_a + nthreads);
+            double* s_sum_b = (double*)(s_cnt_a + nthreads);
+            double* s_sumsq_b = (double*)(s_sum_b + nthreads);
+            int* s_cnt_b = (int*)(s_sumsq_b + nthreads);
+            s_sum_a[tid] = sum_a; s_sumsq_a[tid] = sumsq_a; s_cnt_a[tid] = cnt_a;
+            s_sum_b[tid] = sum_b; s_sumsq_b[tid] = sumsq_b; s_cnt_b[tid] = cnt_b;
+            __syncthreads();
+            for (int offset = nthreads >> 1; offset > 0; offset >>= 1) {
+                if (tid < offset) {
+                    s_sum_a[tid] += s_sum_a[tid + offset];
+                    s_sumsq_a[tid] += s_sumsq_a[tid + offset];
+                    s_cnt_a[tid] += s_cnt_a[tid + offset];
+                    s_sum_b[tid] += s_sum_b[tid + offset];
+                    s_sumsq_b[tid] += s_sumsq_b[tid + offset];
+                    s_cnt_b[tid] += s_cnt_b[tid + offset];
+                }
+                __syncthreads();
+            }
+            if (tid == 0) {
+                const int n1 = s_cnt_a[0];
+                const int n2 = s_cnt_b[0];
+                if (n1 == 0 || n2 == 0 || (n1 == 1 && n2 == 1)) {
+                    out[outer_idx] = _CUDA_NAN_D;
+                    return;
+                }
+                const double sum1 = s_sum_a[0], sum2 = s_sum_b[0];
+                const double mean1 = sum1 / (double)n1;
+                const double mean2 = sum2 / (double)n2;
+                const double varnum1 = s_sumsq_a[0] - (sum1 * sum1) / (double)n1;
+                const double varnum2 = s_sumsq_b[0] - (sum2 * sum2) / (double)n2;
+                double denom;
+                if (n1 == 1) {
+                    denom = sqrt(varnum2 / ((double)(n2 - 1) * (double)n2));
+                } else if (n2 == 1) {
+                    denom = sqrt(varnum1 / ((double)(n1 - 1) * (double)n1));
+                } else {
+                    denom = sqrt(varnum1 / ((double)(n1 - 1) * (double)n1)
+                                + varnum2 / ((double)(n2 - 1) * (double)n2));
+                }
+                if (denom == 0.0) {
+                    out[outer_idx] = _CUDA_NAN_D;
+                } else {
+                    out[outer_idx] = (mean1 - mean2) / denom;
+                }
+            }
+        }
+        """
+        kern = xp.RawKernel(code, 'ttest_f64')
+        _CUPY_MEANVAR_KERNELS[key] = kern
+        return kern
+    else:
+        code = r"""
+        #define _CUDA_NAN_F __int_as_float(0x7fffffff)
+        extern "C" __global__ void ttest_f32(const float* __restrict__ a,
+                                              const float* __restrict__ b,
+                                              const long long outer_size,
+                                              const int last_dim,
+                                              float* __restrict__ out)
+        {
+            const long long outer_idx = blockIdx.x;
+            if (outer_idx >= outer_size) return;
+            const int tid = threadIdx.x;
+            const int nthreads = blockDim.x;
+            const float* row_a = a + outer_idx * (long long)last_dim;
+            const float* row_b = b + outer_idx * (long long)last_dim;
+            float sum_a = 0.0f, sumsq_a = 0.0f;
+            float sum_b = 0.0f, sumsq_b = 0.0f;
+            int cnt_a = 0, cnt_b = 0;
+            for (int j = tid; j < last_dim; j += nthreads) {
+                float va = row_a[j];
+                if (va == va) { sum_a += va; sumsq_a += va * va; cnt_a += 1; }
+                float vb = row_b[j];
+                if (vb == vb) { sum_b += vb; sumsq_b += vb * vb; cnt_b += 1; }
+            }
+            extern __shared__ unsigned char smem_raw[];
+            float* s_sum_a = (float*)smem_raw;
+            float* s_sumsq_a = (float*)(s_sum_a + nthreads);
+            int* s_cnt_a = (int*)(s_sumsq_a + nthreads);
+            float* s_sum_b = (float*)(s_cnt_a + nthreads);
+            float* s_sumsq_b = (float*)(s_sum_b + nthreads);
+            int* s_cnt_b = (int*)(s_sumsq_b + nthreads);
+            s_sum_a[tid] = sum_a; s_sumsq_a[tid] = sumsq_a; s_cnt_a[tid] = cnt_a;
+            s_sum_b[tid] = sum_b; s_sumsq_b[tid] = sumsq_b; s_cnt_b[tid] = cnt_b;
+            __syncthreads();
+            for (int offset = nthreads >> 1; offset > 0; offset >>= 1) {
+                if (tid < offset) {
+                    s_sum_a[tid] += s_sum_a[tid + offset];
+                    s_sumsq_a[tid] += s_sumsq_a[tid + offset];
+                    s_cnt_a[tid] += s_cnt_a[tid + offset];
+                    s_sum_b[tid] += s_sum_b[tid + offset];
+                    s_sumsq_b[tid] += s_sumsq_b[tid + offset];
+                    s_cnt_b[tid] += s_cnt_b[tid + offset];
+                }
+                __syncthreads();
+            }
+            if (tid == 0) {
+                const int n1 = s_cnt_a[0];
+                const int n2 = s_cnt_b[0];
+                if (n1 == 0 || n2 == 0 || (n1 == 1 && n2 == 1)) {
+                    out[outer_idx] = _CUDA_NAN_F;
+                    return;
+                }
+                const float sum1 = s_sum_a[0], sum2 = s_sum_b[0];
+                const float mean1 = sum1 / (float)n1;
+                const float mean2 = sum2 / (float)n2;
+                const float varnum1 = s_sumsq_a[0] - (sum1 * sum1) / (float)n1;
+                const float varnum2 = s_sumsq_b[0] - (sum2 * sum2) / (float)n2;
+                float denom;
+                if (n1 == 1) {
+                    denom = sqrtf(varnum2 / ((float)(n2 - 1) * (float)n2));
+                } else if (n2 == 1) {
+                    denom = sqrtf(varnum1 / ((float)(n1 - 1) * (float)n1));
+                } else {
+                    denom = sqrtf(varnum1 / ((float)(n1 - 1) * (float)n1)
+                                 + varnum2 / ((float)(n2 - 1) * (float)n2));
+                }
+                if (denom == 0.0f) {
+                    out[outer_idx] = _CUDA_NAN_F;
+                } else {
+                    out[outer_idx] = (mean1 - mean2) / denom;
+                }
+            }
+        }
+        """
+        kern = xp.RawKernel(code, 'ttest_f32')
+        _CUPY_MEANVAR_KERNELS[key] = kern
+        return kern
 
 
 def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
@@ -87,30 +389,6 @@ def brunnermunzel(x: np.ndarray, y: np.ndarray, axis=None, nan_policy='omit'):
     return np.squeeze(wbfn)
 
 
-def _compute_mean_and_variance_np(group, axis, ddof=1):
-    """Helper function to compute mean and variance with NaN handling."""
-    mask = ~np.isnan(group)
-    n = np.sum(mask, axis=axis, keepdims=True)
-
-    # copy the group to avoid modifying the original data
-    group = np.where(mask, group, 0.)
-
-    # calculate mean
-    mean = np.sum(group, axis=axis, keepdims=True) / n
-
-    # calculate variance
-    indices = ''.join(chr(105 + i) for i in range(group.ndim))
-    formula = f"{indices},{indices}->{indices[:axis]}{indices[axis+1:]}"
-    ind = tuple(slice(None) if i != axis else None for i in range(group.ndim))
-    variance = np.einsum(formula, group, group)[ind]
-    variance -= np.square(mean) * n
-    variance[n == ddof] = 0  # Set variance to 0 where n == 1
-    variance[n < ddof] = np.nan  # Set variance to NaN where n == 0
-    variance[n > ddof] /= ((n - ddof) * n)[n > ddof]
-    mean[n == 0] = np.nan
-    return mean, variance
-
-
 def ttest(group1: np.ndarray, group2: np.ndarray,
           axis: int, xp=None) -> np.ndarray:
     """Calculate the t-statistic between two groups.
@@ -142,11 +420,11 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     array([      nan, 1.2004901])
     >>> ttest(group1, group2, 0)
     array([0.        , 1.01680311, 0.        , 1.10431526, 0.        ])
-    >>> import cupy as cp # doctest: +SKIP
+    >>> import cupy as cp
     >>> group1 = cp.array([[1, 1, 1, 1, 1], [0, 60, 0, 10, 0]]
-    ... ) # doctest: +SKIP
-    >>> group2 = cp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]) # doctest: +SKIP
-    >>> ttest(group1, group2, 1) # doctest: +SKIP
+    ... )
+    >>> group2 = cp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]])
+    >>> ttest(group1, group2, 1)
     array([      nan, 1.2004901])
     """
     if xp is None:
@@ -154,27 +432,28 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
     while axis < 0:
         axis += group1.ndim
     if is_numpy(xp):
-        # return _ttest(group1, group2, axes=[axis, axis])
-
-        with np.errstate(divide='ignore'):
-            mean1, var1 = _compute_mean_and_variance_np(group1, axis)
-            mean2, var2 = _compute_mean_and_variance_np(group2, axis)
-
-        denom = np.sqrt(var1 + var2)
-
-        # Handle cases where the denominator is zero
-        denom[denom == 0] = np.nan
-        t_stat = (mean1 - mean2) / denom
-
-        return np.squeeze(t_stat)
+        return _ttest(group1, group2, axes=[axis, axis])
     elif is_cupy(xp):
-        n1 = xp.sum(~xp.isnan(group1), axis=axis)
-        n2 = xp.sum(~xp.isnan(group2), axis=axis)
-        mean1 = xp.nansum(group1, axis=axis) / n1
-        mean2 = xp.nansum(group2, axis=axis) / n2
-        var1 = xp.nanvar(group1, axis=axis, ddof=1)
-        var2 = xp.nanvar(group2, axis=axis, ddof=1)
-        return (mean1 - mean2) / xp.sqrt(var1 / n1 + var2 / n2)
+        # Use fused CuPy kernel
+        moved1 = xp.moveaxis(group1, axis, -1)
+        moved2 = xp.moveaxis(group2, axis, -1)
+        # Ensure floating dtype for kernel
+        kdtype = xp.float64 if moved1.dtype == xp.float64 or moved2.dtype == xp.float64 else xp.float32
+        a_cast = moved1.astype(kdtype, copy=False)
+        b_cast = moved2.astype(kdtype, copy=False)
+        outer = int(xp.prod(xp.asarray(a_cast.shape[:-1]))) if a_cast.ndim > 1 else 1
+        last_dim = a_cast.shape[-1]
+        a_flat = a_cast.reshape(outer, last_dim)
+        b_flat = b_cast.reshape(outer, last_dim)
+        out = xp.empty((outer,), dtype=kdtype)
+        kern = _get_cupy_ttest_kernel(xp, kdtype)
+        threads = 256
+        blocks = outer
+        # shared memory: sum/sumsq/count for both groups
+        size_per_thread = (kdtype().itemsize * 2 + xp.dtype('int32').itemsize) * 2
+        shmem = threads * size_per_thread
+        kern((blocks,), (threads,), (a_flat, b_flat, outer, int(last_dim), out), shared_mem=shmem)
+        return out.reshape(a_cast.shape[:-1])
     else:
         raise NotImplementedError("T-test is not implemented for this array"
                                   " type.")
@@ -487,7 +766,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
 
 
 def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
-           seed=None) -> None:
+           seed=None, xp=None) -> None:
     """Label-aware mixup that pairs the larger lambda with a same-class donor.
 
     This function mirrors the vectorized implementation of ``mixup`` but
@@ -568,8 +847,8 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
            [ 9.        , 10.        , 11.        , 12.        ],
            [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
     """
-
-    xp = array_namespace(arr, labels)
+    if xp is None:
+        xp = array_namespace(arr, labels)
 
     # Torch: move to CPU, operate in NumPy, then copy back (keep data on GPU otherwise)
     if is_torch(xp):  # TODO: remove this crutch to keep data on the GPU
@@ -755,11 +1034,66 @@ def mean_diff(group1: Array, group2: Array,
         return group1.mean(axis=axis) - group2.mean(axis=axis)
 
 
+def meanvar(arr: Array, axis: int = -1, ddof: int = 1, xp=None):
+    """Compute mean and variance along an axis, ignoring NaNs.
+
+    Returns a tuple (mean, var). Uses optimized C ufunc for NumPy;
+    CuPy uses a RawKernel implementation.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> arr = np.array([[1, 2, 3], [4, 5, np.nan], [7, 8, 9]])
+    >>> meanvar(arr, axis=0)
+    (array([4., 5., 6.]), array([9., 9., 9.]))
+    >>> meanvar(arr, axis=1)
+    (array([2., 4.5, 8.]), array([1., 0.5, 1.]))
+    >>> import cupy as cp
+    >>> arr_cp = cp.array([[1, 2, 3], [4, 5, cp.nan], [7, 8, 9]])
+    >>> mv = meanvar(arr_cp, axis=0)
+    >>> mv[0].shape, mv[1].shape
+    ((3,), (3,))
+    """
+    while axis < 0:
+        axis += arr.ndim
+
+    if xp is None:
+        xp = array_namespace(arr)
+
+    if is_numpy(xp):
+        # NumPy backend: C gufunc
+        ddof_arg = np.array(ddof, dtype=arr.dtype)
+        mean, var = _meanvar(arr, ddof_arg, axes=[(axis,), (), (), ()])
+        return mean, var
+
+    elif is_cupy(xp):
+        # CuPy backend: RawKernel reduction along the last axis
+        moved = xp.moveaxis(arr, axis, -1)
+        outer = int(xp.prod(xp.asarray(moved.shape[:-1]))) if moved.ndim > 1 else 1
+        last_dim = moved.shape[-1]
+        x_flat = moved.reshape(outer, last_dim)
+        out_mean = xp.empty((outer,), dtype=moved.dtype)
+        out_var = xp.empty((outer,), dtype=moved.dtype)
+        kern = _get_cupy_meanvar_kernel(xp, moved.dtype)
+        threads = 256
+        blocks = outer
+        shmem = threads * (moved.dtype.itemsize * 2 + xp.dtype('int32').itemsize)
+        kern((blocks,), (threads,),
+             (x_flat, outer, int(last_dim), moved.dtype.type(ddof), out_mean, out_var),
+             shared_mem=shmem)
+        mean = out_mean.reshape(moved.shape[:-1])
+        var = out_var.reshape(moved.shape[:-1])
+        return mean, var
+
+    else:
+
+        raise NotImplementedError("meanvar not implemented for this array type")
+
+
 if __name__ == "__main__":
     import numpy as np
     from timeit import timeit
     from scipy import stats
-    from ieeg.calc.fast import ttest, _ttest
 
     # np.random.seed(0)
     rng = np.random.default_rng()
@@ -770,9 +1104,9 @@ if __name__ == "__main__":
     rvs3 = np.array([
         stats.norm.rvs(loc=8, scale=5, size=2000, random_state=rng)
         for _ in range(100)]) / 10000
-    res1 = stats.ttest_ind(rvs1, rvs3, axis=1)
+    res1 = ttest(rvs1, rvs3, axis=1)
     res2 = stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)
-    res3 = ttest(rvs1, rvs3, 1)
+    res3 = _ttest(rvs1, rvs3, axes=[1, 1])
 
     n = 10000
     kwargs = dict(globals=globals(), number=n)
