@@ -303,22 +303,35 @@ class Decoder(MinimumNaNSplit):
         shape, dtype = config.shape_builder(data)
         out = xp.zeros(shape, dtype=dtype)
 
-        task_iter = (
-            (train_idx, test_idx, l, data, i, clone(self.model))
-            for i, ((train_idx, test_idx), l) in enumerate(idxs)
-        )
+        # Precompute sliding-window view once if needed
+        total = config.n_splits * config.n_repeats
+        if config.window is not None:
+            data_w = sliding_window_view(data, config.window, axis=-1, subok=True)[..., ::config.step, :]
+            n_windows = int(data_w.shape[-2])
+            # Build tasks across (split, window)
+            task_iter = (
+                (train_idx, test_idx, l, data, i, clone(self.model), data_w, w)
+                for i, ((train_idx, test_idx), l) in enumerate(idxs)
+                for w in range(n_windows)
+            )
+            total *= n_windows
+        else:
+            task_iter = (
+                (train_idx, test_idx, l, data, i, clone(self.model), None, None)
+                for i, ((train_idx, test_idx), l) in enumerate(idxs)
+            )
 
         if n_jobs == 1:
             results = (config.proc(*args) for args in task_iter)
         else:
             parallel_kwargs = dict(n_jobs=n_jobs, verbose=0,
-                                   # require='sharedmem',
+                                   require='sharedmem',
                                    return_as="generator_unordered")
             results = Parallel(**parallel_kwargs)(
                     delayed(config.proc)(*args) for args in task_iter)
 
         if self.t is None:
-            t = tqdm(desc=self.current_job, total=config.n_splits * config.n_repeats)
+            t = tqdm(desc=self.current_job, total=total)
         else:
             t = self.t
             t.desc = self.current_job
@@ -328,8 +341,8 @@ class Decoder(MinimumNaNSplit):
                 out[rep, fold] = result
                 t.update()
         else:
-            for result, rep, fold in results:
-                out[:, rep, fold] = result
+            for result, rep, fold, w in results:
+                out[w, rep, fold] = result
                 t.update()
 
         if self.t is None:
@@ -441,13 +454,19 @@ class _ProcessConfig:
             estimator=estimator,
             search_spaces=spaces,
             cv=splitter,
-            n_jobs=splitter.n_splits,  # parallelize across folds
-            scoring=make_scorer(balanced_accuracy_score)
+            # Avoid nested parallelism; outer level should handle parallelism
+            n_jobs=5,
+            scoring=make_scorer(balanced_accuracy_score),
+            n_iter=25,
+            n_points=5
         )
 
     def _train_search(self, estimator: BaseEstimator, x_train: Array, y_train: Array) -> BaseEstimator:
         search = self.search_factory(estimator)
-        search.fit(x_train, y_train)
+        # Disable sklearn metadata routing to avoid passing unsupported 'groups'
+        # into skopt.BayesSearchCV.fit
+        with config_context(enable_metadata_routing=False):
+            search.fit(x_train, y_train)
         return search.best_estimator_
 
     def _train_fit(self, estimator: BaseEstimator, x_train: Array, y_train: Array) -> BaseEstimator:
@@ -456,7 +475,8 @@ class _ProcessConfig:
 
 
     def proc(self, train_idx: Array, test_idx: Array, lab: Array,
-             orig_data: Array, pid: int, model: BaseEstimator):
+             orig_data: Array, pid: int, model: BaseEstimator,
+             data_w: Array | None = None, w: int | None = None):
         """Generic fold processor: returns cm or score per fold/window depending on mode.
 
         mode: 'cm' -> confusion matrix; 'score' -> estimator.score value.
@@ -476,21 +496,21 @@ class _ProcessConfig:
         y_train = lab[train_idx]
         y_test = lab[test_idx]
         rep, fold = divmod(pid, self.n_splits)
-        # Mapper contracts: for no-window simply call _eval once
+        # Mapper contracts: for no-window simply call _eval once; for windowed,
+        # use precomputed data_w and selected window index w.
         if self.window is None:
             out = _eval(X_train, X_test)
+            return out, rep, fold
         else:
-            # Sliding-window on the last axis before flattening and parallel evaluation per window
-            windowed_tr = sliding_window_view(X_train, self.window, axis=-1, subok=True)[..., ::self.step, :]
-            windowed_te = sliding_window_view(X_test, self.window, axis=-1, subok=True)[..., ::self.step, :]
-            n_windows = windowed_tr.shape[-2]
-            # Evaluate windows in parallel; preserve order
-            window_results = Parallel(n_jobs=-1, verbose=0)(
-                delayed(_eval)(windowed_tr[..., i, :], windowed_te[..., i, :])
-                for i in range(n_windows)
-            )
-            out = xp.stack(window_results, axis=0)
-        return out, rep, fold
+            if data_w is None or w is None:
+                raise ValueError("Windowed processing expects precomputed windows and window index.")
+            # Index precomputed window view for train/test
+            idx_tr_w = (train_idx,) + tuple(slice(None) for _ in range(data_w.ndim - 1))
+            idx_te_w = (test_idx,) + tuple(slice(None) for _ in range(data_w.ndim - 1))
+            Xw_tr = data_w[idx_tr_w][..., w, :]
+            Xw_te = data_w[idx_te_w][..., w, :]
+            out = _eval(Xw_tr, Xw_te)
+            return out, rep, fold, w
 
 
 def confusion_matrix(
