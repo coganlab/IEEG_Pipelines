@@ -7,21 +7,20 @@ from sklearn import config_context
 from sklearn.base import BaseEstimator, clone
 from sklearn.experimental import enable_halving_search_cv  # noqa: F401
 from sklearn.metrics import make_scorer
-from ieeg.decoding.models import PcaLdaClassification, LoopwiseTransformer
+from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
-from ieeg.arrays.api import array_namespace, Array, is_torch, is_numpy
+from ieeg.arrays.api import array_namespace, Array
 from ieeg.arrays.reshape import sliding_window_view
-from ieeg.calc.fast import mixup, mixup2
 import numpy as np
 import matplotlib.pyplot as plt
 from ieeg.viz.ensemble import plot_dist
 from joblib import Parallel, delayed
 import itertools
-from tqdm import tqdm
+# from tqdm import tqdm
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Literal
+from typing import Callable
 
 
 class Decoder(MinimumNaNSplit):
@@ -324,30 +323,30 @@ class Decoder(MinimumNaNSplit):
         if n_jobs == 1:
             results = (config.proc(*args) for args in task_iter)
         else:
-            parallel_kwargs = dict(n_jobs=n_jobs, verbose=0,
+            parallel_kwargs = dict(n_jobs=n_jobs, verbose=30,
                                    # require='sharedmem',
-                                   return_as="generator"
+                                   # return_as="generator"
                                    )
             results = Parallel(**parallel_kwargs)(
                     delayed(config.proc)(*args) for args in task_iter)
 
-        if self.t is None:
-            t = tqdm(desc=self.current_job, total=total)
-        else:
-            t = self.t
-            t.desc = self.current_job
+        # if self.t is None:
+        #     t = tqdm(desc=self.current_job, total=total)
+        # else:
+        #     t = self.t
+        #     t.desc = self.current_job
 
         if config.window is None:
             for result, rep, fold in results:
                 out[rep, fold] = result
-                t.update()
+                # t.update()
         else:
             for result, rep, fold, w in results:
                 out[w, rep, fold] = result
-                t.update()
+                # t.update()
 
-        if self.t is None:
-            t.close()
+        # if self.t is None:
+        #     t.close()
 
         return out
 
