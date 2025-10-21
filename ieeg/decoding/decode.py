@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from ieeg.viz.ensemble import plot_dist
 from joblib import Parallel, delayed
 import itertools
-# from tqdm import tqdm
+from tqdm import tqdm
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable
@@ -320,33 +320,23 @@ class Decoder(MinimumNaNSplit):
                 for i, ((train_idx, test_idx), l) in enumerate(idxs)
             )
 
+
         if n_jobs == 1:
             results = (config.proc(*args) for args in task_iter)
         else:
-            parallel_kwargs = dict(n_jobs=n_jobs, verbose=30,
-                                   # require='sharedmem',
+            parallel_kwargs = dict(n_jobs=n_jobs, verbose=40,
+                                   prefer='threads'
                                    # return_as="generator"
                                    )
             results = Parallel(**parallel_kwargs)(
                     delayed(config.proc)(*args) for args in task_iter)
 
-        # if self.t is None:
-        #     t = tqdm(desc=self.current_job, total=total)
-        # else:
-        #     t = self.t
-        #     t.desc = self.current_job
-
         if config.window is None:
             for result, rep, fold in results:
                 out[rep, fold] = result
-                # t.update()
         else:
             for result, rep, fold, w in results:
                 out[w, rep, fold] = result
-                # t.update()
-
-        # if self.t is None:
-        #     t.close()
 
         return out
 
@@ -455,10 +445,10 @@ class _ProcessConfig:
             search_spaces=spaces,
             cv=splitter,
             # Avoid nested parallelism; outer level should handle parallelism
-            n_jobs=5,
+            n_jobs=1,
             scoring=make_scorer(balanced_accuracy_score),
             n_iter=25,
-            n_points=5
+            n_points=1
         )
 
     def _train_search(self, estimator: BaseEstimator, x_train: Array, y_train: Array) -> BaseEstimator:
@@ -487,7 +477,6 @@ class _ProcessConfig:
             est = self.trainer(model, train, y_train)
             return self.eval(est, test, y_test)
 
-        xp = self.namespace
         # Build train/test views directly; oversampling/flattening are in-pipeline
         idx_tr = (train_idx,) + tuple(slice(None) for _ in range(orig_data.ndim - 1))
         idx_te = (test_idx,) + tuple(slice(None) for _ in range(orig_data.ndim - 1))
@@ -512,6 +501,10 @@ class _ProcessConfig:
             out = _eval(Xw_tr, Xw_te)
             return out, rep, fold, w
 
+def _updater(iter, t):
+    for item in iter:
+        yield item
+        t.update()
 
 def confusion_matrix(
     y_true, y_pred, labels=None, namespace=None
