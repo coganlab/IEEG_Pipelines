@@ -325,7 +325,7 @@ class Decoder(MinimumNaNSplit):
             results = (config.proc(*args) for args in task_iter)
         else:
             parallel_kwargs = dict(n_jobs=n_jobs, verbose=0,
-                                   require='sharedmem',
+                                   # require='sharedmem',
                                    return_as="generator_unordered")
             results = Parallel(**parallel_kwargs)(
                     delayed(config.proc)(*args) for args in task_iter)
