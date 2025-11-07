@@ -148,7 +148,7 @@ def extract(data: np.ndarray, fs: float = None,
             ins = (in_data[trial].T for trial in trials)
             par_out = parallelize(filterbank_hilbert, ins, fs=fs, Wn=passband,
                                   spacing=spacing, n_jobs=n_jobs)
-            env[:, :, :] = np.array([np.sum(out, axis=-1).T for
+            env[:, :, :] = np.array([np.mean(out, axis=-1).T for
                                      out in par_out])
         else:
             if verbose:
@@ -156,10 +156,10 @@ def extract(data: np.ndarray, fs: float = None,
             for trial in trials:
                 out = filterbank_hilbert(in_data[trial, :, :].T, fs,
                                          passband, spacing, 1)
-                env[trial, :, :] = np.sum(out, axis=-1).T
+                env[trial, :, :] = np.mean(out, axis=-1).T
     elif len(in_data.shape) == 2:  # Assume shape is (channels, time)
         out = filterbank_hilbert(in_data.T, fs, passband, spacing, n_jobs)
-        env = np.sum(out, axis=-1).T
+        env = np.mean(out, axis=-1).T
     else:
         raise ValueError("number of dims should be either 2 or 3, not {}"
                          "".format(len(in_data.shape)))
