@@ -579,11 +579,12 @@ class LabeledArray(cla):
     def values(self):
         return (a for a in self)
 
-    def _reshape(self, shape, order='C') -> 'LabeledArray':
+    def reshape(self, shape, order='C', **kwargs) -> 'LabeledArray':
         """Reshape the array.
 
         Parameters
         ----------
+        **kwargs
         shape : tuple[int, ...]
             The new shape of the array.
         order : str, optional
@@ -600,7 +601,7 @@ class LabeledArray(cla):
         >>> ad = LabeledArray.from_dict(data, dtype=int)
         >>> ad.labels
         [['a'], ['b'], ['c']]
-        >>> ad._reshape((1, 1, 1)) # doctest: +SKIP
+        >>> ad.reshape((1, 1, 1)) # doctest: +SKIP
         array([[[1]]])
         labels(['a']
                ['b']
@@ -608,7 +609,7 @@ class LabeledArray(cla):
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = [('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad._reshape((6, 4))
+        >>> ad.reshape((6, 4))
         array([[ 0,  1,  2,  3],
                [ 4,  5,  6,  7],
                [ 8,  9, 10, 11],
@@ -617,22 +618,23 @@ class LabeledArray(cla):
                [20, 21, 22, 23]])
         labels(['a-c', 'a-d', 'a-e', 'b-c', 'b-d', 'b-e']
                ['f', 'g', 'h', 'i'])
-        >>> ad._reshape((6, 4), 'F').labels
+        >>> ad.reshape((6, 4),'F').labels
         [['a-c', 'b-c', 'a-d', 'b-d', 'a-e', 'b-e'], ['f', 'g', 'h', 'i']]
-        >>> ad._reshape((2, 12)).labels # doctest: +ELLIPSIS
+        >>> ad.reshape((2, 12)).labels # doctest: +ELLIPSIS
         [['a', 'b'], ['c-f', 'c-g', 'c-h', 'c-i', 'd-f', 'd-g', 'd-h', 'd-i'...
         >>> arr = np.arange(10)
         >>> labels = [list(map(str, arr))]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad._reshape((2, 5)).labels
+        >>> ad.reshape((2, 5)).labels
         [['0-1-2-3-4', '5-6-7-8-9'], ['0-5', '1-6', '2-7', '3-8', '4-9']]
-        >>> ad._reshape((1, 2, 5)).labels # doctest: +ELLIPSIS
+        >>> ad.reshape((1, 2, 5)).labels # doctest: +ELLIPSIS
         [['0-1-2-3-4-5-6-7-8-9'], ['0-1-2-3-4', '5-6-7-8-9'], ['0-5', '1-6',...
         """
         new_array = super(LabeledArray, self).reshape(*shape, order=order)
         lab_mat = functools.reduce(lambda x, y: Labels(x) @ Labels(y), self.labels, Labels(['']))
-        new_labels = lab_mat.reshape(*shape, order=order).decompose()
+        new_labels = lab_mat.reshape(*shape, order=order, **kwargs).decompose()
         return LabeledArray(new_array, new_labels)
+        # return super(LabeledArray, self).reshape(shape, order)
 
     def combine(self, levels: tuple[int, int]) -> 'LabeledArray':
         """Combine any levels of a LabeledArray into the lower level
@@ -703,8 +705,15 @@ class LabeledArray(cla):
         >>> arr = np.arange(24).reshape((2, 3, 4))
         >>> labels = [('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i')]
         >>> ad = LabeledArray(arr, labels)
-        >>> ad.take([0, 2], axis=1).labels
-        [['a', 'b'], ['c', 'e'], ['f', 'g', 'h', 'i']]
+        >>> ad.take([0, 2], axis=1)
+        array([[[ 0,  1,  2,  3],
+                [ 8,  9, 10, 11]],
+        <BLANKLINE>
+               [[12, 13, 14, 15],
+                [20, 21, 22, 23]]])
+        labels(['a', 'b']
+               ['c', 'e']
+               ['f', 'g', 'h', 'i'])
         >>> np.take_along_axis(ad, np.array([[[0, 1]]]), axis=2).labels
         [['a', 'b'], ['c', 'd', 'e'], ['f', 'g']]
         >>> np.take(ad, np.array([[0,2], [1,3]]), axis=2).labels
