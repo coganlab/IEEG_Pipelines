@@ -2,7 +2,7 @@
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 from ieeg.arrays.api import (array_namespace, xp_assert_equal, ArrayLike,
-                             is_numpy, is_cupy)
+                             is_numpy, is_cupy, is_torch)
 
 try:
     from numpy.lib.array_utils import normalize_axis_tuple
@@ -223,8 +223,8 @@ def pad_to_match(sig1: ArrayLike, sig2: ArrayLike,
 
     Examples
     --------
-    >>> sig1 = np.arange(48).reshape(2, 3, 8)
-    >>> sig2 = np.arange(24).reshape(2, 3, 4)
+    >>> sig1 = np.arange(48).reshape(2,3)
+    >>> sig2 = np.arange(24).reshape(2,3)
     >>> pad_to_match(sig1, sig2)
     array([[[ 0,  1,  2,  3,  2,  1,  0,  1],
             [ 4,  5,  6,  7,  6,  5,  4,  5],
@@ -564,8 +564,6 @@ def sliding_window_view(x, window_shape, axis=None, *, subok=False,
                              f'axis; got {len(window_shape)} window_shape '
                              f'elements and {len(axis)} axes elements.')
 
-    out_strides = x.strides + tuple(x.strides[ax] for ax in axis)
-
     # note: same axis can be windowed repeatedly
     x_shape_trimmed = list(x.shape)
     for ax, dim in zip(axis, window_shape):
@@ -575,13 +573,20 @@ def sliding_window_view(x, window_shape, axis=None, *, subok=False,
         x_shape_trimmed[ax] -= dim - 1
     out_shape = tuple(x_shape_trimmed) + window_shape
 
+    # Compute base strides in correct units for each backend
+    if is_torch(xp):
+        base_strides = tuple(x.stride())
+    else:
+        base_strides = x.strides
+    out_strides = base_strides + tuple(base_strides[ax] for ax in axis)
+
     if is_numpy(xp):
         return as_strided(x, strides=out_strides, shape=out_shape,
                           subok=subok, writeable=writeable)
-    elif is_cupy(xp) and no_cupy:
-        raise ModuleNotFoundError("cupy not available")
     elif is_cupy(xp):
         return as_strided_cp(x, strides=out_strides, shape=out_shape)
+    elif is_torch(xp):
+        return xp.as_strided(x, size=out_shape, stride=out_strides)
     else:
         try:
             return as_strided(x, strides=out_strides, shape=out_shape,
