@@ -6,6 +6,7 @@ from ieeg.calc._fast.permgt import permgtnd as permgt
 from ieeg.arrays.api import array_namespace, is_numpy, is_torch, Array, is_cupy
 from scipy.stats import rankdata
 from functools import partial
+import math
 
 __all__ = ["mean_diff", "mixup", "mixup2", "permgt", "norm", "concatenate_arrays",
            "ttest", "brunnermunzel", "meanvar"]
@@ -454,6 +455,9 @@ def ttest(group1: np.ndarray, group2: np.ndarray,
         shmem = threads * size_per_thread
         kern((blocks,), (threads,), (a_flat, b_flat, outer, int(last_dim), out), shared_mem=shmem)
         return out.reshape(a_cast.shape[:-1])
+    elif is_torch(xp):
+        raise NotImplementedError("T-test is not implemented for Torch"
+                                  " arrays.")
     else:
         raise NotImplementedError("T-test is not implemented for this array"
                                   " type.")
@@ -694,6 +698,18 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
            [0.6323 , 0.07513, 0.722  , 0.4668 , 0.7417 ],
            [0.6987 , 0.3787 , 0.4668 , 0.04987, 0.915  ],
            [0.1912 , 0.05853, 0.4368 , 0.72   , 0.824  ]], dtype=float16)
+    >>> import torch
+    >>> torch.manual_seed(0)
+    >>> group4 = torch.randn(100, 10, 10, 100)
+    >>> group4[0::2, 0, 0, :] = float("nan")
+    >>> mixup(group4, 0)
+    >>> group4[0, 0, :, :5]
+    tensor([[0.3274, 0.2805, 0.1257, 0.1256, 0.3027],
+            [0.7480, 0.1802, 0.3890, 0.0376, 0.0118],
+            [0.6484, 0.8290, 0.8213, 0.2578, 0.5327],
+            [0.7583, 0.5034, 0.1770, 0.8325, 0.5166],
+            [0.7397, 0.8570, 0.4490, 0.5913, 0.7140],
+            [0.3076, 0.0620, 0.9890, 0.
     """
     xp = array_namespace(arr)
     if is_numpy(xp):
@@ -764,6 +780,122 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
             xp.subtract(1, lams, out=lams)
             arr_flat[missing_rows, batch_idx] += lams * arr_flat[donor2, batch_idx]
 
+
+def _mixup2_torch(arr, labels, obs_axis: int, alpha: float = 1., seed=None) -> None:
+    import torch
+    device = arr.device
+
+    # Prepare RNG
+    if seed is None:
+        gen = None
+    elif isinstance(seed, int):
+        gen = torch.Generator(device=device)
+        gen.manual_seed(seed)
+    elif isinstance(seed, torch.Generator):
+        gen = seed
+    else:
+        gen = None
+
+    # Move axes so that observations are penultimate and features are last
+    arr_moved = torch.moveaxis(arr, (obs_axis, -1), (-2, -1))
+    batch_shape = arr_moved.shape[:-2]
+    obs = arr_moved.shape[-2]
+    feat = arr_moved.shape[-1]
+
+    # Mask rows with any NaN
+    isnan = torch.isnan(arr_moved).any(-1)
+    if torch.any(isnan.sum(-1) == obs):
+        raise ValueError("Cannot mixup if any rows are completely NaN")
+
+    B = int(math.prod(batch_shape)) if batch_shape else 1
+    mask = isnan.reshape(B, obs).T  # (obs, B)
+
+    counts_nonmissing_by_batch = (~mask).sum(0)
+    counts_missing_by_batch = mask.shape[0] - counts_nonmissing_by_batch
+    cols_proc = torch.nonzero(counts_missing_by_batch > 0, as_tuple=False).flatten()
+    if cols_proc.numel() == 0:
+        return
+
+    # Sort mask rows so False (0) come before True (1)
+    order_proc = torch.argsort(mask[:, cols_proc].to(torch.int8), dim=0)
+
+    n_cols_proc = int(cols_proc.numel())
+    counts_nonmissing_proc = counts_nonmissing_by_batch[cols_proc]
+    max_nn = int(counts_nonmissing_proc.max().item())
+
+    order_T = order_proc[:max_nn].permute(1, 0)  # (n_cols_proc, max_nn)
+    nn_mask = torch.arange(max_nn, device=device)[None, :] < counts_nonmissing_proc[:, None]
+    rows_nn = order_T[nn_mask]
+    batch_nn = cols_proc[:, None].expand(n_cols_proc, max_nn)[nn_mask]
+
+    counts_missing_proc = counts_missing_by_batch[cols_proc]
+    max_miss = int(counts_missing_proc.max().item())
+    order_tail_T = order_proc[-max_miss:].permute(1, 0)
+    miss_sel = torch.arange(max_miss, device=device)[None, :] >= (max_miss - counts_missing_proc)[:, None]
+    missing_rows = order_tail_T[miss_sel]
+    batch_idx = cols_proc[:, None].expand(n_cols_proc, max_miss)[miss_sel]
+
+    # Donor 2: any class
+    pool_sizes_any = counts_nonmissing_by_batch[batch_idx]
+    if torch.any(pool_sizes_any == 0):
+        raise ValueError("Not enough non-nan values to mixup")
+    idx2 = (torch.rand(missing_rows.shape[0], device=device, generator=gen)
+            * pool_sizes_any.to(torch.float32)).to(torch.long)
+    col_pos = torch.searchsorted(cols_proc, batch_idx)
+    donor2 = order_proc[idx2, col_pos]
+
+    # Donor 1: same class
+    unique_labels, label_ids = torch.unique(labels, return_inverse=True)
+    K = int(unique_labels.shape[0])
+    non_class_ids = label_ids[rows_nn]
+
+    comp = batch_nn * K + non_class_ids
+    max_len = mask.shape[1] * K
+    counts_comp = torch.bincount(comp, minlength=max_len)
+    offsets_comp = torch.empty(counts_comp.shape[0] + 1, dtype=torch.long, device=device)
+    offsets_comp[0] = 0
+    offsets_comp[1:] = torch.cumsum(counts_comp, dim=0)
+    order_comp = torch.argsort(comp)
+    rows_nn_sorted = rows_nn[order_comp]
+
+    target_class_ids = label_ids[missing_rows]
+    comp_targets = batch_idx * K + target_class_ids
+    pool_sizes_same = counts_comp[comp_targets]
+    if torch.any(pool_sizes_same == 0):
+        raise ValueError("Not enough non-nan values to mixup")
+    r1 = (torch.rand(missing_rows.shape[0], device=device, generator=gen)
+          * pool_sizes_same.to(torch.float32)).to(torch.long)
+    pos1 = offsets_comp[comp_targets] + r1
+    donor1 = rows_nn_sorted[pos1]
+
+    # Mixing coefficients: sample via uniform and Beta icdf to support older PyTorch
+    n_missing = int(missing_rows.shape[0])
+    u = torch.rand((n_missing, 1), device=device, dtype=arr_moved.dtype, generator=gen)
+    if alpha != 1.0:
+        # Clamp to (0,1) to avoid boundary issues in icdf
+        eps = torch.finfo(u.dtype).eps
+        u = u.clamp(min=eps, max=1 - eps)
+        beta = torch.distributions.Beta(alpha, alpha)
+        lams = beta.icdf(u)
+    else:
+        lams = u
+    less = lams < 0.5
+    lams[less] = 1.0 - lams[less]
+
+    # Assign back in-place without reshaping (avoid copies from non-contiguity)
+    if batch_shape:
+        batch_coords = torch.unravel_index(batch_idx, batch_shape)
+        lhs_idx = batch_coords + (missing_rows, slice(None))
+        d1_idx = batch_coords + (donor1, slice(None))
+        d2_idx = batch_coords + (donor2, slice(None))
+    else:
+        lhs_idx = (missing_rows, slice(None))
+        d1_idx = (donor1, slice(None))
+        d2_idx = (donor2, slice(None))
+
+    value = lams * arr_moved[d1_idx]
+    value = value + (1.0 - lams) * arr_moved[d2_idx]
+    arr_moved[lhs_idx] = value
 
 def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
            seed=None, xp=None) -> None:
@@ -846,16 +978,27 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
            [ 7.        ,  8.        ,  9.        , 10.        ],
            [ 9.        , 10.        , 11.        , 12.        ],
            [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
+    >>> import torch
+    >>> torch.manual_seed(0)
+    >>> group4 = torch.randn(100, 10, 10, 100).to(torch.float16).to('cuda')
+    >>> group4[0, 0::2, 0, :] = float("nan")
+    >>> group4[0, :, 0, :]
+    >>> labels4 = torch.tensor([i // 5 for i in range(10)]).to('cuda')
+    >>> mixup2(group4, labels4, 1)
+    >>> group4[0, :, 0, :]
+    tensor([[0.3274, 0.2805, 0.1257, 0.1256, 0.3027],
+            [0.7480, 0.1802, 0.3890, 0.0376, 0.0118],
+            [0.6484, 0.8290, 0.8213, 0.2578, 0.5327],
+            [0.7583, 0.5034, 0.1770, 0.8325, 0.5166],
+            [0.7397, 0.8570, 0.4490, 0.5913, 0.7140],
+            [0.3076, 0.0620, 0.9890, 0.
     """
     if xp is None:
         xp = array_namespace(arr, labels)
 
-    # Torch: move to CPU, operate in NumPy, then copy back (keep data on GPU otherwise)
-    if is_torch(xp):  # TODO: remove this crutch to keep data on the GPU
-        temp = arr.numpy(force=True).astype(float)
-        temp_labels = labels.numpy(force=True)
-        mixup2(temp, temp_labels, obs_axis, alpha, seed)
-        arr.copy_(xp.from_numpy(temp))
+    # Torch-specific, fully on-device implementation (no NumPy conversion)
+    if is_torch(xp):
+        _mixup2_torch(arr, labels, obs_axis, alpha, seed)
         return
 
     if seed is None:
@@ -877,7 +1020,8 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
         raise ValueError("Cannot mixup if any rows are completely NaN")
 
     # Flatten batch dims for index computation only (does not touch data array)
-    B = int(xp.prod(xp.asarray(batch_shape))) if batch_shape else 1
+    # Use Python math for robustness across array libraries
+    B = int(math.prod(batch_shape)) if batch_shape else 1
     mask = isnan.reshape(B, obs).T  # shape: (obs, B)
 
     # One pass to derive both non-missing and missing indices per batch
@@ -946,7 +1090,8 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
     donor1 = rows_nn_sorted[pos1]
 
     # Mixing coefficients: ensure larger lambda pairs with same-class donor
-    lams = xp.empty((missing_rows.shape[0], 1), dtype=f'f{arr.nbytes // arr.size}')
+    # Allocate in the same dtype as input array
+    lams = xp.empty((missing_rows.shape[0], 1), dtype=arr_moved.dtype)
     lams[:, 0] = rng.beta(alpha, alpha, size=(missing_rows.shape[0],))
     less = lams < 0.5
     xp.subtract(1., lams[less], out=lams[less])

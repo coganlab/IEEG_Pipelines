@@ -626,6 +626,44 @@ def resample_tfr(tfr, sfreq, o_sfreq=None, copy=False):
     tfr._update_first_last()
     return tfr
 
+def resample_tfr_freqs(tfr, freqs, o_freqs=None, copy=False):
+    """Resample a TFR object to a new frequency sampling
+    
+    Parameters
+    ----------
+    tfr : instance of BaseTFR
+        The TFR object to resample.
+    freqs : array-like
+        The target frequencies to resample to.
+    o_freqs : array-like, optional
+        The original frequencies. If None, uses tfr.freqs.
+    copy : bool
+        Whether to operate on a copy of the TFR object.
+        
+    Returns
+    -------
+    tfr : instance of BaseTFR
+        The resampled TFR object.
+    """
+    if copy:
+        tfr = tfr.copy()
+
+    if o_freqs is None:
+        o_freqs = tfr.freqs
+
+    # Convert to numpy arrays
+    freqs = np.asarray(freqs)
+    o_freqs = np.asarray(o_freqs)
+
+    # Resample the data along the frequency dimension (axis=-2)
+    # When both arguments are arrays, resample treats them as coordinate arrays
+    # and interpolates the data from o_freqs to freqs
+    tfr._data = resample(tfr._data, o_freqs, freqs, axis=-2)
+    
+    # Directly assign the new frequencies - MNE TFR objects allow direct assignment
+    tfr._freqs = freqs
+    return tfr
+
 
 if __name__ == "__main__":
     # Description: Produce spectrograms for each subject

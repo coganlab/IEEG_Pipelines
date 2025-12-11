@@ -18,6 +18,7 @@ from ieeg import Doubles, PathLike
 from joblib import Parallel, delayed
 from ieeg import Signal
 from itertools import product
+from ieeg.timefreq.utils import resample_tfr_freqs
 
 # mne.set_log_level("ERROR")
 tfr_types = mne.time_frequency.BaseTFR
@@ -26,7 +27,8 @@ tfr_types = mne.time_frequency.BaseTFR
 class DataLoader:
     def __init__(self, layout: BIDSLayout, conds: dict[str, Doubles],
                  value_type: str = "zscore", avg: bool = True,
-                 derivatives_folder: PathLike = 'stats', ext: str = '.fif'):
+                 derivatives_folder: PathLike = 'stats', ext: str = '.fif',
+                 freqs: list[float] | np.ndarray = None):
         self.root = layout.root
         self.subjects = sorted(layout.get_subjects())
         self.conds = conds
@@ -34,6 +36,7 @@ class DataLoader:
         self.avg = avg
         self.derivatives_folder = derivatives_folder
         self.reader, self.suffix = self._get_reader_and_suffix(ext)
+        self.freqs = freqs
 
     def _get_reader_and_suffix(self, ext):
         allowed = ["zscore", "power", "significance", "pval", "mask"]
@@ -108,6 +111,11 @@ class DataLoader:
                 sig = sig.average(method=lambda x: np.nanmean(x, axis=0))
         elif isinstance(sig, list):
             sig = sig[0]
+        
+        # Resample frequency dimension if freqs is provided
+        if self.freqs is not None and isinstance(sig, tfr_types):
+            sig = resample_tfr_freqs(sig, self.freqs, copy=False)
+        
         mat = get_data_from_inst(sig, tmin=times[0], tmax=times[1])
         if dtype is not None:
             mat = mat.astype(dtype)

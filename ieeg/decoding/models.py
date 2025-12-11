@@ -18,7 +18,8 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone  # For weighted 
 from joblib import Memory
 from sklearn.metrics import accuracy_score
 from ieeg.calc.fast import mixup2
-from ieeg.arrays.api import array_namespace
+from ieeg.arrays.api import array_namespace, is_torch
+from typing import Optional
 
 # Used for naive bayes decoder
 try:
@@ -73,6 +74,24 @@ except ImportError:
         "\nWARNING: PyTorch package is not installed. You will be unable to use"
         "all PyTorch decoders")
     pass
+
+# Optional: skorch + torchvision for PyTorch vision models with sklearn API
+try:
+    import torch
+    import torch.nn as nn
+    from skorch import NeuralNetClassifier
+    from skorch.callbacks import GradientNormClipping, EarlyStopping, LRScheduler, Callback
+    from torchvision import models as tv_models
+except Exception:
+    torch = None
+    nn = None
+    NeuralNetClassifier = None
+    tv_models = None
+    GradientNormClipping = None
+    EarlyStopping = None
+    LRScheduler = None
+    print(
+        "\nWARNING: skorch/torchvision not available. ResNetTokenClassifier will be unavailable.")
 
 
 # %% DECODER FUNCTIONS
@@ -1839,9 +1858,20 @@ class LoopwiseTransformer(BaseEstimator, TransformerMixin):
                     transformed[i] = arr[..., :target]
                 elif arr.shape[-1] < target:
                     pad = xp.zeros((arr.shape[0], target - arr.shape[-1]), dtype=arr.dtype)
-                    transformed[i] = xp.concatenate((arr, pad), axis=-1)
+                    if hasattr(xp, 'concatenate'):
+                        transformed[i] = xp.concatenate((arr, pad), axis=-1)
+                    else:
+                        # Torch fallback
+                        transformed[i] = xp.cat((arr, pad), dim=-1)
         # Flatten loop dimension into features: (samples, sum(features_per_loop))
-        return xp.concatenate(transformed, axis=-1)
+        if hasattr(xp, 'concatenate'):
+            out = xp.concatenate(transformed, axis=-1)
+        else:
+            out = xp.cat(transformed, dim=-1)
+        # sklearn expects numpy arrays
+        if is_torch(xp):
+            return out.detach().cpu().numpy()
+        return out
 
     def set_output(self, *, transform=None):
         """Set the output type of the transformer."""
@@ -1880,8 +1910,10 @@ class FlattenFeaturesTransformer(BaseEstimator, TransformerMixin):
                 perm.append(ax)
         Xp = xp.moveaxis(X, list(range(ndim)), perm)
         if la is not None:
-            return Xp.reshape(Xp.shape[0], Xp.shape[1], -1)
-        return Xp.reshape(Xp.shape[0], -1)
+            Xr = Xp.reshape(Xp.shape[0], Xp.shape[1], -1)
+        else:
+            Xr = Xp.reshape(Xp.shape[0], -1)
+        return Xr
 
 
 class OversampleTransformer(BaseEstimator, TransformerMixin):
@@ -1896,29 +1928,46 @@ class OversampleTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         # Validation/test: fill NaNs with random normal noise based on data std
         xp = array_namespace(X)
-        Xc = X.copy()
+        Xc = X.clone() if is_torch(xp) and hasattr(X, "clone") else X.copy()
         self.norm(Xc, xp)
         return Xc
 
     def fit_transform(self, X, y=None, **fit_params):
         xp = array_namespace(X)
         # copy to avoid in-place modifications on caller data
-        Xc = X.copy()
+        Xc = X.clone() if is_torch(xp) and hasattr(X, "clone") else X.copy()
         if y is None:
             # Validation/test: fill NaNs with random normal noise
             self.norm(Xc, xp)
         # Training: label-aware mixup to impute NaNs
-        mixup2(Xc, xp.asarray(y), self.samples_axis, alpha=self.alpha)
+        else:
+            if is_torch(xp):
+                # Ensure labels tensor on same device/dtype compatible
+                if 'torch' in globals() and torch is not None:
+                    y_t = y if hasattr(y, 'device') else torch.as_tensor(y, device=Xc.device)
+                else:
+                    raise RuntimeError("PyTorch not available but tensor input detected.")
+                mixup2(Xc, y_t, self.samples_axis, alpha=self.alpha)
+            else:
+                mixup2(Xc, xp.asarray(y), self.samples_axis, alpha=self.alpha)
         return Xc
 
     @staticmethod
     def norm(Xc, xp):
-        isn = xp.isnan(Xc)
-        if isn.any():
-            # std_val = float(xp.std(Xc[~isn], dtype='f8'))
-            # if not xp.isfinite(std_val) or std_val == 0.0:
-            #     std_val = 1.0
-            Xc[isn] = xp.random.normal(0., 1., int(isn.sum()))
+        # Replace any non-finite values (NaN/Inf) with random normal noise
+        try:
+            mask = ~xp.isfinite(Xc)
+        except Exception:
+            mask = xp.isnan(Xc)
+        if mask.any():
+            if is_torch(xp):
+                if 'torch' in globals() and torch is not None:
+                    Xc[mask] = torch.randn((int(mask.sum()),),
+                                           device=Xc.device, dtype=Xc.dtype)
+                else:
+                    raise RuntimeError("PyTorch not available but tensor input detected.")
+            else:
+                Xc[mask] = xp.random.normal(0., 1., int(mask.sum()))
 
 
 # %% PRINCIPAL COMPONENT ANALYSIS - Covariance Reducing CLASSIFIER
@@ -1967,8 +2016,8 @@ class CovarianceReducingClassifier(BaseEstimator):
 class PcaLdaClassification(CovarianceReducingClassifier):
     """Class for the PCA - LDA Classifier
 
-    Parameters
-    ----------
+        Parameters
+        ----------
     explained variance: integer, optional, default=80
         the number of modes that explain the cumulative variance of the dataset
 
@@ -2038,6 +2087,1256 @@ class PcaEstimateDecoder(CovarianceReducingClassifier):
         super().__init__(pca=pca_transformer, classifier=clf_instance,
                          memory=Memory(), samples_axis=samples_axis,
                          oversample=oversample)
+
+# %% TorchVision ResNet classifier (sklearn-compatible via skorch)
+if torch is not None and NeuralNetClassifier is not None and tv_models is not None:
+    # Masked Batch Normalization that respects masks
+    class MaskedBatchNorm2d(nn.Module):
+        """BatchNorm2d that computes statistics only over valid (non-masked) positions."""
+        def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True):
+            super().__init__()
+            self.num_features = num_features
+            self.eps = eps
+            self.momentum = momentum
+            self.affine = affine
+            self.track_running_stats = track_running_stats
+            
+            if self.affine:
+                self.weight = nn.Parameter(torch.ones(num_features))
+                self.bias = nn.Parameter(torch.zeros(num_features))
+            else:
+                self.register_parameter('weight', None)
+                self.register_parameter('bias', None)
+            
+            if self.track_running_stats:
+                self.register_buffer('running_mean', torch.zeros(num_features))
+                self.register_buffer('running_var', torch.ones(num_features))
+                self.register_buffer('num_batches_tracked', torch.tensor(0, dtype=torch.long))
+            else:
+                self.register_parameter('running_mean', None)
+                self.register_parameter('running_var', None)
+                self.register_parameter('num_batches_tracked', None)
+        
+        def forward(self, x, mask=None):
+            # x: (N, C, H, W), mask: (N, C, H, W) or None
+            # mask: True for valid, False for NaN
+            if mask is None:
+                # No mask - use standard batch norm
+                return nn.functional.batch_norm(
+                    x, self.running_mean, self.running_var, self.weight, self.bias,
+                    self.training or not self.track_running_stats, self.momentum, self.eps
+                )
+            
+            # Masked batch norm: compute statistics only over valid positions
+            N, C, H, W = x.shape
+            # Ensure mask matches x shape
+            if mask.shape != x.shape:
+                if mask.shape[1] == 1:
+                    mask = mask.expand_as(x)
+                elif mask.shape[1] != C:
+                    raise ValueError(f"Mask channels {mask.shape[1]} must match x channels {C} or be 1")
+            
+            # Compute mean and var per channel over valid positions only
+            if self.training:
+                # Training: compute batch statistics over valid positions
+                mean = []
+                var = []
+                for c in range(C):
+                    ch_data = x[:, c, :, :]  # (N, H, W)
+                    ch_mask = mask[:, c, :, :]  # (N, H, W)
+                    valid_data = ch_data[ch_mask]  # Flattened valid values
+                    if valid_data.numel() > 0:
+                        ch_mean = valid_data.mean()
+                        ch_var = valid_data.var(unbiased=False)
+                    else:
+                        # All positions masked for this channel - use running stats or 0/1
+                        if self.track_running_stats:
+                            ch_mean = self.running_mean[c]
+                            ch_var = self.running_var[c]
+                        else:
+                            ch_mean = torch.tensor(0.0, device=x.device, dtype=x.dtype)
+                            ch_var = torch.tensor(1.0, device=x.device, dtype=x.dtype)
+                    mean.append(ch_mean)
+                    var.append(ch_var)
+                mean = torch.stack(mean)  # (C,)
+                var = torch.stack(var)  # (C,)
+                
+                # Update running statistics
+                if self.track_running_stats:
+                    self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * mean
+                    self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var
+                    self.num_batches_tracked += 1
+            else:
+                # Eval: use running statistics
+                mean = self.running_mean
+                var = self.running_var
+            
+            # Normalize: (x - mean) / sqrt(var + eps)
+            mean = mean.view(1, C, 1, 1)
+            var = var.view(1, C, 1, 1)
+            x_norm = (x - mean) / torch.sqrt(var + self.eps)
+            
+            # Apply affine transform if enabled
+            if self.affine:
+                x_norm = x_norm * self.weight.view(1, C, 1, 1) + self.bias.view(1, C, 1, 1)
+            
+            # Preserve NaNs where mask is False (masked positions remain NaN)
+            # This allows NaNs to exist if all values in a dimension are masked
+            x_norm = torch.where(mask, x_norm, torch.tensor(float('nan'), device=x.device, dtype=x.dtype))
+            
+            return x_norm
+    
+    # Helper function for masked convolution
+    def _masked_conv2d(x, weight, bias=None, stride=1, padding=0, dilation=1, groups=1, mask=None):
+        """Convolution that handles NaNs properly - NaNs propagate naturally.
+        
+        If all values in a convolution window are NaN, output will be NaN (correct behavior).
+        We don't need special handling - standard convolution with NaNs produces NaN output.
+        """
+        if mask is None:
+            return nn.functional.conv2d(x, weight, bias, stride, padding, dilation, groups)
+        
+        # Standard convolution - NaNs will propagate naturally
+        # If all values in a convolution window are NaN, output will be NaN (correct)
+        result = nn.functional.conv2d(x, weight, bias, stride, padding, dilation, groups)
+        return result
+    
+    # Helper function for masked mean/sum operations
+    def _masked_mean(x, mask, dim, keepdim=False):
+        """Compute mean only over valid (non-masked) positions.
+        
+        If all positions are masked for a particular output location, result is NaN (correct).
+        """
+        if mask is None:
+            return x.mean(dim=dim, keepdim=keepdim)
+        # Use masked sum: sum valid values, divide by count of valid values
+        # Temporarily use 0 for masked positions in sum (they don't contribute)
+        # This is only for computation - NaNs remain in original data
+        x_masked = torch.where(mask, x, torch.tensor(0.0, dtype=x.dtype, device=x.device))
+        counts = mask.sum(dim=dim, keepdim=keepdim)
+        # If count is 0 (all masked), result should be NaN
+        result = x_masked.sum(dim=dim, keepdim=keepdim) / counts.clamp(min=1)
+        # Set to NaN where count was 0 (all positions masked)
+        result = torch.where(counts > 0, result, torch.tensor(float('nan'), device=x.device, dtype=x.dtype))
+        return result
+    
+    def _masked_sum(x, mask, dim, keepdim=False):
+        """Compute sum only over valid (non-masked) positions.
+        
+        If all positions are masked, result is 0 (sum of nothing).
+        """
+        if mask is None:
+            return x.sum(dim=dim, keepdim=keepdim)
+        # Temporarily use 0 for masked positions in sum (they don't contribute)
+        x_masked = torch.where(mask, x, torch.tensor(0.0, dtype=x.dtype, device=x.device))
+        return x_masked.sum(dim=dim, keepdim=keepdim)
+    
+    # Custom gradient clipping that clips infinite values but preserves NaNs
+    class SafeGradientNormClipping(Callback):
+        """Gradient clipping that clips infinite values but does not modify NaNs.
+        
+        NaNs should be handled by masking in the forward pass, not by gradient clipping.
+        This callback only clips infinite gradient values to prevent overflow.
+        """
+        def __init__(self, clip_value: float = 1.0):
+            self.clip_value = clip_value
+        
+        def on_grad_computed(self, net, named_parameters, **kwargs):
+            # Clip infinite gradients but preserve NaNs (they indicate a problem upstream)
+            for name, param in named_parameters:
+                if param.grad is not None:
+                    # Only clip infinite values, preserve NaNs
+                    if torch.isinf(param.grad).any():
+                        # Clip infinite values to clip_value
+                        param.grad = torch.where(
+                            torch.isinf(param.grad),
+                            torch.sign(param.grad) * self.clip_value,
+                            param.grad
+                        )
+                        # Also clamp to prevent any remaining extreme values
+                        param.grad = torch.clamp(param.grad, -self.clip_value, self.clip_value)
+    
+    class ImageStandardizeTransformer(BaseEstimator, TransformerMixin):
+        """Standardize NCHW inputs per-channel using training set statistics.
+        
+        Handles MaskedTensor inputs by computing statistics only over valid (non-masked) values.
+        """
+        def __init__(self, eps: float = 1e-6):
+            self.eps = eps
+            self.mean_ = None
+            self.std_ = None
+        
+        def fit(self, X, y=None, **fit_params):
+            xp = array_namespace(X)
+            # Handle MaskedTensor or regular tensor
+            mask = None
+            if hasattr(X, 'get_mask'):
+                # MaskedTensor: extract data and mask
+                try:
+                    from torch.masked import MaskedTensor
+                    if isinstance(X, MaskedTensor):
+                        mask = X.get_mask()
+                        Xc = X.get_data()
+                        xp = array_namespace(Xc)
+                except (ImportError, AttributeError):
+                    pass
+            elif hasattr(X, '_nan_mask'):
+                # Fallback: mask stored as attribute
+                mask = X._nan_mask
+                Xc = X
+            else:
+                Xc = X
+            
+            # X shape: (N, C, H, W)
+            if mask is not None and is_torch(xp):
+                # Compute mean/std only over valid (non-masked) values
+                Xc = torch.as_tensor(Xc, dtype=torch.float32)
+                mask = torch.as_tensor(mask, dtype=torch.bool)
+                # Per-channel mean over valid values (masked values ignored)
+                mean = []
+                for c in range(Xc.shape[1]):
+                    ch_data = Xc[:, c, :, :]
+                    ch_mask = mask[:, c, :, :]
+                    if ch_mask.any():
+                        # Use nanmean to handle NaNs properly (mask ensures we only use valid values)
+                        valid_data = ch_data[ch_mask]
+                        mean.append(valid_data.nanmean().item() if torch.isnan(valid_data).any() else valid_data.mean().item())
+                    else:
+                        mean.append(0.0)
+                mean = torch.tensor(mean, dtype=torch.float32, device=Xc.device)
+                # Per-channel std over valid values
+                var = []
+                for c in range(Xc.shape[1]):
+                    ch_data = Xc[:, c, :, :]
+                    ch_mask = mask[:, c, :, :]
+                    if ch_mask.any():
+                        valid_data = ch_data[ch_mask]
+                        centered = (valid_data - mean[c]) ** 2
+                        var.append(centered.nanmean().item() if torch.isnan(centered).any() else centered.mean().item())
+                    else:
+                        var.append(1.0)
+                var = torch.tensor(var, dtype=torch.float32, device=Xc.device)
+                self.mean_ = mean
+                self.std_ = torch.sqrt(var) + self.eps
+            else:
+                # When oversample=True, OversampleTransformer handles NaNs via mixup/norm
+                # Compute statistics normally (NaNs should already be handled)
+                # Per-channel mean/std over N,H,W
+                mean = Xc.mean(axis=(0, 2, 3))
+                var = ((Xc - mean[None, :, None, None]) ** 2).mean(axis=(0, 2, 3))
+                # Store as float32 to avoid upcasting the input to float64
+                self.mean_ = xp.asarray(mean, dtype='f4')
+                self.std_ = xp.sqrt(xp.asarray(var, dtype='f4')) + self.eps
+            return self
+        
+        def transform(self, X):
+            xp = array_namespace(X)
+            # Handle MaskedTensor or regular tensor
+            mask = None
+            is_masked = False
+            if hasattr(X, 'get_mask'):
+                try:
+                    from torch.masked import MaskedTensor
+                    if isinstance(X, MaskedTensor):
+                        mask = X.get_mask()
+                        X = X.get_data()
+                        is_masked = True
+                        xp = array_namespace(X)
+                except (ImportError, AttributeError):
+                    pass
+            elif hasattr(X, '_nan_mask'):
+                mask = X._nan_mask
+                is_masked = True
+            
+            # When oversample=True, OversampleTransformer already handled NaNs
+            # When oversample=False, NaNs are preserved and masked
+            
+            X = torch.as_tensor(X, dtype=torch.float32) if is_torch(xp) else xp.asarray(X, dtype='f4')
+            mean_t = torch.as_tensor(self.mean_, dtype=torch.float32, device=X.device) if is_torch(xp) else self.mean_
+            std_t = torch.as_tensor(self.std_, dtype=torch.float32, device=X.device) if is_torch(xp) else self.std_
+            
+            # Standardize: NaNs remain NaNs, mask will handle them
+            X = X - mean_t[None, :, None, None]
+            X = X / std_t[None, :, None, None]
+            
+            # Re-wrap in MaskedTensor if input was masked
+            if is_masked and mask is not None:
+                try:
+                    from torch.masked import MaskedTensor
+                    X = MaskedTensor(X, mask)
+                except (ImportError, AttributeError):
+                    X._nan_mask = mask
+            
+            return X
+
+    class ResNetInputTransformer(BaseEstimator, TransformerMixin):
+        """Permute and reshape SEEG tensor into NCHW for ResNet.
+        
+        Expects an array with at least sample, channel, frequency, and time axes.
+        Produces shape (N, C, H, W) where:
+          - C = number of channels (from channel_axis)
+          - W = time (from time_axis)
+          - H = product of remaining feature dims (e.g., frequency and others)
+        
+        If oversample=False and NaNs are present, returns a PyTorch MaskedTensor.
+        """
+        def __init__(self, samples_axis: int = 0, channel_axis: int = -3,
+                     freq_axis: int = -2, time_axis: int = -1, oversample: bool = True):
+            self.samples_axis = samples_axis
+            self.channel_axis = channel_axis
+            self.freq_axis = freq_axis
+            self.time_axis = time_axis
+            self.oversample = oversample
+        
+        def fit(self, X, y=None, **fit_params):
+            return self
+        
+        def transform(self, X):
+            xp = array_namespace(X)
+            ndim = X.ndim
+            sa = self.samples_axis % ndim
+            ca = self.channel_axis % ndim
+            ta = self.time_axis % ndim
+            axes = list(range(ndim))
+            others = [ax for ax in axes if ax not in (sa, ca, ta, ca)]
+            # Order: samples, channels, others..., time
+            perm = [sa, ca] + others + [ta]
+            Xt = xp.transpose(X, axes=perm)
+            N = Xt.shape[0]
+            C = int(Xt.shape[1])
+            H = int(np.prod([int(s) for s in Xt.shape[2:-1]]) or 1)
+            W = int(Xt.shape[-1])
+            # Ensure float32
+            Xn = xp.asarray(Xt, dtype='f4').reshape((N, C, H, W))
+            
+            # Handle NaNs based on oversample setting
+            if not self.oversample:
+                # Check for NaNs and create masked tensor if present
+                try:
+                    finite = xp.isfinite(Xn)
+                    has_nans = not xp.all(finite)
+                except Exception:
+                    has_nans = False
+                
+                if has_nans and is_torch(xp):
+                    # Convert to PyTorch tensor if not already
+                    if not hasattr(Xn, 'device'):
+                        Xn = torch.as_tensor(Xn, dtype=torch.float32)
+                    
+                    # Create mask: True for valid (non-NaN) values, False for NaN
+                    mask = torch.isfinite(Xn)
+                    
+                    # DO NOT replace NaNs - keep them in the data, mask will handle them
+                    # Clip extremes only on finite values
+                    Xn = torch.where(mask, torch.clamp(Xn, -1e6, 1e6), Xn)
+                    
+                    # Create MaskedTensor with original data (including NaNs) and mask
+                    try:
+                        from torch.masked import MaskedTensor
+                        Xn = MaskedTensor(Xn, mask)
+                    except (ImportError, AttributeError):
+                        # Fallback: store mask as attribute for later use
+                        Xn._nan_mask = mask
+            else:
+                # When oversample=True, OversampleTransformer handles NaNs via mixup/norm
+                # Just clip extremes here (don't replace NaNs)
+                try:
+                    Xn = xp.clip(Xn, -1e6, 1e6)
+                except Exception:
+                    pass
+            return Xn
+    
+    class SEEGResNet(nn.Module):
+        """ResNet backbone adapted for single-channel SEEG 'images'."""
+        def __init__(self, num_classes: int, base: str = 'resnet18',
+                     pretrained: bool = False, dropout: float = 0.0,
+                     in_channels: int = 1,
+                     use_amp: bool = True,
+                     amp_dtype: "torch.dtype" = None):
+            super().__init__()
+            self.use_amp = use_amp
+            # Prefer BF16 when supported for better stability, else FP16
+            if amp_dtype is None:
+                try:
+                    self.amp_dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+                except Exception:
+                    self.amp_dtype = torch.float16
+            else:
+                self.amp_dtype = amp_dtype
+            # Select backbone
+            if base == 'resnet18':
+                backbone = tv_models.resnet18(weights=tv_models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None)
+            elif base == 'resnet34':
+                backbone = tv_models.resnet34(weights=tv_models.ResNet34_Weights.IMAGENET1K_V1 if pretrained else None)
+            elif base == 'resnet50':
+                backbone = tv_models.resnet50(weights=tv_models.ResNet50_Weights.IMAGENET1K_V1 if pretrained else None)
+            else:
+                raise ValueError(f"Unsupported ResNet base: {base}")
+            # Adapt first conv to multi-channel input
+            old_conv = backbone.conv1
+            self.conv1 = nn.Conv2d(in_channels, old_conv.out_channels, kernel_size=old_conv.kernel_size,
+                                   stride=old_conv.stride, padding=old_conv.padding, bias=False)
+            # He init for new conv
+            nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+            # Replace batch norm with masked batch norm to handle NaNs properly
+            self.bn1 = MaskedBatchNorm2d(old_conv.out_channels, 
+                                         eps=backbone.bn1.eps,
+                                         momentum=backbone.bn1.momentum,
+                                         affine=backbone.bn1.affine,
+                                         track_running_stats=backbone.bn1.track_running_stats)
+            # Copy weights from original batch norm if affine
+            if backbone.bn1.affine:
+                self.bn1.weight.data.copy_(backbone.bn1.weight.data)
+                self.bn1.bias.data.copy_(backbone.bn1.bias.data)
+            if backbone.bn1.track_running_stats:
+                self.bn1.running_mean.copy_(backbone.bn1.running_mean)
+                self.bn1.running_var.copy_(backbone.bn1.running_var)
+            self.relu = backbone.relu
+            self.maxpool = backbone.maxpool
+            self.layer1 = backbone.layer1
+            self.layer2 = backbone.layer2
+            self.layer3 = backbone.layer3
+            self.layer4 = backbone.layer4
+            self.avgpool = backbone.avgpool
+            in_features = backbone.fc.in_features
+            if dropout and dropout > 0:
+                self.fc = nn.Sequential(
+                    nn.Dropout(p=dropout),
+                    nn.Linear(in_features, num_classes)
+                )
+            else:
+                self.fc = nn.Linear(in_features, num_classes)
+        
+        def forward(self, x):
+            # Extract mask once globally - mask: True for valid, False for NaN
+            mask = None
+            if hasattr(x, 'get_mask'):
+                try:
+                    from torch.masked import MaskedTensor
+                    if isinstance(x, MaskedTensor):
+                        mask = x.get_mask()
+                        x = x.get_data()  # Extract data with NaNs still present
+                except (ImportError, AttributeError):
+                    pass
+            elif hasattr(x, '_nan_mask'):
+                mask = x._nan_mask
+                x = x if isinstance(x, torch.Tensor) else torch.as_tensor(x)
+            
+            use_amp_now = self.use_amp and x.is_cuda
+            # autocast only affects CUDA; safe no-op on CPU
+            with torch.cuda.amp.autocast(enabled=use_amp_now, dtype=self.amp_dtype):
+                # Convolution: NaNs will propagate naturally
+                # If all values in a convolution window are NaN, output will be NaN (correct)
+                x = _masked_conv2d(x, self.conv1.weight, None, 
+                                  stride=self.conv1.stride, padding=self.conv1.padding,
+                                  dilation=self.conv1.dilation, groups=self.conv1.groups, mask=mask)
+                
+                # Update mask for batch norm (conv preserves spatial dimensions with padding)
+                # Conv output channels may differ from input channels
+                if mask is not None:
+                    if mask.shape[1] == x.shape[1]:
+                        bn_mask = mask
+                    else:
+                        # Broadcast first channel's mask to all output channels
+                        bn_mask = mask[:, 0:1, :, :].expand(-1, x.shape[1], -1, -1)
+                    x = self.bn1(x, mask=bn_mask)
+                    # Update mask: after batch norm, mask is same shape as x
+                    mask = bn_mask
+                else:
+                    x = self.bn1(x)
+                
+                x = self.relu(x)
+                x = self.maxpool(x)
+                # Update mask after maxpool (spatial dimensions reduced)
+                if mask is not None:
+                    # Maxpool reduces spatial dimensions - compute mask for output
+                    # Use maxpool on mask (True=valid, False=NaN) - output is valid if any input was valid
+                    mask = torch.nn.functional.max_pool2d(mask.float(), 
+                                                          kernel_size=self.maxpool.kernel_size,
+                                                          stride=self.maxpool.stride,
+                                                          padding=self.maxpool.padding).bool()
+                
+                x = self.layer1(x)
+                x = self.layer2(x)
+                x = self.layer3(x)
+                x = self.layer4(x)
+                
+                # Average pooling: use masked mean if mask exists
+                if mask is not None:
+                    # Adaptive avgpool preserves spatial structure, then we flatten
+                    x = self.avgpool(x)
+                    # For avgpool output, compute mask (valid if any spatial position was valid)
+                    # avgpool typically produces (N, C, 1, 1), so mask should be (N, C, 1, 1)
+                    mask_pooled = mask.any(dim=(2, 3), keepdim=True)  # (N, C, 1, 1)
+                    # Preserve NaNs where all spatial positions were masked
+                    x = torch.where(mask_pooled, x, torch.tensor(float('nan'), device=x.device, dtype=x.dtype))
+                else:
+                    x = self.avgpool(x)
+                
+                x = torch.flatten(x, 1)
+                x = self.fc(x)
+                
+                # Final check: NaNs can exist for specific trials if all channels/spatial positions were NaN
+                # Only raise error if ALL values are NaN (indicating a fundamental problem)
+                if torch.isnan(x).all():
+                    raise RuntimeError("All values are NaN in final output - fundamental problem detected")
+            # Ensure float32 output for downstream sklearn/skorch (predict_proba expects float32)
+            return x.float()
+    
+    class ResNetTokenClassifier(BaseEstimator):
+        """Sklearn-compatible classifier using torchvision ResNet via skorch.
+        
+        Pipeline: (optional) mixup oversample -> NCHW transform -> ResNet classifier.
+        """
+        def __init__(self,
+                     base: str = 'resnet18',
+                     pretrained: bool = False,
+                     dropout: float = 0.0,
+                     max_epochs: int = 20,
+                     lr: float = 1e-3,
+                     batch_size: int = 64,
+                     device: str = 'auto',
+                     optimizer=torch.optim.AdamW,
+                     samples_axis: int = 0,
+                     channel_axis: int = -3,
+                     freq_axis: int = -2,
+                     time_axis: int = -1,
+                     oversample: bool = True,
+                     alpha: float = 1.0,
+                     use_amp: bool = True,
+                     amp_dtype: "torch.dtype" = None,
+                     early_stopping: bool = True,
+                     es_patience: int = 20,
+                     es_threshold: float = 0.0,
+                     es_load_best: bool = True,
+                     # LR scheduling (ReduceLROnPlateau)
+                     lr_schedule: str = 'plateau',  # 'plateau' or 'none'
+                     lr_factor: float = 0.5,
+                     lr_patience: int = 10,
+                     lr_min_lr: float = 1e-6,
+                     lr_threshold: float = 1e-3,
+                     lr_cooldown: int = 2,
+                     # Regularization and loss
+                     optimizer_weight_decay: float = 3e-4,
+                     label_smoothing: float = 0.1,
+                     class_weight: str | None = None):
+            self.base = base
+            self.pretrained = pretrained
+            self.dropout = dropout
+            self.max_epochs = max_epochs
+            self.lr = lr
+            self.batch_size = batch_size
+            self.device = device
+            self.optimizer = optimizer
+            self.samples_axis = samples_axis
+            self.channel_axis = channel_axis
+            self.freq_axis = freq_axis
+            self.time_axis = time_axis
+            self.oversample = oversample
+            self.alpha = alpha
+            self.use_amp = use_amp
+            self.amp_dtype = amp_dtype
+            self.early_stopping = early_stopping
+            self.es_patience = es_patience
+            self.es_threshold = es_threshold
+            self.es_load_best = es_load_best
+            self.lr_schedule = lr_schedule
+            self.lr_factor = lr_factor
+            self.lr_patience = lr_patience
+            self.lr_min_lr = lr_min_lr
+            self.lr_threshold = lr_threshold
+            self.lr_cooldown = lr_cooldown
+            self.optimizer_weight_decay = optimizer_weight_decay
+            self.label_smoothing = label_smoothing
+            self.class_weight = class_weight
+            self.model = None
+        
+        def _infer_in_channels(self, X):
+            ndim = X.ndim
+            ca = self.channel_axis % ndim
+            return int(X.shape[ca])
+        
+        def _build_pipeline(self, n_classes: int, in_channels: int):
+            steps = []
+            if self.oversample:
+                steps.append(('oversample', OversampleTransformer(samples_axis=self.samples_axis, alpha=self.alpha)))
+            steps.append(('to_image', ResNetInputTransformer(
+                samples_axis=self.samples_axis,
+                channel_axis=self.channel_axis,
+                freq_axis=self.freq_axis,
+                time_axis=self.time_axis,
+                oversample=self.oversample
+            )))
+            # Standardize per-channel after shaping to NCHW
+            steps.append(('standardize', ImageStandardizeTransformer()))
+            # Configure skorch net
+            # Determine AMP dtype default if not provided
+            if self.amp_dtype is None:
+                try:
+                    amp_dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+                except Exception:
+                    amp_dtype = torch.float16
+            else:
+                amp_dtype = self.amp_dtype
+            callbacks_list = []
+            # Use custom gradient clipping that only clips infinite values, not NaNs
+            callbacks_list.append(SafeGradientNormClipping(1.0))
+            if self.early_stopping and EarlyStopping is not None:
+                try:
+                    callbacks_list.append(EarlyStopping(
+                        monitor='valid_loss',
+                        patience=self.es_patience,
+                        threshold=self.es_threshold,
+                        lower_is_better=True,
+                        load_best=self.es_load_best
+                    ))
+                except TypeError:
+                    # Fallback for older skorch without load_best arg
+                    callbacks_list.append(EarlyStopping(
+                        monitor='valid_loss',
+                        patience=self.es_patience,
+                        threshold=self.es_threshold,
+                        lower_is_better=True
+                    ))
+            if self.lr_schedule == 'plateau' and LRScheduler is not None:
+                callbacks_list.append(LRScheduler(
+                    policy='ReduceLROnPlateau',
+                    monitor='valid_loss',
+                    factor=self.lr_factor,
+                    patience=self.lr_patience,
+                    min_lr=self.lr_min_lr,
+                    threshold=self.lr_threshold,
+                    cooldown=self.lr_cooldown
+                ))
+            net = NeuralNetClassifier(
+                module=SEEGResNet,
+                module__num_classes=n_classes,
+                module__base=self.base,
+                module__pretrained=self.pretrained,
+                module__dropout=self.dropout,
+                module__in_channels=in_channels,
+                module__use_amp=self.use_amp,
+                module__amp_dtype=amp_dtype,
+                max_epochs=self.max_epochs,
+                lr=self.lr,
+                optimizer=self.optimizer,
+                optimizer__weight_decay=self.optimizer_weight_decay,
+                batch_size=self.batch_size,
+                device=('cuda' if (self.device in ('auto', 'cuda') and torch.cuda.is_available()) else 'cpu'),
+                iterator_train__shuffle=True,
+                criterion=torch.nn.CrossEntropyLoss,
+                criterion__label_smoothing=self.label_smoothing,
+                callbacks=callbacks_list
+            )
+            steps.append(('classifier', net))
+            return Pipeline(steps=steps, memory=Memory())
+        
+        def fit(self, X, y=None, **params):
+            if y is None:
+                raise ValueError("ResNetTokenClassifier requires labels y for classification.")
+            n_classes = int(len(np.unique(y)))
+            in_channels = self._infer_in_channels(X)
+            self.model = self._build_pipeline(n_classes, in_channels)
+            # Optional class weighting for imbalanced labels
+            if self.class_weight == 'balanced' and torch is not None:
+                # Compute inverse frequency weights
+                classes, counts = np.unique(y, return_counts=True)
+                total = counts.sum()
+                weights = (total / (len(classes) * counts)).astype('f4')
+                # Map to class order used by the criterion (sorted classes)
+                order = np.argsort(classes)
+                w_sorted = weights[order]
+                device = ('cuda' if (self.device in ('auto', 'cuda') and torch.cuda.is_available()) else 'cpu')
+                w_tensor = torch.tensor(w_sorted, dtype=torch.float32, device=device)
+                self.model.set_params(classifier__criterion__weight=w_tensor)
+            if params:
+                self.model.set_params(**params)
+            self.model.fit(X, y)
+            return self
+
+        def predict(self, X, **params):
+            if self.model is None:
+                raise RuntimeError("Model not fitted. Call fit before predict.")
+            return self.model.predict(X, **params)
+
+        def score(self, X, y, sample_weight=None, **params):
+            return accuracy_score(y, self.predict(X, **params), sample_weight=sample_weight)
+else:
+    class ResNetTokenClassifier(BaseEstimator):
+        def __init__(self, *args, **kwargs):
+            raise ImportError("ResNetTokenClassifier requires torch, torchvision, and skorch to be installed.")
+
+
+# %% Conformer-like sEEG classifier (inspired by seegnificant and EEG-Conformer)
+# References:
+# - seegnificant (NeurIPS 2024): https://gmentz.github.io/seegnificant
+# - EEG-Conformer (TNSRE 2023): https://github.com/eeyhsong/EEG-Conformer
+if torch is not None and NeuralNetClassifier is not None:
+    class DebugCrossEntropyLoss(nn.Module):
+        """CrossEntropyLoss wrapper that prints target/input stats when debug=True."""
+        def __init__(self, ignore_index: int = -100, label_smoothing: float = 0.0,
+                     debug: bool = False, num_classes: int | None = None):
+            super().__init__()
+            self.inner = nn.CrossEntropyLoss(ignore_index=ignore_index,
+                                             label_smoothing=label_smoothing)
+            self.debug = debug
+            self.num_classes = num_classes
+        
+        def forward(self, input: "torch.Tensor", target: "torch.Tensor"):
+            t = target
+            if t.dtype != torch.long:
+                # Cast to indices as expected by CE
+                t = t.to(torch.long)
+            if self.debug:
+                try:
+                    # Basic stats on target and logits
+                    tmin = int(t.min().item())
+                    tmax = int(t.max().item())
+                    nunique = int(torch.unique(t).numel())
+                    in_min = float(input.min().item())
+                    in_max = float(input.max().item())
+                    in_mean = float(input.mean().item())
+                    print(f"[CE DEBUG] target dtype={t.dtype} shape={tuple(t.shape)} "
+                          f"min={tmin} max={tmax} nunique={nunique} "
+                          f"num_classes={self.num_classes if self.num_classes is not None else 'NA'} | "
+                          f"logits min={in_min:.6g} max={in_max:.6g} mean={in_mean:.6g}")
+                except Exception:
+                    pass
+            return self.inner(input, t)
+    
+    class ConformerInputTransformer(BaseEstimator, TransformerMixin):
+        """Permute and reshape to (N, C, F, T) for SEEGConformer.
+        
+        - samples_axis: index of samples/trials dimension
+        - channel_axis: index of channel/electrode dimension
+        - freq_axis: index of frequency or feature dimension to optionally keep
+        - time_axis: index of time dimension
+        
+        Any remaining feature dims (besides C, F, T) are folded into F.
+        
+        If oversample=False and NaNs are present, returns a PyTorch MaskedTensor.
+        """
+        def __init__(self, samples_axis: int = 0, channel_axis: int = -3,
+                     freq_axis: int = -2, time_axis: int = -1, oversample: bool = True):
+            self.samples_axis = samples_axis
+            self.channel_axis = channel_axis
+            self.freq_axis = freq_axis
+            self.time_axis = time_axis
+            self.oversample = oversample
+        
+        def fit(self, X, y=None, **fit_params):
+            return self
+        
+        def transform(self, X):
+            xp = array_namespace(X)
+            ndim = X.ndim
+            sa = self.samples_axis % ndim
+            ca = self.channel_axis % ndim
+            fa = self.freq_axis % ndim
+            ta = self.time_axis % ndim
+            axes = list(range(ndim))
+            others = [ax for ax in axes if ax not in (sa, ca, fa, ta)]
+            # Order to [samples, channels, others..., freq, time]
+            perm = [sa, ca] + others + [fa, ta]
+            Xt = xp.transpose(X, axes=perm)
+            N, C = int(Xt.shape[0]), int(Xt.shape[1])
+            F = int(np.prod([int(s) for s in Xt.shape[2:-1]]) or 1)
+            T = int(Xt.shape[-1])
+            Xn = xp.asarray(Xt, dtype='f4').reshape((N, C, F, T))
+            
+            # Handle NaNs based on oversample setting
+            if not self.oversample:
+                # Check for NaNs and create masked tensor if present
+                try:
+                    finite = xp.isfinite(Xn)
+                    has_nans = not xp.all(finite)
+                except Exception:
+                    has_nans = False
+                
+                if has_nans and is_torch(xp):
+                    # Convert to PyTorch tensor if not already
+                    if not hasattr(Xn, 'device'):
+                        Xn = torch.as_tensor(Xn, dtype=torch.float32)
+                    
+                    # Create mask: True for valid (non-NaN) values, False for NaN
+                    mask = torch.isfinite(Xn)
+                    
+                    # DO NOT replace NaNs - keep them in the data, mask will handle them
+                    # Clip extremes only on finite values
+                    Xn = torch.where(mask, torch.clamp(Xn, -1e6, 1e6), Xn)
+                    
+                    # Create MaskedTensor with original data (including NaNs) and mask
+                    try:
+                        from torch.masked import MaskedTensor
+                        Xn = MaskedTensor(Xn, mask)
+                    except (ImportError, AttributeError):
+                        # Fallback: store mask as attribute for later use
+                        Xn._nan_mask = mask
+            else:
+                # When oversample=True, OversampleTransformer handles NaNs via mixup/norm
+                # Just clip extremes here (don't replace NaNs)
+                try:
+                    Xn = xp.clip(Xn, -1e6, 1e6)
+                except Exception:
+                    pass
+            return Xn
+    
+    class ConformerStandardizeTransformer(BaseEstimator, TransformerMixin):
+        """Standardize NCFT inputs per-channel over N,F,T (mean 0, std 1).
+        
+        Handles MaskedTensor inputs by computing statistics only over valid (non-masked) values.
+        """
+        def __init__(self, eps: float = 1e-6):
+            self.eps = eps
+            self.mean_ = None
+            self.std_ = None
+        
+        def fit(self, X, y=None, **fit_params):
+            xp = array_namespace(X)
+            # Handle MaskedTensor or regular tensor
+            mask = None
+            if hasattr(X, 'get_mask'):
+                # MaskedTensor: extract data and mask
+                try:
+                    from torch.masked import MaskedTensor
+                    if isinstance(X, MaskedTensor):
+                        mask = X.get_mask()
+                        Xc = X.get_data()
+                        xp = array_namespace(Xc)
+                except (ImportError, AttributeError):
+                    pass
+            elif hasattr(X, '_nan_mask'):
+                # Fallback: mask stored as attribute
+                mask = X._nan_mask
+                Xc = X
+            else:
+                Xc = X
+            
+            # X shape: (N, C, F, T)
+            if mask is not None and is_torch(xp):
+                # Compute mean/std only over valid (non-masked) values
+                Xc = torch.as_tensor(Xc, dtype=torch.float32)
+                mask = torch.as_tensor(mask, dtype=torch.bool)
+                # Per-channel mean over valid values (masked values ignored)
+                mean = []
+                for c in range(Xc.shape[1]):
+                    ch_data = Xc[:, c, :, :]
+                    ch_mask = mask[:, c, :, :]
+                    if ch_mask.any():
+                        # Use nanmean to handle NaNs properly (mask ensures we only use valid values)
+                        valid_data = ch_data[ch_mask]
+                        mean.append(valid_data.nanmean().item() if torch.isnan(valid_data).any() else valid_data.mean().item())
+                    else:
+                        mean.append(0.0)
+                mean = torch.tensor(mean, dtype=torch.float32, device=Xc.device)
+                # Per-channel std over valid values
+                var = []
+                for c in range(Xc.shape[1]):
+                    ch_data = Xc[:, c, :, :]
+                    ch_mask = mask[:, c, :, :]
+                    if ch_mask.any():
+                        valid_data = ch_data[ch_mask]
+                        centered = (valid_data - mean[c]) ** 2
+                        var.append(centered.nanmean().item() if torch.isnan(centered).any() else centered.mean().item())
+                    else:
+                        var.append(1.0)
+                var = torch.tensor(var, dtype=torch.float32, device=Xc.device)
+                self.mean_ = mean
+                self.std_ = torch.sqrt(var) + self.eps
+            else:
+                # When oversample=True, OversampleTransformer handles NaNs via mixup/norm
+                # Compute statistics normally (NaNs should already be handled)
+                mean = Xc.mean(axis=(0, 2, 3))  # per-channel mean
+                var = ((Xc - mean[None, :, None, None]) ** 2).mean(axis=(0, 2, 3))
+                self.mean_ = xp.asarray(mean, dtype='f4')
+                self.std_ = xp.sqrt(xp.asarray(var, dtype='f4')) + self.eps
+            return self
+        
+        def transform(self, X):
+            xp = array_namespace(X)
+            # Handle MaskedTensor or regular tensor
+            mask = None
+            is_masked = False
+            if hasattr(X, 'get_mask'):
+                try:
+                    from torch.masked import MaskedTensor
+                    if isinstance(X, MaskedTensor):
+                        mask = X.get_mask()
+                        X = X.get_data()
+                        is_masked = True
+                        xp = array_namespace(X)
+                except (ImportError, AttributeError):
+                    pass
+            elif hasattr(X, '_nan_mask'):
+                mask = X._nan_mask
+                is_masked = True
+            
+            # When oversample=True, OversampleTransformer already handled NaNs
+            # When oversample=False, NaNs are preserved and masked
+            
+            X = torch.as_tensor(X, dtype=torch.float32) if is_torch(xp) else xp.asarray(X, dtype='f4')
+            mean_t = torch.as_tensor(self.mean_, dtype=torch.float32, device=X.device) if is_torch(xp) else self.mean_
+            std_t = torch.as_tensor(self.std_, dtype=torch.float32, device=X.device) if is_torch(xp) else self.std_
+            
+            # Standardize: NaNs remain NaNs, mask will handle them
+            X = X - mean_t[None, :, None, None]
+            X = X / std_t[None, :, None, None]
+            
+            # Re-wrap in MaskedTensor if input was masked
+            if is_masked and mask is not None:
+                try:
+                    from torch.masked import MaskedTensor
+                    X = MaskedTensor(X, mask)
+                except (ImportError, AttributeError):
+                    X._nan_mask = mask
+            
+            return X
+    
+    class SEEGConformer(nn.Module):
+        """Convolutional-Transformer for sEEG decoding.
+        
+        Pipeline:
+        1) Frequency reduction (mean over F) -> (N, C, T)
+        2) Temporal depthwise Conv1d per channel -> tokens (dim=d_model)
+        3) Self-attention in time (per channel)
+        4) Aggregate over time -> (N, C, d_model)
+        5) Add channel positional encodings (+ optional coord MLP on 3D positions)
+        6) Self-attention across channels
+        7) Global channel pooling -> classifier
+        """
+        def __init__(self,
+                     num_classes: int,
+                     d_model: int = 128,
+                     nhead_time: int = 8,
+                     depth_time: int = 2,
+                     nhead_space: int = 8,
+                     depth_space: int = 2,
+                     kernel_size: int = 9,
+                     dropout: float = 0.1,
+                     coord_embed_dim: int = 32,
+                     channel_positions: Optional[np.ndarray] = None,
+                     use_amp: bool = True,
+                     amp_dtype: "torch.dtype" = None,
+                     debug: bool = False,
+                     debug_max_prints: int = 5):
+            super().__init__()
+            self.use_amp = use_amp
+            if amp_dtype is None:
+                try:
+                    self.amp_dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+                except Exception:
+                    self.amp_dtype = torch.float16
+            else:
+                self.amp_dtype = amp_dtype
+            self.d_model = d_model
+            self.dropout = nn.Dropout(dropout)
+            self.kernel_size = kernel_size
+            # Temporal encoder (defined lazy after seeing C)
+            self.temporal_conv = None  # created in forward when C known
+            encoder_layer_t = nn.TransformerEncoderLayer(
+                d_model=d_model, nhead=nhead_time, dim_feedforward=4*d_model,
+                dropout=dropout, batch_first=True, activation='gelu'
+            )
+            self.time_encoder = nn.TransformerEncoder(encoder_layer_t, num_layers=depth_time)
+            # Spatial/channel encoder
+            encoder_layer_s = nn.TransformerEncoderLayer(
+                d_model=d_model, nhead=nhead_space, dim_feedforward=4*d_model,
+                dropout=dropout, batch_first=True, activation='gelu'
+            )
+            self.space_encoder = nn.TransformerEncoder(encoder_layer_s, num_layers=depth_space)
+            # Channel index embedding (lazy initialized with C)
+            self.channel_embed = None
+            # Optional coordinate embedding
+            self.coord_proj = None
+            self.register_buffer('channel_positions_buf', None, persistent=False)
+            if channel_positions is not None:
+                # Expect (C, 3); actual C checked at first forward
+                pos = torch.as_tensor(channel_positions, dtype=torch.float32)
+                self.register_buffer('channel_positions_buf', pos, persistent=False)
+                self.coord_proj = nn.Sequential(
+                    nn.Linear(3, coord_embed_dim),
+                    nn.GELU(),
+                    nn.Linear(coord_embed_dim, d_model)
+                )
+            # Classifier
+            self.classifier = nn.Linear(d_model, num_classes)
+            # Debug config
+            self.debug = debug
+            self._debug_max_prints = debug_max_prints
+            self._debug_prints = 0
+        
+        def _dbg(self, name: str, t: "torch.Tensor"):
+            if not self.debug:
+                return
+            if self._debug_prints >= self._debug_max_prints:
+                return
+            try:
+                numel = t.numel()
+                n_nan = torch.isnan(t).sum().item()
+                n_inf = torch.isinf(t).sum().item()
+                finite = torch.isfinite(t)
+                if finite.any():
+                    t_f = t[finite]
+                    t_min = t_f.min().item()
+                    t_max = t_f.max().item()
+                    t_mean = t_f.mean().item()
+                else:
+                    t_min = float('nan')
+                    t_max = float('nan')
+                    t_mean = float('nan')
+                print(f"[SEEGConformer DEBUG] {name}: shape={tuple(t.shape)} dtype={t.dtype} device={t.device} "
+                      f"numel={numel} nan={n_nan} inf={n_inf} min={t_min:.6g} max={t_max:.6g} mean={t_mean:.6g}")
+            except Exception as _:
+                # Avoid crashing due to debug
+                pass
+            finally:
+                self._debug_prints += 1
+        
+        def _ensure_temporal(self, C: int, device: "torch.device | None" = None):
+            if self.temporal_conv is None:
+                # Depthwise temporal conv per channel
+                self.temporal_conv = nn.Conv1d(
+                    in_channels=C, out_channels=C*self.d_model,
+                    kernel_size=self.kernel_size, padding=self.kernel_size // 2,
+                    groups=C, bias=False
+                )
+                nn.init.kaiming_normal_(self.temporal_conv.weight, mode='fan_out', nonlinearity='relu')
+            if self.channel_embed is None:
+                self.channel_embed = nn.Embedding(C, self.d_model)
+            # Ensure lazily created modules are on the same device as the inputs/net
+            if device is not None:
+                self.temporal_conv.to(device)
+                self.channel_embed.to(device)
+                if self.coord_proj is not None:
+                    self.coord_proj.to(device)
+        
+        def forward(self, x):
+            # Extract mask once globally - mask: True for valid, False for NaN
+            mask = None
+            if hasattr(x, 'get_mask'):
+                try:
+                    from torch.masked import MaskedTensor
+                    if isinstance(x, MaskedTensor):
+                        mask = x.get_mask()
+                        x = x.get_data()  # Extract data with NaNs still present
+                except (ImportError, AttributeError):
+                    pass
+            elif hasattr(x, '_nan_mask'):
+                mask = x._nan_mask
+                x = x if isinstance(x, torch.Tensor) else torch.as_tensor(x)
+            
+            # x: (N, C, F, T)
+            N, C, F, T = x.shape
+            use_amp_now = self.use_amp and x.is_cuda
+            # Keep input reduction in AMP
+            with torch.cuda.amp.autocast(enabled=use_amp_now, dtype=self.amp_dtype):
+                # Create lazy modules and move them to the right device
+                self._ensure_temporal(C, device=x.device)
+                # 1) Frequency reduction using masked mean - compute mean only over valid frequencies
+                if mask is not None:
+                    # mask shape: (N, C, F, T) - True for valid values
+                    # Use masked mean: sum valid values, divide by count of valid values
+                    # If all frequencies are NaN for a (N, C, T) position, result will be NaN (correct)
+                    x = _masked_mean(x, mask, dim=2, keepdim=False)  # (N, C, T)
+                    # Update mask: (N, C, T) is valid if any frequency was valid
+                    mask = mask.any(dim=2)  # (N, C, T)
+                else:
+                    x = x.mean(dim=2)  # (N, C, T)
+                self._dbg("after_freq_mean", x)
+            # Compute numerically sensitive blocks in float32 to avoid NaNs
+            with torch.cuda.amp.autocast(enabled=False):
+                # 2) Temporal convolution: NaNs will propagate naturally
+                # If all timepoints are NaN for a specific (N, C) combination, output will be NaN (correct)
+                x = self.temporal_conv(x.float())  # (N, C*d_model, T)
+                self._dbg("after_temporal_conv", x)
+                # Update mask after temporal conv: output shape is (N, C*d_model, T)
+                # Each output channel corresponds to an input channel, so expand mask accordingly
+                if mask is not None:
+                    # mask was (N, C, T), now need (N, C*d_model, T)
+                    # Each input channel produces d_model output channels
+                    mask = mask.unsqueeze(2).expand(-1, -1, self.d_model, -1)  # (N, C, d_model, T)
+                    mask = mask.reshape(N, C * self.d_model, T)  # (N, C*d_model, T)
+                
+                # reshape to (N*C, T, d_model)
+                x = x.view(N, C, self.d_model, T).permute(0, 1, 3, 2).reshape(N*C, T, self.d_model).float()
+                # Update mask for reshaped x: (N*C, T, d_model)
+                if mask is not None:
+                    mask = mask.view(N, C, self.d_model, T).permute(0, 1, 3, 2).reshape(N*C, T, self.d_model)
+                
+                # 3) Time self-attention per channel
+                # Transformer encoder: NaNs will propagate naturally
+                x = self.time_encoder(x)  # (N*C, T, d_model)
+                self._dbg("after_time_encoder", x)
+                # Mask unchanged after transformer (same shape)
+                
+                # 4) Aggregate time using masked mean
+                if mask is not None:
+                    x = _masked_mean(x, mask, dim=1, keepdim=False)  # (N*C, d_model)
+                else:
+                    x = x.mean(dim=1)  # (N*C, d_model)
+                x = x.view(N, C, self.d_model)  # (N, C, d_model)
+                # Update mask after time aggregation: (N, C, d_model)
+                if mask is not None:
+                    mask = mask.any(dim=1)  # (N*C,) -> valid if any timepoint was valid
+                    mask = mask.view(N, C)  # (N, C)
+                    mask = mask.unsqueeze(2).expand(-1, -1, self.d_model)  # (N, C, d_model)
+                
+                # 5) Add channel positional embeddings (and optional coords)
+                ch_ids = torch.arange(C, device=x.device)
+                ch_emb = self.channel_embed(ch_ids).unsqueeze(0).float()  # (1, C, d_model)
+                x = x + ch_emb
+                if self.coord_proj is not None and self.channel_positions_buf is not None:
+                    if self.channel_positions_buf.shape[0] == C:
+                        coord_emb = self.coord_proj(self.channel_positions_buf).unsqueeze(0).float()  # (1, C, d_model)
+                        x = x + coord_emb
+                x = self.dropout(x)
+                # Mask unchanged after embeddings/dropout (same shape)
+                
+                # 6) Space/channel self-attention
+                # Transformer encoder: NaNs will propagate naturally
+                x = self.space_encoder(x)  # (N, C, d_model)
+                self._dbg("after_space_encoder", x)
+                # Mask unchanged after transformer (same shape)
+                
+                # 7) Global channel pooling using masked mean
+                if mask is not None:
+                    x = _masked_mean(x, mask, dim=1, keepdim=False)  # (N, d_model)
+                else:
+                    x = x.mean(dim=1)  # (N, d_model)
+                
+                # Classifier
+                x = self.classifier(x)
+                self._dbg("logits", x)
+                
+                # Final check: NaNs can exist for specific trials if all channels were NaN
+                # Only raise error if ALL values are NaN (indicating a fundamental problem)
+                if torch.isnan(x).all():
+                    raise RuntimeError("All values are NaN in final output - fundamental problem detected")
+            # Cast to float32 for compatibility with sklearn/skorch conversion
+            return x.float()
+    
+    class SEEGConformerClassifier(BaseEstimator):
+        """Sklearn-compatible classifier wrapping SEEGConformer via skorch.
+        
+        Accepts optional `channel_positions` (numpy array (C,3)) for spatial encoding.
+        """
+        def __init__(self,
+                     d_model: int = 128,
+                     nhead_time: int = 8,
+                     depth_time: int = 2,
+                     nhead_space: int = 8,
+                     depth_space: int = 2,
+                     kernel_size: int = 9,
+                     dropout: float = 0.1,
+                     coord_embed_dim: int = 32,
+                     channel_positions: Optional[np.ndarray] = None,
+                     max_epochs: int = 30,
+                     lr: float = 1e-3,
+                     batch_size: int = 128,
+                     device: str = 'auto',
+                     optimizer=torch.optim.AdamW,
+                     samples_axis: int = 0,
+                     channel_axis: int = -3,
+                     freq_axis: int = -2,
+                     time_axis: int = -1,
+                     oversample: bool = True,
+                     alpha: float = 1.0,
+                     debug: bool = False,
+                     debug_max_prints: int = 5):
+            self.d_model = d_model
+            self.nhead_time = nhead_time
+            self.depth_time = depth_time
+            self.nhead_space = nhead_space
+            self.depth_space = depth_space
+            self.kernel_size = kernel_size
+            self.dropout = dropout
+            self.coord_embed_dim = coord_embed_dim
+            self.channel_positions = channel_positions
+            self.max_epochs = max_epochs
+            self.lr = lr
+            self.batch_size = batch_size
+            self.device = device
+            self.optimizer = optimizer
+            self.samples_axis = samples_axis
+            self.channel_axis = channel_axis
+            self.freq_axis = freq_axis
+            self.time_axis = time_axis
+            self.oversample = oversample
+            self.alpha = alpha
+            self.debug = debug
+            self.debug_max_prints = debug_max_prints
+            self.model = None
+        
+        def _build_pipeline(self, n_classes: int):
+            steps = []
+            if self.oversample:
+                steps.append(('oversample', OversampleTransformer(samples_axis=self.samples_axis, alpha=self.alpha)))
+            steps.append(('to_tensor', ConformerInputTransformer(
+                samples_axis=self.samples_axis,
+                channel_axis=self.channel_axis,
+                freq_axis=self.freq_axis,
+                time_axis=self.time_axis,
+                oversample=self.oversample
+            )))
+            # Standardize after shaping to (N, C, F, T)
+            steps.append(('standardize', ConformerStandardizeTransformer()))
+            callbacks_list = []
+            # Use custom gradient clipping that only clips infinite values, not NaNs
+            callbacks_list.append(SafeGradientNormClipping(1.0))
+            net = NeuralNetClassifier(
+                module=SEEGConformer,
+                module__num_classes=n_classes,
+                module__d_model=self.d_model,
+                module__nhead_time=self.nhead_time,
+                module__depth_time=self.depth_time,
+                module__nhead_space=self.nhead_space,
+                module__depth_space=self.depth_space,
+                module__kernel_size=self.kernel_size,
+                module__dropout=self.dropout,
+                module__coord_embed_dim=self.coord_embed_dim,
+                module__channel_positions=self.channel_positions,
+                module__use_amp=True,
+                module__amp_dtype=(torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16),
+                module__debug=self.debug,
+                module__debug_max_prints=self.debug_max_prints,
+                max_epochs=self.max_epochs,
+                lr=self.lr,
+                optimizer=self.optimizer,
+                batch_size=self.batch_size,
+                device=('cuda' if (self.device in ('auto', 'cuda') and torch.cuda.is_available()) else 'cpu'),
+                iterator_train__shuffle=True,
+                callbacks=callbacks_list,
+                # Debugging loss to inspect target/inputs just before loss computation
+                criterion=DebugCrossEntropyLoss,
+                criterion__ignore_index=-100,
+                criterion__label_smoothing=0.0,
+                criterion__debug=self.debug,
+                criterion__num_classes=n_classes
+            )
+            steps.append(('classifier', net))
+            return Pipeline(steps=steps, memory=Memory())
+        
+        def fit(self, X, y=None, **params):
+            if y is None:
+                raise ValueError("SEEGConformerClassifier requires labels y for classification.")
+            n_classes = int(len(np.unique(y)))
+            self.model = self._build_pipeline(n_classes)
+            if params:
+                self.model.set_params(**params)
+            self.model.fit(X, y)
+            return self
+        
+        def predict(self, X, **params):
+            if self.model is None:
+                raise RuntimeError("Model not fitted. Call fit before predict.")
+            return self.model.predict(X, **params)
+        
+        def score(self, X, y, sample_weight=None, **params):
+            return accuracy_score(y, self.predict(X, **params), sample_weight=sample_weight)
+else:
+    class SEEGConformerClassifier(BaseEstimator):
+        def __init__(self, *args, **kwargs):
+            raise ImportError("SEEGConformerClassifier requires torch and skorch to be installed.")
 
 
 if __name__ == "__main__":

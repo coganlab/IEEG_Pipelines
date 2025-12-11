@@ -10,7 +10,7 @@ from sklearn.metrics import make_scorer
 from ieeg.decoding.models import PcaLdaClassification
 from ieeg.arrays.label import LabeledArray
 from ieeg.calc.oversample import MinimumNaNSplit
-from ieeg.arrays.api import array_namespace, Array
+from ieeg.arrays.api import array_namespace, Array, is_torch, is_numpy
 from ieeg.arrays.reshape import sliding_window_view
 import numpy as np
 import matplotlib.pyplot as plt
@@ -282,10 +282,21 @@ class Decoder(MinimumNaNSplit):
 
         if shuffle:
             isnan = xp.isnan(data)
-            std = float(xp.std(data[isnan], dtype='f8'))
-            data[isnan] = xp.random.normal(0, 3 * std, int(xp.sum(isnan,
-                                                                  dtype='i8')))
-            label_stack = [labels.copy() for _ in range(config.n_repeats)]
+            # Cast to float64 and compute std without dtype kwarg (torch-compatible)
+            masked = xp.astype(data[isnan], xp.float64)
+            std = float(xp.std(masked))
+            n_noisy = int(xp.sum(isnan, dtype=xp.int64))
+            if is_torch(xp):
+                import torch
+                noise = torch.randn((n_noisy,), device=data.device, dtype=data.dtype) * (3 * std)
+            else:
+                noise = xp.random.normal(0, 3 * std, n_noisy)
+            data[isnan] = noise
+            # Duplicate labels per repeat with backend-appropriate copy
+            if is_torch(xp):
+                label_stack = [labels.clone() for _ in range(config.n_repeats)]
+            else:
+                label_stack = [labels.copy() for _ in range(config.n_repeats)]
             for i in range(config.n_repeats):
                 self.shuffle_labels(data, label_stack[i], 0)
             idxs = ((self.split(data, lab), lab) for lab in label_stack)
@@ -590,14 +601,19 @@ def confusion_matrix(
     if labels is None:
         labels, y_true_indices = xp.unique(y_true, return_inverse=True)
     else:
-        labels = xp.array(labels)
+        labels = xp.asarray(labels, device='cpu' if is_numpy(xp) else
+        y_true.device)
         y_true_indices = xp.searchsorted(labels, y_true)
 
     y_pred_indices = xp.searchsorted(labels, y_pred)
 
     n_labels = labels.shape[0]
     cm = xp.zeros((n_labels, n_labels), dtype=xp.int32)
-    xp.add.at(cm, (y_true_indices, y_pred_indices), 1)
+    if not is_torch(xp):
+        xp.add.at(cm, (y_true_indices, y_pred_indices), 1)
+    else:
+        value = xp.as_tensor(1, dtype=xp.int32, device=cm.device)
+        cm.index_put_((y_true_indices, y_pred_indices), value, accumulate=True)
     return cm
 
 
@@ -940,9 +956,12 @@ def plot_all_scores(all_scores: dict[str, np.ndarray],
                     ax.set_xlabel("Time from go (s)")
                 else:
                     raise ValueError("Condition not recognized")
-            pl_sc = np.reshape(all_scores["-".join([name, cond])],
-                               (all_scores["-".join([name, cond])].shape[0],
-                                -1)).T
+            key = "-".join([name, cond])
+            if key not in all_scores:
+                print(f"Warning: {key} not in all_scores; skipping.")
+                continue
+            temp = all_scores[key]
+            pl_sc = np.reshape(temp, (temp.shape[0], -1)).T
             plot_dist(pl_sc, mode='std', times=times,
                       color=color, label=name, ax=ax,
                       **plot_kwargs)

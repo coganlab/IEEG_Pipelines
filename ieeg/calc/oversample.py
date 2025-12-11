@@ -7,7 +7,7 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 import itertools
 from functools import partial
 from ieeg.calc.fast import mixup, norm, mixup2
-from ieeg.arrays.api import array_namespace, is_numpy, intersect1d, setdiff1d
+from ieeg.arrays.api import array_namespace, is_numpy, intersect1d, setdiff1d, is_torch
 from decimal import Decimal
 
 Array2D = NDArray[Tuple[Literal[2], ...]]
@@ -119,10 +119,22 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
 
     def _splits(self, X, y, groups, xp):
         splits = super(MinimumNaNSplit, self).split(X, y, groups)
-        if not is_numpy(xp):
-            splits = ((xp.asarray(train), xp.asarray(test)) for
-                      train, test in splits)
-        return splits
+        if is_numpy(xp):
+            return splits
+        # For array-API backends ensure indices live on same device as X
+        try:
+            device = X.device  # torch or cupy arrays expose device
+        except Exception:
+            device = None
+        if is_torch(xp):
+            import torch
+            def to_backend(arr):
+                return torch.as_tensor(arr, dtype=torch.long, device=device)
+        else:
+            # CuPy or other backends
+            def to_backend(arr):
+                return xp.asarray(arr)
+        return ( (to_backend(train), to_backend(test)) for train, test in splits )
 
     @staticmethod
     def oversample(arr: np.ndarray, func: callable = mixup,
@@ -202,9 +214,20 @@ class MinimumNaNSplit(RepeatedStratifiedKFold):
         min_trials *= self.n_splits
         i = 0
         while not all(g >= min_trials for g in gt_labels):
-            xp.random.shuffle(labels)
+            if is_torch(xp):
+                import torch
+                perm = torch.randperm(labels.shape[0], device=labels.device)
+                labels[:] = labels[perm]
+            else:
+                xp.random.shuffle(labels)
             for j, l in enumerate(cats):
-                eval_arr = xp.take(arr, xp.flatnonzero(labels == l), trials_ax)
+                if is_torch(xp):
+                    import torch
+                    idx = torch.nonzero(labels == l, as_tuple=False).flatten()
+                    eval_arr = torch.index_select(arr, dim=trials_ax, index=idx)
+                else:
+                    idx = xp.flatnonzero(labels == l)
+                    eval_arr = xp.take(arr, idx, trials_ax)
                 gt_labels[j] = xp.min(xp.sum(
                     xp.all(~xp.isnan(eval_arr), axis=2), axis=trials_ax))
             if sum(gt_labels) < min_trials * cats.shape[0]:
@@ -537,7 +560,7 @@ def sortbased_rand(n_range: int, iterations: int, n_picks: int = -1):
 #         lam_all * arr_moved[batch_index_tuple + (choices2_all,)]
 
 
-def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
+def resample(arr: np.ndarray, sfreq: int | float | list[int | float], new_sfreq: int | float | list[int | float],
              axis: int = -1) -> np.ndarray:
     """Resample an array through linear interpolation.
 
@@ -582,10 +605,45 @@ def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
             20.77777778, 21.33333333, 21.88888889, 22.44444444, 23.        ],
            [24.        , 24.55555556, 25.11111111, 25.66666667, 26.22222222,
             26.77777778, 27.33333333, 27.88888889, 28.44444444, 29.        ]])
+    >>> ind1 = [0, 1, 2, 3, 4, 5]
+    >>> ind2 = [0, 0.5, 1.5, 2.5, 3.5, 4.5]
+    >>> resample(arr, ind1, ind2, axis=1)
+    array([[ 0. ,  0.5,  1.5,  2.5,  3.5,  4.5],
+           [ 6. ,  6.5,  7.5,  8.5,  9.5, 10.5],
+           [12. , 12.5, 13.5, 14.5, 15.5, 16.5],
+           [18. , 18.5, 19.5, 20.5, 21.5, 22.5],
+           [24. , 24.5, 25.5, 26.5, 27.5, 28.5]])
+    >>> ind2 = [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 10]
+    >>> resample(arr, ind1, ind2, axis=1)
+    array([[ 0. ,  0.2,  0.4,  0.6,  0.8,  1. ,  1.2,  1.4,  1.6,  1.8,  5. ],
+           [ 6. ,  6.2,  6.4,  6.6,  6.8,  7. ,  7.2,  7.4,  7.6,  7.8, 11. ],
+           [12. , 12.2, 12.4, 12.6, 12.8, 13. , 13.2, 13.4, 13.6, 13.8, 17. ],
+           [18. , 18.2, 18.4, 18.6, 18.8, 19. , 19.2, 19.4, 19.6, 19.8, 23. ],
+           [24. , 24.2, 24.4, 24.6, 24.8, 25. , 25.2, 25.4, 25.6, 25.8, 29. ]])
+
+    >>> xp = [0.0, 0.25, 0.5, 0.75, 1.0]
+    >>> np.random.seed(100)
+    >>> x = np.random.rand(10)
+    >>> fp = np.random.rand(10, 5, 5)
+    >>> resample(fp, xp, x)[0, :, 0]
+    array([0.17196795, 0.2838014 , 0.73404496, 0.34674289, 0.1532049 ])
+    >>> resample(fp, xp, x, 1)[0, 0]
+    array([0.42148282, 0.7778097 , 0.71951549, 0.41589901, 0.1476043 ])
     """
     while axis < 0:
         axis += arr.ndim
-    if sfreq == new_sfreq:
+    if not np.isscalar(sfreq):
+        assert not np.isscalar(new_sfreq), ValueError(
+            "If sfreq is a list, new_sfreq must also be a list")
+        o_indices = np.asarray(sfreq)
+        indices = np.asarray(new_sfreq)
+        new_samps = len(new_sfreq)
+        # make sure all indices are sorted and unique
+        assert np.all(np.diff(o_indices) > 0), ValueError(
+            f"sfreq:\n {sfreq}\n is not sorted and unique")
+    elif not np.isscalar(new_sfreq):
+        raise ValueError("If new_sfreq is a list, sfreq must also be a list")
+    elif sfreq == new_sfreq:
         return arr
     elif not sfreq % 1 == 0:
         num, denom = Decimal(str(sfreq)).as_integer_ratio()
@@ -599,13 +657,74 @@ def resample(arr: np.ndarray, sfreq: int | float, new_sfreq: int | float,
         o_indices = np.arange(arr.shape[axis])
         new_samps = int(round(new_sfreq * seconds))
         indices = np.linspace(0, arr.shape[axis] - 1, new_samps)
-        if arr.ndim == 1:
-            return np.interp(indices, o_indices, arr)
 
-        # for multi-dimensional arrays, we flatten non-axis dimensions, then
-        # apply the 1d interpolation, then reshape
-        func = partial(np.interp, indices, o_indices)
-        arr_in = np.swapaxes(arr, axis, -1).reshape(-1, arr.shape[axis])
-        out_flat = np.apply_along_axis(func, 1, arr_in)
-        out_shape = arr.shape[:axis] + (new_samps,) + arr.shape[axis + 1:]
-        return out_flat.reshape(out_shape)
+    if arr.ndim == 1:
+        return np.interp(indices, o_indices, arr)
+
+    # Pre-allocate output in final shape to avoid reshape/swapaxes copies
+    # Output shape: replace axis dimension with new_samps
+    out_shape = tuple(arr.shape[i] if i != axis else new_samps 
+                      for i in range(arr.ndim))
+    out = np.empty(out_shape, dtype=f"f{arr.dtype.itemsize}")
+    
+    # Move axis to end for easier indexing (creates view, no copy)
+    arr_moved = np.moveaxis(arr, axis, -1)  # shape: (..., n_old)
+    out_moved = np.moveaxis(out, axis, -1)  # shape: (..., n_new)
+    
+    n_old = arr.shape[axis]
+    
+    # Find left indices for interpolation (vectorized)
+    # Use side='right' to match np.interp behavior
+    j = np.searchsorted(o_indices, indices, side='right') - 1
+    
+    # Handle boundary cases like np.interp: copy edge values
+    # Values < o_min: j will be -1, clamp to 0 and set d=0 (use first value)
+    # Values >= o_max: j will be len(o_indices)-1, clamp to len-2 and set d=1 (use last value)
+    j_low = j < 0
+    j_high = j >= n_old - 1
+    j = np.clip(j, 0, n_old - 2)
+    
+    # Compute interpolation weights (vectorized)
+    # Pre-compute differences for efficiency
+    # o_indices is guaranteed sorted and unique by assertion, so o_diff > 0
+    o_diff = o_indices[1:] - o_indices[:-1]
+    denom = o_diff[j]
+    d = (indices - o_indices[j]) / denom
+    
+    # Handle boundary cases: copy edge values (like np.interp)
+    d[j_low] = 0.0  # Use first value for indices < o_min
+    d[j_high] = 1.0  # Use last value for indices >= o_max
+    # Clamp d to [0, 1] for safety
+    d = np.clip(d, 0, 1)
+
+    # Optimized interpolation with improved memory locality using in-place operations
+    # arr_moved shape: (d0, d1, ..., dn, n_old) - view from moveaxis (no copy)
+    # out_moved shape: (d0, d1, ..., dn, n_new) - view of output (no copy)
+    # j shape: (n_new,)
+    # d shape: (n_new,)
+    
+    # Extract values along last axis using advanced indexing
+    # arr_moved[..., j] selects j[k] along last axis for each k, broadcasting across leading dims
+    # Result shape: (d0, d1, ..., dn, n_new)
+    arr_j = arr_moved[..., j]  # shape: (..., n_new)
+    arr_jp1 = arr_moved[..., j + 1]  # shape: (..., n_new)
+    
+    # Compute interpolation using in-place operations to improve locality
+    # Formula: out = arr_j + d*(arr_jp1 - arr_j)
+    # Step 1: Compute difference directly into output (reuse output buffer)
+    # np.subtract(arr_jp1, arr_j, out=out_moved)
+    out_moved[...] = arr_jp1 - arr_j
+    # Step 2: Multiply by interpolation weight in-place
+    # np.multiply(out_moved, d, out=out_moved)
+    out_moved *= d
+    # Step 3: Add base value in-place
+    # np.add(arr_j, out_moved, out=out_moved)
+    out_moved += arr_j
+
+    return out
+
+def multiInterp2d(x, xp, fp):
+    i = np.arange(x.size)
+    j = np.searchsorted(xp, x) - 1
+    d = (x - xp[j]) / (xp[j + 1] - xp[j])
+    return (1 - d) * fp[i, j] + fp[i, j + 1] * d
