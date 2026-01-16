@@ -669,7 +669,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
 
 def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
                             idx: list[int | str], colormap: str = 'coolwarm',
-                            max_size: float = 1,
+                            max_size: float = 1.75, thresh: float = 4,
                             fig_dims: tuple[int, int] = None) -> None:
     """
     Plots brains for all unique pairs of components in W.
@@ -697,16 +697,9 @@ def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         min_size = int(np.ceil(np.sqrt(n_pairs)))
         fig_dims = (int(np.ceil(n_pairs / min_size)), min_size)
     plotter = BackgroundPlotter(shape=fig_dims)
-    cmap = matplotlib.colormaps.get_cmap(colormap)
     # Compute ratios and sums for all pairs
     for i, (a, b) in enumerate(pairs):
-        # Avoid division by zero
-        ratio = np.divide(W[a], W[b], out=np.zeros_like(W[a]), where=W[b]!=0)
-        # clip extreme ratios for better color scaling
-        ratio = np.clip(np.log10(ratio), -4, 4)
-        # Normalize ratio to [0,1] for colormap
-        norm_ratio = (ratio - np.nanmin(ratio)) / (np.nanmax(ratio) - np.nanmin(ratio))
-        colors = [cmap(val) for val in norm_ratio]
+        colors = ratio_to_color_gradient(W[a], W[b], colormap, thresh)
         # Electrode size: sum of weights, clipped to max_size
         size = np.clip(W[a] + W[b], 0, max_size)
         # Optional: scale size for visualization
@@ -714,7 +707,7 @@ def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         j, k = divmod(i, fig_dims[1])
         plotter.subplot(j, k)
         # trim the weights, colors, sizes, and idx by a minimum size threshold
-        min_size = 0.1
+        min_size = 0.4
         mask = size >= min_size
         colors = [colors[i] for i in range(len(colors)) if mask[i]]
         size = [size[i] / 2 for i in range(len(size)) if mask[i]]
@@ -730,6 +723,34 @@ def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         plotter.camera = brain.plotter.camera
         plotter.camera_position = brain.plotter.camera_position
     plotter.link_views()
+
+
+def ratio_to_color_gradient(vec_a: np.ndarray, vec_b: np.ndarray,
+                            colormap: str = 'coolwarm', thresh: float = 4) -> list:
+    """
+    Compute a color gradient from the ratio of two vectors using a colormap.
+    Parameters
+    ----------
+    vec_a : np.ndarray
+        Numerator vector.
+    vec_b : np.ndarray
+        Denominator vector.
+    colormap : str
+        Name of matplotlib colormap to use.
+    thresh : float
+        Threshold for log10 clipping.
+    Returns
+    -------
+    list
+        List of RGBA colors mapped from the ratio.
+    """
+    log_thresh = np.log10(thresh)
+    ratio = np.divide(vec_a, vec_b, out=np.zeros_like(vec_a), where=vec_b!=0)
+    ratio = np.clip(np.log10(ratio), log_thresh * -1, log_thresh)
+    norm_ratio = (ratio - np.nanmin(ratio)) / (np.nanmax(ratio) - np.nanmin(ratio))
+    cmap = matplotlib.colormaps.get_cmap(colormap)
+    colors = [cmap(val) for val in norm_ratio]
+    return colors
 
 
 def _create_color_alpha_matrix(colors: list, alphas: np.ndarray) -> np.ndarray:
@@ -1003,12 +1024,14 @@ def _find_label(label: pd.Series, percent_thresh: float,
 class Atlas:
     def __init__(self, subjects_dir: PathLike = None,
                  atlas: str = 'BNA_subregions.xlsx',
-                 delim: str = ','):
+                 delim: str = ',', name: str = 'aparc.a2009s'):
         subjects_dir = get_sub_dir(subjects_dir)
         ref = pd.ExcelFile(op.join(subjects_dir, atlas))
         data = ref.parse(ref.sheet_names[0])
         self.entries = []
         self.abbreviations = {}
+        self.sub_dir = subjects_dir
+        self.name = name
         lobe = None
         gyrus = None
         entry = namedtuple('Entry', ['lobe', 'gyrus',
@@ -1058,13 +1081,35 @@ class Atlas:
         num_gyri = len(self.gyri)
         num_lobes = len(self.lobes)
         num_subregions = len(self.entries)
-        return (f"Atlas with {num_gyri} gyri, {num_lobes} lobes, and"
+        return (f"Atlas with {num_lobes} lobes, {num_gyri} gyri, and"
                 f" {num_subregions} subregions")
 
     def parse_abbrev(self, abbrev: str, delim: str = ','):
         short, *long = abbrev.split(delim)
         self.abbreviations[short] = delim.join(long).lstrip().rstrip()
         return short
+
+    def plot(self, level: str = 'gyri', subject: str = 'fsaverage',
+             **plot_kwargs):
+        """Plots an atlas on an MNE Brain object
+
+        Parameters
+        ----------
+        level : str, optional
+            The level to plot, by default 'gyri'
+        subject : str, optional
+            The subject to plot on, by default 'fsaverage'
+        plot_kwargs : dict, optional
+            The keyword arguments to pass to the Brain object
+        """
+        plot_kwargs.setdefault("subjects_dir", self.sub_dir)
+        plot_kwargs.setdefault("cortex", "low_contrast")
+        plot_kwargs.setdefault("background", "white")
+        plot_kwargs.setdefault("alpha", 0.5)
+        brain = Brain(subject, **plot_kwargs)
+        brain.add_annotation(self.name)
+        # brain.add_volume_labels(self.name)
+        return brain
 
 
 if __name__ == "__main__":
@@ -1089,6 +1134,7 @@ if __name__ == "__main__":
     labels = gen_labels(info, sub=f"D{sub_num}", subj_dir=subj_dir,
                         atlas=".BN_atlas")
     bn_atlas = Atlas()
+    brain = bn_atlas.plot()
 
     # sub = "D{}".format(sub_num)
     #
@@ -1101,7 +1147,7 @@ if __name__ == "__main__":
     #                    [[1, 0, 0], [0, 1, 0]], mode='both')
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
-    plot_subj("D5")
+    # plot_subj("D16")
     # colors = np.concatenate([np.array([[1,0,0]] * 48), (np.arange(48) / 48)[
     # :, None]], axis=1)
     # brain = plot_subj("D5", color=colors)
