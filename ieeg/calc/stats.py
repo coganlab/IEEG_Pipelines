@@ -719,6 +719,200 @@ def permutation_test_singleton_group(data: tuple[np.ndarray, np.ndarray],
     return _Result(observed_stat, p_value, null_distribution)
 
 
+def _stat_from_moments(y_var, yhat_var, cov_y_yhat, score):
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if score == "corr":
+            return cov_y_yhat / np.sqrt(y_var * yhat_var)
+        if score == "r2":
+            rss = y_var - 2.0 * cov_y_yhat + yhat_var
+            return 1.0 - rss / y_var
+    raise ValueError("score must be 'corr' or 'r2'")
+
+def _canonicalize_xy(x, y, axis, features_axis):
+    """
+    Return:
+      x_t: (..., p, n)
+      y_t: (..., n)
+
+    Supports y either missing the feature axis (y.ndim == x.ndim - 1) or already
+    padded with a singleton feature axis (y.ndim == x.ndim).
+    """
+    y_t = np.moveaxis(y, axis, -1)  # (..., n)
+
+    if features_axis is None:
+        if y.ndim != x.ndim:
+            raise ValueError(f"Mismatched dims: x.ndim={x.ndim}, y.ndim={y.ndim}")
+        x_t = np.moveaxis(x, axis, -1)[..., None, :]  # (..., 1, n)
+        return x_t, y_t
+
+    if features_axis == axis:
+        raise ValueError(f"features_axis ({features_axis}) cannot equal axis ({axis}).")
+
+    x_t = np.moveaxis(x, (features_axis, axis), (-2, -1))  # (..., p, n)
+
+    if y.ndim == x.ndim - 1:
+        return x_t, y_t
+    if y.ndim == x.ndim:
+        y_t = np.moveaxis(y, (features_axis, axis), (-2, -1))
+        y_t = np.squeeze(y_t, axis=-2)  # (..., n)
+        return x_t, y_t
+
+    raise ValueError(f"Mismatched dims: x.ndim={x.ndim}, y.ndim={y.ndim}")
+
+
+def ridge_nd(
+    x: np.ndarray, y: np.ndarray, axis: int = 0, features_axis: int = None,
+    alpha: float = 1.0, return_params: bool = False, score: str = "r2"
+):
+    """Compute ridge regression between x and y along specified axis.
+
+    Computes ridge with intercept by using centered sufficient statistics:
+      XtX = Σ (x - x̄)(x - x̄)^T
+      Xty = Σ (x - x̄)(y - ȳ)
+      y_var = Σ (y - ȳ)^2
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Input data array of shape (..., n) or (..., p, n) where p is the number of features.
+    y : np.ndarray
+        Target data array of shape (..., n).
+    axis : int, optional
+        Axis along which samples are stored, by default 0.
+    features_axis : int, optional
+        Axis along which features are stored in x, by default None.
+    alpha : float, optional
+        Regularization strength for ridge regression, by default 1.0.
+    return_params : bool, optional
+        Whether to return regression coefficients and intercepts, by default False.
+    score : str, optional
+        Scoring metric to compute ('r2' or 'corr'), by default "r2".
+
+    Returns
+    -------
+    stat : np.ndarray
+        Computed statistic (R^2 or correlation) of shape (...) or (..., p) if return_params is True.
+    coef : np.ndarray, optional
+        Regression coefficients of shape (..., p), returned if return_params is True.
+    intercept : np.ndarray, optional
+        Regression intercepts of shape (...), returned if return_params is True.
+
+    Examples
+    --------
+    # axis = 0, single feature
+    >>> np.random.seed(0); from sklearn.linear_model import Ridge
+    >>> model = Ridge(alpha=1.0)
+    >>> x = np.random.randn(200, 10)
+    >>> y = np.random.randn(200, 10)
+    >>> coef = np.zeros(10); intercept = np.zeros(10); score = np.zeros(10)
+    >>> for i in range(10):
+    ...     model.fit(x[:,None,i], y[:,i]); coef[i] = model.coef_
+    ...     intercept[i] = model.intercept_
+    ...     score[i] = model.score(x[:,None,i], y[:,i]) # doctest: +ELLIPSIS
+    Ridge() ...
+    >>> r2, betas, inter = ridge_nd(x, y, axis=0, return_params=True)
+    >>> np.allclose(r2, score), r2, score # doctest: +ELLIPSIS
+    (True, ...
+    >>> np.allclose(betas, coef), betas, coef # doctest: +ELLIPSIS
+    (True, ...
+    >>> np.allclose(inter, intercept), inter, intercept # doctest: +ELLIPSIS
+    (True, ...
+
+    >>> x = np.stack([x] + [np.random.randn(200, 10) for _ in range(4)] , axis=0)
+    >>> y = np.stack([y] + [np.random.randn(200, 10) for _ in range(4)] , axis=0)
+    >>> x.shape
+    (5, 200, 10)
+    >>> r22 = ridge_nd(x, y, axis=1)
+    >>> r22.shape
+    (5, 10)
+    >>> np.allclose(r2, r22[0]), r22 # doctest: +ELLIPSIS
+    (True, ...
+    >>> x = np.concatenate([x, np.full((5, 50, 10), np.nan)], axis=1)
+    >>> y = np.concatenate([y, np.full((5, 50, 10), np.nan)], axis=1)
+    >>> r23 = ridge_nd(x, y, axis=1)
+    >>> np.allclose(r22, r23), r23 # doctest: +ELLIPSIS
+    (True, ...
+
+    # multiple features; y can stay (5, 200)
+    >>> x = np.random.randn(5, 3, 200)
+    >>> y = np.random.randn(5, 200)
+    >>> ridge_nd(x, y, axis=-1, features_axis=1)
+    array([0.01358499, 0.02084092, 0.01658038, 0.00274458, 0.02845844])
+
+    # scrambled axes
+    >>> x = np.random.randn(200, 4, 6)
+    >>> y = np.random.randn(200, 6)
+    >>> ridge_nd(x, y, axis=0, features_axis=1)
+    array([0.01266607, 0.00923674, 0.03053294, 0.0223324 , 0.0128201 ,
+           0.01801358])
+    """
+
+    x_t, y_t = _canonicalize_xy(x, y, axis=axis, features_axis=features_axis)
+    settings = dict(dtype='f8', optimize='greedy')
+
+    if x_t.shape[-1] != y_t.shape[-1]:
+        raise ValueError(
+            f"Mismatched number of samples: x has {x_t.shape[-1]}, y has {y_t.shape[-1]}"
+        )
+
+    # Build mask only for the single-feature case
+    mask = np.isfinite(x_t[..., 0, :]) & np.isfinite(y_t)
+    if mask.all():
+        # All values are finite, no need to mask or copy
+        y1 = y_t
+        x1 = x_t
+        n_eff = np.broadcast_to(mask.shape[-1], mask.shape[:-1])
+
+    else:
+        n_eff = np.sum(mask, axis=-1, dtype=int)
+
+        # Single contiguous copy to avoid editing inputs
+        x1 = np.where(mask[..., None, :], x_t, 0.0)
+        y1 = np.where(mask, y_t, 0.0)
+
+    # Raw sums
+    Sx = np.sum(x1, axis=-1, dtype=settings['dtype'])  # (..., p)
+    Sy = np.sum(y1, axis=-1, dtype=settings['dtype'])  # (...)
+
+    # Second moments
+    Sxx = np.einsum("...fi,...gi->...fg", x1, x1, **settings)  # (..., p, p)
+    Sxy = np.einsum("...fi,...i->...f", x1, y1, **settings)  # (..., p)
+    Syy = np.einsum("...i,...i->...", y1, y1, **settings)  # (...)
+
+    # Convert to centered (intercept) moments
+    # XtX = Sxx - (Sx Sx^T)/n_eff
+    # Xty = Sxy - (Sx Sy)/n_eff
+    # y_var = Syy - (Sy^2)/n_eff
+    with np.errstate(divide="ignore", invalid="ignore"):
+        inv_n = 1.0 / n_eff  # (...)
+        XtX = Sxx - np.einsum("...f,...g->...fg", Sx, Sx, **settings) * inv_n[..., None, None]
+        Xty = Sxy - (Sx * Sy[..., None]) * inv_n[..., None]
+        y_var = Syy - (Sy * Sy) * inv_n
+
+        # Ridge solve: (XtX + alpha I) beta = Xty
+        XtX_reg = XtX.copy()
+        idx = np.arange(x_t.shape[-2])
+        XtX_reg[..., idx, idx] += alpha
+
+        beta = np.linalg.solve(XtX_reg, Xty[..., None])[..., 0]  # (..., p)
+
+        # Moments needed for corr / R^2 without forming yhat
+        cov_y_yhat = np.einsum("...f,...f->...", beta, Xty, **settings)                  # beta^T X^T y
+        yhat_var   = np.einsum("...f,...fg,...g->...", beta, XtX, beta, **settings)      # beta^T XtX beta
+
+        stat = _stat_from_moments(y_var, yhat_var, cov_y_yhat, score)
+
+        if return_params:
+            x_mean = Sx * inv_n[..., None]  # (..., p)
+            y_mean = Sy * inv_n             # (...,)
+            intercept = y_mean - np.einsum("...f,...f->...", beta, x_mean, **settings)
+            if features_axis is None:
+                return stat, beta[..., 0], intercept
+            return stat, np.squeeze(beta), intercept
+
+        return stat
+
+
 def proportion(val: np.ndarray[float, ...] | float,
                comp: np.ndarray[float, ...] = None, tail: int = 1,
                axis: int = None) -> np.ndarray[float, ...] | float:
