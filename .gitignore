@@ -15,5 +15,8 @@ docs/sg_execution_times.rst
 ieeg.egg-info/*
 ieeg/**/*.pyd
 ieeg/**/*.c
+!ieeg/arrays/*.c
+!ieeg/arrays/*.h
 !ieeg/calc/_fast/ufuncs.c
 !ieeg/calc/_fast/nanconcat.c
+!ieeg/calc/_fast/shared/*
