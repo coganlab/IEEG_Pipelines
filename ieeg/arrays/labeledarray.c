@@ -5,8 +5,10 @@
 #include <Python.h>
 #include <numpy/arrayobject.h>
 #include <numpy/ndarraytypes.h>
+#include "labels.h"
 #include <numpy/npy_math.h>
 #include <numpy/halffloat.h>
+#include "../calc/_fast/shared/meanvar_core.h"
 #include <stdint.h>
 #include <string.h>
 #ifdef _OPENMP
@@ -17,31 +19,18 @@
 #define NPY_INLINE inline
 #endif
 
+static NPY_INLINE void
+write_intp_1d(char *base, npy_intp stride, npy_intp i, npy_intp v)
+{
+    memcpy(base + i * stride, &v, sizeof(npy_intp));
+}
+
+
 
 static PyTypeObject LabeledArray_Type; /* forward */
+
+
 /* Forward declare struct tag so self-referential pointers work */
-typedef struct LabelsBlock LabelsBlock;
-
-typedef struct {
-    size_t cap;         /* power-of-two capacity */
-    size_t used;        /* number of entries */
-    uint64_t *hashes;   /* hashes[slot] */
-    const char **keys;  /* pointers into axis_labels strings */
-    int *vals;          /* index per key */
-} AxisHash;
-
-typedef struct LabelsBlock {
-    int ndim;
-    int *axis_len;       /* length per axis */
-    char ***axis_labels; /* axis_labels[axis][index] -> C string */
-    AxisHash *axis_hash; /* per-axis C hash */
-    unsigned char *axis_borrowed; /* 1 if this axis' labels are borrowed */
-    LabelsBlock *borrowed_owner; /* keep owner alive if borrowing */
-    PyArrayObject **axis_arr; /* per-axis 1D unicode ndarray of labels */
-    PyObject **axis_index;    /* per-axis dict: unicode -> int */
-    char **axis_slab;    /* per-axis contiguous short-string slab (<=32B labels) */
-    int refcount;        /* manual refcount */
-} LabelsBlock;
 
 /* explicit ndarray sub-type instance layout */
 typedef struct {
@@ -51,167 +40,40 @@ typedef struct {
     char *delimiter; /* default join for label combinations */
 } LabeledArrayObject;
 
-/* ---------- small inline utils ---------- */
-static NPY_INLINE uint64_t
-fnv1a64(const char *data)
+/* Convert args for __array_function__ fallback: replace LabeledArray with base ndarray, recurse into lists/tuples */
+static NPY_INLINE PyObject *
+to_base_arg(PyObject *arg)
 {
-    /* FNV-1a 64-bit */
-    const uint64_t FNV_PRIME = 1099511628211ULL;
-    uint64_t hash = 1469598103934665603ULL;
-    for (const unsigned char *p = (const unsigned char *)data; *p; ++p) {
-        hash ^= (uint64_t)(*p);
-        hash *= FNV_PRIME;
+    if (PyObject_TypeCheck(arg, &LabeledArray_Type)) {
+        return PyArray_View((PyArrayObject *)arg, NULL, &PyArray_Type);
     }
-    return hash ? hash : 1469598103934665603ULL; /* avoid zero */
-}
-
-static NPY_INLINE size_t
-next_pow2(size_t n)
-{
-    size_t p = 1; while (p < n) p <<= 1; return p;
-}
-
-static NPY_INLINE int
-axhash_find(const AxisHash *ah, const char *key, Py_ssize_t *out)
-{
-    if (!ah || ah->cap == 0) return 1;
-    uint64_t h = fnv1a64(key ? key : "");
-    size_t m = ah->cap - 1;
-    size_t pos = (size_t)h & m;
-    while (1) {
-        const char *k = ah->keys[pos];
-        if (k == NULL) return 1; /* empty slot => not found */
-        if (ah->hashes[pos] == h && strcmp(k, key) == 0) {
-            *out = (Py_ssize_t)ah->vals[pos];
-            return 0;
+    if (PyTuple_Check(arg)) {
+        Py_ssize_t n = PyTuple_GET_SIZE(arg);
+        PyObject *out = PyTuple_New(n);
+        if (!out) return NULL;
+        for (Py_ssize_t i = 0; i < n; ++i) {
+            PyObject *it = PyTuple_GET_ITEM(arg, i);
+            PyObject *conv = to_base_arg(it);
+            if (!conv) { Py_DECREF(out); return NULL; }
+            PyTuple_SET_ITEM(out, i, conv); /* steals */
         }
-        pos = (pos + 1) & m;
+        return out;
     }
-}
-
-/* ---------- small C helpers for speed/readability ---------- */
-static NPY_INLINE int
-labelsblock_find(const LabelsBlock *lb, int axis, PyObject *value, Py_ssize_t *out)
-{
-    if (axis < 0 || axis >= lb->ndim) return -1;
-    if (lb->axis_index && lb->axis_index[axis]) {
-        PyObject *key = NULL;
-        if (PyUnicode_Check(value)) { key = value; Py_INCREF(key); }
-        else if (PyBytes_Check(value)) { const char *c = PyBytes_AsString(value); if (!c) return -1; key = PyUnicode_FromString(c); if (!key) return -1; }
-        else { key = PyObject_Str(value); if (!key) return -1; }
-        PyObject *pos_obj = PyDict_GetItemWithError(lb->axis_index[axis], key);
-        Py_DECREF(key);
-        if (pos_obj) { *out = PyLong_AsSsize_t(pos_obj); if (*out == -1 && PyErr_Occurred()) return -1; return 0; }
-        if (PyErr_Occurred()) return -1;
-        return 1;
-    }
-    if (PyUnicode_Check(value)) {
-        Py_ssize_t sz; const char *c = PyUnicode_AsUTF8AndSize(value, &sz);
-        if (!c) return -1;
-        return axhash_find(&lb->axis_hash[axis], c, out);
-    }
-    /* fallback scan: build a C string once, then strcmp */
-    const char *needle = NULL; PyObject *tmp_str = NULL;
-    if (PyBytes_Check(value)) {
-        needle = PyBytes_AsString(value);
-        if (!needle) return -1;
-    } else {
-        tmp_str = PyObject_Str(value);
-        if (!tmp_str) return -1;
-        needle = PyUnicode_AsUTF8(tmp_str);
-        if (!needle) { Py_DECREF(tmp_str); return -1; }
-    }
-    int n = lb->axis_len[axis];
-    for (int i = 0; i < n; ++i) {
-        if (strcmp(lb->axis_labels[axis][i], needle) == 0) {
-            if (tmp_str) Py_DECREF(tmp_str);
-            *out = i; return 0;
+    if (PyList_Check(arg)) {
+        Py_ssize_t n = PyList_GET_SIZE(arg);
+        PyObject *out = PyList_New(n);
+        if (!out) return NULL;
+        for (Py_ssize_t i = 0; i < n; ++i) {
+            PyObject *it = PyList_GET_ITEM(arg, i);
+            PyObject *conv = to_base_arg(it);
+            if (!conv) { Py_DECREF(out); return NULL; }
+            PyList_SET_ITEM(out, i, conv); /* steals */
         }
+        return out;
     }
-    if (tmp_str) Py_DECREF(tmp_str);
-    return 1;
+    Py_INCREF(arg);
+    return arg;
 }
-
-static NPY_INLINE char *
-cstr_dup(const char *s)
-{
-    const char *src = s ? s : "";
-    size_t L = strlen(src) + 1;
-    char *dst = (char *)PyDataMem_NEW(L);
-    if (!dst) return NULL;
-    memcpy(dst, src, L);
-    return dst;
-}
-
-static NPY_INLINE int
-axis_labels_copy(char **dst, char **src, int n)
-{
-    for (int i = 0; i < n; ++i) {
-        dst[i] = cstr_dup(src[i]);
-        if (!dst[i]) return -1;
-    }
-    return 0;
-}
-
-/* Build per-axis numpy unicode array and dict index from C labels */
-static NPY_INLINE int
-labelsblock_finalize_axis_from_c(LabelsBlock *lb, int ax)
-{
-    int n = lb->axis_len[ax];
-    if (n < 0) return -1;
-    PyObject *lst = PyList_New(n);
-    if (!lst) return -1;
-    for (int i = 0; i < n; ++i) {
-        PyObject *s = PyUnicode_FromString(lb->axis_labels[ax][i] ? lb->axis_labels[ax][i] : "");
-        if (!s) { Py_DECREF(lst); return -1; }
-        PyList_SET_ITEM(lst, i, s);
-    }
-    PyObject *arr = PyArray_FromAny(lst, NULL, 1, 1, NPY_ARRAY_ENSUREARRAY, NULL);
-    Py_DECREF(lst);
-    if (!arr) return -1;
-    PyArray_CLEARFLAGS((PyArrayObject *)arr, NPY_ARRAY_WRITEABLE);
-    PyObject *d = PyDict_New();
-    if (!d) { Py_DECREF(arr); return -1; }
-    for (int i = 0; i < n; ++i) {
-        PyObject *key = PyUnicode_FromString(lb->axis_labels[ax][i] ? lb->axis_labels[ax][i] : "");
-        if (!key) { Py_DECREF(d); Py_DECREF(arr); return -1; }
-        PyObject *val = PyLong_FromLong(i);
-        if (!val) { Py_DECREF(key); Py_DECREF(d); Py_DECREF(arr); return -1; }
-        if (PyDict_SetItem(d, key, val) < 0) { Py_DECREF(val); Py_DECREF(key); Py_DECREF(d); Py_DECREF(arr); return -1; }
-        Py_DECREF(val);
-        Py_DECREF(key);
-    }
-    Py_XDECREF(lb->axis_arr ? (PyObject *)lb->axis_arr[ax] : NULL);
-    Py_XDECREF(lb->axis_index ? lb->axis_index[ax] : NULL);
-    if (lb->axis_arr) lb->axis_arr[ax] = (PyArrayObject *)arr; else Py_DECREF(arr);
-    if (lb->axis_index) lb->axis_index[ax] = d; else Py_DECREF(d);
-    return 0;
-}
-
-
-static NPY_INLINE char **
-build_numeric_labels(int n)
-{
-    char **labels = (char **)calloc((size_t)n, sizeof(char *));
-    if (!labels) return NULL;
-    for (int j = 0; j < n; ++j) {
-        char buf[32];
-        int m = snprintf(buf, sizeof(buf), "%d", j);
-        if (m < 0 || m >= (int)sizeof(buf)) { /* cleanup */
-            for (int k = 0; k < j; ++k) free(labels[k]);
-            free(labels);
-            return NULL;
-        }
-        labels[j] = cstr_dup(buf);
-        if (!labels[j]) {
-            for (int k = 0; k < j; ++k) free(labels[k]);
-            free(labels);
-            return NULL;
-        }
-    }
-    return labels;
-}
-
 
 /* Convert kwargs: return a new dict with 'out' and 'where' converted to ndarray views if they are LabeledArray; returns NULL if no kwargs */
 static NPY_INLINE PyObject *
@@ -259,177 +121,6 @@ convert_kwargs_out_where(PyObject *kwargs)
     return kw2;
 }
 
-/* ---------- AxisHash management ---------- */
-static NPY_INLINE void
-axhash_free(AxisHash *ah)
-{
-    if (!ah) return;
-    free(ah->hashes);
-    free(ah->keys);
-    free(ah->vals);
-}
-
-/* ---------- LabelsBlock management ---------- */
-static NPY_INLINE void
-labelsblock_decref(LabelsBlock *lb)
-{
-    if (!lb) return;
-    if (--lb->refcount == 0) {
-        if (lb->axis_labels) {
-            for (int ax = 0; ax < lb->ndim; ++ax) {
-                if (lb->axis_labels[ax]) {
-                    int borrowed = lb->axis_borrowed ? lb->axis_borrowed[ax] : 0;
-                    if (!borrowed) {
-                        if (lb->axis_slab && lb->axis_slab[ax]) {
-                            PyDataMem_FREE(lb->axis_slab[ax]);
-                        } else {
-                        for (int i = 0; i < lb->axis_len[ax]; ++i) {
-                            if (lb->axis_labels[ax][i]) PyDataMem_FREE(lb->axis_labels[ax][i]);
-                        }
-                        }
-                        free(lb->axis_labels[ax]);
-                    }
-                }
-            }
-            free(lb->axis_labels);
-        }
-        if (lb->axis_hash) {
-            for (int ax = 0; ax < lb->ndim; ++ax) axhash_free(&lb->axis_hash[ax]);
-            free(lb->axis_hash);
-        }
-        if (lb->axis_len) free(lb->axis_len);
-        if (lb->axis_borrowed) free(lb->axis_borrowed);
-        if (lb->axis_arr) {
-            for (int ax = 0; ax < lb->ndim; ++ax) Py_XDECREF(lb->axis_arr[ax]);
-            free(lb->axis_arr);
-        }
-        if (lb->axis_index) {
-            for (int ax = 0; ax < lb->ndim; ++ax) Py_XDECREF(lb->axis_index[ax]);
-            free(lb->axis_index);
-        }
-        if (lb->axis_slab) free(lb->axis_slab);
-        if (lb->borrowed_owner) {
-            labelsblock_decref(lb->borrowed_owner);
-        }
-        free(lb);
-    }
-}
-
-/* Allocate LabelsBlock with arrays for given nd; refcount set to 1 */
-static NPY_INLINE LabelsBlock *
-labelsblock_alloc(int nd)
-{
-    LabelsBlock *lb = (LabelsBlock *)calloc(1, sizeof(LabelsBlock));
-    if (!lb) return NULL;
-    lb->ndim = nd;
-    lb->refcount = 1;
-    lb->axis_len = (int *)calloc(nd, sizeof(int));
-    lb->axis_labels = (char ***)calloc(nd, sizeof(char **));
-    lb->axis_hash = (AxisHash *)calloc(nd, sizeof(AxisHash));
-    lb->axis_borrowed = (unsigned char *)calloc(nd, sizeof(unsigned char));
-    lb->borrowed_owner = NULL;
-    lb->axis_arr = (PyArrayObject **)calloc(nd, sizeof(PyArrayObject *));
-    lb->axis_index = (PyObject **)calloc(nd, sizeof(PyObject *));
-    lb->axis_slab = (char **)calloc(nd, sizeof(char *));
-    if (!lb->axis_len || !lb->axis_labels || !lb->axis_hash || !lb->axis_borrowed || !lb->axis_arr || !lb->axis_index || !lb->axis_slab) { labelsblock_decref(lb); return NULL; }
-    return lb;
-}
-
-static NPY_INLINE int
-axhash_build(AxisHash *ah, const char **keys, int n)
-{
-    ah->cap = next_pow2((size_t)(n * 2 + 1));
-    ah->used = 0;
-    ah->hashes = (uint64_t *)calloc(ah->cap, sizeof(uint64_t));
-    ah->keys   = (const char **)calloc(ah->cap, sizeof(const char *));
-    ah->vals   = (int *)calloc(ah->cap, sizeof(int));
-    if (!ah->hashes || !ah->keys || !ah->vals) return -1;
-    for (int i = 0; i < n; ++i) {
-        const char *k = keys[i] ? keys[i] : "";
-        uint64_t h = fnv1a64(k);
-        size_t m = ah->cap - 1;
-        size_t pos = (size_t)h & m;
-        while (ah->keys[pos] != NULL) {
-            pos = (pos + 1) & m;
-        }
-        ah->hashes[pos] = h;
-        ah->keys[pos]   = k;
-        ah->vals[pos]   = i;
-        ah->used++;
-    }
-    return 0;
-}
-
-/* Set axis from source labels: alloc, copy, and build hash */
-static NPY_INLINE int
-labelsblock_set_axis_copy(LabelsBlock *lb, int ax, char **src_labels, int n)
-{
-    lb->axis_len[ax] = n;
-    lb->axis_labels[ax] = (char **)calloc((size_t)n, sizeof(char *));
-    if (!lb->axis_labels[ax]) return -1;
-    /* short-string arena for labels <=32B */
-    size_t total = 0; int use_slab = 1;
-    for (int i = 0; i < n; ++i) {
-        size_t L = strlen(src_labels[i] ? src_labels[i] : "") + 1;
-        if (L > 32) { use_slab = 0; break; }
-        total += L;
-    }
-    char *slab = NULL; char *cursor = NULL;
-    if (use_slab && n > 0) {
-        slab = (char *)PyDataMem_NEW(total);
-        if (!slab) { free(lb->axis_labels[ax]); lb->axis_labels[ax] = NULL; return -1; }
-        if (!lb->axis_slab) { PyDataMem_FREE(slab); free(lb->axis_labels[ax]); lb->axis_labels[ax] = NULL; return -1; }
-        if (!lb->axis_slab[ax]) lb->axis_slab[ax] = slab; else { PyDataMem_FREE(slab); use_slab = 0; }
-        cursor = lb->axis_slab[ax];
-    }
-    for (int i = 0; i < n; ++i) {
-        const char *s = src_labels[i] ? src_labels[i] : "";
-        size_t L = strlen(s) + 1;
-        if (use_slab) {
-            memcpy(cursor, s, L);
-            lb->axis_labels[ax][i] = cursor;
-            cursor += L;
-        } else {
-            lb->axis_labels[ax][i] = (char *)PyDataMem_NEW(L);
-            if (!lb->axis_labels[ax][i]) { return -1; }
-            memcpy(lb->axis_labels[ax][i], s, L);
-        }
-    }
-    if (axhash_build(&lb->axis_hash[ax], (const char **)lb->axis_labels[ax], n) < 0) return -1;
-    if (labelsblock_finalize_axis_from_c(lb, ax) < 0) return -1;
-            return 0;
-        }
-
-/* Set axis to numeric labels 0..n-1 with hash */
-static NPY_INLINE int
-labelsblock_set_axis_numeric(LabelsBlock *lb, int ax, int n)
-{
-    lb->axis_len[ax] = n;
-    char **labels = build_numeric_labels(n);
-    if (!labels) return -1;
-    lb->axis_labels[ax] = labels;
-    if (axhash_build(&lb->axis_hash[ax], (const char **)lb->axis_labels[ax], n) < 0) return -1;
-    if (labelsblock_finalize_axis_from_c(lb, ax) < 0) return -1;
-    return 0;
-}
-
-/* Set axis to a single constant string label */
-static NPY_INLINE int
-labelsblock_set_axis_constant(LabelsBlock *lb, int ax, const char *s)
-{
-    lb->axis_len[ax] = 1;
-    lb->axis_labels[ax] = (char **)calloc(1, sizeof(char *));
-    if (!lb->axis_labels[ax]) return -1;
-    size_t L = strlen(s ? s : "") + 1;
-    lb->axis_labels[ax][0] = (char *)PyDataMem_NEW(L);
-    if (!lb->axis_labels[ax][0]) return -1;
-    memcpy(lb->axis_labels[ax][0], s ? s : "", L);
-    if (axhash_build(&lb->axis_hash[ax], (const char **)lb->axis_labels[ax], 1) < 0) return -1;
-    if (labelsblock_finalize_axis_from_c(lb, ax) < 0) return -1;
-    return 0;
-}
-
-
 static NPY_INLINE void
 labels_cache_clear(LabeledArrayObject *obj)
 {
@@ -451,659 +142,49 @@ labelsblock_attach_to_view(PyObject *view, LabelsBlock *out_lb)
 }
 
 
-static NPY_INLINE int
-fill_labels_from_int_indices(char ***dst_labels_ptr, int out_len, char **src_labels, PyArrayObject *ind)
-{
-    char **dst = (char **)calloc((size_t)out_len, sizeof(char *));
-    if (!dst) return -1;
-    for (int j = 0; j < out_len; ++j) {
-        npy_intp jj = (npy_intp)j;
-        npy_intp idxv = *((npy_intp *)PyArray_GetPtr(ind, &jj));
-        if (idxv < 0) { for (int t=0;t<j;++t) free(dst[t]); free(dst); return -1; }
-        const char *s = src_labels[(int)idxv];
-        size_t L = strlen(s ? s : "") + 1;
-        dst[j] = (char *)PyDataMem_NEW(L);
-        if (!dst[j]) { for (int t=0;t<j;++t) free(dst[t]); free(dst); return -1; }
-        memcpy(dst[j], s ? s : "", L);
-    }
-    *dst_labels_ptr = dst;
-    return 0;
-}
-
-/* Build labels from a 1D boolean mask along a source axis by converting to integer indices */
-static NPY_INLINE int
-build_labels_from_bool_mask(const LabelsBlock *lb, int src_axis, PyArrayObject *mask, int out_len, char ***out_labels_ptr)
-{
-    int ind_nd = PyArray_NDIM(mask);
-    if (ind_nd != 1) { PyErr_SetString(PyExc_TypeError, "boolean index must be 1D for a single axis"); return -1; }
-    const npy_intp *adims = PyArray_DIMS(mask);
-    npy_intp n = adims[0];
-    /* First pass: count true */
-    npy_intp count = 0;
-    for (npy_intp i = 0; i < n; ++i) {
-        npy_bool v = *(npy_bool *)PyArray_GetPtr(mask, &i);
-        if (v) count++;
-    }
-    if ((int)count != out_len) {
-        /* shape mismatch safeguard */
-        PyErr_SetString(PyExc_ValueError, "boolean mask true count does not match result shape");
-        return -1;
-    }
-    /* Build integer indices */
-    PyArrayObject *ind = (PyArrayObject *)PyArray_SimpleNew(1, &count, NPY_INTP);
-    if (!ind) return -1;
-    npy_intp pos = 0;
-    for (npy_intp i = 0; i < n; ++i) {
-        npy_bool v = *(npy_bool *)PyArray_GetPtr(mask, &i);
-        if (v) {
-            *((npy_intp *)PyArray_GetPtr(ind, &pos)) = i;
-            pos++;
-        }
-    }
-    int rc = fill_labels_from_int_indices(out_labels_ptr, out_len, lb->axis_labels[src_axis], ind);
-    Py_DECREF(ind);
-    return rc;
-}
-
-/* Build labels from a Python list/tuple of integers by converting to an intp ndarray and reusing int-path */
-static NPY_INLINE int
-build_labels_from_py_sequence(const LabelsBlock *lb, int src_axis, PyObject *seq_obj, int out_len, char ***out_labels_ptr)
-{
-    PyObject *seq = PySequence_Fast(seq_obj, "expected sequence");
-    if (!seq) return -1;
-    Py_ssize_t n = PySequence_Fast_GET_SIZE(seq);
-    if ((int)n != out_len) { Py_DECREF(seq); PyErr_SetString(PyExc_ValueError, "sequence length mismatch for result shape"); return -1; }
-    PyArrayObject *ind = (PyArrayObject *)PyArray_SimpleNew(1, (npy_intp *)&n, NPY_INTP);
-    if (!ind) { Py_DECREF(seq); return -1; }
-    for (Py_ssize_t j = 0; j < n; ++j) {
-        PyObject *it = PySequence_Fast_GET_ITEM(seq, j);
-        PyObject *maybe_int = PyNumber_Index(it);
-        npy_intp val;
-        if (maybe_int) {
-            long idx = PyLong_AsLong(maybe_int);
-            Py_DECREF(maybe_int);
-            if (idx == -1 && PyErr_Occurred()) { Py_DECREF(ind); Py_DECREF(seq); return -1; }
-            if (idx < 0 || idx >= lb->axis_len[src_axis]) { Py_DECREF(ind); Py_DECREF(seq); PyErr_SetString(PyExc_IndexError, "index out of range"); return -1; }
-            val = (npy_intp)idx;
-        } else if (PyUnicode_Check(it) || PyBytes_Check(it)) {
-            Py_ssize_t pos = -1;
-            if (labelsblock_find(lb, src_axis, it, &pos) != 0) { Py_DECREF(ind); Py_DECREF(seq); PyErr_SetString(PyExc_IndexError, "label not found in axis"); return -1; }
-            val = (npy_intp)pos;
-        } else {
-            Py_DECREF(ind); Py_DECREF(seq); PyErr_SetString(PyExc_TypeError, "sequence contains non-int/non-string"); return -1; }
-        *((npy_intp *)PyArray_GetPtr(ind, &j)) = val;
-    }
-    Py_DECREF(seq);
-    int rc = fill_labels_from_int_indices(out_labels_ptr, out_len, lb->axis_labels[src_axis], ind);
-    Py_DECREF(ind);
-    return rc;
-}
-
-static NPY_INLINE int
-build_labels_from_int_sequence(const LabelsBlock *lb, int src_axis, PyObject *seq_obj, int out_len, char ***out_labels_ptr)
-{
-    PyObject *seq = PySequence_Fast(seq_obj, "expected sequence");
-    if (!seq) return -1;
-    Py_ssize_t n = PySequence_Fast_GET_SIZE(seq);
-    if ((int)n != out_len) { Py_DECREF(seq); PyErr_SetString(PyExc_ValueError, "sequence length mismatch for result shape"); return -1; }
-    PyArrayObject *ind = (PyArrayObject *)PyArray_SimpleNew(1, (npy_intp *)&n, NPY_INTP);
-    if (!ind) { Py_DECREF(seq); return -1; }
-    for (Py_ssize_t j = 0; j < n; ++j) {
-        PyObject *it = PySequence_Fast_GET_ITEM(seq, j);
-        long idx = PyLong_AsLong(it);
-        if (idx == -1 && PyErr_Occurred()) { Py_DECREF(ind); Py_DECREF(seq); return -1; }
-        if (idx < 0 || idx >= lb->axis_len[src_axis]) { Py_DECREF(ind); Py_DECREF(seq); PyErr_SetString(PyExc_IndexError, "index out of range"); return -1; }
-        npy_intp jj = (npy_intp)j;
-        *((npy_intp *)PyArray_GetPtr(ind, &jj)) = (npy_intp)idx;
-    }
-    Py_DECREF(seq);
-    int rc = fill_labels_from_int_indices(out_labels_ptr, out_len, lb->axis_labels[src_axis], ind);
-    Py_DECREF(ind);
-    return rc;
-}
-
-/* Build row and column joined labels for 2D integer index array along a single source axis */
-static NPY_INLINE int
-build_rowcol_labels_from_2d_indices(const LabelsBlock *lb, int src_axis, PyArrayObject *ind, int R, int C, char ***out_rows_ptr, char ***out_cols_ptr)
-{
-    char **rows = (char **)calloc((size_t)R, sizeof(char *));
-    if (!rows) return -1;
-    for (int r = 0; r < R; ++r) {
-        size_t tot = 1;
-        for (int c = 0; c < C; ++c) {
-            npy_intp ij[2] = {r, c};
-            npy_intp idxv = *((npy_intp *)PyArray_GetPtr(ind, ij));
-            const char *s = lb->axis_labels[src_axis][(int)idxv];
-            tot += strlen(s) + (c ? 1 : 0);
-        }
-        char *buf = (char *)PyDataMem_NEW(tot);
-        if (!buf) { for (int t = 0; t < r; ++t) free(rows[t]); free(rows); return -1; }
-        size_t posw = 0;
-        for (int c = 0; c < C; ++c) {
-            npy_intp ij[2] = {r, c};
-            npy_intp idxv = *((npy_intp *)PyArray_GetPtr(ind, ij));
-            const char *s = lb->axis_labels[src_axis][(int)idxv];
-            if (c) buf[posw++] = '-';
-            size_t Ls = strlen(s);
-            memcpy(buf + posw, s, Ls);
-            posw += Ls;
-        }
-        buf[posw] = '\0';
-        rows[r] = buf;
-    }
-
-    char **cols = (char **)calloc((size_t)C, sizeof(char *));
-    if (!cols) { for (int t = 0; t < R; ++t) free(rows[t]); free(rows); return -1; }
-    for (int c = 0; c < C; ++c) {
-        size_t tot = 1;
-        for (int r = 0; r < R; ++r) {
-            npy_intp ij[2] = {r, c};
-            npy_intp idxv = *((npy_intp *)PyArray_GetPtr(ind, ij));
-            const char *s = lb->axis_labels[src_axis][(int)idxv];
-            tot += strlen(s) + (r ? 1 : 0);
-        }
-        char *buf = (char *)PyDataMem_NEW(tot);
-        if (!buf) { for (int t = 0; t < c; ++t) free(cols[t]); for (int t = 0; t < R; ++t) free(rows[t]); free(rows); free(cols); return -1; }
-        size_t posw = 0;
-        for (int r = 0; r < R; ++r) {
-            npy_intp ij[2] = {r, c};
-            npy_intp idxv = *((npy_intp *)PyArray_GetPtr(ind, ij));
-            const char *s = lb->axis_labels[src_axis][(int)idxv];
-            if (r) buf[posw++] = '-';
-            size_t Ls = strlen(s);
-            memcpy(buf + posw, s, Ls);
-            posw += Ls;
-        }
-        buf[posw] = '\0';
-        cols[c] = buf;
-    }
-    *out_rows_ptr = rows;
-    *out_cols_ptr = cols;
-    return 0;
-}
-
-/* Build labels for one axis p of a k-D integer index array by joining across other dims */
-static NPY_INLINE int
-build_kd_labels_for_axis(const LabelsBlock *lb, int src_axis, PyArrayObject *ind, int knd, int p, const npy_intp *adims, char ***out_axis_labels_ptr)
-{
-    int len_p = (int)adims[p];
-    char **axis_labels = (char **)calloc((size_t)len_p, sizeof(char *));
-    if (!axis_labels) return -1;
-    for (int vp = 0; vp < len_p; ++vp) {
-        /* First pass: total length */
-        npy_intp idxk[NPY_MAXDIMS];
-        for (int q = 0; q < knd; ++q) idxk[q] = 0;
-        idxk[p] = vp;
-        size_t tot = 1; int first = 1;
-        while (1) {
-            npy_intp idxv = *((npy_intp *)PyArray_GetPtr(ind, idxk));
-            const char *s = lb->axis_labels[src_axis][(int)idxv];
-            tot += strlen(s) + (first ? 0 : 1);
-            first = 0;
-            int qq = knd - 1;
-            while (qq >= 0) {
-                if (qq == p) { qq--; continue; }
-                idxk[qq]++;
-                if (idxk[qq] < adims[qq]) break;
-                idxk[qq] = 0; qq--;
-            }
-            if (qq < 0) break;
-        }
-        char *buf = (char *)PyDataMem_NEW(tot);
-        if (!buf) { for (int t = 0; t < vp; ++t) free(axis_labels[t]); free(axis_labels); return -1; }
-        size_t posw = 0; first = 1;
-        for (int q = 0; q < knd; ++q) idxk[q] = 0;
-        idxk[p] = vp;
-        while (1) {
-            npy_intp idxv = *((npy_intp *)PyArray_GetPtr(ind, idxk));
-            const char *s = lb->axis_labels[src_axis][(int)idxv];
-            if (!first) buf[posw++] = '-';
-            size_t Ls = strlen(s);
-            memcpy(buf + posw, s, Ls); posw += Ls; first = 0;
-            int qq = knd - 1;
-            while (qq >= 0) {
-                if (qq == p) { qq--; continue; }
-                idxk[qq]++;
-                if (idxk[qq] < adims[qq]) break;
-                idxk[qq] = 0; qq--;
-            }
-            if (qq < 0) break;
-        }
-        buf[posw] = '\0';
-        axis_labels[vp] = buf;
-    }
-    *out_axis_labels_ptr = axis_labels;
-    return 0;
-}
-
-static NPY_INLINE LabelsBlock *
-labelsblock_new_default(PyArrayObject *arr)
-{
-    int ndim = PyArray_NDIM(arr);
-    npy_intp *shape = PyArray_SHAPE(arr);
-    LabelsBlock *lb = (LabelsBlock *)calloc(1, sizeof(LabelsBlock));
-    if (!lb) return NULL;
-    lb->ndim = ndim;
-    lb->refcount = 1;
-    lb->axis_len = (int *)calloc(ndim, sizeof(int));
-    lb->axis_labels = (char ***)calloc(ndim, sizeof(char **));
-    lb->axis_hash = (AxisHash *)calloc(ndim, sizeof(AxisHash));
-    lb->axis_borrowed = (unsigned char *)calloc(ndim, sizeof(unsigned char));
-    lb->borrowed_owner = NULL;
-    if (!lb->axis_len || !lb->axis_labels || !lb->axis_hash || !lb->axis_borrowed) { labelsblock_decref(lb); return NULL; }
-    for (int ax = 0; ax < ndim; ++ax) {
-        int n = (int)shape[ax];
-        lb->axis_len[ax] = n;
-        lb->axis_labels[ax] = (char **)calloc(n, sizeof(char *));
-        if (!lb->axis_labels[ax]) { labelsblock_decref(lb); return NULL; }
-        for (int i = 0; i < n; ++i) {
-            char buf[32];
-            int m = snprintf(buf, sizeof(buf), "%d", i);
-            if (m < 0 || m >= (int)sizeof(buf)) { labelsblock_decref(lb); return NULL; }
-            lb->axis_labels[ax][i] = cstr_dup(buf);
-            if (!lb->axis_labels[ax][i]) { labelsblock_decref(lb); return NULL; }
-        }
-        if (axhash_build(&lb->axis_hash[ax], (const char **)lb->axis_labels[ax], n) < 0) { labelsblock_decref(lb); return NULL; }
-    }
-    return lb;
-}
-
-static NPY_INLINE LabelsBlock *
-labelsblock_from_py(PyObject *labels_in, PyArrayObject *arr)
-{
-    if (labels_in == NULL || labels_in == Py_None) {
-        return labelsblock_new_default(arr);
-    }
-    int ndim = PyArray_NDIM(arr);
-    if (!PyTuple_Check(labels_in)) {
-        labels_in = PySequence_Tuple(labels_in);
-        if (!labels_in) return NULL;
-    } else {
-        Py_INCREF(labels_in);
-    }
-    if ((int)PyTuple_GET_SIZE(labels_in) != ndim) {
-        Py_DECREF(labels_in);
-        PyErr_SetString(PyExc_ValueError, "labels must match ndim");
-        return NULL;
-    }
-    LabelsBlock *lb = (LabelsBlock *)calloc(1, sizeof(LabelsBlock));
-    if (!lb) { Py_DECREF(labels_in); return NULL; }
-    lb->ndim = ndim;
-    lb->refcount = 1;
-    lb->axis_len = (int *)calloc(ndim, sizeof(int));
-    lb->axis_labels = (char ***)calloc(ndim, sizeof(char **));
-    lb->axis_hash = (AxisHash *)calloc(ndim, sizeof(AxisHash));
-    lb->axis_borrowed = (unsigned char *)calloc(ndim, sizeof(unsigned char));
-    lb->borrowed_owner = NULL;
-    if (!lb->axis_len || !lb->axis_labels || !lb->axis_hash || !lb->axis_borrowed) { Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-    for (int ax = 0; ax < ndim; ++ax) {
-        PyObject *axis_seq = PySequence_Tuple(PyTuple_GET_ITEM(labels_in, ax));
-        if (!axis_seq) { Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-        Py_ssize_t n = PyTuple_GET_SIZE(axis_seq);
-        if ((npy_intp)n != PyArray_SHAPE(arr)[ax]) {
-            Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb);
-            PyErr_SetString(PyExc_ValueError, "labels axis length mismatch");
-            return NULL;
-        }
-        lb->axis_len[ax] = (int)n;
-        lb->axis_labels[ax] = (char **)calloc((size_t)n, sizeof(char *));
-        if (!lb->axis_labels[ax]) { Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-        for (Py_ssize_t i = 0; i < n; ++i) {
-            PyObject *it = PyTuple_GET_ITEM(axis_seq, i);
-            PyObject *s = PyObject_Str(it);
-            if (!s) { Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-            const char *c = PyUnicode_AsUTF8(s);
-            if (!c) { Py_DECREF(s); Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-            size_t L = strlen(c) + 1;
-            lb->axis_labels[ax][(int)i] = (char *)PyDataMem_NEW(L);
-            if (!lb->axis_labels[ax][(int)i]) { Py_DECREF(s); Py_DECREF(axis_seq); Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-            memcpy(lb->axis_labels[ax][(int)i], c, L);
-            Py_DECREF(s);
-        }
-        Py_DECREF(axis_seq);
-        if (axhash_build(&lb->axis_hash[ax], (const char **)lb->axis_labels[ax], (int)n) < 0) { Py_DECREF(labels_in); labelsblock_decref(lb); return NULL; }
-    }
-    Py_DECREF(labels_in);
-    return lb;
-}
-
 static NPY_INLINE PyObject *
-labelsblock_to_py_tuple(const LabelsBlock *lb)
+build_keepdims_labels(LabeledArrayObject *self, const int *axes, int naxes)
 {
-    PyObject *out = PyTuple_New(lb->ndim);
-    if (!out) return NULL;
-    for (int ax = 0; ax < lb->ndim; ++ax) {
-        if (lb->axis_arr && lb->axis_arr[ax]) { Py_INCREF(lb->axis_arr[ax]); PyTuple_SET_ITEM(out, ax, (PyObject *)lb->axis_arr[ax]); }
-        else {
-        int n = lb->axis_len[ax];
-        PyObject *axis = PyTuple_New(n);
-        if (!axis) { Py_DECREF(out); return NULL; }
-        for (int i = 0; i < n; ++i) {
-            PyObject *s = PyUnicode_FromString(lb->axis_labels[ax][i] ? lb->axis_labels[ax][i] : "");
-            if (!s) { Py_DECREF(axis); Py_DECREF(out); return NULL; }
-            PyTuple_SET_ITEM(axis, i, s);
-        }
-        PyTuple_SET_ITEM(out, ax, axis);
+    LabelsBlock *lb = self->labels_block;
+    if (!lb) {
+        lb = labelsblock_new_default((PyArrayObject *)self);
+        if (!lb) return NULL;
+        self->labels_block = lb;
+    }
+    int nd = lb->ndim;
+    char *reduced = (char *)PyMem_Calloc((size_t)nd, sizeof(char));
+    if (!reduced) { PyErr_NoMemory(); return NULL; }
+    for (int i = 0; i < naxes; ++i) {
+        int ax = axes[i];
+        if (ax >= 0 && ax < nd) reduced[ax] = 1;
+    }
+    PyObject *orig = labelsblock_to_py_tuple(lb);
+    if (!orig) { PyMem_Free(reduced); return NULL; }
+    PyObject *out = PyTuple_New(nd);
+    if (!out) { Py_DECREF(orig); PyMem_Free(reduced); return NULL; }
+    const char *joiner = self->delimiter ? self->delimiter : "-";
+    for (int ax = 0; ax < nd; ++ax) {
+        if (reduced[ax]) {
+            PyObject *joined = join_axis_labels(lb, ax, joiner);
+            if (!joined) { Py_DECREF(orig); Py_DECREF(out); PyMem_Free(reduced); return NULL; }
+            PyObject *t = PyTuple_New(1);
+            if (!t) { Py_DECREF(joined); Py_DECREF(orig); Py_DECREF(out); PyMem_Free(reduced); return NULL; }
+            PyTuple_SET_ITEM(t, 0, joined);
+            PyTuple_SET_ITEM(out, ax, t);
+        } else {
+            PyObject *item = PyTuple_GET_ITEM(orig, ax);
+            Py_INCREF(item);
+            PyTuple_SET_ITEM(out, ax, item);
         }
     }
+    Py_DECREF(orig);
+    PyMem_Free(reduced);
     return out;
 }
+
 
 
 /* Wrap an ndarray result to LabeledArray and attach labels via ck, returning scalar if 0d. Does not touch ck's refcount. */
-/* ---------- index/label helpers ---------- */
-static NPY_INLINE PyArrayObject *
-map_label_index_array_to_int(const LabelsBlock *lb, int axis, PyArrayObject *arrk)
-{
-    int ind_nd = PyArray_NDIM(arrk);
-    const npy_intp *adims = PyArray_DIMS(arrk);
-    PyArrayObject *ind = (PyArrayObject *)PyArray_SimpleNew(ind_nd, adims, NPY_INTP);
-    if (!ind) return NULL;
-    if (ind_nd == 1) {
-        npy_intp n = adims[0];
-        for (npy_intp i = 0; i < n; ++i) {
-            PyObject *it = PyArray_GETITEM(arrk, PyArray_GetPtr(arrk, &i));
-            if (!it) { Py_DECREF(ind); return NULL; }
-            Py_ssize_t pos = -1;
-            if (labelsblock_find(lb, axis, it, &pos) != 0) { Py_DECREF(it); Py_DECREF(ind); return NULL; }
-            Py_DECREF(it);
-            *((npy_intp *)PyArray_GetPtr(ind, &i)) = pos;
-        }
-    } else {
-        /* general k-D */
-        npy_intp total = 1;
-        for (int d = 0; d < ind_nd; ++d) total *= adims[d];
-        /* iterate linear index */
-        npy_intp idxk[NPY_MAXDIMS];
-        for (int d = 0; d < ind_nd; ++d) idxk[d] = 0;
-        while (1) {
-            PyObject *it = PyArray_GETITEM(arrk, PyArray_GetPtr(arrk, idxk));
-            if (!it) { Py_DECREF(ind); return NULL; }
-            Py_ssize_t pos = -1;
-            if (labelsblock_find(lb, axis, it, &pos) != 0) { Py_DECREF(it); Py_DECREF(ind); return NULL; }
-            Py_DECREF(it);
-            *((npy_intp *)PyArray_GetPtr(ind, idxk)) = pos;
-            int q = ind_nd - 1;
-            while (q >= 0) {
-                idxk[q]++;
-                if (idxk[q] < adims[q]) break;
-                idxk[q] = 0; q--;
-            }
-            if (q < 0) break;
-        }
-    }
-    return ind;
-}
-
-/* Build sliced labels block for a view result, given parent labels and converted key */
-static NPY_INLINE LabelsBlock *
-labelsblock_slice(const LabelsBlock *lb, PyObject *ck, PyArrayObject *result)
-{
-    int res_ndim = PyArray_NDIM(result);
-    const npy_intp *res_shape = PyArray_SHAPE(result);
-    LabelsBlock *out = (LabelsBlock *)calloc(1, sizeof(LabelsBlock));
-    if (!out) return NULL;
-    out->ndim = res_ndim;
-    out->refcount = 1;
-    out->axis_len = (int *)calloc(res_ndim, sizeof(int));
-    out->axis_labels = (char ***)calloc(res_ndim, sizeof(char **));
-    out->axis_hash = (AxisHash *)calloc(res_ndim, sizeof(AxisHash));
-    if (!out->axis_len || !out->axis_labels || !out->axis_hash) { labelsblock_decref(out); return NULL; }
-
-    int src_axis = 0;
-    int dst_axis = 0;
-    Py_ssize_t nkeys = PyTuple_Check(ck) ? PyTuple_GET_SIZE(ck) : 0;
-
-    for (Py_ssize_t i = 0; i < nkeys; ++i) {
-        PyObject *k = PyTuple_GET_ITEM(ck, i);
-        if (k == Py_None) {
-            /* newaxis: size from result shape */
-            if (dst_axis >= res_ndim) { labelsblock_decref(out); return NULL; }
-            int n = (int)res_shape[dst_axis];
-            out->axis_len[dst_axis] = n;
-            out->axis_labels[dst_axis] = (char **)calloc(n, sizeof(char *));
-            if (!out->axis_labels[dst_axis]) { labelsblock_decref(out); return NULL; }
-            for (int j = 0; j < n; ++j) {
-                const char *s = "1";
-                size_t L = strlen(s) + 1;
-                out->axis_labels[dst_axis][j] = (char *)PyDataMem_NEW(L);
-                if (!out->axis_labels[dst_axis][j]) { labelsblock_decref(out); return NULL; }
-                memcpy(out->axis_labels[dst_axis][j], s, L);
-            }
-            /* build hash for this axis */
-            if (axhash_build(&out->axis_hash[dst_axis], (const char **)out->axis_labels[dst_axis], n) < 0) { labelsblock_decref(out); return NULL; }
-            dst_axis += 1;
-            continue;
-        }
-        if (PyLong_Check(k)) {
-            /* integer index: drop this axis */
-            src_axis += 1;
-            continue;
-        }
-        /* selection on source axis */
-        if (dst_axis >= res_ndim || src_axis >= lb->ndim) { labelsblock_decref(out); return NULL; }
-        int out_len = (int)res_shape[dst_axis];
-        out->axis_len[dst_axis] = out_len;
-        out->axis_labels[dst_axis] = (char **)calloc(out_len, sizeof(char *));
-        if (!out->axis_labels[dst_axis]) { labelsblock_decref(out); return NULL; }
-
-        if (PySlice_Check(k)) {
-            Py_ssize_t slen = lb->axis_len[src_axis];
-            npy_intp start, stop, step, length;
-            if (PySlice_GetIndicesEx(k, slen, &start, &stop, &step, &length) < 0) { labelsblock_decref(out); return NULL; }
-            int pos = 0;
-            for (npy_intp idx = start; (step > 0) ? (idx < stop) : (idx > stop); idx += step) {
-                const char *s = lb->axis_labels[src_axis][(int)idx];
-                size_t L = strlen(s) + 1;
-                out->axis_labels[dst_axis][pos] = (char *)PyDataMem_NEW(L);
-                if (!out->axis_labels[dst_axis][pos]) { labelsblock_decref(out); return NULL; }
-                memcpy(out->axis_labels[dst_axis][pos], s, L);
-                if (++pos >= out_len) break;
-            }
-        } else if (PyArray_Check(k)) {
-            /* Integer or Unicode ndarray indices. Support 1D and 2D.
-               1D: replace source axis with length n
-               2D: insert two axes with lengths (R, C), labels are joined strings per row/col. */
-            PyArrayObject *arrk = (PyArrayObject *)PyArray_FromAny(k, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
-            if (!arrk) { labelsblock_decref(out); return NULL; }
-            int kind = PyArray_TYPE(arrk);
-            PyArrayObject *ind = NULL;
-            /* Handle np.ix_-style multiple advanced indices: consecutive integer ndarrays
-               each with ndim == m and exactly one non-singleton dimension at its own position. */
-            if (PyTypeNum_ISINTEGER(kind)) {
-                Py_ssize_t jscan = i;
-                int m = 0;
-                int nd_common = -1;
-                int ix_style = 1;
-                PyArrayObject *inds_arr[NPY_MAXDIMS];
-                for (int t = 0; t < NPY_MAXDIMS; ++t) inds_arr[t] = NULL;
-                while (jscan < nkeys) {
-                    PyObject *kj = PyTuple_GET_ITEM(ck, jscan);
-                    if (!PyArray_Check(kj)) break;
-                    PyArrayObject *aj = (PyArrayObject *)PyArray_FromAny(kj, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
-                    if (!aj) { ix_style = 0; break; }
-                    int tj = PyArray_TYPE(aj);
-                    if (!PyTypeNum_ISINTEGER(tj)) { Py_DECREF(aj); break; }
-                    if (nd_common == -1) nd_common = PyArray_NDIM(aj);
-                    if (PyArray_NDIM(aj) != nd_common) { Py_DECREF(aj); ix_style = 0; break; }
-                    if (m >= NPY_MAXDIMS) { Py_DECREF(aj); ix_style = 0; break; }
-                    inds_arr[m++] = aj;
-                    jscan++;
-                }
-                if (!(m >= 2 && nd_common == m)) {
-                    ix_style = 0;
-                }
-                if (ix_style) {
-                    for (int p = 0; p < m && ix_style; ++p) {
-                        const npy_intp *dims = PyArray_DIMS(inds_arr[p]);
-                        for (int q = 0; q < m; ++q) {
-                            npy_intp d = dims[q];
-                            if (q == p) {
-                                if (d <= 0) { ix_style = 0; break; }
-                            } else {
-                                if (d != 1) { ix_style = 0; break; }
-                            }
-                        }
-                    }
-                }
-                if (ix_style) {
-                    /* Free pre-allocation for current dst axis; we'll allocate per-axis below */
-                    if (out->axis_labels[dst_axis]) { free(out->axis_labels[dst_axis]); out->axis_labels[dst_axis] = NULL; }
-                    /* Build labels for each broadcasted index axis */
-                    for (int p = 0; p < m; ++p) {
-                        if (dst_axis + p >= res_ndim || src_axis + p >= lb->ndim) { for (int t = 0; t < m; ++t) Py_XDECREF(inds_arr[t]); Py_DECREF(arrk); labelsblock_decref(out); return NULL; }
-                        int Lp = (int)PyArray_DIMS(inds_arr[p])[p];
-                        out->axis_len[dst_axis + p] = Lp;
-                        out->axis_labels[dst_axis + p] = (char **)calloc((size_t)Lp, sizeof(char *));
-                        if (!out->axis_labels[dst_axis + p]) { for (int t = 0; t < m; ++t) Py_DECREF(inds_arr[t]); Py_DECREF(arrk); labelsblock_decref(out); return NULL; }
-                        for (int v = 0; v < Lp && (dst_axis + p) < res_ndim && v < (int)res_shape[dst_axis + p]; ++v) {
-                            npy_intp idxix[NPY_MAXDIMS];
-                            for (int q = 0; q < m; ++q) idxix[q] = 0;
-                            idxix[p] = v;
-                            npy_intp idxv = *((npy_intp *)PyArray_GetPtr(inds_arr[p], idxix));
-                            int axlen = (src_axis + p < lb->ndim) ? lb->axis_len[src_axis + p] : 0;
-                            if (axlen <= 0) { for (int t = 0; t < m; ++t) Py_DECREF(inds_arr[t]); Py_DECREF(arrk); labelsblock_decref(out); PyErr_SetString(PyExc_IndexError, "index out of range"); return NULL; }
-                            if (idxv < 0) idxv = 0;
-                            if (idxv >= axlen) idxv = (npy_intp)(axlen - 1);
-                            const char *s = lb->axis_labels[src_axis + p][(int)idxv];
-                            size_t Ls = strlen(s) + 1;
-                            out->axis_labels[dst_axis + p][v] = (char *)malloc(Ls);
-                            if (!out->axis_labels[dst_axis + p][v]) { for (int t = 0; t < m; ++t) Py_DECREF(inds_arr[t]); Py_DECREF(arrk); labelsblock_decref(out); return NULL; }
-                            memcpy(out->axis_labels[dst_axis + p][v], s, Ls);
-                        }
-                        if (axhash_build(&out->axis_hash[dst_axis + p], (const char **)out->axis_labels[dst_axis + p], Lp) < 0) { for (int t = 0; t < m; ++t) Py_DECREF(inds_arr[t]); Py_DECREF(arrk); labelsblock_decref(out); return NULL; }
-                    }
-                    for (int t = 0; t < m; ++t) Py_DECREF(inds_arr[t]);
-                    Py_DECREF(arrk);
-                    src_axis += m;
-                    dst_axis += m;
-                    i += (m - 1);
-                    continue;
-                } else {
-                    for (int t = 0; t < m; ++t) Py_XDECREF(inds_arr[t]);
-                }
-            }
-            int arr_case = 0;
-            if (kind == NPY_BOOL) arr_case = 1;
-            else if (PyTypeNum_ISINTEGER(kind)) arr_case = 2;
-            else if (kind == NPY_UNICODE || kind == NPY_STRING || kind == NPY_OBJECT) arr_case = 3;
-            else arr_case = 4;
-
-            switch (arr_case) {
-                case 1: /* boolean mask */
-                    if (build_labels_from_bool_mask(lb, src_axis, arrk, out_len, &out->axis_labels[dst_axis]) < 0) { Py_DECREF(arrk); labelsblock_decref(out); return NULL; }
-                    if (axhash_build(&out->axis_hash[dst_axis], (const char **)out->axis_labels[dst_axis], out_len) < 0) { Py_DECREF(arrk); labelsblock_decref(out); return NULL; }
-                Py_DECREF(arrk);
-                src_axis += 1;
-                dst_axis += 1;
-                continue;
-                case 2: /* integer indices */
-                ind = (PyArrayObject *)PyArray_FromAny((PyObject *)arrk, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
-                    break;
-                case 3: /* unicode/bytes/object labels */
-                    ind = map_label_index_array_to_int(lb, src_axis, arrk);
-                    if (!ind) { Py_DECREF(arrk); labelsblock_decref(out); PyErr_SetString(PyExc_IndexError, "label not found in axis"); return NULL; }
-                    break;
-                default:
-                Py_DECREF(arrk);
-                labelsblock_decref(out);
-                PyErr_SetString(PyExc_TypeError, "unsupported index array dtype");
-                return NULL;
-            }
-            Py_DECREF(arrk);
-
-            int ind_nd = PyArray_NDIM(ind);
-            const npy_intp *adims = PyArray_DIMS(ind);
-            switch (ind_nd) {
-                case 1: {
-                int n = (int)adims[0];
-                out->axis_len[dst_axis] = n;
-                    if (fill_labels_from_int_indices(&out->axis_labels[dst_axis], (n < out_len ? n : out_len), lb->axis_labels[src_axis], ind) < 0) { Py_DECREF(ind); labelsblock_decref(out); PyErr_SetString(PyExc_IndexError, "index out of range"); return NULL; }
-                if (axhash_build(&out->axis_hash[dst_axis], (const char **)out->axis_labels[dst_axis], n) < 0) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                Py_DECREF(ind);
-                    break;
-                }
-                case 2: {
-                int R = (int)adims[0], C = (int)adims[1];
-                    if (dst_axis >= res_ndim || dst_axis + 1 >= res_ndim) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                out->axis_len[dst_axis] = R;
-                out->axis_len[dst_axis + 1] = C;
-                out->axis_labels[dst_axis + 1] = (char **)calloc(C, sizeof(char *));
-                if (!out->axis_labels[dst_axis + 1]) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                    char **rows = NULL, **cols = NULL;
-                    if (build_rowcol_labels_from_2d_indices(lb, src_axis, ind, R, C, &rows, &cols) < 0) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                    out->axis_labels[dst_axis] = rows;
-                    out->axis_labels[dst_axis + 1] = cols;
-                    if (axhash_build(&out->axis_hash[dst_axis], (const char **)out->axis_labels[dst_axis], R) < 0) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                if (axhash_build(&out->axis_hash[dst_axis + 1], (const char **)out->axis_labels[dst_axis + 1], C) < 0) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                Py_DECREF(ind);
-                src_axis += 1;
-                dst_axis += 2;
-                continue;
-                }
-                default: {
-                int knd = ind_nd;
-                for (int p = 0; p < knd; ++p) {
-                    if (dst_axis + p >= res_ndim) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                    out->axis_len[dst_axis + p] = (int)adims[p];
-                    if (p == 0) {
-                        /* out->axis_labels[dst_axis] already allocated to res_shape[dst_axis] */
-                    } else {
-                        out->axis_labels[dst_axis + p] = (char **)calloc((size_t)adims[p], sizeof(char *));
-                        if (!out->axis_labels[dst_axis + p]) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                    }
-                }
-                for (int p = 0; p < knd; ++p) {
-                        if (build_kd_labels_for_axis(lb, src_axis, ind, knd, p, adims, &out->axis_labels[dst_axis + p]) < 0) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                    if (axhash_build(&out->axis_hash[dst_axis + p], (const char **)out->axis_labels[dst_axis + p], (int)adims[p]) < 0) { Py_DECREF(ind); labelsblock_decref(out); return NULL; }
-                }
-                Py_DECREF(ind);
-                src_axis += 1;
-                dst_axis += knd;
-                continue;
-            }
-            }
-        } else if (PyList_Check(k) || PyTuple_Check(k)) {
-            if (build_labels_from_py_sequence(lb, src_axis, k, out_len, &out->axis_labels[dst_axis]) < 0) { labelsblock_decref(out); return NULL; }
-            /* build hash below */
-        } else {
-            /* fallback: copy entire axis truncated to out_len */
-            int n = lb->axis_len[src_axis];
-            for (int j = 0; j < n && j < out_len; ++j) {
-                const char *s = lb->axis_labels[src_axis][j];
-                size_t L = strlen(s) + 1;
-                out->axis_labels[dst_axis][j] = (char *)PyDataMem_NEW(L);
-                if (!out->axis_labels[dst_axis][j]) { labelsblock_decref(out); return NULL; }
-                memcpy(out->axis_labels[dst_axis][j], s, L);
-            }
-        }
-        /* build hash for this axis */
-        if (axhash_build(&out->axis_hash[dst_axis], (const char **)out->axis_labels[dst_axis], out_len) < 0) { labelsblock_decref(out); return NULL; }
-        src_axis += 1;
-        dst_axis += 1;
-    }
-    /* fill remaining axes as full copies if any */
-    while (dst_axis < res_ndim && src_axis < lb->ndim) {
-        int out_len2 = (int)res_shape[dst_axis];
-        out->axis_len[dst_axis] = out_len2;
-        out->axis_labels[dst_axis] = (char **)calloc(out_len2, sizeof(char *));
-        if (!out->axis_labels[dst_axis]) { labelsblock_decref(out); return NULL; }
-        int n = lb->axis_len[src_axis];
-        for (int j = 0; j < n && j < out_len2; ++j) {
-            const char *s = lb->axis_labels[src_axis][j];
-            size_t L = strlen(s) + 1;
-            out->axis_labels[dst_axis][j] = (char *)PyDataMem_NEW(L);
-            if (!out->axis_labels[dst_axis][j]) { labelsblock_decref(out); return NULL; }
-            memcpy(out->axis_labels[dst_axis][j], s, L);
-        }
-        if (axhash_build(&out->axis_hash[dst_axis], (const char **)out->axis_labels[dst_axis], out_len2) < 0) { labelsblock_decref(out); return NULL; }
-        src_axis += 1;
-        dst_axis += 1;
-    }
-    return out;
-}
-
-
 /* ---------- labels slot helpers (explicit struct) ---------- */
 static NPY_INLINE LabelsBlock **
 labels_slot(PyObject *self)
@@ -1127,8 +208,8 @@ LabeledArray_get_labels(PyObject *self, void *closure)
         if (!lb) return NULL;
         obj->labels_block = lb;
     }
-    /* Build tuple of read-only 1D unicode ndarrays per axis */
-    PyObject *out = PyTuple_New(lb->ndim);
+    /* Build list-of-lists of labels per axis */
+    PyObject *out = PyList_New(lb->ndim);
     if (!out) return NULL;
     for (int ax = 0; ax < lb->ndim; ++ax) {
         int n = lb->axis_len[ax];
@@ -1139,11 +220,7 @@ LabeledArray_get_labels(PyObject *self, void *closure)
             if (!s) { Py_DECREF(lst); Py_DECREF(out); return NULL; }
             PyList_SET_ITEM(lst, i, s); /* steals ref */
         }
-        PyObject *arr = PyArray_FromAny(lst, NULL, 1, 1, NPY_ARRAY_ENSUREARRAY, NULL);
-        Py_DECREF(lst);
-        if (!arr) { Py_DECREF(out); return NULL; }
-        PyArray_CLEARFLAGS((PyArrayObject *)arr, NPY_ARRAY_WRITEABLE);
-        PyTuple_SET_ITEM(out, ax, arr); /* steals ref */
+        PyList_SET_ITEM(out, ax, lst); /* steals ref */
     }
     obj->labels_cache = out; /* cache holds a ref */
     Py_INCREF(obj->labels_cache);
@@ -1273,12 +350,26 @@ expand_and_convert_key_c(LabeledArrayObject *self, PyObject *key)
         if (axis >= ndim) { Py_DECREF(out); Py_DECREF(items); PyErr_SetString(PyExc_IndexError, "too many indices"); return NULL; }
 
         PyObject *ck = NULL;
-        if (PyUnicode_Check(k) || PyList_Check(k) || PyTuple_Check(k)) {
+        if (PyUnicode_Check(k) || PyList_Check(k) || PyTuple_Check(k) || PyArray_Check(k)) {
             if (PyUnicode_Check(k)) {
                 Py_ssize_t pos; int rc = labelsblock_find(lb, axis, k, &pos);
                 if (rc != 0) { Py_DECREF(out); Py_DECREF(items); PyErr_SetString(PyExc_IndexError, "label not found"); return NULL; }
                 ck = PyLong_FromSsize_t(pos);
                 if (!ck) { Py_DECREF(out); Py_DECREF(items); return NULL; }
+            } else if (PyArray_Check(k)) {
+                PyArrayObject *arrk = (PyArrayObject *)k;
+                int t = PyArray_TYPE(arrk);
+                if (PyTypeNum_ISINTEGER(t) || t == NPY_BOOL) {
+                    Py_INCREF(k);
+                    ck = k;
+                } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
+                    PyArrayObject *ind = map_label_index_array_to_int(lb, axis, arrk);
+                    if (!ind) { Py_DECREF(out); Py_DECREF(items); PyErr_SetString(PyExc_IndexError, "label not found in array index"); return NULL; }
+                    ck = (PyObject *)ind;
+                } else {
+                    Py_INCREF(k);
+                    ck = k;
+                }
             } else {
                 PyObject *seq = PySequence_Fast(k, "expected sequence");
                 if (!seq) { Py_DECREF(out); Py_DECREF(items); return NULL; }
@@ -1548,7 +639,9 @@ array_function(PyObject *self_obj, PyObject *args)
     static PyObject *np_transpose = NULL;
     static PyObject *np_swapaxes = NULL;
     static PyObject *np_taa = NULL;
-    if (np_concatenate == NULL || np_squeeze == NULL || np_stack == NULL || np_expand_dims == NULL || np_take == NULL || np_transpose == NULL || np_swapaxes == NULL || np_taa == NULL) {
+    static PyObject *np_nanmean = NULL;
+    static PyObject *np_nanstd = NULL;
+    if (np_concatenate == NULL || np_squeeze == NULL || np_stack == NULL || np_expand_dims == NULL || np_take == NULL || np_transpose == NULL || np_swapaxes == NULL || np_taa == NULL || np_nanmean == NULL || np_nanstd == NULL) {
         PyObject *numpy = PyImport_ImportModule("numpy");
         if (!numpy) return NULL;
         if (np_concatenate == NULL) np_concatenate = PyObject_GetAttrString(numpy, "concatenate");
@@ -1559,8 +652,10 @@ array_function(PyObject *self_obj, PyObject *args)
         if (np_transpose == NULL) np_transpose = PyObject_GetAttrString(numpy, "transpose");
         if (np_swapaxes == NULL) np_swapaxes = PyObject_GetAttrString(numpy, "swapaxes");
         if (np_taa == NULL) np_taa = PyObject_GetAttrString(numpy, "take_along_axis");
+        if (np_nanmean == NULL) np_nanmean = PyObject_GetAttrString(numpy, "nanmean");
+        if (np_nanstd == NULL) np_nanstd = PyObject_GetAttrString(numpy, "nanstd");
         Py_DECREF(numpy);
-        if (!np_concatenate || !np_squeeze || !np_stack || !np_expand_dims || !np_take || !np_transpose || !np_swapaxes || !np_taa) return NULL;
+        if (!np_concatenate || !np_squeeze || !np_stack || !np_expand_dims || !np_take || !np_transpose || !np_swapaxes || !np_taa || !np_nanmean || !np_nanstd) return NULL;
     }
     int is_concatenate = (func == np_concatenate);
     int is_squeeze = (func == np_squeeze);
@@ -1570,7 +665,9 @@ array_function(PyObject *self_obj, PyObject *args)
     int is_transpose = (func == np_transpose);
     int is_swapaxes = (func == np_swapaxes);
     int is_taa = (func == np_taa);
-    if (!is_concatenate && !is_squeeze && !is_stack && !is_expand && !is_take && !is_transpose && !is_swapaxes && !is_taa) {
+    int is_nanmean = (func == np_nanmean);
+    int is_nanstd = (func == np_nanstd);
+    if (!is_concatenate && !is_squeeze && !is_stack && !is_expand && !is_take && !is_transpose && !is_swapaxes && !is_taa && !is_nanmean && !is_nanstd) {
         /* Fallback: call NumPy func on base ndarrays to avoid recursion */
         if (!PyTuple_Check(fargs)) { Py_RETURN_NOTIMPLEMENTED; }
         Py_ssize_t nfa = PyTuple_GET_SIZE(fargs);
@@ -1578,13 +675,8 @@ array_function(PyObject *self_obj, PyObject *args)
         if (!new_fargs) return NULL;
         for (Py_ssize_t i = 0; i < nfa; ++i) {
             PyObject *argi = PyTuple_GET_ITEM(fargs, i);
-            PyObject *to_set = argi;
-            if (PyObject_TypeCheck(argi, &LabeledArray_Type)) {
-                to_set = PyArray_View((PyArrayObject *)argi, NULL, &PyArray_Type);
-                if (!to_set) { Py_DECREF(new_fargs); return NULL; }
-            } else {
-                Py_INCREF(to_set);
-            }
+            PyObject *to_set = to_base_arg(argi);
+            if (!to_set) { Py_DECREF(new_fargs); return NULL; }
             PyTuple_SET_ITEM(new_fargs, i, to_set);
         }
         PyObject *new_fkwargs = convert_kwargs_out_where(fkwargs);
@@ -1636,6 +728,25 @@ array_function(PyObject *self_obj, PyObject *args)
     Py_DECREF(types_seq);
 
     if (!PyTuple_Check(fargs) || PyTuple_GET_SIZE(fargs) < 1) { Py_RETURN_NOTIMPLEMENTED; }
+
+    if (is_nanmean || is_nanstd) {
+        PyObject *obj0 = PyTuple_GET_ITEM(fargs, 0);
+        if (!PyObject_TypeCheck(obj0, &LabeledArray_Type)) { Py_RETURN_NOTIMPLEMENTED; }
+        Py_ssize_t nfa = PyTuple_GET_SIZE(fargs);
+        PyObject *args_tail = PyTuple_New(nfa - 1);
+        if (!args_tail) return NULL;
+        for (Py_ssize_t i = 1; i < nfa; ++i) {
+            PyObject *it = PyTuple_GET_ITEM(fargs, i);
+            Py_INCREF(it);
+            PyTuple_SET_ITEM(args_tail, i - 1, it);
+        }
+        PyObject *meth = PyObject_GetAttrString(obj0, is_nanmean ? "nanmean" : "nanstd");
+        if (!meth) { Py_DECREF(args_tail); return NULL; }
+        PyObject *res = PyObject_Call(meth, args_tail, fkwargs);
+        Py_DECREF(meth);
+        Py_DECREF(args_tail);
+        return res;
+    }
 
     /* Common locals used in some branches */
     PyObject *arrays = NULL; Py_ssize_t narr = 0;
@@ -1848,34 +959,11 @@ array_function(PyObject *self_obj, PyObject *args)
                 sel_data = (PyObject *)arrk; Py_INCREF(sel_data);
                 sel_lbl = (PyObject *)arrk; Py_INCREF(sel_lbl);
             } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
-                /* Map strings to intp for data; keep original for labels */
-                int ind_nd = PyArray_NDIM(arrk);
-                const npy_intp *adims = PyArray_DIMS(arrk);
-                PyArrayObject *ind = (PyArrayObject *)PyArray_SimpleNew(ind_nd, adims, NPY_INTP);
-                if (!ind) { Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
-                if (ind_nd == 1) {
-                    npy_intp n = adims[0];
-                    for (npy_intp i = 0; i < n; ++i) {
-                        PyObject *it = PyArray_GETITEM(arrk, PyArray_GetPtr(arrk, &i));
-                        if (!it) { Py_DECREF(ind); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
-                        Py_ssize_t pos = -1;
-                        if (labelsblock_find(lb, axis, it, &pos) != 0) { Py_DECREF(it); Py_DECREF(ind); Py_DECREF(ck_data); Py_DECREF(ck_lbl); PyErr_SetString(PyExc_IndexError, "label not found in axis for take"); return NULL; }
-                        Py_DECREF(it);
-                        *((npy_intp *)PyArray_GetPtr(ind, &i)) = pos;
-                    }
-                } else {
-                    npy_intp R = adims[0], C = (ind_nd > 1 ? adims[1] : 1);
-                    for (npy_intp r = 0; r < R; ++r) {
-                        for (npy_intp c = 0; c < C; ++c) {
-                            npy_intp ij[2] = {r, c};
-                            PyObject *it = PyArray_GETITEM(arrk, PyArray_GetPtr(arrk, ij));
-                            if (!it) { Py_DECREF(ind); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
-                            Py_ssize_t pos = -1;
-                            if (labelsblock_find(lb, axis, it, &pos) != 0) { Py_DECREF(it); Py_DECREF(ind); Py_DECREF(ck_data); Py_DECREF(ck_lbl); PyErr_SetString(PyExc_IndexError, "label not found in axis for take"); return NULL; }
-                            Py_DECREF(it);
-                            *((npy_intp *)PyArray_GetPtr(ind, ij)) = pos;
-                        }
-                    }
+                /* Map labels to intp for data; keep original for labels (supports ND indices) */
+                PyArrayObject *ind = map_label_index_array_to_int(lb, axis, arrk);
+                if (!ind) {
+                    if (!PyErr_Occurred()) PyErr_SetString(PyExc_IndexError, "label not found in axis for take");
+                    Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL;
                 }
                 sel_data = (PyObject *)ind; /* new ref */
                 sel_lbl = (PyObject *)arrk; Py_INCREF(sel_lbl);
@@ -1906,6 +994,33 @@ array_function(PyObject *self_obj, PyObject *args)
                     PyObject *seq = PySequence_Fast(indices, "expected sequence for indices");
                     if (!seq) { Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
                     Py_ssize_t n = PySequence_Fast_GET_SIZE(seq);
+                    int nested = 0;
+                    for (Py_ssize_t i = 0; i < n; ++i) {
+                        PyObject *it = PySequence_Fast_GET_ITEM(seq, i);
+                        if (PyArray_Check(it) || PyList_Check(it) || PyTuple_Check(it)) { nested = 1; break; }
+                    }
+                    if (nested) {
+                        Py_DECREF(seq);
+                        PyArrayObject *arrk = (PyArrayObject *)PyArray_FromAny(indices, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
+                        if (!arrk) { Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
+                        int t = PyArray_TYPE(arrk);
+                        if (PyTypeNum_ISINTEGER(t)) {
+                            sel_data = (PyObject *)arrk;
+                            sel_lbl = (PyObject *)arrk; Py_INCREF(sel_lbl);
+                        } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
+                            PyArrayObject *ind = map_label_index_array_to_int(lb, axis, arrk);
+                            if (!ind) {
+                                if (!PyErr_Occurred()) PyErr_SetString(PyExc_IndexError, "label not found in axis for take");
+                                Py_DECREF(arrk); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL;
+                            }
+                            sel_data = (PyObject *)ind;
+                            sel_lbl = (PyObject *)arrk; /* keep arrk ref for labels */
+                        } else {
+                            Py_DECREF(arrk); Py_DECREF(ck_data); Py_DECREF(ck_lbl);
+                            PyErr_SetString(PyExc_TypeError, "unsupported indices dtype for take");
+                            return NULL;
+                        }
+                    } else {
                     PyObject *lst = PyList_New(n);
                     if (!lst) { Py_DECREF(seq); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
                     for (Py_ssize_t i = 0; i < n; ++i) {
@@ -1936,6 +1051,7 @@ array_function(PyObject *self_obj, PyObject *args)
                     Py_DECREF(seq);
                     sel_data = lst;
                     sel_lbl = lst; Py_INCREF(sel_lbl);
+                    }
                 }
             }
         }
@@ -2382,12 +1498,16 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     if (axis < 0) axis += nd;
     if (axis < 0 || axis >= nd) { PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
 
-    /* Data path via numpy.take */
-    PyObject *numpy = PyImport_ImportModule("numpy"); if (!numpy) return NULL;
-    PyObject *np_take = PyObject_GetAttrString(numpy, "take"); Py_DECREF(numpy);
-    if (!np_take) return NULL;
+    /* Data path via numpy.take (cached) */
+    static PyObject *np_take = NULL;
+    if (!np_take) {
+        PyObject *numpy = PyImport_ImportModule("numpy");
+        if (!numpy) return NULL;
+        np_take = PyObject_GetAttrString(numpy, "take");
+        Py_DECREF(numpy);
+        if (!np_take) return NULL;
+    }
     PyObject *res_base = PyObject_CallFunction(np_take, "OOi", self_obj, indices, axis);
-    Py_DECREF(np_take);
     if (!res_base) return NULL;
     if (!PyArray_Check(res_base)) return res_base;
     PyObject *view = PyArray_View((PyArrayObject *)res_base, NULL, (PyTypeObject *)Py_TYPE(self_obj));
@@ -2407,37 +1527,76 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                 if (!arrk) { Py_DECREF(ck); Py_DECREF(view); return NULL; }
                 int t = PyArray_TYPE(arrk);
                 PyArrayObject *ind = NULL;
+                int mapped = 0;
                 if (PyTypeNum_ISINTEGER(t)) {
                     ind = (PyArrayObject *)PyArray_FromAny((PyObject *)arrk, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                 } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
+                    mapped = 1;
                     ind = map_label_index_array_to_int(plb, ax, arrk);
                 }
                 Py_DECREF(arrk);
-                if (!ind) { Py_DECREF(ck); Py_DECREF(view); PyErr_SetString(PyExc_TypeError, "unsupported indices for take"); return NULL; }
+                if (!ind) {
+                    if (!PyErr_Occurred()) {
+                        PyErr_SetString(mapped ? PyExc_IndexError : PyExc_TypeError,
+                                        mapped ? "label not found in axis for take" : "unsupported indices for take");
+                    }
+                    Py_DECREF(ck); Py_DECREF(view); return NULL;
+                }
                 PyTuple_SET_ITEM(ck, ax, (PyObject *)ind);
             } else if (PyList_Check(indices) || PyTuple_Check(indices)) {
                 PyObject *seq = PySequence_Fast(indices, "expected sequence");
                 if (!seq) { Py_DECREF(ck); Py_DECREF(view); return NULL; }
                 Py_ssize_t n = PySequence_Fast_GET_SIZE(seq);
-                PyArrayObject *ind = (PyArrayObject *)PyArray_SimpleNew(1, (npy_intp *)&n, NPY_INTP);
-                if (!ind) { Py_DECREF(seq); Py_DECREF(ck); Py_DECREF(view); return NULL; }
+                int nested = 0;
                 for (Py_ssize_t j = 0; j < n; ++j) {
                     PyObject *it = PySequence_Fast_GET_ITEM(seq, j);
-                    PyObject *maybe_int = PyNumber_Index(it);
-                    npy_intp val;
-                    if (maybe_int) {
-                        long v = PyLong_AsLong(maybe_int); Py_DECREF(maybe_int);
-                        if (v == -1 && PyErr_Occurred()) { Py_DECREF(seq); Py_DECREF(ind); Py_DECREF(ck); Py_DECREF(view); return NULL; }
-                        val = (npy_intp)v;
-                    } else {
-                        PyErr_Clear(); Py_ssize_t pos = -1;
-                        if (labelsblock_find(plb, ax, it, &pos) != 0) { Py_DECREF(seq); Py_DECREF(ind); Py_DECREF(ck); Py_DECREF(view); PyErr_SetString(PyExc_IndexError, "label not found in axis for take"); return NULL; }
-                        val = (npy_intp)pos;
-                    }
-                    *((npy_intp *)PyArray_GetPtr(ind, &j)) = val;
+                    if (PyArray_Check(it) || PyList_Check(it) || PyTuple_Check(it)) { nested = 1; break; }
                 }
-                Py_DECREF(seq);
-                PyTuple_SET_ITEM(ck, ax, (PyObject *)ind);
+                if (nested) {
+                    Py_DECREF(seq);
+                    PyArrayObject *arrk = (PyArrayObject *)PyArray_FromAny(indices, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
+                    if (!arrk) { Py_DECREF(ck); Py_DECREF(view); return NULL; }
+                    int t = PyArray_TYPE(arrk);
+                    PyArrayObject *ind = NULL;
+                    int mapped = 0;
+                    if (PyTypeNum_ISINTEGER(t)) {
+                        ind = (PyArrayObject *)PyArray_FromAny((PyObject *)arrk, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
+                    } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
+                        mapped = 1;
+                        ind = map_label_index_array_to_int(plb, ax, arrk);
+                    }
+                    Py_DECREF(arrk);
+                    if (!ind) {
+                        if (!PyErr_Occurred()) {
+                            PyErr_SetString(mapped ? PyExc_IndexError : PyExc_TypeError,
+                                            mapped ? "label not found in axis for take" : "unsupported indices for take");
+                        }
+                        Py_DECREF(ck); Py_DECREF(view); return NULL;
+                    }
+                    PyTuple_SET_ITEM(ck, ax, (PyObject *)ind);
+                } else {
+                    PyArrayObject *ind = (PyArrayObject *)PyArray_SimpleNew(1, (npy_intp *)&n, NPY_INTP);
+                    if (!ind) { Py_DECREF(seq); Py_DECREF(ck); Py_DECREF(view); return NULL; }
+                    char *ibase = PyArray_BYTES(ind);
+                    npy_intp istride = PyArray_STRIDES(ind)[0];
+                    for (Py_ssize_t j = 0; j < n; ++j) {
+                        PyObject *it = PySequence_Fast_GET_ITEM(seq, j);
+                        PyObject *maybe_int = PyNumber_Index(it);
+                        npy_intp val;
+                        if (maybe_int) {
+                            long v = PyLong_AsLong(maybe_int); Py_DECREF(maybe_int);
+                            if (v == -1 && PyErr_Occurred()) { Py_DECREF(seq); Py_DECREF(ind); Py_DECREF(ck); Py_DECREF(view); return NULL; }
+                            val = (npy_intp)v;
+                        } else {
+                            PyErr_Clear(); Py_ssize_t pos = -1;
+                            if (labelsblock_find(plb, ax, it, &pos) != 0) { Py_DECREF(seq); Py_DECREF(ind); Py_DECREF(ck); Py_DECREF(view); PyErr_SetString(PyExc_IndexError, "label not found in axis for take"); return NULL; }
+                            val = (npy_intp)pos;
+                        }
+                        write_intp_1d(ibase, istride, (npy_intp)j, val);
+                    }
+                    Py_DECREF(seq);
+                    PyTuple_SET_ITEM(ck, ax, (PyObject *)ind);
+                }
             } else {
                 Py_INCREF(indices);
                 PyTuple_SET_ITEM(ck, ax, indices);
@@ -2536,52 +1695,55 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     LabelsBlock *plb = self->labels_block;
     if (!plb) { plb = labelsblock_new_default((PyArrayObject *)self_obj); if (!plb) { Py_DECREF(view); return NULL; } self->labels_block = plb; }
     int new_nd = nd - 1;
-    LabelsBlock *out = (LabelsBlock *)calloc(1, sizeof(LabelsBlock));
+    LabelsBlock *out = labelsblock_alloc(new_nd);
     if (!out) { Py_DECREF(view); return NULL; }
-    out->ndim = new_nd; out->refcount = 1;
-    out->axis_len = (int *)calloc(new_nd, sizeof(int));
-    out->axis_labels = (char ***)calloc(new_nd, sizeof(char **));
-    out->axis_hash = (AxisHash *)calloc(new_nd, sizeof(AxisHash));
-    if (!out->axis_len || !out->axis_labels || !out->axis_hash) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
 
     const char *joiner = delim ? delim : (self->delimiter ? self->delimiter : "-");
+    size_t joiner_len = strlen(joiner);
     int dst = 0;
     for (int ax = 0; ax < nd; ++ax) {
         if (ax == a0) continue; /* drop */
         if (ax == a1) {
             int n0 = plb->axis_len[a0];
             int n1 = plb->axis_len[a1];
-            out->axis_len[dst] = n0 * n1;
-            out->axis_labels[dst] = (char **)calloc(n0 * n1, sizeof(char *));
+            size_t n01 = (size_t)n0 * (size_t)n1;
+            out->axis_len[dst] = (int)n01;
+            out->axis_labels[dst] = (char **)calloc(n01, sizeof(char *));
             if (!out->axis_labels[dst]) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
-            size_t joiner_len = strlen(joiner);
-            size_t *len0 = (size_t *)malloc(sizeof(size_t) * (size_t)n0);
-            size_t *len1 = (size_t *)malloc(sizeof(size_t) * (size_t)n1);
-            if (!len0 || !len1) { free(len0); free(len1); labelsblock_decref(out); Py_DECREF(view); return NULL; }
-            size_t sum_len1 = 0; /* retained for potential future heuristics */
-                for (int j = 0; j < n1; ++j) {
-                const char *s = plb->axis_labels[a1][j];
-                size_t L = strlen(s ? s : "");
-                len1[j] = L; sum_len1 += L;
-            }
+
+            size_t *len0 = (size_t *)PyMem_Malloc(sizeof(size_t) * (size_t)n0);
+            size_t *len1 = (size_t *)PyMem_Malloc(sizeof(size_t) * (size_t)n1);
+            if (!len0 || !len1) { PyMem_Free(len0); PyMem_Free(len1); labelsblock_decref(out); Py_DECREF(view); return NULL; }
+            size_t sum0 = 0, sum1 = 0;
             for (int i = 0; i < n0; ++i) {
                 const char *s = plb->axis_labels[a0][i];
                 len0[i] = strlen(s ? s : "");
+                sum0 += len0[i];
             }
+            for (int j = 0; j < n1; ++j) {
+                const char *s = plb->axis_labels[a1][j];
+                len1[j] = strlen(s ? s : "");
+                sum1 += len1[j];
+            }
+
+            size_t total = sum0 * (size_t)n1 + sum1 * (size_t)n0 + (joiner_len + 1) * n01;
+            char *slab = (char *)PyDataMem_NEW(total);
+            if (!slab) { PyMem_Free(len0); PyMem_Free(len1); labelsblock_decref(out); Py_DECREF(view); return NULL; }
+            out->axis_slab[dst] = slab;
+
             int single_delim = (joiner_len == 1);
             char dch = single_delim ? joiner[0] : '\0';
-            /* Fill labels; release GIL during heavy memcpy/alloc */
-            int build_ok = 1;
+            char *cursor = slab;
             NPY_BEGIN_ALLOW_THREADS;
-            for (int i = 0; i < n0 && build_ok; ++i) {
-                    const char *s0 = plb->axis_labels[a0][i];
+            for (int i = 0; i < n0; ++i) {
+                const char *s0 = plb->axis_labels[a0][i];
                 size_t L0 = len0[i];
                 for (int j = 0; j < n1; ++j) {
                     const char *s1 = plb->axis_labels[a1][j];
                     size_t L1 = len1[j];
                     size_t Ltot = L0 + joiner_len + L1 + 1;
-                    char *dstp = (char *)malloc(Ltot);
-                    if (!dstp) { build_ok = 0; break; }
+                    char *dstp = cursor;
+                    cursor += Ltot;
                     if (L0) memcpy(dstp, s0 ? s0 : "", L0);
                     if (single_delim) { dstp[L0] = dch; }
                     else if (joiner_len) { memcpy(dstp + L0, joiner, joiner_len); }
@@ -2592,33 +1754,12 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                 }
             }
             NPY_END_ALLOW_THREADS;
-            if (!build_ok) {
-                /* cleanup any partially allocated labels */
-                for (int p = 0; p < n0 * n1; ++p) {
-                    if (out->axis_labels[dst][p]) free(out->axis_labels[dst][p]);
-                }
-                free(out->axis_labels[dst]); out->axis_labels[dst] = NULL;
-                labelsblock_decref(out);
-                Py_DECREF(view);
-                free(len0);
-                free(len1);
-                return NULL;
-            }
-            free(len0);
-            free(len1);
-            if (axhash_build(&out->axis_hash[dst], (const char **)out->axis_labels[dst], n0 * n1) < 0) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
+            PyMem_Free(len0);
+            PyMem_Free(len1);
+            if (axhash_build(&out->axis_hash[dst], (const char **)out->axis_labels[dst], (int)n01) < 0) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
         } else {
             int n = plb->axis_len[ax];
-            out->axis_len[dst] = n;
-            out->axis_labels[dst] = (char **)calloc(n, sizeof(char *));
-            if (!out->axis_labels[dst]) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
-            for (int j = 0; j < n; ++j) {
-                const char *s = plb->axis_labels[ax][j]; size_t L = strlen(s ? s : "") + 1;
-                out->axis_labels[dst][j] = (char *)PyDataMem_NEW(L);
-                if (!out->axis_labels[dst][j]) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
-                memcpy(out->axis_labels[dst][j], s ? s : "", L);
-            }
-            if (axhash_build(&out->axis_hash[dst], (const char **)out->axis_labels[dst], n) < 0) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
+            if (labelsblock_set_axis_copy(out, dst, plb->axis_labels[ax], n) < 0) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
         }
         dst++;
     }
@@ -2632,6 +1773,510 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     }
     return view;
 }
+
+
+/* ---------- reshape (fast labels for combine-only) ---------- */
+static int
+reshape_parse_args(PyObject *args, PyObject *kwargs, PyArray_Dims *out_dims, NPY_ORDER *out_order)
+{
+    Py_ssize_t nargs = PyTuple_GET_SIZE(args);
+    if (nargs < 1) {
+        PyErr_SetString(PyExc_TypeError, "reshape() takes at least 1 argument");
+        return -1;
+    }
+
+    PyObject *order_obj = NULL;
+    if (kwargs && PyDict_Check(kwargs)) {
+        order_obj = PyDict_GetItemString(kwargs, "order");
+    }
+
+    Py_ssize_t shape_nargs = nargs;
+    if (!order_obj && nargs >= 2) {
+        PyObject *last = PyTuple_GET_ITEM(args, nargs - 1);
+        if (PyUnicode_Check(last) || PyBytes_Check(last)) {
+            order_obj = last;
+            shape_nargs = nargs - 1;
+        }
+    }
+
+    char order_char = 'C';
+    if (order_obj && order_obj != Py_None) {
+        const char *os = NULL;
+        if (PyUnicode_Check(order_obj)) os = PyUnicode_AsUTF8(order_obj);
+        else if (PyBytes_Check(order_obj)) os = PyBytes_AsString(order_obj);
+        if (!os || os[0] == '\0') {
+            PyErr_SetString(PyExc_TypeError, "order must be 'C' or 'F'");
+            return -1;
+        }
+        order_char = os[0];
+    }
+
+    if (order_char == 'C' || order_char == 'c') *out_order = NPY_CORDER;
+    else if (order_char == 'F' || order_char == 'f') *out_order = NPY_FORTRANORDER;
+    else {
+        PyErr_SetString(PyExc_NotImplementedError, "reshape order not supported");
+        return -1;
+    }
+
+    PyObject *shape_obj = NULL;
+    if (shape_nargs == 1) {
+        shape_obj = PyTuple_GET_ITEM(args, 0);
+        Py_INCREF(shape_obj);
+    } else {
+        shape_obj = PyTuple_GetSlice(args, 0, shape_nargs);
+    }
+    if (!shape_obj) return -1;
+    int ok = PyArray_IntpConverter(shape_obj, out_dims);
+    Py_DECREF(shape_obj);
+    if (!ok) return -1;
+    return 0;
+}
+
+static int
+reshape_resolve_dims(PyArray_Dims *dims, npy_intp total)
+{
+    int neg = -1;
+    npy_intp known = 1;
+    for (int i = 0; i < dims->len; ++i) {
+        npy_intp d = dims->ptr[i];
+        if (d == -1) {
+            if (neg >= 0) {
+                PyErr_SetString(PyExc_ValueError, "only one -1 is allowed in reshape");
+                return -1;
+            }
+            neg = i;
+        } else if (d < 0) {
+            PyErr_SetString(PyExc_ValueError, "negative dimensions are not allowed");
+            return -1;
+        } else {
+            if (d != 0 && known > NPY_MAX_INTP / d) {
+                PyErr_SetString(PyExc_OverflowError, "reshape dims overflow");
+                return -1;
+            }
+            known *= d;
+        }
+    }
+    if (neg >= 0) {
+        if (known == 0 || total % known != 0) {
+            PyErr_SetString(PyExc_ValueError, "cannot reshape array of size into requested shape");
+            return -1;
+        }
+        dims->ptr[neg] = total / known;
+    } else if (known != total) {
+        PyErr_SetString(PyExc_ValueError, "cannot reshape array of size into requested shape");
+        return -1;
+    }
+    return 0;
+}
+
+
+
+static PyObject *
+reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims, int nd_new, NPY_ORDER order)
+{
+    int nd = PyArray_NDIM(arr);
+    npy_intp total = PyArray_SIZE(arr);
+    if (total == 0) {
+        PyErr_SetString(PyExc_NotImplementedError, "reshape labels (fast) unsupported for empty arrays");
+        return NULL;
+    }
+
+    LabeledArrayObject *self = (LabeledArrayObject *)self_obj;
+    LabelsBlock *lb = self->labels_block;
+    if (!lb) {
+        lb = labelsblock_new_default(arr);
+        if (!lb) return NULL;
+        self->labels_block = lb;
+    }
+
+    const char *delim = (self->delimiter != NULL) ? self->delimiter : "-";
+    size_t delim_len = strlen(delim);
+
+    const npy_intp *dims = PyArray_DIMS(arr);
+    int order_c = (order == NPY_CORDER);
+
+    size_t **lab_lens = NULL;
+    npy_intp *idx_old = NULL;
+    char *labels_slab = NULL;
+    char **labels_flat = NULL;
+    IntersectState **states = NULL;
+    npy_intp *idx_new = NULL;
+    char **need_unique = NULL;
+    StrSet ***uniq_sets = NULL;
+    LabelsBlock *out = NULL;
+    PyObject *view = NULL;
+    PyArrayObject *reshaped = NULL;
+
+    lab_lens = (size_t **)PyMem_Malloc(sizeof(size_t *) * (size_t)nd);
+    if (!lab_lens) { PyErr_NoMemory(); goto fail; }
+    for (int ax = 0; ax < nd; ++ax) lab_lens[ax] = NULL;
+    for (int ax = 0; ax < nd; ++ax) {
+        int n = lb->axis_len[ax];
+        lab_lens[ax] = (size_t *)PyMem_Malloc(sizeof(size_t) * (size_t)n);
+        if (!lab_lens[ax]) { PyErr_NoMemory(); goto fail; }
+        for (int i = 0; i < n; ++i) {
+            const char *s = lb->axis_labels[ax][i] ? lb->axis_labels[ax][i] : "";
+            lab_lens[ax][i] = strlen(s);
+        }
+    }
+
+    size_t total_bytes = 0;
+    idx_old = (npy_intp *)PyMem_Calloc((size_t)nd, sizeof(npy_intp));
+    if (!idx_old) { PyErr_NoMemory(); goto fail; }
+    for (npy_intp flat = 0; flat < total; ++flat) {
+        size_t len = 0; int parts = 0;
+        for (int ax = 0; ax < nd; ++ax) {
+            size_t L = lab_lens[ax][(int)idx_old[ax]];
+            if (L) { len += L; parts++; }
+        }
+        if (parts > 1 && delim_len) len += delim_len * (size_t)(parts - 1);
+        if (SIZE_MAX - total_bytes < len + 1) { PyErr_NoMemory(); goto fail; }
+        total_bytes += len + 1;
+        idx_increment_order(idx_old, dims, nd, order_c);
+    }
+
+    labels_slab = (char *)PyDataMem_NEW(total_bytes ? total_bytes : 1);
+    if (!labels_slab) { PyErr_NoMemory(); goto fail; }
+    labels_flat = (char **)PyMem_Malloc(sizeof(char *) * (size_t)total);
+    if (!labels_flat) { PyErr_NoMemory(); goto fail; }
+
+    memset(idx_old, 0, sizeof(npy_intp) * (size_t)nd);
+    char *cursor = labels_slab;
+    for (npy_intp flat = 0; flat < total; ++flat) {
+        char *dst = cursor;
+        int parts_written = 0;
+        for (int ax = 0; ax < nd; ++ax) {
+            const char *s = lb->axis_labels[ax][(int)idx_old[ax]] ? lb->axis_labels[ax][(int)idx_old[ax]] : "";
+            size_t L = lab_lens[ax][(int)idx_old[ax]];
+            if (L == 0) continue;
+            if (parts_written > 0 && delim_len) { memcpy(dst, delim, delim_len); dst += delim_len; }
+            memcpy(dst, s, L); dst += L; parts_written++;
+        }
+        *dst = '\0';
+        labels_flat[flat] = cursor;
+        cursor = dst + 1;
+        idx_increment_order(idx_old, dims, nd, order_c);
+    }
+
+    states = (IntersectState **)PyMem_Calloc((size_t)nd_new, sizeof(IntersectState *));
+    if (!states) { PyErr_NoMemory(); goto fail; }
+    for (int j = 0; j < nd_new; ++j) {
+        states[j] = (IntersectState *)PyMem_Calloc((size_t)newdims[j], sizeof(IntersectState));
+        if (!states[j]) { PyErr_NoMemory(); goto fail; }
+    }
+
+    idx_new = (npy_intp *)PyMem_Calloc((size_t)nd_new, sizeof(npy_intp));
+    if (!idx_new) { PyErr_NoMemory(); goto fail; }
+
+    Token stack_tokens[32];
+    for (npy_intp flat = 0; flat < total; ++flat) {
+        const char *lab = labels_flat[flat];
+        Token *tokens = NULL; int ntok = 0;
+        if (split_tokens(lab, delim, delim_len, &tokens, &ntok, stack_tokens, 32) < 0) { PyErr_NoMemory(); goto fail; }
+        for (int j = 0; j < nd_new; ++j) {
+            IntersectState *st = &states[j][(int)idx_new[j]];
+            if (!st->initialized) {
+                st->set = strset_from_tokens(tokens, ntok);
+                if (!st->set) { if (tokens != stack_tokens) PyMem_Free(tokens); goto fail; }
+                st->initialized = 1;
+            } else {
+                StrSet *ns = strset_intersect_tokens(st->set, tokens, ntok);
+                if (!ns) { if (tokens != stack_tokens) PyMem_Free(tokens); goto fail; }
+                strset_free(st->set); PyMem_Free(st->set);
+                st->set = ns;
+            }
+        }
+        if (tokens != stack_tokens) PyMem_Free(tokens);
+        idx_increment_order(idx_new, newdims, nd_new, order_c);
+    }
+
+    need_unique = (char **)PyMem_Calloc((size_t)nd_new, sizeof(char *));
+    uniq_sets = (StrSet ***)PyMem_Calloc((size_t)nd_new, sizeof(StrSet **));
+    if (!need_unique || !uniq_sets) { PyErr_NoMemory(); goto fail; }
+    int any_need = 0;
+    for (int j = 0; j < nd_new; ++j) {
+        need_unique[j] = (char *)PyMem_Calloc((size_t)newdims[j], sizeof(char));
+        uniq_sets[j] = (StrSet **)PyMem_Calloc((size_t)newdims[j], sizeof(StrSet *));
+        if (!need_unique[j] || !uniq_sets[j]) { PyErr_NoMemory(); goto fail; }
+        for (npy_intp i = 0; i < newdims[j]; ++i) {
+            IntersectState *st = &states[j][(int)i];
+            if (!st->set || st->set->used == 0) {
+                need_unique[j][(int)i] = 1;
+                any_need = 1;
+            }
+        }
+    }
+
+    if (any_need) {
+        memset(idx_new, 0, sizeof(npy_intp) * (size_t)nd_new);
+        for (npy_intp flat = 0; flat < total; ++flat) {
+            const char *lab = labels_flat[flat];
+            size_t L = strlen(lab);
+            for (int j = 0; j < nd_new; ++j) {
+                if (!need_unique[j][(int)idx_new[j]]) continue;
+                if (!uniq_sets[j][(int)idx_new[j]]) {
+                    uniq_sets[j][(int)idx_new[j]] = strset_new(8, 0);
+                    if (!uniq_sets[j][(int)idx_new[j]]) { PyErr_NoMemory(); goto fail; }
+                }
+                if (strset_add(uniq_sets[j][(int)idx_new[j]], lab, L) < 0) { PyErr_NoMemory(); goto fail; }
+            }
+            idx_increment_order(idx_new, newdims, nd_new, order_c);
+        }
+    }
+
+    out = labelsblock_alloc(nd_new);
+    if (!out) { PyErr_NoMemory(); goto fail; }
+
+    for (int j = 0; j < nd_new; ++j) {
+        int n = (int)newdims[j];
+        out->axis_len[j] = n;
+        out->axis_labels[j] = (char **)calloc((size_t)n, sizeof(char *));
+        if (!out->axis_labels[j]) { PyErr_NoMemory(); goto fail; }
+
+        size_t *join_lens = (size_t *)PyMem_Malloc(sizeof(size_t) * (size_t)n);
+        if (!join_lens) { PyErr_NoMemory(); goto fail; }
+        size_t total_axis = 0;
+        for (int i = 0; i < n; ++i) {
+            StrSet *set = (states[j][i].set && states[j][i].set->used > 0) ? states[j][i].set : uniq_sets[j][i];
+            size_t L = strset_join_len(set, delim_len);
+            join_lens[i] = L;
+            if (SIZE_MAX - total_axis < L + 1) { PyMem_Free(join_lens); PyErr_NoMemory(); goto fail; }
+            total_axis += L + 1;
+        }
+
+        char *slab = (char *)PyDataMem_NEW(total_axis ? total_axis : 1);
+        if (!slab) { PyMem_Free(join_lens); PyErr_NoMemory(); goto fail; }
+        out->axis_slab[j] = slab;
+        char *cur = slab;
+
+        for (int i = 0; i < n; ++i) {
+            StrSet *set = (states[j][i].set && states[j][i].set->used > 0) ? states[j][i].set : uniq_sets[j][i];
+            if (!set || set->used == 0) {
+                *cur = '\0';
+                out->axis_labels[j][i] = cur;
+                cur += 1;
+                continue;
+            }
+            char *stack_keys[64];
+            int nkeys = 0;
+            char **keys = strset_collect_keys(set, &nkeys, stack_keys, 64);
+            if (!keys) { PyMem_Free(join_lens); PyErr_NoMemory(); goto fail; }
+            qsort(keys, (size_t)nkeys, sizeof(char *), cmp_cstr);
+
+            char *dst = cur;
+            for (int k = 0; k < nkeys; ++k) {
+                if (k > 0 && delim_len) { memcpy(dst, delim, delim_len); dst += delim_len; }
+                size_t L = strlen(keys[k]);
+                memcpy(dst, keys[k], L); dst += L;
+            }
+            *dst = '\0';
+            out->axis_labels[j][i] = cur;
+            cur = dst + 1;
+            if (keys != stack_keys) PyMem_Free(keys);
+        }
+
+        PyMem_Free(join_lens);
+        if (make_array_unique_c(out->axis_labels[j], n, delim, &out->axis_slab[j]) < 0) { PyErr_NoMemory(); goto fail; }
+        if (axhash_build(&out->axis_hash[j], (const char **)out->axis_labels[j], n) < 0) { goto fail; }
+        if (labelsblock_finalize_axis_from_c(out, j) < 0) { goto fail; }
+    }
+
+    PyArray_Dims nds; nds.ptr = (npy_intp *)newdims; nds.len = nd_new;
+    reshaped = (PyArrayObject *)PyArray_Newshape(arr, &nds, order);
+    if (!reshaped) goto fail;
+    view = PyArray_View(reshaped, NULL, (PyTypeObject *)Py_TYPE(self_obj));
+    Py_DECREF(reshaped); reshaped = NULL;
+    if (!view) goto fail;
+
+    LabeledArrayObject *v = (LabeledArrayObject *)view;
+    LabelsBlock *old = v->labels_block;
+    v->labels_block = out;
+    labelsblock_decref(old);
+    labels_cache_clear(v);
+    out = NULL;
+
+fail:
+    if (labels_slab) PyDataMem_FREE(labels_slab);
+    if (labels_flat) PyMem_Free(labels_flat);
+    if (lab_lens) {
+        for (int ax = 0; ax < nd; ++ax) PyMem_Free(lab_lens[ax]);
+        PyMem_Free(lab_lens);
+    }
+    PyMem_Free(idx_old);
+    if (states) {
+        for (int j = 0; j < nd_new; ++j) {
+            if (!states[j]) continue;
+            for (npy_intp i = 0; i < newdims[j]; ++i) {
+                if (states[j][i].set) { strset_free(states[j][i].set); PyMem_Free(states[j][i].set); }
+            }
+            PyMem_Free(states[j]);
+        }
+        PyMem_Free(states);
+    }
+    if (need_unique) {
+        for (int j = 0; j < nd_new; ++j) PyMem_Free(need_unique[j]);
+        PyMem_Free(need_unique);
+    }
+    if (uniq_sets) {
+        for (int j = 0; j < nd_new; ++j) {
+            if (!uniq_sets[j]) continue;
+            for (npy_intp i = 0; i < newdims[j]; ++i) {
+                if (uniq_sets[j][i]) { strset_free(uniq_sets[j][i]); PyMem_Free(uniq_sets[j][i]); }
+            }
+            PyMem_Free(uniq_sets[j]);
+        }
+        PyMem_Free(uniq_sets);
+    }
+    PyMem_Free(idx_new);
+    if (out) labelsblock_decref(out);
+    if (!view) return NULL;
+    return view;
+}
+
+static PyObject *
+LabeledArray_reshape(PyObject *self_obj, PyObject *args, PyObject *kwargs)
+{
+    PyArrayObject *arr = (PyArrayObject *)self_obj;
+    PyArray_Dims newdims;
+    NPY_ORDER order = NPY_CORDER;
+    if (reshape_parse_args(args, kwargs, &newdims, &order) < 0) return NULL;
+
+    npy_intp total = PyArray_SIZE(arr);
+    if (reshape_resolve_dims(&newdims, total) < 0) { PyDimMem_FREE(newdims.ptr); return NULL; }
+
+    int nd = PyArray_NDIM(arr);
+    int nd_new = (int)newdims.len;
+    if (nd_new == 0) {
+        PyDimMem_FREE(newdims.ptr);
+        PyErr_SetString(PyExc_NotImplementedError, "reshape labels (fast) does not support scalar shapes");
+        return NULL;
+    }
+    if (order != NPY_CORDER && order != NPY_FORTRANORDER) {
+        PyDimMem_FREE(newdims.ptr);
+        PyErr_SetString(PyExc_NotImplementedError, "reshape order not supported");
+        return NULL;
+    }
+
+    int use_combine = 0;
+    int *group_start = NULL;
+    int *group_end = NULL;
+    if (order == NPY_CORDER && nd_new <= nd) {
+        group_start = (int *)PyMem_Malloc(sizeof(int) * (size_t)nd_new);
+        group_end = (int *)PyMem_Malloc(sizeof(int) * (size_t)nd_new);
+        if (!group_start || !group_end) {
+            PyMem_Free(group_start); PyMem_Free(group_end);
+            PyDimMem_FREE(newdims.ptr);
+            PyErr_NoMemory();
+            return NULL;
+        }
+
+        int src = 0;
+        int unsupported = 0;
+        for (int j = 0; j < nd_new; ++j) {
+            npy_intp need = newdims.ptr[j];
+            npy_intp prod = 1;
+            int start = src;
+            while (src < nd && prod < need) {
+                npy_intp d = PyArray_DIM(arr, src);
+                if (d == 0) { prod = 0; break; }
+                if (prod > NPY_MAX_INTP / d) { unsupported = 1; break; }
+                prod *= d;
+                src++;
+            }
+            if (prod != need) { unsupported = 1; break; }
+            group_start[j] = start;
+            group_end[j] = src - 1;
+            if (group_end[j] < group_start[j]) { unsupported = 1; break; }
+        }
+        if (src != nd) unsupported = 1;
+        if (!unsupported) use_combine = 1;
+    }
+
+    if (use_combine) {
+        PyObject *view = NULL;
+        int keep_nd = nd_new;
+        npy_intp *keep_shape = NULL;
+        PyArrayObject *transposed = NULL;
+
+        if (nd_new == nd) {
+            Py_INCREF(arr);
+            transposed = arr;
+        } else {
+            char *drop = (char *)PyMem_Calloc((size_t)nd, sizeof(char));
+            if (!drop) { PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
+            for (int j = 0; j < nd_new; ++j) {
+                for (int ax = group_start[j]; ax <= group_end[j]; ++ax) drop[ax] = 1;
+            }
+            int *perm = (int *)PyMem_Malloc(sizeof(int) * (size_t)nd);
+            if (!perm) { PyMem_Free(drop); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
+            int w = 0;
+            for (int i = 0; i < nd; ++i) if (drop[i]) perm[w++] = i;
+            PyMem_Free(drop);
+            npy_intp *perm_i = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)nd);
+            if (!perm_i) { PyMem_Free(perm); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
+            for (int i = 0; i < nd; ++i) perm_i[i] = (npy_intp)perm[i];
+            PyArray_Dims pd; pd.ptr = perm_i; pd.len = nd;
+            transposed = (PyArrayObject *)PyArray_Transpose(arr, &pd);
+            PyMem_Free(perm_i); PyMem_Free(perm);
+            if (!transposed) { PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+        }
+
+        if (keep_nd > 0) {
+            keep_shape = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)keep_nd);
+            if (!keep_shape) { Py_DECREF(transposed); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
+            for (int i = 0; i < keep_nd; ++i) keep_shape[i] = PyArray_DIM(transposed, i);
+        }
+
+        PyArray_Dims nds; nds.ptr = (npy_intp *)newdims.ptr; nds.len = nd_new;
+        PyObject *reshaped = PyArray_Newshape(transposed, &nds, NPY_CORDER);
+        Py_DECREF(transposed);
+        if (!reshaped) { PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+        view = PyArray_View((PyArrayObject *)reshaped, NULL, (PyTypeObject *)Py_TYPE(self_obj));
+        Py_DECREF(reshaped);
+        if (!view) { PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+
+        LabeledArrayObject *self = (LabeledArrayObject *)self_obj;
+        LabelsBlock *plb = self->labels_block;
+        if (!plb) { plb = labelsblock_new_default((PyArrayObject *)self_obj); if (!plb) { Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; } self->labels_block = plb; }
+        LabelsBlock *out = labelsblock_alloc(nd_new);
+        if (!out) { Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+
+        const char *joiner = (self->delimiter != NULL) ? self->delimiter : "-";
+        for (int j = 0; j < nd_new; ++j) {
+            int s = group_start[j];
+            int e = group_end[j];
+            if (s == e) {
+                int n = plb->axis_len[s];
+                if (labelsblock_set_axis_copy(out, j, plb->axis_labels[s], n) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+            } else {
+                char **labels = NULL; char *slab = NULL; int n = 0;
+                if (build_combined_labels_range(plb, s, e, joiner, &labels, &slab, &n) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+                out->axis_len[j] = n;
+                out->axis_labels[j] = labels;
+                out->axis_slab[j] = slab;
+                if (axhash_build(&out->axis_hash[j], (const char **)out->axis_labels[j], n) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+                if (labelsblock_finalize_axis_from_c(out, j) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
+            }
+        }
+
+        LabeledArrayObject *v = (LabeledArrayObject *)view;
+        LabelsBlock *old = v->labels_block;
+        v->labels_block = out;
+        labelsblock_decref(old);
+        labels_cache_clear(v);
+
+        PyMem_Free(keep_shape);
+        PyMem_Free(group_start); PyMem_Free(group_end);
+        PyDimMem_FREE(newdims.ptr);
+        return view;
+    }
+
+    PyMem_Free(group_start); PyMem_Free(group_end);
+    PyObject *res = reshape_general(self_obj, arr, (const npy_intp *)newdims.ptr, nd_new, order);
+    PyDimMem_FREE(newdims.ptr);
+    return res;
+}
+
 /* ---------- dropna (C-accelerated) ---------- */
 static PyObject *
 LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
@@ -2842,6 +2487,184 @@ LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
     return res;
 }
 
+static int
+copy_to_out(PyObject *out_obj, PyObject *src)
+{
+    PyArrayObject *out_arr = (PyArrayObject *)PyArray_FromAny(out_obj, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
+    if (!out_arr) return -1;
+    PyObject *src_arr_obj = NULL;
+    if (PyObject_TypeCheck(src, &LabeledArray_Type)) {
+        src_arr_obj = PyArray_View((PyArrayObject *)src, NULL, &PyArray_Type);
+    } else if (PyArray_Check(src)) {
+        Py_INCREF(src);
+        src_arr_obj = src;
+    } else {
+        src_arr_obj = PyArray_FromAny(src, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
+    }
+    if (!src_arr_obj) { Py_DECREF(out_arr); return -1; }
+    if (PyArray_CopyInto(out_arr, (PyArrayObject *)src_arr_obj) < 0) {
+        Py_DECREF(out_arr); Py_DECREF(src_arr_obj); return -1;
+    }
+    Py_DECREF(out_arr);
+    Py_DECREF(src_arr_obj);
+    return 0;
+}
+
+static PyObject *
+wrap_reduction_result(PyObject *self_obj, PyObject *result, const int *axes, int naxes, int keepdims)
+{
+    if (!PyArray_Check(result)) { Py_INCREF(result); return result; }
+
+    if (!keepdims) {
+        PyObject *axes_tuple = PyTuple_New(naxes);
+        if (!axes_tuple) return NULL;
+        for (int i = 0; i < naxes; ++i) {
+            PyTuple_SET_ITEM(axes_tuple, i, PyLong_FromLong(axes[i]));
+        }
+        PyObject *context = Py_BuildValue("(OOO)", Py_None, Py_None, axes_tuple);
+        Py_DECREF(axes_tuple);
+        if (!context) return NULL;
+        PyObject *wrapped = PyObject_CallMethod(self_obj, "__array_wrap__", "OO", result, context);
+        Py_DECREF(context);
+        return wrapped;
+    }
+
+    int orig_nd = PyArray_NDIM((PyArrayObject *)self_obj);
+    if (orig_nd == 0) {
+        PyObject *wrapped = PyObject_CallMethod(self_obj, "__array_wrap__", "OO", result, Py_None);
+        return wrapped;
+    }
+
+    char *reduced = (char *)PyMem_Calloc((size_t)orig_nd, sizeof(char));
+    if (!reduced) { PyErr_NoMemory(); return NULL; }
+    for (int i = 0; i < naxes; ++i) {
+        int ax = axes[i];
+        if (ax >= 0 && ax < orig_nd) reduced[ax] = 1;
+    }
+    npy_intp *new_dims = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)orig_nd);
+    if (!new_dims) { PyMem_Free(reduced); PyErr_NoMemory(); return NULL; }
+    PyArrayObject *res_arr = (PyArrayObject *)result;
+    int j = 0;
+    for (int i = 0; i < orig_nd; ++i) {
+        if (reduced[i]) new_dims[i] = 1;
+        else new_dims[i] = PyArray_DIM(res_arr, j++);
+    }
+    PyArray_Dims nds; nds.ptr = new_dims; nds.len = orig_nd;
+    PyObject *expanded = PyArray_Newshape(res_arr, &nds, NPY_CORDER);
+    PyMem_Free(new_dims);
+    PyMem_Free(reduced);
+    if (!expanded) return NULL;
+    PyObject *wrapped = PyObject_CallMethod(self_obj, "__array_wrap__", "OO", expanded, Py_None);
+    Py_DECREF(expanded);
+    if (!wrapped) return NULL;
+    if (PyObject_TypeCheck(wrapped, &LabeledArray_Type)) {
+        PyObject *labels = build_keepdims_labels((LabeledArrayObject *)self_obj, axes, naxes);
+        if (!labels) { Py_DECREF(wrapped); return NULL; }
+        if (PyObject_SetAttrString(wrapped, "labels", labels) < 0) {
+            Py_DECREF(labels);
+            Py_DECREF(wrapped);
+            return NULL;
+        }
+        Py_DECREF(labels);
+    }
+    return wrapped;
+}
+
+static PyObject *
+LabeledArray_nanmean(PyObject *self_obj, PyObject *args, PyObject *kwargs)
+{
+    PyObject *axis_obj = Py_None, *dtype_obj = Py_None, *out_obj = Py_None, *where_obj = Py_None;
+    int keepdims = 0;
+    static char *kwlist[] = {"axis", "dtype", "out", "keepdims", "where", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOpO:nanmean", kwlist,
+                                     &axis_obj, &dtype_obj, &out_obj, &keepdims, &where_obj)) {
+        return NULL;
+    }
+    PyObject *mean = NULL, *var = NULL;
+    int *axes = NULL, naxes = 0;
+    if (nanmeanvar_core(self_obj, axis_obj, dtype_obj, where_obj, 0.0, &mean, &var, &axes, &naxes) < 0) return NULL;
+    Py_DECREF(var);
+    PyObject *wrapped = wrap_reduction_result(self_obj, mean, axes, naxes, keepdims);
+    Py_DECREF(mean);
+    PyMem_Free(axes);
+    if (!wrapped) return NULL;
+    if (out_obj && out_obj != Py_None) {
+        if (copy_to_out(out_obj, wrapped) < 0) { Py_DECREF(wrapped); return NULL; }
+        Py_DECREF(wrapped);
+        Py_INCREF(out_obj);
+        return out_obj;
+    }
+    return wrapped;
+}
+
+static PyObject *
+LabeledArray_nanstd(PyObject *self_obj, PyObject *args, PyObject *kwargs)
+{
+    PyObject *axis_obj = Py_None, *dtype_obj = Py_None, *out_obj = Py_None, *where_obj = Py_None, *ddof_obj = NULL;
+    int keepdims = 0;
+    static char *kwlist[] = {"axis", "dtype", "out", "ddof", "keepdims", "where", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOOpO:nanstd", kwlist,
+                                     &axis_obj, &dtype_obj, &out_obj, &ddof_obj, &keepdims, &where_obj)) {
+        return NULL;
+    }
+    double ddof = 0.0;
+    if (ddof_obj && ddof_obj != Py_None) {
+        ddof = PyFloat_AsDouble(ddof_obj);
+        if (ddof == -1.0 && PyErr_Occurred()) return NULL;
+    }
+    PyObject *std = NULL;
+    int *axes = NULL, naxes = 0;
+    if (nanstd_core(self_obj, axis_obj, dtype_obj, where_obj, ddof, &std, &axes, &naxes) < 0) return NULL;
+
+    PyObject *wrapped = wrap_reduction_result(self_obj, std, axes, naxes, keepdims);
+    Py_DECREF(std);
+    PyMem_Free(axes);
+    if (!wrapped) return NULL;
+    if (out_obj && out_obj != Py_None) {
+        if (copy_to_out(out_obj, wrapped) < 0) { Py_DECREF(wrapped); return NULL; }
+        Py_DECREF(wrapped);
+        Py_INCREF(out_obj);
+        return out_obj;
+    }
+    return wrapped;
+}
+
+static PyObject *
+LabeledArray_nanmean_std(PyObject *self_obj, PyObject *args, PyObject *kwargs)
+{
+    PyObject *axis_obj = Py_None, *dtype_obj = Py_None, *where_obj = Py_None, *ddof_obj = NULL;
+    int keepdims = 0;
+    static char *kwlist[] = {"axis", "dtype", "ddof", "keepdims", "where", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOpO:nanmean_std", kwlist,
+                                     &axis_obj, &dtype_obj, &ddof_obj, &keepdims, &where_obj)) {
+        return NULL;
+    }
+    double ddof = 0.0;
+    if (ddof_obj && ddof_obj != Py_None) {
+        ddof = PyFloat_AsDouble(ddof_obj);
+        if (ddof == -1.0 && PyErr_Occurred()) return NULL;
+    }
+    PyObject *mean = NULL, *std = NULL;
+    int *axes = NULL, naxes = 0;
+    if (nanmeanstd_core(self_obj, axis_obj, dtype_obj, where_obj, ddof, &mean, &std, &axes, &naxes) < 0) return NULL;
+
+    PyObject *mean_wrapped = wrap_reduction_result(self_obj, mean, axes, naxes, keepdims);
+    Py_DECREF(mean);
+    PyObject *std_wrapped = wrap_reduction_result(self_obj, std, axes, naxes, keepdims);
+    Py_DECREF(std);
+    PyMem_Free(axes);
+    if (!mean_wrapped || !std_wrapped) {
+        Py_XDECREF(mean_wrapped);
+        Py_XDECREF(std_wrapped);
+        return NULL;
+    }
+    PyObject *out = PyTuple_New(2);
+    if (!out) { Py_DECREF(mean_wrapped); Py_DECREF(std_wrapped); return NULL; }
+    PyTuple_SET_ITEM(out, 0, mean_wrapped);
+    PyTuple_SET_ITEM(out, 1, std_wrapped);
+    return out;
+}
+
 
 static PyMethodDef LabeledArray_methods[] = {
     {"__array_finalize__", (PyCFunction)array_finalize, METH_VARARGS | METH_KEYWORDS, NULL},
@@ -2850,8 +2673,12 @@ static PyMethodDef LabeledArray_methods[] = {
     {"__array_ufunc__", (PyCFunction)array_ufunc, METH_VARARGS | METH_KEYWORDS, NULL},
     {"take", (PyCFunction)LabeledArray_take, METH_VARARGS | METH_KEYWORDS, NULL},
     {"combine", (PyCFunction)LabeledArray_combine, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"reshape", (PyCFunction)LabeledArray_reshape, METH_VARARGS | METH_KEYWORDS, NULL},
     {"find", (PyCFunction)LabeledArray_find, METH_VARARGS | METH_KEYWORDS, NULL},
     {"dropna", (PyCFunction)LabeledArray_dropna, METH_NOARGS, NULL},
+    {"nanmean", (PyCFunction)LabeledArray_nanmean, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"nanstd", (PyCFunction)LabeledArray_nanstd, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"nanmean_std", (PyCFunction)LabeledArray_nanmean_std, METH_VARARGS | METH_KEYWORDS, NULL},
     {NULL, NULL, 0, NULL}
 };
 

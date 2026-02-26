@@ -864,11 +864,10 @@ def ridge_nd(
         n_eff = np.broadcast_to(mask.shape[-1], mask.shape[:-1])
 
     else:
-        n_eff = np.sum(mask, axis=-1, dtype=int)
-
         # Single contiguous copy to avoid editing inputs
         x1 = np.where(mask[..., None, :], x_t, 0.0)
         y1 = np.where(mask, y_t, 0.0)
+        n_eff = np.sum(mask, axis=-1, dtype=int)
 
     # Raw sums
     Sx = np.sum(x1, axis=-1, dtype=settings['dtype'])  # (..., p)

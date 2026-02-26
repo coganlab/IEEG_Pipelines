@@ -219,7 +219,7 @@ class LabeledArray(cla):
     ----------
     input_array : array_like
         The array to store in the LabeledArray.
-    labels : tuple[tuple[str, ...], ...], optional
+    labels : sequence[sequence[str]], optional
         The labels for each dimension of the array, by default ().
     delimiter : str, optional
         The delimiter to use when combining labels, by default '-'
@@ -228,7 +228,7 @@ class LabeledArray(cla):
 
     Attributes
     ----------
-    labels : tuple[tuple[str, ...], ...]
+    labels : list[list[str]]
         The labels for each dimension of the array.
     array : np.ndarray
         The array stored in the LabeledArray.
@@ -270,6 +270,7 @@ class LabeledArray(cla):
     labels(['a', 'b']
            ['c', 'd', 'e']
            ['f', 'g', 'h', 'i'])
+    >>> _ = la['a', :, ('f','g')]
     >>> la[np.array([False, True]),]
     array([[[1, 1, 1, 1],
             [1, 1, 1, 1],
@@ -306,15 +307,30 @@ class LabeledArray(cla):
 
     Notes
     -----
-    Multiple sequence advanced indices objects are not supported. If you want
-     to use multiple sequence indices, you should use them one at a time.
+    Advanced indexing rules (current implementation):
+    - Only one "general" advanced index (sequence/ndarray/boolean) is supported
+      at a time. Multiple advanced indices are only supported in `np.ix_` style.
+      Otherwise, apply indices one at a time.
+    - `np.ix_`-style indexing is recognized when you pass consecutive integer
+      ndarrays with the same ndim `m`, where each array has exactly one
+      non-singleton dimension at its own position (e.g., `(R,1,1)`, `(1,C,1)`, ...).
+      These are expanded into `m` result axes.
+    - Boolean masks must be 1D when indexing a single axis, must match that
+      axis length, and the number of `True` values must equal the resulting
+      axis length.
+    - Multi-dimensional index arrays (ndim > 2) follow NumPy's shape rules
+      (output axis replaced by `indices.shape`). Labels for these axes are
+      constructed in index order (no sorting).
+    - Sequence indices may contain integers and/or labels. Negative integers
+      wrap from the end of the axis (NumPy semantics). Missing labels raise
+      `IndexError`.
 
     References
     ----------
     [1] https://numpy.org/doc/stable/user/basics.subclassing.html
     [2] https://numpy.org/doc/stable/user/basics.indexing.html
     """
-    labels: tuple['Labels', ...]
+    # labels: tuple['Labels', ...]
 
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
@@ -630,6 +646,11 @@ class LabeledArray(cla):
         >>> ad.reshape((1, 2, 5)).labels # doctest: +ELLIPSIS
         [['0-1-2-3-4-5-6-7-8-9'], ['0-1-2-3-4', '5-6-7-8-9'], ['0-5', '1-6',...
         """
+        try:
+            return super(LabeledArray, self).reshape(shape, order=order)
+        except NotImplementedError:
+            pass
+
         new_array = super(LabeledArray, self).reshape(*shape, order=order)
         lab_mat = functools.reduce(lambda x, y: Labels(x) @ Labels(y), self.labels, Labels(['']))
         new_labels = lab_mat.reshape(*shape, order=order, **kwargs).decompose()
@@ -973,15 +994,22 @@ class Labels(np.char.chararray):
     def __matmul__(self, other):
         if not isinstance(other, Labels):
             raise NotImplementedError("Only Labels @ Labels is supported")
-        s_str, o_str = self.astype(str), other.astype(str)
+        # Use base ndarrays to avoid delimiter insertion on empty strings.
+        s_str, o_str = np.asarray(self, dtype=str), np.asarray(other, dtype=str)
 
         # Convert the arrays to 2D
         s_str_2d = s_str[..., None]
         o_str_2d = o_str[None]
 
         # Use broadcasting to create a result array with combined strings
-        result = s_str_2d + o_str_2d
-        return result
+        if self.delimiter:
+            both = (s_str_2d != '') & (o_str_2d != '')
+            joined = np.char.add(np.char.add(s_str_2d, self.delimiter), o_str_2d)
+            plain = np.char.add(s_str_2d, o_str_2d)
+            result = np.where(both, joined, plain)
+        else:
+            result = np.char.add(s_str_2d, o_str_2d)
+        return Labels(result, self.delimiter)
 
     def __add__(self, other):
         result = self.view(np.char.chararray).__add__(
@@ -1049,7 +1077,7 @@ class Labels(np.char.chararray):
         new_labels = [[None for _ in range(s)] for s in self.shape]
         for i, dim in enumerate(self.shape):
             for j in range(dim):
-                row = np.take(self, j, axis=i).flatten().astype(str)
+                row = Labels(np.take(self, j, axis=i).flatten(), self.delimiter)
                 splitted = row.split(self.delimiter)
                 common = functools.reduce(np.intersect1d, splitted)
                 if len(common) == 0:

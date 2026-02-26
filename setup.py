@@ -9,9 +9,11 @@ import glob
 
 _numpy_abs = np.get_include()  # get the numpy include path
 
-def get_file_list(path, ext):
+def get_file_list(path, ext, exclude=None):
     all_files = glob.glob(op.join(path, f"*{ext}"))
     for file in all_files:
+        if exclude and op.basename(file) in exclude:
+            continue
         # Convert file path to module name by replacing path separators with dots
         name = op.splitext(file)[0].replace('\\', '.').replace('/', '.')
         yield name, [file]
@@ -35,7 +37,8 @@ except ValueError:
     pass
 
 
-kwargs = dict(include_dirs=[_numpy_abs],
+shared_dir = op.join(getcwd(), "ieeg", "calc", "_fast", "shared")
+kwargs = dict(include_dirs=[_numpy_abs, shared_dir],
               # includes for numpy
               library_dirs=lib_path,  # libraries to link
               libraries=["npyrandom", "npymath"],  # math library
@@ -43,6 +46,11 @@ kwargs = dict(include_dirs=[_numpy_abs],
               language="c",  # can be "c" or "c++"
               define_macros=[]
               )
+
+def _with_macros(macros):
+    kw = dict(kwargs)
+    kw["define_macros"] = macros
+    return kw
 
 try:
     from Cython.Build import cythonize
@@ -66,10 +74,16 @@ except ImportError:
     if not op.exists("ieeg/timefreq/hilbert.c"):
         ValueError("C file not found.")
 
+exclude_fast = {"ufuncs.c"}
 extensions = [
     Extension(name, source, **kwargs) for (name, source) in
-    get_file_list("ieeg/calc/_fast", ".c")]
+    get_file_list("ieeg/calc/_fast", ".c", exclude=exclude_fast)]
 extensions += [
+    Extension(
+        "ieeg.calc._fast.ufuncs",
+        ["ieeg/calc/_fast/ufuncs.c", "ieeg/calc/_fast/shared/meanvar_core.c"],
+        **_with_macros([("PY_ARRAY_UNIQUE_SYMBOL", "IEEG_ARRAY_API_UFUNCS")])
+    ),
     Extension(
         "ieeg.timefreq.hilbert",  # the module name exposed to python
         ['ieeg/timefreq/hilbert.c'],  # the Cython source file
@@ -77,8 +91,8 @@ extensions += [
     ),
     Extension(
         "ieeg.arrays.labeledarray",
-        ["ieeg/arrays/labeledarray.c"],
-        **kwargs
+        ["ieeg/arrays/labeledarray.c", "ieeg/arrays/labels.c", "ieeg/calc/_fast/shared/meanvar_core.c"],
+        **_with_macros([("PY_ARRAY_UNIQUE_SYMBOL", "IEEG_ARRAY_API_LABELEDARRAY")])
     )
 ]
 
