@@ -78,3 +78,5 @@ def weighted_preserve_stats(data, weights, axis=None):
 print(weighted_preserve_stats(a, np.array([[1,2,3]])))
 
 print("combine", a.combine((0,1)))
+
+print("")

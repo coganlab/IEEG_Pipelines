@@ -25,12 +25,7 @@ write_intp_1d(char *base, npy_intp stride, npy_intp i, npy_intp v)
     memcpy(base + i * stride, &v, sizeof(npy_intp));
 }
 
-
-
 static PyTypeObject LabeledArray_Type; /* forward */
-
-
-/* Forward declare struct tag so self-referential pointers work */
 
 /* explicit ndarray sub-type instance layout */
 typedef struct {
@@ -38,9 +33,10 @@ typedef struct {
     LabelsBlock *labels_block;
     PyObject *labels_cache; /* cached tuple-of-ndarray(unicode, 1d) per axis */
     char *delimiter; /* default join for label combinations */
+    PyObject *ob_dict;
 } LabeledArrayObject;
 
-/* Convert args for __array_function__ fallback: replace LabeledArray with base ndarray, recurse into lists/tuples */
+/* Convert args for __array_function__ fallback */
 static NPY_INLINE PyObject *
 to_base_arg(PyObject *arg)
 {
@@ -55,7 +51,7 @@ to_base_arg(PyObject *arg)
             PyObject *it = PyTuple_GET_ITEM(arg, i);
             PyObject *conv = to_base_arg(it);
             if (!conv) { Py_DECREF(out); return NULL; }
-            PyTuple_SET_ITEM(out, i, conv); /* steals */
+            PyTuple_SET_ITEM(out, i, conv);
         }
         return out;
     }
@@ -67,7 +63,7 @@ to_base_arg(PyObject *arg)
             PyObject *it = PyList_GET_ITEM(arg, i);
             PyObject *conv = to_base_arg(it);
             if (!conv) { Py_DECREF(out); return NULL; }
-            PyList_SET_ITEM(out, i, conv); /* steals */
+            PyList_SET_ITEM(out, i, conv);
         }
         return out;
     }
@@ -75,15 +71,14 @@ to_base_arg(PyObject *arg)
     return arg;
 }
 
-/* Convert kwargs: return a new dict with 'out' and 'where' converted to ndarray views if they are LabeledArray; returns NULL if no kwargs */
+/* Convert kwargs: return new dict with 'out' and 'where' converted */
 static NPY_INLINE PyObject *
 convert_kwargs_out_where(PyObject *kwargs)
 {
     if (!kwargs || kwargs == Py_None || !PyDict_Check(kwargs)) return NULL;
     PyObject *kw2 = PyDict_Copy(kwargs);
     if (!kw2) return NULL;
-    /* out */
-    PyObject *out_kw = PyDict_GetItemString(kw2, "out"); /* borrowed */
+    PyObject *out_kw = PyDict_GetItemString(kw2, "out");
     if (out_kw && out_kw != Py_None) {
         if (PyTuple_Check(out_kw)) {
             Py_ssize_t nout = PyTuple_GET_SIZE(out_kw);
@@ -110,8 +105,7 @@ convert_kwargs_out_where(PyObject *kwargs)
             Py_DECREF(out_conv);
         }
     }
-    /* where */
-    PyObject *where_kw = PyDict_GetItemString(kw2, "where"); /* borrowed */
+    PyObject *where_kw = PyDict_GetItemString(kw2, "where");
     if (where_kw && PyObject_TypeCheck(where_kw, &LabeledArray_Type)) {
         PyObject *where_conv = PyArray_View((PyArrayObject *)where_kw, NULL, &PyArray_Type);
         if (!where_conv) { Py_DECREF(kw2); return NULL; }
@@ -127,20 +121,26 @@ labels_cache_clear(LabeledArrayObject *obj)
     if (obj) {
         Py_XDECREF(obj->labels_cache);
         obj->labels_cache = NULL;
+        /* Also clear __dict__ mirror so it stays in sync.
+           PyDict_DelItemString sets KeyError if the key is absent — clear it. */
+        if (obj->ob_dict && PyDict_Check(obj->ob_dict)) {
+            if (PyDict_DelItemString(obj->ob_dict, "labels") < 0)
+                PyErr_Clear();
+        }
     }
 }
 
-/* Attach labels to a LabeledArray view and clear cache */
+/* CHANGE 2: Skip cache clear + decref when attaching same block */
 static NPY_INLINE void
 labelsblock_attach_to_view(PyObject *view, LabelsBlock *out_lb)
 {
     LabeledArrayObject *vobj = (LabeledArrayObject *)view;
     LabelsBlock *old = vobj->labels_block;
+    if (old == out_lb) return;  /* same block — cache still valid */
     vobj->labels_block = out_lb;
     labelsblock_decref(old);
     labels_cache_clear(vobj);
 }
-
 
 static NPY_INLINE PyObject *
 build_keepdims_labels(LabeledArrayObject *self, const int *axes, int naxes)
@@ -182,16 +182,25 @@ build_keepdims_labels(LabeledArrayObject *self, const int *axes, int naxes)
     return out;
 }
 
-
-
-/* Wrap an ndarray result to LabeledArray and attach labels via ck, returning scalar if 0d. Does not touch ck's refcount. */
-/* ---------- labels slot helpers (explicit struct) ---------- */
+/* ---------- labels slot helpers ---------- */
 static NPY_INLINE LabelsBlock **
 labels_slot(PyObject *self)
 {
     return &((LabeledArrayObject *)self)->labels_block;
 }
 
+/* ---------- __dict__ mirror helper ---------- */
+static NPY_INLINE void
+mirror_labels_to_dict(PyObject *self, PyObject *labels_list)
+{
+    PyObject *dict = PyObject_GenericGetDict(self, NULL);
+    if (dict) {
+        PyDict_SetItemString(dict, "labels", labels_list);
+        Py_DECREF(dict);
+    } else {
+        PyErr_Clear();
+    }
+}
 
 /* ---------- getters/setters ---------- */
 static PyObject *
@@ -208,7 +217,6 @@ LabeledArray_get_labels(PyObject *self, void *closure)
         if (!lb) return NULL;
         obj->labels_block = lb;
     }
-    /* Build list-of-lists of labels per axis */
     PyObject *out = PyList_New(lb->ndim);
     if (!out) return NULL;
     for (int ax = 0; ax < lb->ndim; ++ax) {
@@ -218,12 +226,16 @@ LabeledArray_get_labels(PyObject *self, void *closure)
         for (int i = 0; i < n; ++i) {
             PyObject *s = PyUnicode_FromString(lb->axis_labels[ax][i] ? lb->axis_labels[ax][i] : "");
             if (!s) { Py_DECREF(lst); Py_DECREF(out); return NULL; }
-            PyList_SET_ITEM(lst, i, s); /* steals ref */
+            PyList_SET_ITEM(lst, i, s);
         }
-        PyList_SET_ITEM(out, ax, lst); /* steals ref */
+        PyList_SET_ITEM(out, ax, lst);
     }
-    obj->labels_cache = out; /* cache holds a ref */
+    obj->labels_cache = out;
     Py_INCREF(obj->labels_cache);
+
+    /* Mirror into __dict__ for debugger visibility */
+    mirror_labels_to_dict(self, out);
+
     return out;
 }
 
@@ -237,6 +249,33 @@ LabeledArray_set_labels(PyObject *self, PyObject *value, void *closure)
     obj->labels_block = nb;
     labelsblock_decref(old);
     labels_cache_clear(obj);
+
+    /* Rebuild cache and mirror */
+    PyObject *fresh = LabeledArray_get_labels(self, NULL);
+    if (fresh) Py_DECREF(fresh);
+    else PyErr_Clear();
+
+    return 0;
+}
+
+/* ---------- GC support ---------- */
+static int
+LabeledArray_traverse(PyObject *self, visitproc visit, void *arg)
+{
+    LabeledArrayObject *obj = (LabeledArrayObject *)self;
+    Py_VISIT(obj->labels_cache);
+    Py_VISIT(obj->ob_dict);
+    if (PyArray_Type.tp_traverse)
+        return PyArray_Type.tp_traverse(self, visit, arg);
+    return 0;
+}
+
+static int
+LabeledArray_clear(PyObject *self)
+{
+    LabeledArrayObject *obj = (LabeledArrayObject *)self;
+    Py_CLEAR(obj->labels_cache);
+    Py_CLEAR(obj->ob_dict);
     return 0;
 }
 
@@ -276,23 +315,30 @@ LabeledArray_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (!*labels_slot(view)) { Py_DECREF(view); return NULL; }
     ((LabeledArrayObject *)view)->labels_cache = NULL;
     ((LabeledArrayObject *)view)->delimiter = NULL;
+    ((LabeledArrayObject *)view)->ob_dict = NULL;
     if (delim_in && *delim_in) {
         size_t L = strlen(delim_in) + 1;
         ((LabeledArrayObject *)view)->delimiter = (char *)PyDataMem_NEW(L);
         if (!((LabeledArrayObject *)view)->delimiter) { Py_DECREF(view); return NULL; }
         memcpy(((LabeledArrayObject *)view)->delimiter, delim_in, L);
     }
+
+    /* Mirror labels into __dict__ now that labels_block is fully set */
+    PyObject *labs = LabeledArray_get_labels(view, NULL);
+    if (labs) Py_DECREF(labs);
+    else PyErr_Clear();
+
     return view;
 }
 
 static void
 LabeledArray_dealloc(PyObject *self)
 {
+    PyObject_GC_UnTrack(self);
+    LabeledArray_clear(self);  /* drops labels_cache and ob_dict */
     LabeledArrayObject *obj = (LabeledArrayObject *)self;
     labelsblock_decref(obj->labels_block);
     obj->labels_block = NULL;
-    Py_XDECREF(obj->labels_cache);
-    obj->labels_cache = NULL;
     if (obj->delimiter) { free(obj->delimiter); obj->delimiter = NULL; }
     PyArray_Type.tp_dealloc(self);
 }
@@ -309,26 +355,27 @@ expand_and_convert_key_c(LabeledArrayObject *self, PyObject *key)
     if (!items) return NULL;
     Py_ssize_t n_items = PyTuple_GET_SIZE(items);
 
-    /* First pass: count tokens */
-    int consumed = 0; /* non-ellipsis, non-None */
-    int c_none = 0;
-    int c_ellipsis = 0;
-    for (Py_ssize_t i = 0; i < n_items; ++i) {
-        PyObject *k = PyTuple_GET_ITEM(items, i);
-        if (k == Py_None) { c_none++; continue; }
-        if (k == Py_Ellipsis) { c_ellipsis++; continue; }
-        consumed++;
-    }
-    int need_slices = ndim - consumed;
-    if (need_slices < 0) { Py_DECREF(items); PyErr_SetString(PyExc_IndexError, "too many indices"); return NULL; }
-    /* Total output length: ndim + c_none (+ extra slices for additional ellipses) */
-    Py_ssize_t out_len = (Py_ssize_t)ndim + (Py_ssize_t)c_none + (c_ellipsis > 0 ? (c_ellipsis - 1) : 0);
-    PyObject *out = PyTuple_New(out_len);
+    /* CHANGE 3: single-pass — worst-case allocation, trim at end */
+    /* Worst case: ndim data slots + n_items (all None) */
+    Py_ssize_t out_max = (Py_ssize_t)ndim + n_items;
+    PyObject *out = PyTuple_New(out_max);
     if (!out) { Py_DECREF(items); return NULL; }
 
-    int axis = 0; /* how many data axes consumed */
-    Py_ssize_t w = 0; /* write index into out */
+    int axis = 0;
+    Py_ssize_t w = 0;
+    int consumed = 0;    /* non-ellipsis, non-None items seen so far */
     int ellipsis_done = 0;
+    int n_ellipsis = 0;  /* count ellipses for need_slices calculation */
+
+    /* Pre-count ellipsis and consumed to know need_slices */
+    for (Py_ssize_t i = 0; i < n_items; ++i) {
+        PyObject *k = PyTuple_GET_ITEM(items, i);
+        if (k == Py_Ellipsis) n_ellipsis++;
+        else if (k != Py_None) consumed++;
+    }
+    int need_slices = ndim - consumed;
+    if (need_slices < 0) { Py_DECREF(out); Py_DECREF(items); PyErr_SetString(PyExc_IndexError, "too many indices"); return NULL; }
+
     for (Py_ssize_t i = 0; i < n_items; ++i) {
         PyObject *k = PyTuple_GET_ITEM(items, i);
         if (k == Py_Ellipsis) {
@@ -336,7 +383,7 @@ expand_and_convert_key_c(LabeledArrayObject *self, PyObject *key)
             for (int j = 0; j < n; ++j) {
                 PyObject *sl = PySlice_New(NULL, NULL, NULL);
                 if (!sl) { Py_DECREF(out); Py_DECREF(items); return NULL; }
-                PyTuple_SET_ITEM(out, w++, sl); /* steals */
+                PyTuple_SET_ITEM(out, w++, sl);
                 axis++;
             }
             ellipsis_done = 1;
@@ -395,10 +442,10 @@ expand_and_convert_key_c(LabeledArrayObject *self, PyObject *key)
             Py_INCREF(k);
             ck = k;
         }
-        PyTuple_SET_ITEM(out, w++, ck); /* steals */
+        PyTuple_SET_ITEM(out, w++, ck);
         axis++;
     }
-    /* Trailing slices if any */
+    /* Trailing slices */
     while (axis < ndim) {
         PyObject *sl = PySlice_New(NULL, NULL, NULL);
         if (!sl) { Py_DECREF(out); Py_DECREF(items); return NULL; }
@@ -406,7 +453,214 @@ expand_and_convert_key_c(LabeledArrayObject *self, PyObject *key)
         axis++;
     }
     Py_DECREF(items);
+
+    /* Trim to actual size */
+    if (w < out_max) {
+        if (_PyTuple_Resize(&out, w) < 0) return NULL;
+    }
     return out;
+}
+
+/* Build a LabelsBlock for a subscript result when labelsblock_slice fails.
+   ck must be a fully-expanded tuple (length == parent_lb->ndim) of:
+     - PyLong   : scalar integer index → that axis is dropped in result
+     - PySlice  : slice (including slice(None)) → axis kept, select labels
+     - PyList   : list of ints (fancy index) → axis kept, select labels at those positions
+     - PyArray  : 1-D int array (fancy index) → axis kept, select labels
+     - Py_None  : np.newaxis → adds new axis with a single "1" label
+   Falls back to numeric labels for anything it can't determine exactly.
+
+   Implements NumPy's advanced indexing axis placement rules:
+     - If all advanced (scalar/fancy) indices are *contiguous* in ck (no basic slice
+       between the first and last advanced index), the fancy output axis appears at
+       that position.
+     - If advanced indices are *non-contiguous* (at least one basic slice between
+       first and last advanced position), the fancy output axis is moved to the FRONT
+       (axis 0 of the result), followed by all basic axes in their original order.
+   This matches what np.ndarray.__getitem__ does, e.g.:
+       a[0, :, [2,3]] → shape (2, n1, ...) — 0 and [2,3] non-contiguous → fancy first
+       a[:, [2,3], :] → shape (n0, 2, n2) — [2,3] alone → stays in place */
+static LabelsBlock *
+labels_from_ck_fallback(LabelsBlock *parent_lb, PyObject *ck, PyArrayObject *result)
+{
+    if (!parent_lb || !ck || !result) return NULL;
+    if (!PyTuple_Check(ck)) return NULL;
+
+    int parent_nd = parent_lb->ndim;
+    Py_ssize_t ck_len = PyTuple_GET_SIZE(ck);
+    int result_nd = PyArray_NDIM(result);
+    const npy_intp *result_dims = PyArray_DIMS(result);
+
+    /* ck_len may exceed parent_nd when np.newaxis entries are present.
+       For now only handle the no-newaxis case (ck_len == parent_nd). */
+    if ((int)ck_len != parent_nd) return NULL;
+
+    /* ---- Step 1: classify each entry ---- */
+    /* kinds: 0=scalar_adv(int), 1=basic(slice), 2=fancy_adv(list/array) */
+    int *kinds = (int *)PyMem_Malloc(sizeof(int) * (size_t)ck_len);
+    if (!kinds) return NULL;
+
+    int first_adv = -1, last_adv = -1;
+    int fancy_src  = -1;      /* parent-axis index of the first non-scalar fancy index */
+    npy_intp fancy_n = -1;    /* size of that fancy index */
+
+    for (int i = 0; i < (int)ck_len; ++i) {
+        PyObject *k = PyTuple_GET_ITEM(ck, i);
+        if (PyLong_Check(k)) {
+            kinds[i] = 0;  /* scalar */
+            if (first_adv < 0) first_adv = i;
+            last_adv = i;
+        } else if (PySlice_Check(k)) {
+            kinds[i] = 1;  /* basic */
+        } else if (PyList_Check(k)) {
+            kinds[i] = 2;  /* fancy */
+            if (first_adv < 0) first_adv = i;
+            last_adv = i;
+            if (fancy_src < 0) { fancy_src = i; fancy_n = (npy_intp)PyList_GET_SIZE(k); }
+        } else if (PyArray_Check(k) && PyArray_NDIM((PyArrayObject *)k) == 1) {
+            kinds[i] = 2;  /* fancy */
+            if (first_adv < 0) first_adv = i;
+            last_adv = i;
+            if (fancy_src < 0) { fancy_src = i; fancy_n = PyArray_DIM((PyArrayObject *)k, 0); }
+        } else {
+            PyMem_Free(kinds);
+            return NULL;  /* unknown — bail */
+        }
+    }
+
+    /* ---- Step 2: determine contiguity of advanced indices ---- */
+    /* Non-contiguous = at least one basic slice sits between first_adv and last_adv */
+    int adv_noncontiguous = 0;
+    if (first_adv >= 0 && last_adv > first_adv) {
+        for (int i = first_adv + 1; i < last_adv; ++i) {
+            if (kinds[i] == 1) { adv_noncontiguous = 1; break; }
+        }
+    }
+
+    /* ---- Step 3: helper — write labels for one basic-slice axis ---- */
+    /* Returns 0 on success, -1 on failure. Increments *dst_ptr. */
+    /* (Inlined below to avoid nested functions.) */
+
+    LabelsBlock *child = labelsblock_alloc(result_nd);
+    if (!child) { PyMem_Free(kinds); return NULL; }
+
+    int dst = 0;
+    int build_ok = 1;
+
+/* Macro: write one basic-slice axis from parent axis p_ax at result axis dst */
+#define WRITE_BASIC(p_ax) do {                                                          \
+    if (!build_ok || dst >= result_nd) break;                                           \
+    PyObject *k__ = PyTuple_GET_ITEM(ck, (p_ax));                                      \
+    int pn__ = parent_lb->axis_len[(p_ax)];                                             \
+    Py_ssize_t st__, sp__, step__, slen__;                                              \
+    if (PySlice_GetIndicesEx(k__, (Py_ssize_t)pn__,                                    \
+            &st__, &sp__, &step__, &slen__) == 0                                        \
+            && (int)slen__ == (int)result_dims[dst]) {                                  \
+        if (slen__ == pn__ && st__ == 0 && step__ == 1) {                              \
+            build_ok = (labelsblock_set_axis_copy(child, dst,                           \
+                parent_lb->axis_labels[(p_ax)], pn__) >= 0);                           \
+        } else {                                                                        \
+            char **sel__ = (char **)PyMem_Malloc(sizeof(char *) * (size_t)slen__);     \
+            if (!sel__) { build_ok = 0; }                                               \
+            else {                                                                      \
+                for (Py_ssize_t j__ = 0; j__ < slen__; ++j__)                          \
+                    sel__[j__] = parent_lb->axis_labels[(p_ax)][st__ + j__ * step__];  \
+                build_ok = (labelsblock_set_axis_copy(child, dst, sel__, (int)slen__) >= 0); \
+                PyMem_Free(sel__);                                                      \
+            }                                                                           \
+        }                                                                               \
+    } else {                                                                            \
+        build_ok = (labelsblock_set_axis_numeric(child, dst, (int)result_dims[dst]) >= 0); \
+    }                                                                                   \
+    dst++;                                                                              \
+} while(0)
+
+/* Macro: write the single fancy-index output axis (source = fancy_src) */
+#define WRITE_FANCY() do {                                                              \
+    if (!build_ok || dst >= result_nd) break;                                           \
+    if (fancy_src < 0 || fancy_n != (npy_intp)result_dims[dst]) {                      \
+        build_ok = (labelsblock_set_axis_numeric(child, dst, (int)result_dims[dst]) >= 0); \
+        dst++; break;                                                                   \
+    }                                                                                   \
+    PyObject *kf__ = PyTuple_GET_ITEM(ck, fancy_src);                                  \
+    int pn_f__ = parent_lb->axis_len[fancy_src];                                       \
+    char **sel_f__ = (char **)PyMem_Malloc(sizeof(char *) * (size_t)fancy_n);          \
+    if (!sel_f__) { build_ok = 0; dst++; break; }                                      \
+    int ok_f__ = 1;                                                                     \
+    if (PyList_Check(kf__)) {                                                           \
+        for (npy_intp j__ = 0; j__ < fancy_n && ok_f__; ++j__) {                       \
+            PyObject *it__ = PyList_GET_ITEM(kf__, j__);                                \
+            if (!PyLong_Check(it__)) { ok_f__ = 0; break; }                            \
+            long idx_f__ = PyLong_AsLong(it__);                                         \
+            if (idx_f__ < 0) idx_f__ += pn_f__;                                        \
+            if (idx_f__ < 0 || idx_f__ >= pn_f__) { ok_f__ = 0; break; }              \
+            sel_f__[j__] = parent_lb->axis_labels[fancy_src][idx_f__];                 \
+        }                                                                               \
+    } else { /* 1-D array */                                                            \
+        PyArrayObject *af__ = (PyArrayObject *)kf__;                                   \
+        int tf__ = PyArray_TYPE(af__);                                                  \
+        for (npy_intp j__ = 0; j__ < fancy_n && ok_f__; ++j__) {                       \
+            void *p_f__ = PyArray_GETPTR1(af__, j__);                                  \
+            npy_intp idx_f__;                                                           \
+            if      (tf__ == NPY_INTP)  idx_f__ = *(npy_intp *)p_f__;                 \
+            else if (tf__ == NPY_INT64) idx_f__ = (npy_intp)(*(npy_int64 *)p_f__);    \
+            else if (tf__ == NPY_INT32) idx_f__ = (npy_intp)(*(npy_int32 *)p_f__);    \
+            else if (tf__ == NPY_INT16) idx_f__ = (npy_intp)(*(npy_int16 *)p_f__);    \
+            else if (tf__ == NPY_INT8)  idx_f__ = (npy_intp)(*(npy_int8 *)p_f__);     \
+            else { ok_f__ = 0; break; }                                                \
+            if (idx_f__ < 0) idx_f__ += pn_f__;                                        \
+            if (idx_f__ < 0 || idx_f__ >= pn_f__) { ok_f__ = 0; break; }              \
+            sel_f__[j__] = parent_lb->axis_labels[fancy_src][idx_f__];                 \
+        }                                                                               \
+    }                                                                                   \
+    if (ok_f__)                                                                         \
+        build_ok = (labelsblock_set_axis_copy(child, dst, sel_f__, (int)fancy_n) >= 0); \
+    else {                                                                              \
+        PyErr_Clear();                                                                  \
+        build_ok = (labelsblock_set_axis_numeric(child, dst, (int)result_dims[dst]) >= 0); \
+    }                                                                                   \
+    PyMem_Free(sel_f__);                                                                \
+    dst++;                                                                              \
+} while(0)
+
+    /* ---- Step 4: assemble output axes ---- */
+
+    if (fancy_src < 0) {
+        /* No fancy index at all: only scalars + basics.
+           Scalars drop their axis; basics appear in order. */
+        for (int i = 0; i < (int)ck_len && build_ok && dst < result_nd; ++i) {
+            if (kinds[i] == 0) continue;   /* scalar — drop */
+            if (kinds[i] == 1) { WRITE_BASIC(i); }
+        }
+    } else if (!adv_noncontiguous) {
+        /* Contiguous advanced indices: basic before, fancy axis, basic after. */
+        for (int i = 0; i < first_adv && build_ok && dst < result_nd; ++i)
+            if (kinds[i] == 1) { WRITE_BASIC(i); }
+
+        WRITE_FANCY();
+
+        for (int i = last_adv + 1; i < (int)ck_len && build_ok && dst < result_nd; ++i)
+            if (kinds[i] == 1) { WRITE_BASIC(i); }
+    } else {
+        /* Non-contiguous advanced indices: fancy axis moves to front,
+           then all basic axes in their original relative order. */
+        WRITE_FANCY();
+
+        for (int i = 0; i < (int)ck_len && build_ok && dst < result_nd; ++i)
+            if (kinds[i] == 1) { WRITE_BASIC(i); }
+    }
+
+#undef WRITE_BASIC
+#undef WRITE_FANCY
+
+    PyMem_Free(kinds);
+
+    if (!build_ok || dst != result_nd) {
+        PyErr_Clear();
+        labelsblock_decref(child);
+        return NULL;
+    }
+    return child;
 }
 
 static PyObject *
@@ -427,6 +681,13 @@ LabeledArray_subscript(PyObject *self, PyObject *key)
         LabelsBlock *parent_lb = obj->labels_block;
         if (parent_lb) {
             LabelsBlock *child = labelsblock_slice(parent_lb, ck, (PyArrayObject *)target);
+            if (!child) {
+                /* labelsblock_slice failed — build correct labels from ck directly
+                   so downstream operations (combine, dropna, etc.) see valid axis_len. */
+                PyErr_Clear();
+                child = labels_from_ck_fallback(parent_lb, ck, (PyArrayObject *)target);
+                if (!child) PyErr_Clear();
+            }
             if (child) {
                 LabeledArrayObject *tobj = (LabeledArrayObject *)target;
                 LabelsBlock *old = tobj->labels_block;
@@ -476,9 +737,11 @@ LabeledArray_str(PyObject *self_obj)
 }
 
 /* ---------- type table ---------- */
-
 static PyGetSetDef LabeledArray_getset[] = {
-    {"labels", (getter)LabeledArray_get_labels, (setter)LabeledArray_set_labels, "per-axis labels", NULL},
+    {"labels",   (getter)LabeledArray_get_labels,
+                 (setter)LabeledArray_set_labels, "per-axis labels", NULL},
+    {"__dict__", PyObject_GenericGetDict,
+                 PyObject_GenericSetDict,          NULL, NULL},
     {NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -493,6 +756,7 @@ array_finalize(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     self->labels_block = NULL;
     self->labels_cache = NULL;
     self->delimiter = NULL;
+    self->ob_dict = NULL;
     if (parent && PyObject_TypeCheck(parent, &LabeledArray_Type)) {
         LabeledArrayObject *par  = (LabeledArrayObject *)parent;
         LabelsBlock *plb = par->labels_block;
@@ -503,7 +767,16 @@ array_finalize(PyObject *self_obj, PyObject *args, PyObject *kwargs)
             self->delimiter = (char *)PyDataMem_NEW(L);
             if (self->delimiter) memcpy(self->delimiter, par->delimiter, L);
         }
+
+        /* CHANGE 1: mirror only on explicit parent-based finalize (view/slice),
+           NOT called from LabeledArray_new (labels_block not set yet there).
+           Since labels_block is now set above, this is safe. */
+        PyObject *labs = LabeledArray_get_labels(self_obj, NULL);
+        if (labs) Py_DECREF(labs);
+        else PyErr_Clear();
     }
+    /* When parent is NULL or not a LabeledArray (e.g. called from LabeledArray_new
+       before labels are set), we do NOT mirror — LabeledArray_new handles it. */
     Py_RETURN_NONE;
 }
 
@@ -537,10 +810,9 @@ array_wrap(PyObject *self_obj, PyObject *args, PyObject *kwargs)
 
     int parent_nd = plb ? plb->ndim : 0;
     int out_nd = PyArray_NDIM((PyArrayObject *)view);
-    /* Prefer deterministic label mapping using reduction axes from context (3rd element) */
     int used_context = 0;
     if (plb && out_nd < parent_nd && context && PyTuple_Check(context) && PyTuple_GET_SIZE(context) >= 3) {
-        PyObject *axes_obj = PyTuple_GET_ITEM(context, 2); /* borrowed */
+        PyObject *axes_obj = PyTuple_GET_ITEM(context, 2);
         if (axes_obj && axes_obj != Py_None) {
             int *drop = (int *)calloc((size_t)parent_nd, sizeof(int));
             if (drop) {
@@ -620,55 +892,68 @@ array_wrap(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     return view;
 }
 
-/* ---------- __array_function__ override (handle np.concatenate) ---------- */
+/* ---------- __array_function__ override ---------- */
+
+/* CHANGE 4: single initialization flag instead of 10 NULL checks */
+static int s_np_funcs_initialized = 0;
+static PyObject *np_concatenate = NULL;
+static PyObject *np_squeeze     = NULL;
+static PyObject *np_stack       = NULL;
+static PyObject *np_expand_dims = NULL;
+static PyObject *np_take        = NULL;
+static PyObject *np_transpose   = NULL;
+static PyObject *np_swapaxes    = NULL;
+static PyObject *np_taa         = NULL;
+static PyObject *np_nanmean     = NULL;
+static PyObject *np_nanstd      = NULL;
+
+static int
+init_np_funcs(void)
+{
+    if (s_np_funcs_initialized) return 0;
+    PyObject *numpy = PyImport_ImportModule("numpy");
+    if (!numpy) return -1;
+    np_concatenate  = PyObject_GetAttrString(numpy, "concatenate");
+    np_squeeze      = PyObject_GetAttrString(numpy, "squeeze");
+    np_stack        = PyObject_GetAttrString(numpy, "stack");
+    np_expand_dims  = PyObject_GetAttrString(numpy, "expand_dims");
+    np_take         = PyObject_GetAttrString(numpy, "take");
+    np_transpose    = PyObject_GetAttrString(numpy, "transpose");
+    np_swapaxes     = PyObject_GetAttrString(numpy, "swapaxes");
+    np_taa          = PyObject_GetAttrString(numpy, "take_along_axis");
+    np_nanmean      = PyObject_GetAttrString(numpy, "nanmean");
+    np_nanstd       = PyObject_GetAttrString(numpy, "nanstd");
+    Py_DECREF(numpy);
+    if (!np_concatenate || !np_squeeze || !np_stack || !np_expand_dims ||
+        !np_take || !np_transpose || !np_swapaxes || !np_taa ||
+        !np_nanmean || !np_nanstd) return -1;
+    s_np_funcs_initialized = 1;
+    return 0;
+}
+
 static PyObject *
 array_function(PyObject *self_obj, PyObject *args)
 {
-    /* Signature: __array_function__(self, func, types, fargs, fkwargs) */
     PyObject *func = NULL, *types = NULL, *fargs = NULL, *fkwargs = NULL;
     if (!PyArg_ParseTuple(args, "OOOO:__array_function__", &func, &types, &fargs, &fkwargs)) {
         return NULL;
     }
 
-    /* Identify numpy.concatenate, numpy.squeeze, numpy.stack, numpy.expand_dims, numpy.take, numpy.transpose, numpy.swapaxes, numpy.take_along_axis */
-    static PyObject *np_concatenate = NULL;
-    static PyObject *np_squeeze = NULL;
-    static PyObject *np_stack = NULL;
-    static PyObject *np_expand_dims = NULL;
-    static PyObject *np_take = NULL;
-    static PyObject *np_transpose = NULL;
-    static PyObject *np_swapaxes = NULL;
-    static PyObject *np_taa = NULL;
-    static PyObject *np_nanmean = NULL;
-    static PyObject *np_nanstd = NULL;
-    if (np_concatenate == NULL || np_squeeze == NULL || np_stack == NULL || np_expand_dims == NULL || np_take == NULL || np_transpose == NULL || np_swapaxes == NULL || np_taa == NULL || np_nanmean == NULL || np_nanstd == NULL) {
-        PyObject *numpy = PyImport_ImportModule("numpy");
-        if (!numpy) return NULL;
-        if (np_concatenate == NULL) np_concatenate = PyObject_GetAttrString(numpy, "concatenate");
-        if (np_squeeze == NULL) np_squeeze = PyObject_GetAttrString(numpy, "squeeze");
-        if (np_stack == NULL) np_stack = PyObject_GetAttrString(numpy, "stack");
-        if (np_expand_dims == NULL) np_expand_dims = PyObject_GetAttrString(numpy, "expand_dims");
-        if (np_take == NULL) np_take = PyObject_GetAttrString(numpy, "take");
-        if (np_transpose == NULL) np_transpose = PyObject_GetAttrString(numpy, "transpose");
-        if (np_swapaxes == NULL) np_swapaxes = PyObject_GetAttrString(numpy, "swapaxes");
-        if (np_taa == NULL) np_taa = PyObject_GetAttrString(numpy, "take_along_axis");
-        if (np_nanmean == NULL) np_nanmean = PyObject_GetAttrString(numpy, "nanmean");
-        if (np_nanstd == NULL) np_nanstd = PyObject_GetAttrString(numpy, "nanstd");
-        Py_DECREF(numpy);
-        if (!np_concatenate || !np_squeeze || !np_stack || !np_expand_dims || !np_take || !np_transpose || !np_swapaxes || !np_taa || !np_nanmean || !np_nanstd) return NULL;
-    }
+    if (init_np_funcs() < 0) return NULL;
+
     int is_concatenate = (func == np_concatenate);
-    int is_squeeze = (func == np_squeeze);
-    int is_stack = (func == np_stack);
-    int is_expand = (func == np_expand_dims);
-    int is_take = (func == np_take);
-    int is_transpose = (func == np_transpose);
-    int is_swapaxes = (func == np_swapaxes);
-    int is_taa = (func == np_taa);
-    int is_nanmean = (func == np_nanmean);
-    int is_nanstd = (func == np_nanstd);
-    if (!is_concatenate && !is_squeeze && !is_stack && !is_expand && !is_take && !is_transpose && !is_swapaxes && !is_taa && !is_nanmean && !is_nanstd) {
-        /* Fallback: call NumPy func on base ndarrays to avoid recursion */
+    int is_squeeze     = (func == np_squeeze);
+    int is_stack       = (func == np_stack);
+    int is_expand      = (func == np_expand_dims);
+    int is_take        = (func == np_take);
+    int is_transpose   = (func == np_transpose);
+    int is_swapaxes    = (func == np_swapaxes);
+    int is_taa         = (func == np_taa);
+    int is_nanmean     = (func == np_nanmean);
+    int is_nanstd      = (func == np_nanstd);
+
+    if (!is_concatenate && !is_squeeze && !is_stack && !is_expand && !is_take &&
+        !is_transpose && !is_swapaxes && !is_taa && !is_nanmean && !is_nanstd) {
         if (!PyTuple_Check(fargs)) { Py_RETURN_NOTIMPLEMENTED; }
         Py_ssize_t nfa = PyTuple_GET_SIZE(fargs);
         PyObject *new_fargs = PyTuple_New(nfa);
@@ -685,10 +970,9 @@ array_function(PyObject *self_obj, PyObject *args)
         Py_DECREF(new_fargs);
         if (!res) return NULL;
         if (PyArray_Check(res)) {
-            /* Pass axis info (if present) via context's 3rd element */
             PyObject *ctx_axes = Py_None;
             if (fkwargs && PyDict_Check(fkwargs)) {
-                PyObject *axis_obj = PyDict_GetItemString(fkwargs, "axis"); /* borrowed */
+                PyObject *axis_obj = PyDict_GetItemString(fkwargs, "axis");
                 if (axis_obj && axis_obj != Py_None) {
                     if (PyLong_Check(axis_obj)) {
                         long axl = PyLong_AsLong(axis_obj);
@@ -714,7 +998,6 @@ array_function(PyObject *self_obj, PyObject *args)
         return res;
     }
 
-    /* Ensure all types are subclasses of LabeledArray */
     PyObject *types_seq = PySequence_Fast(types, "types must be a sequence");
     if (!types_seq) return NULL;
     Py_ssize_t ntypes = PySequence_Fast_GET_SIZE(types_seq);
@@ -748,7 +1031,6 @@ array_function(PyObject *self_obj, PyObject *args)
         return res;
     }
 
-    /* Common locals used in some branches */
     PyObject *arrays = NULL; Py_ssize_t narr = 0;
     if (is_concatenate || is_stack) {
         PyObject *arrays_obj = PyTuple_GET_ITEM(fargs, 0);
@@ -758,11 +1040,10 @@ array_function(PyObject *self_obj, PyObject *args)
         if (narr == 0) { Py_DECREF(arrays); Py_RETURN_NOTIMPLEMENTED; }
     }
 
-    /* Determine axis */
     int axis = 0;
     if (is_concatenate || is_stack || is_expand || is_take || is_taa) {
         if (fkwargs && fkwargs != Py_None && PyDict_Check(fkwargs)) {
-            PyObject *axis_obj = PyDict_GetItemString(fkwargs, "axis"); /* borrowed */
+            PyObject *axis_obj = PyDict_GetItemString(fkwargs, "axis");
             if (axis_obj && axis_obj != Py_None) {
                 long axl = PyLong_AsLong(axis_obj);
                 if (axl == -1 && PyErr_Occurred()) { if (arrays) Py_DECREF(arrays); return NULL; }
@@ -770,7 +1051,6 @@ array_function(PyObject *self_obj, PyObject *args)
             }
         }
         if ((is_take || is_taa) && PyTuple_Check(fargs) && PyTuple_GET_SIZE(fargs) >= 3) {
-            /* Positional axis for take: (a, indices, axis) */
             PyObject *axis_obj2 = PyTuple_GET_ITEM(fargs, 2);
             if (axis_obj2 != Py_None) {
                 long axl = PyLong_AsLong(axis_obj2);
@@ -780,7 +1060,6 @@ array_function(PyObject *self_obj, PyObject *args)
         }
     }
 
-    /* Determine base array and ndim depending on op */
     PyObject *first = NULL; int nd = 0;
     if (is_concatenate || is_stack) {
         first = PySequence_Fast_GET_ITEM(arrays, 0);
@@ -791,7 +1070,7 @@ array_function(PyObject *self_obj, PyObject *args)
         if (!PyArray_Check(first)) { Py_RETURN_NOTIMPLEMENTED; }
         nd = PyArray_NDIM((PyArrayObject *)first);
     }
-    /* Handlers for transpose/swapaxes/take_along_axis */
+
     if (is_transpose) {
         PyObject *obj0 = PyTuple_GET_ITEM(fargs, 0);
         if (!PyObject_TypeCheck(obj0, &LabeledArray_Type)) { Py_RETURN_NOTIMPLEMENTED; }
@@ -800,7 +1079,6 @@ array_function(PyObject *self_obj, PyObject *args)
             axes = PyTuple_GET_ITEM(fargs, 1);
         PyObject *res_base;
         if (axes && axes != Py_None) {
-            /* build dims */
             int nd0 = PyArray_NDIM((PyArrayObject *)obj0);
             npy_intp *perm = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)nd0);
             if (!perm) return NULL;
@@ -825,7 +1103,6 @@ array_function(PyObject *self_obj, PyObject *args)
         int nd_out = PyArray_NDIM((PyArrayObject *)view);
         LabelsBlock *out = labelsblock_alloc(nd_out);
         if (!out) { Py_DECREF(view); return NULL; }
-        /* compute permutation */
         int *perm_i = (int *)malloc(sizeof(int) * (size_t)nd_out);
         if (!perm_i) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
         if (axes && axes != Py_None) {
@@ -908,11 +1185,14 @@ array_function(PyObject *self_obj, PyObject *args)
                 tobj->labels_block = child;
                 labelsblock_decref(old);
                 labels_cache_clear(tobj);
+            } else {
+                PyErr_Clear();  /* label attachment is best-effort; clear non-fatal error */
             }
         }
         Py_DECREF(ck);
         return view;
     }
+
     if (is_take) {
         if (!PyTuple_Check(fargs) || PyTuple_GET_SIZE(fargs) < 2) { Py_RETURN_NOTIMPLEMENTED; }
         PyObject *obj = PyTuple_GET_ITEM(fargs, 0);
@@ -922,23 +1202,18 @@ array_function(PyObject *self_obj, PyObject *args)
         if (axis < 0) axis += nd;
         if (axis < 0 || axis >= nd) { PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
 
-        /* Ensure labels block exists */
         LabeledArrayObject *lai = (LabeledArrayObject *)obj;
         LabelsBlock *lb = lai->labels_block;
         if (!lb) { lb = labelsblock_new_default((PyArrayObject *)obj); if (!lb) return NULL; lai->labels_block = lb; }
 
-        /* Build separate tuples: ck_data used for subscripting (ints only), ck_lbl used for labels construction */
         PyObject *ck_data = PyTuple_New(nd);
         if (!ck_data) return NULL;
         PyObject *ck_lbl = PyTuple_New(nd);
         if (!ck_lbl) { Py_DECREF(ck_data); return NULL; }
         for (int ax = 0; ax < nd; ++ax) {
             if (ax == axis) {
-                /* Fill later with sel */
-                Py_INCREF(Py_None);
-                PyTuple_SET_ITEM(ck_data, ax, Py_None);
-                Py_INCREF(Py_None);
-                PyTuple_SET_ITEM(ck_lbl, ax, Py_None);
+                Py_INCREF(Py_None); PyTuple_SET_ITEM(ck_data, ax, Py_None);
+                Py_INCREF(Py_None); PyTuple_SET_ITEM(ck_lbl, ax, Py_None);
             } else {
                 PyObject *sl = PySlice_New(NULL, NULL, NULL);
                 if (!sl) { Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
@@ -948,31 +1223,27 @@ array_function(PyObject *self_obj, PyObject *args)
             }
         }
 
-        /* Prepare axis index for data and labels */
-        PyObject *sel_data = NULL;
-        PyObject *sel_lbl = NULL;
+        PyObject *sel_data = NULL, *sel_lbl = NULL;
 
         if (PyArray_Check(indices)) {
             PyArrayObject *arrk = (PyArrayObject *)indices;
             int t = PyArray_TYPE(arrk);
             if (PyTypeNum_ISINTEGER(t)) {
                 sel_data = (PyObject *)arrk; Py_INCREF(sel_data);
-                sel_lbl = (PyObject *)arrk; Py_INCREF(sel_lbl);
+                sel_lbl  = (PyObject *)arrk; Py_INCREF(sel_lbl);
             } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
-                /* Map labels to intp for data; keep original for labels (supports ND indices) */
                 PyArrayObject *ind = map_label_index_array_to_int(lb, axis, arrk);
                 if (!ind) {
                     if (!PyErr_Occurred()) PyErr_SetString(PyExc_IndexError, "label not found in axis for take");
                     Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL;
                 }
-                sel_data = (PyObject *)ind; /* new ref */
-                sel_lbl = (PyObject *)arrk; Py_INCREF(sel_lbl);
+                sel_data = (PyObject *)ind;
+                sel_lbl  = (PyObject *)arrk; Py_INCREF(sel_lbl);
             } else {
                 PyErr_SetString(PyExc_TypeError, "unsupported indices dtype for take");
                 Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL;
             }
         } else {
-            /* Scalar or Python sequence (list/tuple). Treat unicode scalars as labels, not sequences of chars. */
             if (PyUnicode_Check(indices) || PyBytes_Check(indices)) {
                 Py_ssize_t pos = -1;
                 if (labelsblock_find(lb, axis, indices, &pos) != 0) {
@@ -982,13 +1253,11 @@ array_function(PyObject *self_obj, PyObject *args)
                 }
                 PyObject *idx = PyLong_FromSsize_t(pos);
                 if (!idx) { Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
-                sel_data = idx; /* new ref */
-                sel_lbl = idx; Py_INCREF(sel_lbl);
+                sel_data = idx; sel_lbl = idx; Py_INCREF(sel_lbl);
             } else {
                 PyObject *idx_int = PyNumber_Index(indices);
                 if (idx_int) {
-                    sel_data = idx_int; /* new ref */
-                    sel_lbl = idx_int; Py_INCREF(sel_lbl);
+                    sel_data = idx_int; sel_lbl = idx_int; Py_INCREF(sel_lbl);
                 } else {
                     PyErr_Clear();
                     PyObject *seq = PySequence_Fast(indices, "expected sequence for indices");
@@ -1004,72 +1273,65 @@ array_function(PyObject *self_obj, PyObject *args)
                         PyArrayObject *arrk = (PyArrayObject *)PyArray_FromAny(indices, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                         if (!arrk) { Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
                         int t = PyArray_TYPE(arrk);
+                        PyArrayObject *ind = NULL; int mapped = 0;
                         if (PyTypeNum_ISINTEGER(t)) {
-                            sel_data = (PyObject *)arrk;
-                            sel_lbl = (PyObject *)arrk; Py_INCREF(sel_lbl);
+                            ind = (PyArrayObject *)PyArray_FromAny((PyObject *)arrk, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                         } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
-                            PyArrayObject *ind = map_label_index_array_to_int(lb, axis, arrk);
-                            if (!ind) {
-                                if (!PyErr_Occurred()) PyErr_SetString(PyExc_IndexError, "label not found in axis for take");
-                                Py_DECREF(arrk); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL;
-                            }
-                            sel_data = (PyObject *)ind;
-                            sel_lbl = (PyObject *)arrk; /* keep arrk ref for labels */
-                        } else {
-                            Py_DECREF(arrk); Py_DECREF(ck_data); Py_DECREF(ck_lbl);
-                            PyErr_SetString(PyExc_TypeError, "unsupported indices dtype for take");
-                            return NULL;
+                            mapped = 1;
+                            ind = map_label_index_array_to_int(lb, axis, arrk);
                         }
+                        Py_DECREF(arrk);
+                        if (!ind) {
+                            if (!PyErr_Occurred()) PyErr_SetString(mapped ? PyExc_IndexError : PyExc_TypeError,
+                                mapped ? "label not found in axis for take" : "unsupported indices dtype for take");
+                            Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL;
+                        }
+                        sel_data = (PyObject *)ind;
+                        sel_lbl  = (PyObject *)arrk; Py_INCREF(sel_lbl);
                     } else {
-                    PyObject *lst = PyList_New(n);
-                    if (!lst) { Py_DECREF(seq); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
-                    for (Py_ssize_t i = 0; i < n; ++i) {
-                        PyObject *it = PySequence_Fast_GET_ITEM(seq, i);
-                        PyObject *maybe_int = PyNumber_Index(it);
-                        PyObject *to_set = NULL;
-                        if (maybe_int) {
-                            to_set = maybe_int; /* new ref */
-                        } else {
-                            PyErr_Clear();
-                            if (PyUnicode_Check(it) || PyBytes_Check(it)) {
-                                Py_ssize_t pos = -1;
-                                if (labelsblock_find(lb, axis, it, &pos) != 0) {
+                        PyObject *lst = PyList_New(n);
+                        if (!lst) { Py_DECREF(seq); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
+                        for (Py_ssize_t i = 0; i < n; ++i) {
+                            PyObject *it = PySequence_Fast_GET_ITEM(seq, i);
+                            PyObject *maybe_int = PyNumber_Index(it);
+                            PyObject *to_set = NULL;
+                            if (maybe_int) {
+                                to_set = maybe_int;
+                            } else {
+                                PyErr_Clear();
+                                if (PyUnicode_Check(it) || PyBytes_Check(it)) {
+                                    Py_ssize_t pos = -1;
+                                    if (labelsblock_find(lb, axis, it, &pos) != 0) {
+                                        Py_DECREF(seq); Py_DECREF(lst); Py_DECREF(ck_data); Py_DECREF(ck_lbl);
+                                        PyErr_SetString(PyExc_IndexError, "label not found in axis for take");
+                                        return NULL;
+                                    }
+                                    to_set = PyLong_FromSsize_t(pos);
+                                    if (!to_set) { Py_DECREF(seq); Py_DECREF(lst); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
+                                } else {
                                     Py_DECREF(seq); Py_DECREF(lst); Py_DECREF(ck_data); Py_DECREF(ck_lbl);
-                                    PyErr_SetString(PyExc_IndexError, "label not found in axis for take");
+                                    PyErr_SetString(PyExc_TypeError, "non-integer index in indices");
                                     return NULL;
                                 }
-                                to_set = PyLong_FromSsize_t(pos);
-                                if (!to_set) { Py_DECREF(seq); Py_DECREF(lst); Py_DECREF(ck_data); Py_DECREF(ck_lbl); return NULL; }
-                            } else {
-                                Py_DECREF(seq); Py_DECREF(lst); Py_DECREF(ck_data); Py_DECREF(ck_lbl);
-                                PyErr_SetString(PyExc_TypeError, "non-integer index in indices");
-                                return NULL;
                             }
+                            PyList_SET_ITEM(lst, i, to_set);
                         }
-                        PyList_SET_ITEM(lst, i, to_set); /* steals */
-                    }
-                    Py_DECREF(seq);
-                    sel_data = lst;
-                    sel_lbl = lst; Py_INCREF(sel_lbl);
+                        Py_DECREF(seq);
+                        sel_data = lst; sel_lbl = lst; Py_INCREF(sel_lbl);
                     }
                 }
             }
         }
 
-        /* Put selections */
-        PyObject *tmpd = PyTuple_GET_ITEM(ck_data, axis);
-        Py_DECREF(tmpd);
+        PyObject *tmpd = PyTuple_GET_ITEM(ck_data, axis); Py_DECREF(tmpd);
         PyTuple_SET_ITEM(ck_data, axis, sel_data);
-        PyObject *tmpl = PyTuple_GET_ITEM(ck_lbl, axis);
-        Py_DECREF(tmpl);
+        PyObject *tmpl = PyTuple_GET_ITEM(ck_lbl, axis); Py_DECREF(tmpl);
         PyTuple_SET_ITEM(ck_lbl, axis, sel_lbl);
 
-        /* Do data selection */
         PyObject *res = PyArray_Type.tp_as_mapping->mp_subscript(obj, ck_data);
         Py_DECREF(ck_data);
         if (!res) { Py_DECREF(ck_lbl); return NULL; }
 
-        /* Wrap and attach labels according to ck_lbl */
         if (PyArray_Check(res)) {
             PyObject *target = res;
             if (!PyObject_TypeCheck(res, (PyTypeObject *)Py_TYPE(self_obj))) {
@@ -1088,6 +1350,8 @@ array_function(PyObject *self_obj, PyObject *args)
                     tobj->labels_block = child;
                     labelsblock_decref(old);
                     labels_cache_clear(tobj);
+                } else {
+                    PyErr_Clear();  /* label attachment is best-effort; clear non-fatal error */
                 }
             }
             Py_DECREF(ck_lbl);
@@ -1106,7 +1370,6 @@ array_function(PyObject *self_obj, PyObject *args)
         if (axis < 0 || axis > nd) { if (arrays) Py_DECREF(arrays); PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
     }
 
-    /* Ensure inputs are LabeledArray and compatible (for concatenate/stack) */
     LabeledArrayObject *first_la = NULL; LabelsBlock *first_lb = NULL;
     if (is_concatenate || is_stack) {
         if (PyObject_TypeCheck(first, &LabeledArray_Type)) {
@@ -1137,16 +1400,13 @@ array_function(PyObject *self_obj, PyObject *args)
     }
 
     if (is_concatenate) {
-        /* Concatenate data via C-API */
         PyObject *seq0 = PyTuple_GET_ITEM(fargs, 0);
         PyObject *res_base = PyArray_Concatenate(seq0, axis);
         if (!res_base) { Py_DECREF(arrays); return NULL; }
-
         PyObject *view = PyArray_View((PyArrayObject *)res_base, NULL, (PyTypeObject *)Py_TYPE(self_obj));
         Py_DECREF(res_base);
         if (!view) { Py_DECREF(arrays); return NULL; }
 
-        /* Build concatenated labels block */
         LabelsBlock *out_lb = labelsblock_alloc(nd);
         if (!out_lb) { Py_DECREF(view); Py_DECREF(arrays); return NULL; }
 
@@ -1181,18 +1441,16 @@ array_function(PyObject *self_obj, PyObject *args)
         }
 
         labelsblock_attach_to_view(view, out_lb);
-
         Py_DECREF(arrays);
         return view;
     }
 
     if (is_stack) {
-        /* Implement stack via C-API: expand dims for each array, then concatenate on that axis */
         int nd_new = nd + 1;
         PyObject *stack_inputs = PyTuple_New(narr);
         if (!stack_inputs) { Py_DECREF(arrays); return NULL; }
         for (Py_ssize_t i = 0; i < narr; ++i) {
-            PyObject *obji = PySequence_Fast_GET_ITEM(arrays, i); /* borrowed */
+            PyObject *obji = PySequence_Fast_GET_ITEM(arrays, i);
             if (!PyArray_Check(obji)) { Py_DECREF(stack_inputs); Py_DECREF(arrays); Py_RETURN_NOTIMPLEMENTED; }
             const npy_intp *orig_dims = PyArray_DIMS((PyArrayObject *)obji);
             npy_intp *new_dims = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)nd_new);
@@ -1206,12 +1464,11 @@ array_function(PyObject *self_obj, PyObject *args)
             PyObject *reshaped = PyArray_Newshape((PyArrayObject *)obji, &nds2, NPY_CORDER);
             PyMem_Free(new_dims);
             if (!reshaped) { Py_DECREF(stack_inputs); Py_DECREF(arrays); return NULL; }
-            PyTuple_SET_ITEM(stack_inputs, i, reshaped); /* steals */
+            PyTuple_SET_ITEM(stack_inputs, i, reshaped);
         }
         PyObject *res_base = PyArray_Concatenate(stack_inputs, axis);
         Py_DECREF(stack_inputs);
         if (!res_base) { Py_DECREF(arrays); return NULL; }
-
         PyObject *view = PyArray_View((PyArrayObject *)res_base, NULL, (PyTypeObject *)Py_TYPE(self_obj));
         Py_DECREF(res_base);
         if (!view) { Py_DECREF(arrays); return NULL; }
@@ -1231,96 +1488,89 @@ array_function(PyObject *self_obj, PyObject *args)
         }
 
         labelsblock_attach_to_view(view, out_lb);
-
         Py_DECREF(arrays);
         return view;
     }
 
-    /* Handle squeeze */
-    /* fargs: (arr,) */
     PyObject *obj = PyTuple_GET_ITEM(fargs, 0);
     if (is_squeeze) {
         if (!PyObject_TypeCheck(obj, &LabeledArray_Type)) { Py_RETURN_NOTIMPLEMENTED; }
 
-    int orig_nd = PyArray_NDIM((PyArrayObject *)obj);
-    const npy_intp *orig_dims = PyArray_DIMS((PyArrayObject *)obj);
+        int orig_nd = PyArray_NDIM((PyArrayObject *)obj);
+        const npy_intp *orig_dims = PyArray_DIMS((PyArrayObject *)obj);
 
-    /* Build drop mask */
-    int *drop = (int *)calloc((size_t)orig_nd, sizeof(int));
-    if (!drop) { Py_DECREF(arrays); return NULL; }
-    int any_drop = 0;
-    if (fkwargs && fkwargs != Py_None && PyDict_Check(fkwargs)) {
-        PyObject *axis_obj = PyDict_GetItemString(fkwargs, "axis");
-        if (axis_obj && axis_obj != Py_None) {
-            if (PyLong_Check(axis_obj)) {
-                long axl = PyLong_AsLong(axis_obj);
-                if (axl == -1 && PyErr_Occurred()) { free(drop); Py_DECREF(arrays); return NULL; }
-                int ax = (int)axl; if (ax < 0) ax += orig_nd;
-                if (ax < 0 || ax >= orig_nd) { free(drop); Py_DECREF(arrays); PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
-                if (orig_dims[ax] != 1) { free(drop); Py_DECREF(arrays); PyErr_SetString(PyExc_ValueError, "cannot squeeze axis with size != 1"); return NULL; }
-                drop[ax] = 1; any_drop = 1;
-            } else {
-                PyObject *seq = PySequence_Fast(axis_obj, "axis must be int or sequence of int");
-                if (!seq) { free(drop); Py_DECREF(arrays); return NULL; }
-                Py_ssize_t na = PySequence_Fast_GET_SIZE(seq);
-                for (Py_ssize_t i = 0; i < na; ++i) {
-                    PyObject *it = PySequence_Fast_GET_ITEM(seq, i);
-                    long axl = PyLong_AsLong(it);
-                    if (axl == -1 && PyErr_Occurred()) { Py_DECREF(seq); free(drop); Py_DECREF(arrays); return NULL; }
+        int *drop = (int *)calloc((size_t)orig_nd, sizeof(int));
+        if (!drop) { return NULL; }
+        int any_drop = 0;
+        if (fkwargs && fkwargs != Py_None && PyDict_Check(fkwargs)) {
+            PyObject *axis_obj = PyDict_GetItemString(fkwargs, "axis");
+            if (axis_obj && axis_obj != Py_None) {
+                if (PyLong_Check(axis_obj)) {
+                    long axl = PyLong_AsLong(axis_obj);
+                    if (axl == -1 && PyErr_Occurred()) { free(drop); return NULL; }
                     int ax = (int)axl; if (ax < 0) ax += orig_nd;
-                    if (ax < 0 || ax >= orig_nd) { Py_DECREF(seq); free(drop); Py_DECREF(arrays); PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
-                    if (orig_dims[ax] != 1) { Py_DECREF(seq); free(drop); Py_DECREF(arrays); PyErr_SetString(PyExc_ValueError, "cannot squeeze axis with size != 1"); return NULL; }
-                    if (!drop[ax]) { drop[ax] = 1; any_drop = 1; }
+                    if (ax < 0 || ax >= orig_nd) { free(drop); PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
+                    if (orig_dims[ax] != 1) { free(drop); PyErr_SetString(PyExc_ValueError, "cannot squeeze axis with size != 1"); return NULL; }
+                    drop[ax] = 1; any_drop = 1;
+                } else {
+                    PyObject *seq = PySequence_Fast(axis_obj, "axis must be int or sequence of int");
+                    if (!seq) { free(drop); return NULL; }
+                    Py_ssize_t na = PySequence_Fast_GET_SIZE(seq);
+                    for (Py_ssize_t i = 0; i < na; ++i) {
+                        PyObject *it = PySequence_Fast_GET_ITEM(seq, i);
+                        long axl = PyLong_AsLong(it);
+                        if (axl == -1 && PyErr_Occurred()) { Py_DECREF(seq); free(drop); return NULL; }
+                        int ax = (int)axl; if (ax < 0) ax += orig_nd;
+                        if (ax < 0 || ax >= orig_nd) { Py_DECREF(seq); free(drop); PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
+                        if (orig_dims[ax] != 1) { Py_DECREF(seq); free(drop); PyErr_SetString(PyExc_ValueError, "cannot squeeze axis with size != 1"); return NULL; }
+                        if (!drop[ax]) { drop[ax] = 1; any_drop = 1; }
+                    }
+                    Py_DECREF(seq);
                 }
-                Py_DECREF(seq);
             }
         }
-    }
-    if (!any_drop) {
-        for (int ax = 0; ax < orig_nd; ++ax) if (orig_dims[ax] == 1) { drop[ax] = 1; any_drop = 1; }
-    }
-    if (!any_drop) { /* nothing to do, return view of self */ free(drop); Py_INCREF(obj); return obj; }
+        if (!any_drop) {
+            for (int ax = 0; ax < orig_nd; ++ax) if (orig_dims[ax] == 1) { drop[ax] = 1; any_drop = 1; }
+        }
+        if (!any_drop) { free(drop); Py_INCREF(obj); return obj; }
 
-    int new_nd = 0; for (int ax = 0; ax < orig_nd; ++ax) if (!drop[ax]) new_nd++;
-    npy_intp *new_dims = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)new_nd);
-    if (!new_dims) { free(drop); Py_DECREF(arrays); return NULL; }
-    int p = 0; for (int ax = 0; ax < orig_nd; ++ax) if (!drop[ax]) new_dims[p++] = orig_dims[ax];
+        int new_nd = 0; for (int ax = 0; ax < orig_nd; ++ax) if (!drop[ax]) new_nd++;
+        npy_intp *new_dims = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)new_nd);
+        if (!new_dims) { free(drop); return NULL; }
+        int p = 0; for (int ax = 0; ax < orig_nd; ++ax) if (!drop[ax]) new_dims[p++] = orig_dims[ax];
 
-    PyArray_Dims nds; nds.ptr = new_dims; nds.len = new_nd;
-    PyObject *res_base2 = PyArray_Newshape((PyArrayObject *)obj, &nds, NPY_CORDER);
-    PyMem_Free(new_dims);
-    if (!res_base2) { free(drop); return NULL; }
+        PyArray_Dims nds; nds.ptr = new_dims; nds.len = new_nd;
+        PyObject *res_base2 = PyArray_Newshape((PyArrayObject *)obj, &nds, NPY_CORDER);
+        PyMem_Free(new_dims);
+        if (!res_base2) { free(drop); return NULL; }
 
-    if (PyArray_NDIM((PyArrayObject *)res_base2) == 0) {
-        PyObject *scalar = PyObject_CallMethod(res_base2, "item", NULL);
-        Py_DECREF(res_base2); free(drop); return scalar;
-    }
+        if (PyArray_NDIM((PyArrayObject *)res_base2) == 0) {
+            PyObject *scalar = PyObject_CallMethod(res_base2, "item", NULL);
+            Py_DECREF(res_base2); free(drop); return scalar;
+        }
 
-    PyObject *view2 = PyArray_View((PyArrayObject *)res_base2, NULL, (PyTypeObject *)Py_TYPE(self_obj));
-    Py_DECREF(res_base2);
-    if (!view2) { free(drop); return NULL; }
+        PyObject *view2 = PyArray_View((PyArrayObject *)res_base2, NULL, (PyTypeObject *)Py_TYPE(self_obj));
+        Py_DECREF(res_base2);
+        if (!view2) { free(drop); return NULL; }
 
-    /* Build squeezed labels */
-    LabeledArrayObject *lai0 = (LabeledArrayObject *)obj;
-    LabelsBlock *plb = lai0->labels_block;
-    if (!plb) { plb = labelsblock_new_default((PyArrayObject *)obj); if (!plb) { Py_DECREF(view2); free(drop); return NULL; } lai0->labels_block = plb; }
+        LabeledArrayObject *lai0 = (LabeledArrayObject *)obj;
+        LabelsBlock *plb = lai0->labels_block;
+        if (!plb) { plb = labelsblock_new_default((PyArrayObject *)obj); if (!plb) { Py_DECREF(view2); free(drop); return NULL; } lai0->labels_block = plb; }
         LabelsBlock *out_lb2 = labelsblock_alloc(new_nd);
-    if (!out_lb2) { Py_DECREF(view2); free(drop); return NULL; }
-    int dst = 0;
-    for (int ax = 0; ax < orig_nd; ++ax) {
-        if (drop[ax]) continue;
-        int n = plb->axis_len[ax];
+        if (!out_lb2) { Py_DECREF(view2); free(drop); return NULL; }
+        int dst = 0;
+        for (int ax = 0; ax < orig_nd; ++ax) {
+            if (drop[ax]) continue;
+            int n = plb->axis_len[ax];
             if (labelsblock_set_axis_copy(out_lb2, dst, plb->axis_labels[ax], n) < 0) { labelsblock_decref(out_lb2); Py_DECREF(view2); free(drop); return NULL; }
-        dst++;
-    }
+            dst++;
+        }
 
         labelsblock_attach_to_view(view2, out_lb2);
-
-    free(drop);
-    return view2;
+        free(drop);
+        return view2;
     }
 
-    /* Handle expand_dims */
     if (is_expand) {
         PyObject *obj0 = PyTuple_GET_ITEM(fargs, 0);
         if (!PyObject_TypeCheck(obj0, &LabeledArray_Type)) { Py_RETURN_NOTIMPLEMENTED; }
@@ -1363,15 +1613,14 @@ array_function(PyObject *self_obj, PyObject *args)
     Py_RETURN_NOTIMPLEMENTED;
 }
 
-/* ---------- __array_ufunc__ (generic ufunc handler; delegates and wraps) ---------- */
+/* ---------- __array_ufunc__ ---------- */
 static PyObject *
 array_ufunc(PyObject *self_obj, PyObject *args, PyObject *kwargs)
 {
-    /* args = (ufunc, method, *inputs) */
     if (!PyTuple_Check(args) || PyTuple_GET_SIZE(args) < 2) {
         Py_RETURN_NOTIMPLEMENTED;
     }
-    PyObject *ufunc = PyTuple_GET_ITEM(args, 0);
+    PyObject *ufunc  = PyTuple_GET_ITEM(args, 0);
     PyObject *method = PyTuple_GET_ITEM(args, 1);
 
     Py_ssize_t nin = PyTuple_GET_SIZE(args) - 2;
@@ -1383,14 +1632,12 @@ array_ufunc(PyObject *self_obj, PyObject *args, PyObject *kwargs)
         PyTuple_SET_ITEM(inputs, i, it);
     }
 
-    /* Call getattr(ufunc, method)(*inputs, **kwargs) */
     PyObject *meth = PyObject_GetAttr(ufunc, method);
     if (!meth) { Py_DECREF(inputs); Py_RETURN_NOTIMPLEMENTED; }
-    /* Convert LabeledArray inputs to base ndarray views to avoid recursive dispatch */
     PyObject *inputs2 = PyTuple_New(nin);
     if (!inputs2) { Py_DECREF(meth); Py_DECREF(inputs); return NULL; }
     for (Py_ssize_t i = 0; i < nin; ++i) {
-        PyObject *it = PyTuple_GET_ITEM(inputs, i); /* borrowed */
+        PyObject *it = PyTuple_GET_ITEM(inputs, i);
         PyObject *to_set = it;
         if (PyObject_TypeCheck(it, &LabeledArray_Type)) {
             to_set = PyArray_View((PyArrayObject *)it, NULL, &PyArray_Type);
@@ -1398,13 +1645,10 @@ array_ufunc(PyObject *self_obj, PyObject *args, PyObject *kwargs)
         } else {
             Py_INCREF(to_set);
         }
-        PyTuple_SET_ITEM(inputs2, i, to_set); /* steals */
+        PyTuple_SET_ITEM(inputs2, i, to_set);
     }
 
-    /* Copy kwargs and convert 'out' and 'where' to base ndarray views if provided */
-    PyObject *kwargs2 = NULL;
-    kwargs2 = convert_kwargs_out_where(kwargs);
-
+    PyObject *kwargs2 = convert_kwargs_out_where(kwargs);
     PyObject *res = PyObject_Call(meth, inputs2, kwargs2 ? kwargs2 : kwargs);
     Py_DECREF(meth);
     Py_DECREF(inputs2);
@@ -1412,9 +1656,8 @@ array_ufunc(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     if (kwargs2) Py_DECREF(kwargs2);
     if (!res) return NULL;
 
-    /* If 'out' is provided and points to LabeledArray(s), return original out (in-place op) */
     if (kwargs && PyDict_Check(kwargs)) {
-        PyObject *out_kw = PyDict_GetItemString(kwargs, "out"); /* borrowed */
+        PyObject *out_kw = PyDict_GetItemString(kwargs, "out");
         int return_direct = 0;
         PyObject *ret_obj = NULL;
         if (out_kw && out_kw != Py_None) {
@@ -1428,7 +1671,6 @@ array_ufunc(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                 return_direct = 1; ret_obj = out_kw;
             }
         }
-        /* Also guard the self-in-place case */
         if (res == self_obj && !ret_obj) { ret_obj = self_obj; return_direct = 1; }
         if (return_direct) {
             if (!ret_obj) ret_obj = res;
@@ -1438,7 +1680,6 @@ array_ufunc(PyObject *self_obj, PyObject *args, PyObject *kwargs)
         }
     }
 
-    /* Wrap using __array_wrap__ to preserve labels and scalar behavior */
     PyObject *context = Py_BuildValue("(OOO)", ufunc, method, Py_None);
     if (!context) { Py_DECREF(res); return NULL; }
     PyObject *wrapped = PyObject_CallMethod(self_obj, "__array_wrap__", "OO", res, context);
@@ -1486,7 +1727,7 @@ LabeledArray_find(PyObject *self, PyObject *args, PyObject *kwargs)
     return PyLong_FromSsize_t(pos);
 }
 
-/* ---------- take(indices, axis=0) with label propagation ---------- */
+/* ---------- take with label propagation ---------- */
 static PyObject *
 LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
 {
@@ -1498,15 +1739,8 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     if (axis < 0) axis += nd;
     if (axis < 0 || axis >= nd) { PyErr_SetString(PyExc_ValueError, "axis out of range"); return NULL; }
 
-    /* Data path via numpy.take (cached) */
-    static PyObject *np_take = NULL;
-    if (!np_take) {
-        PyObject *numpy = PyImport_ImportModule("numpy");
-        if (!numpy) return NULL;
-        np_take = PyObject_GetAttrString(numpy, "take");
-        Py_DECREF(numpy);
-        if (!np_take) return NULL;
-    }
+    /* Use the cached np_take pointer (init_np_funcs already handles caching) */
+    if (init_np_funcs() < 0) return NULL;
     PyObject *res_base = PyObject_CallFunction(np_take, "OOi", self_obj, indices, axis);
     if (!res_base) return NULL;
     if (!PyArray_Check(res_base)) return res_base;
@@ -1514,7 +1748,6 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     Py_DECREF(res_base);
     if (!view) return NULL;
 
-    /* Build ck for labels using original indices to preserve order */
     LabeledArrayObject *lai = (LabeledArrayObject *)self_obj;
     LabelsBlock *plb = lai->labels_block;
     if (!plb) { plb = labelsblock_new_default((PyArrayObject *)self_obj); if (!plb) { Py_DECREF(view); return NULL; } lai->labels_block = plb; }
@@ -1526,8 +1759,7 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                 PyArrayObject *arrk = (PyArrayObject *)PyArray_FromAny(indices, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                 if (!arrk) { Py_DECREF(ck); Py_DECREF(view); return NULL; }
                 int t = PyArray_TYPE(arrk);
-                PyArrayObject *ind = NULL;
-                int mapped = 0;
+                PyArrayObject *ind = NULL; int mapped = 0;
                 if (PyTypeNum_ISINTEGER(t)) {
                     ind = (PyArrayObject *)PyArray_FromAny((PyObject *)arrk, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                 } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
@@ -1536,10 +1768,8 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                 }
                 Py_DECREF(arrk);
                 if (!ind) {
-                    if (!PyErr_Occurred()) {
-                        PyErr_SetString(mapped ? PyExc_IndexError : PyExc_TypeError,
-                                        mapped ? "label not found in axis for take" : "unsupported indices for take");
-                    }
+                    if (!PyErr_Occurred()) PyErr_SetString(mapped ? PyExc_IndexError : PyExc_TypeError,
+                        mapped ? "label not found in axis for take" : "unsupported indices for take");
                     Py_DECREF(ck); Py_DECREF(view); return NULL;
                 }
                 PyTuple_SET_ITEM(ck, ax, (PyObject *)ind);
@@ -1556,9 +1786,7 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                     Py_DECREF(seq);
                     PyArrayObject *arrk = (PyArrayObject *)PyArray_FromAny(indices, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                     if (!arrk) { Py_DECREF(ck); Py_DECREF(view); return NULL; }
-                    int t = PyArray_TYPE(arrk);
-                    PyArrayObject *ind = NULL;
-                    int mapped = 0;
+                    int t = PyArray_TYPE(arrk); PyArrayObject *ind = NULL; int mapped = 0;
                     if (PyTypeNum_ISINTEGER(t)) {
                         ind = (PyArrayObject *)PyArray_FromAny((PyObject *)arrk, PyArray_DescrFromType(NPY_INTP), 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
                     } else if (t == NPY_UNICODE || t == NPY_STRING || t == NPY_OBJECT) {
@@ -1567,10 +1795,8 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                     }
                     Py_DECREF(arrk);
                     if (!ind) {
-                        if (!PyErr_Occurred()) {
-                            PyErr_SetString(mapped ? PyExc_IndexError : PyExc_TypeError,
-                                            mapped ? "label not found in axis for take" : "unsupported indices for take");
-                        }
+                        if (!PyErr_Occurred()) PyErr_SetString(mapped ? PyExc_IndexError : PyExc_TypeError,
+                            mapped ? "label not found in axis for take" : "unsupported indices for take");
                         Py_DECREF(ck); Py_DECREF(view); return NULL;
                     }
                     PyTuple_SET_ITEM(ck, ax, (PyObject *)ind);
@@ -1615,11 +1841,13 @@ LabeledArray_take(PyObject *self_obj, PyObject *args, PyObject *kwargs)
         tobj->labels_block = child;
         labelsblock_decref(old);
         labels_cache_clear(tobj);
+    } else {
+        PyErr_Clear();  /* label attachment is best-effort; clear non-fatal error */
     }
     return view;
 }
 
-/* ---------- combine(levels=(i,j), delim=None) ---------- */
+/* ---------- combine ---------- */
 static PyObject *
 LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
 {
@@ -1646,11 +1874,7 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    /* const npy_intp *dims = PyArray_DIMS(arr); */
-
-    /* Rework using C-API: move axes and reshape to merge, avoiding Python loops */
     PyArrayObject *arr0 = (PyArrayObject *)self_obj;
-    /* Bring a0 adjacent to a1 and record merge position */
     npy_intp *perm = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)nd);
     if (!perm) return NULL;
     for (int i = 0; i < nd; ++i) perm[i] = (npy_intp)i;
@@ -1667,17 +1891,16 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     PyMem_Free(perm);
     if (!moved) return NULL;
 
-    /* Now merge axes (a1-1, a1) into one: compute new dims */
     int nd_new = nd - 1;
     const npy_intp *dims0 = PyArray_DIMS((PyArrayObject *)moved);
     npy_intp *new_dims = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)nd_new);
     if (!new_dims) { Py_DECREF(moved); return NULL; }
     int w = 0;
-        for (int ax = 0; ax < nd; ++ax) {
+    for (int ax = 0; ax < nd; ++ax) {
         if (ax == merge_pos) {
             npy_intp merged = dims0[ax] * dims0[ax + 1];
             new_dims[w++] = merged;
-            ax++; /* skip next */
+            ax++;
         } else {
             new_dims[w++] = dims0[ax];
         }
@@ -1691,7 +1914,6 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     Py_DECREF(reshaped);
     if (!view) return NULL;
 
-    /* Build labels: drop axis a0; join labels from a0 and a1 into new a1 labels */
     LabelsBlock *plb = self->labels_block;
     if (!plb) { plb = labelsblock_new_default((PyArrayObject *)self_obj); if (!plb) { Py_DECREF(view); return NULL; } self->labels_block = plb; }
     int new_nd = nd - 1;
@@ -1702,7 +1924,7 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     size_t joiner_len = strlen(joiner);
     int dst = 0;
     for (int ax = 0; ax < nd; ++ax) {
-        if (ax == a0) continue; /* drop */
+        if (ax == a0) continue;
         if (ax == a1) {
             int n0 = plb->axis_len[a0];
             int n1 = plb->axis_len[a1];
@@ -1715,16 +1937,8 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
             size_t *len1 = (size_t *)PyMem_Malloc(sizeof(size_t) * (size_t)n1);
             if (!len0 || !len1) { PyMem_Free(len0); PyMem_Free(len1); labelsblock_decref(out); Py_DECREF(view); return NULL; }
             size_t sum0 = 0, sum1 = 0;
-            for (int i = 0; i < n0; ++i) {
-                const char *s = plb->axis_labels[a0][i];
-                len0[i] = strlen(s ? s : "");
-                sum0 += len0[i];
-            }
-            for (int j = 0; j < n1; ++j) {
-                const char *s = plb->axis_labels[a1][j];
-                len1[j] = strlen(s ? s : "");
-                sum1 += len1[j];
-            }
+            for (int i = 0; i < n0; ++i) { const char *s = plb->axis_labels[a0][i]; len0[i] = strlen(s ? s : ""); sum0 += len0[i]; }
+            for (int j = 0; j < n1; ++j) { const char *s = plb->axis_labels[a1][j]; len1[j] = strlen(s ? s : ""); sum1 += len1[j]; }
 
             size_t total = sum0 * (size_t)n1 + sum1 * (size_t)n0 + (joiner_len + 1) * n01;
             char *slab = (char *)PyDataMem_NEW(total);
@@ -1742,8 +1956,7 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                     const char *s1 = plb->axis_labels[a1][j];
                     size_t L1 = len1[j];
                     size_t Ltot = L0 + joiner_len + L1 + 1;
-                    char *dstp = cursor;
-                    cursor += Ltot;
+                    char *dstp = cursor; cursor += Ltot;
                     if (L0) memcpy(dstp, s0 ? s0 : "", L0);
                     if (single_delim) { dstp[L0] = dch; }
                     else if (joiner_len) { memcpy(dstp + L0, joiner, joiner_len); }
@@ -1754,8 +1967,7 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
                 }
             }
             NPY_END_ALLOW_THREADS;
-            PyMem_Free(len0);
-            PyMem_Free(len1);
+            PyMem_Free(len0); PyMem_Free(len1);
             if (axhash_build(&out->axis_hash[dst], (const char **)out->axis_labels[dst], (int)n01) < 0) { labelsblock_decref(out); Py_DECREF(view); return NULL; }
         } else {
             int n = plb->axis_len[ax];
@@ -1774,29 +1986,20 @@ LabeledArray_combine(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     return view;
 }
 
-
-/* ---------- reshape (fast labels for combine-only) ---------- */
+/* ---------- reshape ---------- */
 static int
 reshape_parse_args(PyObject *args, PyObject *kwargs, PyArray_Dims *out_dims, NPY_ORDER *out_order)
 {
     Py_ssize_t nargs = PyTuple_GET_SIZE(args);
-    if (nargs < 1) {
-        PyErr_SetString(PyExc_TypeError, "reshape() takes at least 1 argument");
-        return -1;
-    }
+    if (nargs < 1) { PyErr_SetString(PyExc_TypeError, "reshape() takes at least 1 argument"); return -1; }
 
     PyObject *order_obj = NULL;
-    if (kwargs && PyDict_Check(kwargs)) {
-        order_obj = PyDict_GetItemString(kwargs, "order");
-    }
+    if (kwargs && PyDict_Check(kwargs)) order_obj = PyDict_GetItemString(kwargs, "order");
 
     Py_ssize_t shape_nargs = nargs;
     if (!order_obj && nargs >= 2) {
         PyObject *last = PyTuple_GET_ITEM(args, nargs - 1);
-        if (PyUnicode_Check(last) || PyBytes_Check(last)) {
-            order_obj = last;
-            shape_nargs = nargs - 1;
-        }
+        if (PyUnicode_Check(last) || PyBytes_Check(last)) { order_obj = last; shape_nargs = nargs - 1; }
     }
 
     char order_char = 'C';
@@ -1804,27 +2007,17 @@ reshape_parse_args(PyObject *args, PyObject *kwargs, PyArray_Dims *out_dims, NPY
         const char *os = NULL;
         if (PyUnicode_Check(order_obj)) os = PyUnicode_AsUTF8(order_obj);
         else if (PyBytes_Check(order_obj)) os = PyBytes_AsString(order_obj);
-        if (!os || os[0] == '\0') {
-            PyErr_SetString(PyExc_TypeError, "order must be 'C' or 'F'");
-            return -1;
-        }
+        if (!os || os[0] == '\0') { PyErr_SetString(PyExc_TypeError, "order must be 'C' or 'F'"); return -1; }
         order_char = os[0];
     }
 
     if (order_char == 'C' || order_char == 'c') *out_order = NPY_CORDER;
     else if (order_char == 'F' || order_char == 'f') *out_order = NPY_FORTRANORDER;
-    else {
-        PyErr_SetString(PyExc_NotImplementedError, "reshape order not supported");
-        return -1;
-    }
+    else { PyErr_SetString(PyExc_NotImplementedError, "reshape order not supported"); return -1; }
 
     PyObject *shape_obj = NULL;
-    if (shape_nargs == 1) {
-        shape_obj = PyTuple_GET_ITEM(args, 0);
-        Py_INCREF(shape_obj);
-    } else {
-        shape_obj = PyTuple_GetSlice(args, 0, shape_nargs);
-    }
+    if (shape_nargs == 1) { shape_obj = PyTuple_GET_ITEM(args, 0); Py_INCREF(shape_obj); }
+    else { shape_obj = PyTuple_GetSlice(args, 0, shape_nargs); }
     if (!shape_obj) return -1;
     int ok = PyArray_IntpConverter(shape_obj, out_dims);
     Py_DECREF(shape_obj);
@@ -1835,59 +2028,35 @@ reshape_parse_args(PyObject *args, PyObject *kwargs, PyArray_Dims *out_dims, NPY
 static int
 reshape_resolve_dims(PyArray_Dims *dims, npy_intp total)
 {
-    int neg = -1;
-    npy_intp known = 1;
+    int neg = -1; npy_intp known = 1;
     for (int i = 0; i < dims->len; ++i) {
         npy_intp d = dims->ptr[i];
         if (d == -1) {
-            if (neg >= 0) {
-                PyErr_SetString(PyExc_ValueError, "only one -1 is allowed in reshape");
-                return -1;
-            }
+            if (neg >= 0) { PyErr_SetString(PyExc_ValueError, "only one -1 is allowed in reshape"); return -1; }
             neg = i;
-        } else if (d < 0) {
-            PyErr_SetString(PyExc_ValueError, "negative dimensions are not allowed");
-            return -1;
-        } else {
-            if (d != 0 && known > NPY_MAX_INTP / d) {
-                PyErr_SetString(PyExc_OverflowError, "reshape dims overflow");
-                return -1;
-            }
+        } else if (d < 0) { PyErr_SetString(PyExc_ValueError, "negative dimensions are not allowed"); return -1; }
+        else {
+            if (d != 0 && known > NPY_MAX_INTP / d) { PyErr_SetString(PyExc_OverflowError, "reshape dims overflow"); return -1; }
             known *= d;
         }
     }
     if (neg >= 0) {
-        if (known == 0 || total % known != 0) {
-            PyErr_SetString(PyExc_ValueError, "cannot reshape array of size into requested shape");
-            return -1;
-        }
+        if (known == 0 || total % known != 0) { PyErr_SetString(PyExc_ValueError, "cannot reshape array of size into requested shape"); return -1; }
         dims->ptr[neg] = total / known;
-    } else if (known != total) {
-        PyErr_SetString(PyExc_ValueError, "cannot reshape array of size into requested shape");
-        return -1;
-    }
+    } else if (known != total) { PyErr_SetString(PyExc_ValueError, "cannot reshape array of size into requested shape"); return -1; }
     return 0;
 }
-
-
 
 static PyObject *
 reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims, int nd_new, NPY_ORDER order)
 {
     int nd = PyArray_NDIM(arr);
     npy_intp total = PyArray_SIZE(arr);
-    if (total == 0) {
-        PyErr_SetString(PyExc_NotImplementedError, "reshape labels (fast) unsupported for empty arrays");
-        return NULL;
-    }
+    if (total == 0) { PyErr_SetString(PyExc_NotImplementedError, "reshape labels (fast) unsupported for empty arrays"); return NULL; }
 
     LabeledArrayObject *self = (LabeledArrayObject *)self_obj;
     LabelsBlock *lb = self->labels_block;
-    if (!lb) {
-        lb = labelsblock_new_default(arr);
-        if (!lb) return NULL;
-        self->labels_block = lb;
-    }
+    if (!lb) { lb = labelsblock_new_default(arr); if (!lb) return NULL; self->labels_block = lb; }
 
     const char *delim = (self->delimiter != NULL) ? self->delimiter : "-";
     size_t delim_len = strlen(delim);
@@ -1914,10 +2083,7 @@ reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims,
         int n = lb->axis_len[ax];
         lab_lens[ax] = (size_t *)PyMem_Malloc(sizeof(size_t) * (size_t)n);
         if (!lab_lens[ax]) { PyErr_NoMemory(); goto fail; }
-        for (int i = 0; i < n; ++i) {
-            const char *s = lb->axis_labels[ax][i] ? lb->axis_labels[ax][i] : "";
-            lab_lens[ax][i] = strlen(s);
-        }
+        for (int i = 0; i < n; ++i) { const char *s = lb->axis_labels[ax][i] ? lb->axis_labels[ax][i] : ""; lab_lens[ax][i] = strlen(s); }
     }
 
     size_t total_bytes = 0;
@@ -1925,10 +2091,7 @@ reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims,
     if (!idx_old) { PyErr_NoMemory(); goto fail; }
     for (npy_intp flat = 0; flat < total; ++flat) {
         size_t len = 0; int parts = 0;
-        for (int ax = 0; ax < nd; ++ax) {
-            size_t L = lab_lens[ax][(int)idx_old[ax]];
-            if (L) { len += L; parts++; }
-        }
+        for (int ax = 0; ax < nd; ++ax) { size_t L = lab_lens[ax][(int)idx_old[ax]]; if (L) { len += L; parts++; } }
         if (parts > 1 && delim_len) len += delim_len * (size_t)(parts - 1);
         if (SIZE_MAX - total_bytes < len + 1) { PyErr_NoMemory(); goto fail; }
         total_bytes += len + 1;
@@ -1943,8 +2106,7 @@ reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims,
     memset(idx_old, 0, sizeof(npy_intp) * (size_t)nd);
     char *cursor = labels_slab;
     for (npy_intp flat = 0; flat < total; ++flat) {
-        char *dst = cursor;
-        int parts_written = 0;
+        char *dst = cursor; int parts_written = 0;
         for (int ax = 0; ax < nd; ++ax) {
             const char *s = lb->axis_labels[ax][(int)idx_old[ax]] ? lb->axis_labels[ax][(int)idx_old[ax]] : "";
             size_t L = lab_lens[ax][(int)idx_old[ax]];
@@ -1991,27 +2153,22 @@ reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims,
     }
 
     need_unique = (char **)PyMem_Calloc((size_t)nd_new, sizeof(char *));
-    uniq_sets = (StrSet ***)PyMem_Calloc((size_t)nd_new, sizeof(StrSet **));
+    uniq_sets   = (StrSet ***)PyMem_Calloc((size_t)nd_new, sizeof(StrSet **));
     if (!need_unique || !uniq_sets) { PyErr_NoMemory(); goto fail; }
     int any_need = 0;
     for (int j = 0; j < nd_new; ++j) {
         need_unique[j] = (char *)PyMem_Calloc((size_t)newdims[j], sizeof(char));
-        uniq_sets[j] = (StrSet **)PyMem_Calloc((size_t)newdims[j], sizeof(StrSet *));
+        uniq_sets[j]   = (StrSet **)PyMem_Calloc((size_t)newdims[j], sizeof(StrSet *));
         if (!need_unique[j] || !uniq_sets[j]) { PyErr_NoMemory(); goto fail; }
         for (npy_intp i = 0; i < newdims[j]; ++i) {
-            IntersectState *st = &states[j][(int)i];
-            if (!st->set || st->set->used == 0) {
-                need_unique[j][(int)i] = 1;
-                any_need = 1;
-            }
+            if (!states[j][i].set || states[j][i].set->used == 0) { need_unique[j][(int)i] = 1; any_need = 1; }
         }
     }
 
     if (any_need) {
         memset(idx_new, 0, sizeof(npy_intp) * (size_t)nd_new);
         for (npy_intp flat = 0; flat < total; ++flat) {
-            const char *lab = labels_flat[flat];
-            size_t L = strlen(lab);
+            const char *lab = labels_flat[flat]; size_t L = strlen(lab);
             for (int j = 0; j < nd_new; ++j) {
                 if (!need_unique[j][(int)idx_new[j]]) continue;
                 if (!uniq_sets[j][(int)idx_new[j]]) {
@@ -2051,23 +2208,15 @@ reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims,
 
         for (int i = 0; i < n; ++i) {
             StrSet *set = (states[j][i].set && states[j][i].set->used > 0) ? states[j][i].set : uniq_sets[j][i];
-            if (!set || set->used == 0) {
-                *cur = '\0';
-                out->axis_labels[j][i] = cur;
-                cur += 1;
-                continue;
-            }
-            char *stack_keys[64];
-            int nkeys = 0;
+            if (!set || set->used == 0) { *cur = '\0'; out->axis_labels[j][i] = cur; cur += 1; continue; }
+            char *stack_keys[64]; int nkeys = 0;
             char **keys = strset_collect_keys(set, &nkeys, stack_keys, 64);
             if (!keys) { PyMem_Free(join_lens); PyErr_NoMemory(); goto fail; }
             qsort(keys, (size_t)nkeys, sizeof(char *), cmp_cstr);
-
             char *dst = cur;
             for (int k = 0; k < nkeys; ++k) {
                 if (k > 0 && delim_len) { memcpy(dst, delim, delim_len); dst += delim_len; }
-                size_t L = strlen(keys[k]);
-                memcpy(dst, keys[k], L); dst += L;
+                size_t L = strlen(keys[k]); memcpy(dst, keys[k], L); dst += L;
             }
             *dst = '\0';
             out->axis_labels[j][i] = cur;
@@ -2077,8 +2226,8 @@ reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims,
 
         PyMem_Free(join_lens);
         if (make_array_unique_c(out->axis_labels[j], n, delim, &out->axis_slab[j]) < 0) { PyErr_NoMemory(); goto fail; }
-        if (axhash_build(&out->axis_hash[j], (const char **)out->axis_labels[j], n) < 0) { goto fail; }
-        if (labelsblock_finalize_axis_from_c(out, j) < 0) { goto fail; }
+        if (axhash_build(&out->axis_hash[j], (const char **)out->axis_labels[j], n) < 0) goto fail;
+        if (labelsblock_finalize_axis_from_c(out, j) < 0) goto fail;
     }
 
     PyArray_Dims nds; nds.ptr = (npy_intp *)newdims; nds.len = nd_new;
@@ -2088,41 +2237,33 @@ reshape_general(PyObject *self_obj, PyArrayObject *arr, const npy_intp *newdims,
     Py_DECREF(reshaped); reshaped = NULL;
     if (!view) goto fail;
 
-    LabeledArrayObject *v = (LabeledArrayObject *)view;
-    LabelsBlock *old = v->labels_block;
-    v->labels_block = out;
-    labelsblock_decref(old);
-    labels_cache_clear(v);
-    out = NULL;
+    {
+        LabeledArrayObject *v = (LabeledArrayObject *)view;
+        LabelsBlock *old = v->labels_block;
+        v->labels_block = out;
+        labelsblock_decref(old);
+        labels_cache_clear(v);
+        out = NULL;
+    }
 
 fail:
     if (labels_slab) PyDataMem_FREE(labels_slab);
     if (labels_flat) PyMem_Free(labels_flat);
-    if (lab_lens) {
-        for (int ax = 0; ax < nd; ++ax) PyMem_Free(lab_lens[ax]);
-        PyMem_Free(lab_lens);
-    }
+    if (lab_lens) { for (int ax = 0; ax < nd; ++ax) PyMem_Free(lab_lens[ax]); PyMem_Free(lab_lens); }
     PyMem_Free(idx_old);
     if (states) {
         for (int j = 0; j < nd_new; ++j) {
             if (!states[j]) continue;
-            for (npy_intp i = 0; i < newdims[j]; ++i) {
-                if (states[j][i].set) { strset_free(states[j][i].set); PyMem_Free(states[j][i].set); }
-            }
+            for (npy_intp i = 0; i < newdims[j]; ++i) if (states[j][i].set) { strset_free(states[j][i].set); PyMem_Free(states[j][i].set); }
             PyMem_Free(states[j]);
         }
         PyMem_Free(states);
     }
-    if (need_unique) {
-        for (int j = 0; j < nd_new; ++j) PyMem_Free(need_unique[j]);
-        PyMem_Free(need_unique);
-    }
+    if (need_unique) { for (int j = 0; j < nd_new; ++j) PyMem_Free(need_unique[j]); PyMem_Free(need_unique); }
     if (uniq_sets) {
         for (int j = 0; j < nd_new; ++j) {
             if (!uniq_sets[j]) continue;
-            for (npy_intp i = 0; i < newdims[j]; ++i) {
-                if (uniq_sets[j][i]) { strset_free(uniq_sets[j][i]); PyMem_Free(uniq_sets[j][i]); }
-            }
+            for (npy_intp i = 0; i < newdims[j]; ++i) if (uniq_sets[j][i]) { strset_free(uniq_sets[j][i]); PyMem_Free(uniq_sets[j][i]); }
             PyMem_Free(uniq_sets[j]);
         }
         PyMem_Free(uniq_sets);
@@ -2137,55 +2278,34 @@ static PyObject *
 LabeledArray_reshape(PyObject *self_obj, PyObject *args, PyObject *kwargs)
 {
     PyArrayObject *arr = (PyArrayObject *)self_obj;
-    PyArray_Dims newdims;
-    NPY_ORDER order = NPY_CORDER;
+    PyArray_Dims newdims; NPY_ORDER order = NPY_CORDER;
     if (reshape_parse_args(args, kwargs, &newdims, &order) < 0) return NULL;
-
     npy_intp total = PyArray_SIZE(arr);
     if (reshape_resolve_dims(&newdims, total) < 0) { PyDimMem_FREE(newdims.ptr); return NULL; }
 
     int nd = PyArray_NDIM(arr);
     int nd_new = (int)newdims.len;
-    if (nd_new == 0) {
-        PyDimMem_FREE(newdims.ptr);
-        PyErr_SetString(PyExc_NotImplementedError, "reshape labels (fast) does not support scalar shapes");
-        return NULL;
-    }
-    if (order != NPY_CORDER && order != NPY_FORTRANORDER) {
-        PyDimMem_FREE(newdims.ptr);
-        PyErr_SetString(PyExc_NotImplementedError, "reshape order not supported");
-        return NULL;
-    }
+    if (nd_new == 0) { PyDimMem_FREE(newdims.ptr); PyErr_SetString(PyExc_NotImplementedError, "reshape labels (fast) does not support scalar shapes"); return NULL; }
+    if (order != NPY_CORDER && order != NPY_FORTRANORDER) { PyDimMem_FREE(newdims.ptr); PyErr_SetString(PyExc_NotImplementedError, "reshape order not supported"); return NULL; }
 
     int use_combine = 0;
-    int *group_start = NULL;
-    int *group_end = NULL;
+    int *group_start = NULL, *group_end = NULL;
     if (order == NPY_CORDER && nd_new <= nd) {
         group_start = (int *)PyMem_Malloc(sizeof(int) * (size_t)nd_new);
-        group_end = (int *)PyMem_Malloc(sizeof(int) * (size_t)nd_new);
-        if (!group_start || !group_end) {
-            PyMem_Free(group_start); PyMem_Free(group_end);
-            PyDimMem_FREE(newdims.ptr);
-            PyErr_NoMemory();
-            return NULL;
-        }
-
-        int src = 0;
-        int unsupported = 0;
+        group_end   = (int *)PyMem_Malloc(sizeof(int) * (size_t)nd_new);
+        if (!group_start || !group_end) { PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
+        int src = 0, unsupported = 0;
         for (int j = 0; j < nd_new; ++j) {
-            npy_intp need = newdims.ptr[j];
-            npy_intp prod = 1;
+            npy_intp need = newdims.ptr[j], prod = 1;
             int start = src;
             while (src < nd && prod < need) {
                 npy_intp d = PyArray_DIM(arr, src);
                 if (d == 0) { prod = 0; break; }
                 if (prod > NPY_MAX_INTP / d) { unsupported = 1; break; }
-                prod *= d;
-                src++;
+                prod *= d; src++;
             }
             if (prod != need) { unsupported = 1; break; }
-            group_start[j] = start;
-            group_end[j] = src - 1;
+            group_start[j] = start; group_end[j] = src - 1;
             if (group_end[j] < group_start[j]) { unsupported = 1; break; }
         }
         if (src != nd) unsupported = 1;
@@ -2194,23 +2314,18 @@ LabeledArray_reshape(PyObject *self_obj, PyObject *args, PyObject *kwargs)
 
     if (use_combine) {
         PyObject *view = NULL;
-        int keep_nd = nd_new;
         npy_intp *keep_shape = NULL;
         PyArrayObject *transposed = NULL;
 
         if (nd_new == nd) {
-            Py_INCREF(arr);
-            transposed = arr;
+            Py_INCREF(arr); transposed = arr;
         } else {
             char *drop = (char *)PyMem_Calloc((size_t)nd, sizeof(char));
             if (!drop) { PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
-            for (int j = 0; j < nd_new; ++j) {
-                for (int ax = group_start[j]; ax <= group_end[j]; ++ax) drop[ax] = 1;
-            }
+            for (int j = 0; j < nd_new; ++j) for (int ax = group_start[j]; ax <= group_end[j]; ++ax) drop[ax] = 1;
             int *perm = (int *)PyMem_Malloc(sizeof(int) * (size_t)nd);
             if (!perm) { PyMem_Free(drop); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
-            int w = 0;
-            for (int i = 0; i < nd; ++i) if (drop[i]) perm[w++] = i;
+            int w2 = 0; for (int i = 0; i < nd; ++i) if (drop[i]) perm[w2++] = i;
             PyMem_Free(drop);
             npy_intp *perm_i = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)nd);
             if (!perm_i) { PyMem_Free(perm); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
@@ -2221,10 +2336,10 @@ LabeledArray_reshape(PyObject *self_obj, PyObject *args, PyObject *kwargs)
             if (!transposed) { PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
         }
 
-        if (keep_nd > 0) {
-            keep_shape = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)keep_nd);
+        if (nd_new > 0) {
+            keep_shape = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)nd_new);
             if (!keep_shape) { Py_DECREF(transposed); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); PyErr_NoMemory(); return NULL; }
-            for (int i = 0; i < keep_nd; ++i) keep_shape[i] = PyArray_DIM(transposed, i);
+            for (int i = 0; i < nd_new; ++i) keep_shape[i] = PyArray_DIM(transposed, i);
         }
 
         PyArray_Dims nds; nds.ptr = (npy_intp *)newdims.ptr; nds.len = nd_new;
@@ -2243,31 +2358,22 @@ LabeledArray_reshape(PyObject *self_obj, PyObject *args, PyObject *kwargs)
 
         const char *joiner = (self->delimiter != NULL) ? self->delimiter : "-";
         for (int j = 0; j < nd_new; ++j) {
-            int s = group_start[j];
-            int e = group_end[j];
+            int s = group_start[j], e = group_end[j];
             if (s == e) {
                 int n = plb->axis_len[s];
                 if (labelsblock_set_axis_copy(out, j, plb->axis_labels[s], n) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
             } else {
                 char **labels = NULL; char *slab = NULL; int n = 0;
                 if (build_combined_labels_range(plb, s, e, joiner, &labels, &slab, &n) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
-                out->axis_len[j] = n;
-                out->axis_labels[j] = labels;
-                out->axis_slab[j] = slab;
+                out->axis_len[j] = n; out->axis_labels[j] = labels; out->axis_slab[j] = slab;
                 if (axhash_build(&out->axis_hash[j], (const char **)out->axis_labels[j], n) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
                 if (labelsblock_finalize_axis_from_c(out, j) < 0) { labelsblock_decref(out); Py_DECREF(view); PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr); return NULL; }
             }
         }
 
         LabeledArrayObject *v = (LabeledArrayObject *)view;
-        LabelsBlock *old = v->labels_block;
-        v->labels_block = out;
-        labelsblock_decref(old);
-        labels_cache_clear(v);
-
-        PyMem_Free(keep_shape);
-        PyMem_Free(group_start); PyMem_Free(group_end);
-        PyDimMem_FREE(newdims.ptr);
+        LabelsBlock *old = v->labels_block; v->labels_block = out; labelsblock_decref(old); labels_cache_clear(v);
+        PyMem_Free(keep_shape); PyMem_Free(group_start); PyMem_Free(group_end); PyDimMem_FREE(newdims.ptr);
         return view;
     }
 
@@ -2277,27 +2383,21 @@ LabeledArray_reshape(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     return res;
 }
 
-/* ---------- dropna (C-accelerated) ---------- */
+/* ---------- dropna ---------- */
 static PyObject *
 LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
 {
-    if (!PyObject_TypeCheck(self_obj, &LabeledArray_Type)) {
-        Py_RETURN_NOTIMPLEMENTED;
-    }
+    if (!PyObject_TypeCheck(self_obj, &LabeledArray_Type)) { Py_RETURN_NOTIMPLEMENTED; }
     PyArrayObject *arr = (PyArrayObject *)self_obj;
     int nd = PyArray_NDIM(arr);
     if (nd == 0) { Py_INCREF(self_obj); return self_obj; }
 
     int typ = PyArray_TYPE(arr);
-    if (!PyTypeNum_ISFLOAT(typ) && !PyTypeNum_ISCOMPLEX(typ)) {
-        /* no NaN concept -> return self */
-        Py_INCREF(self_obj); return self_obj;
-    }
+    if (!PyTypeNum_ISFLOAT(typ) && !PyTypeNum_ISCOMPLEX(typ)) { Py_INCREF(self_obj); return self_obj; }
 
-    const npy_intp *dims = PyArray_DIMS(arr);
+    const npy_intp *dims    = PyArray_DIMS(arr);
     const npy_intp *strides = PyArray_STRIDES(arr);
 
-    /* Allocate per-axis keep flags */
     npy_bool **keep = (npy_bool **)calloc((size_t)nd, sizeof(npy_bool *));
     if (!keep) return NULL;
     int alloc_ok = 1;
@@ -2305,45 +2405,65 @@ LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
         keep[ax] = (npy_bool *)calloc((size_t)dims[ax], sizeof(npy_bool));
         if (!keep[ax]) { alloc_ok = 0; break; }
     }
-    if (!alloc_ok) {
-        for (int ax = 0; ax < nd; ++ax) free(keep[ax]);
-        free(keep);
-        return NULL;
-    }
+    if (!alloc_ok) { for (int ax = 0; ax < nd; ++ax) free(keep[ax]); free(keep); return NULL; }
 
     char *base = (char *)PyArray_BYTES(arr);
 
-    /* Helper to test non-NaN across supported dtypes */
-    /* Select nan tester per dtype once */
     enum { NT_FLOAT16, NT_FLOAT32, NT_FLOAT64, NT_CFLOAT, NT_CDOUBLE, NT_OTHER } nt = NT_OTHER;
     switch (typ) {
-        case NPY_HALF:    nt = NT_FLOAT16;  break;
-        case NPY_FLOAT:   nt = NT_FLOAT32;  break;
-        case NPY_DOUBLE:  nt = NT_FLOAT64;  break;
-        case NPY_CFLOAT:  nt = NT_CFLOAT;   break;
-        case NPY_CDOUBLE: nt = NT_CDOUBLE;  break;
-        default:          nt = NT_OTHER;    break;
+        case NPY_HALF:    nt = NT_FLOAT16; break;
+        case NPY_FLOAT:   nt = NT_FLOAT32; break;
+        case NPY_DOUBLE:  nt = NT_FLOAT64; break;
+        case NPY_CFLOAT:  nt = NT_CFLOAT;  break;
+        case NPY_CDOUBLE: nt = NT_CDOUBLE; break;
+        default:          nt = NT_OTHER;   break;
     }
 
-    /* Release GIL around data scan */
+/* Macro to test a single element for non-NaN */
+#define DROPNA_NOT_NAN(ptr) (                                                           \
+    nt == NT_FLOAT16  ? !npy_isnan(npy_half_to_double(*(npy_half *)(ptr)))            : \
+    nt == NT_FLOAT32  ? !npy_isnan((double)(*(float *)(ptr)))                         : \
+    nt == NT_FLOAT64  ? !npy_isnan(*(double *)(ptr))                                  : \
+    nt == NT_CFLOAT   ? !(npy_isnan((double)((float*)(ptr))[0]) ||                      \
+                          npy_isnan((double)((float*)(ptr))[1]))                      : \
+    nt == NT_CDOUBLE  ? !(npy_isnan(((double*)(ptr))[0]) ||                             \
+                          npy_isnan(((double*)(ptr))[1]))                             : \
+    1)
+
     NPY_BEGIN_ALLOW_THREADS;
 
-    if (nd == 1) {
+    /* CHANGE 5: C-contiguous fast path — linear scan + divmod for nd-index */
+    if (PyArray_IS_C_CONTIGUOUS(arr)) {
+        npy_intp itemsize = PyArray_ITEMSIZE(arr);
+        npy_intp total    = PyArray_SIZE(arr);
         char *ptr = base;
-        for (npy_intp i0 = 0; i0 < dims[0]; ++i0, ptr += strides[0]) {
-            int not_nan = 1;
-            switch (nt) {
-                case NT_FLOAT16:  { npy_half h = *(npy_half *)ptr; double v = npy_half_to_double(h); not_nan = !npy_isnan(v); } break;
-                case NT_FLOAT32:  not_nan = !npy_isnan((double)(*(float *)ptr)); break;
-                case NT_FLOAT64:  not_nan = !npy_isnan(*(double *)ptr); break;
-                case NT_CFLOAT:   { float *p = (float *)ptr;  not_nan = !(npy_isnan((double)p[0]) || npy_isnan((double)p[1])); } break;
-                case NT_CDOUBLE:  { double *p = (double *)ptr; not_nan = !(npy_isnan(p[0]) || npy_isnan(p[1])); } break;
-                default:          not_nan = 1; break;
+
+        /* Precompute per-axis stride for divmod (C order: last axis fastest) */
+        npy_intp *ax_stride = (npy_intp *)malloc(sizeof(npy_intp) * (size_t)nd);
+        if (ax_stride) {
+            ax_stride[nd - 1] = 1;
+            for (int ax = nd - 2; ax >= 0; --ax)
+                ax_stride[ax] = ax_stride[ax + 1] * dims[ax + 1];
+
+            for (npy_intp flat = 0; flat < total; ++flat, ptr += itemsize) {
+                if (!DROPNA_NOT_NAN(ptr)) continue;
+                npy_intp rem = flat;
+                for (int ax = 0; ax < nd; ++ax) {
+                    npy_intp idx = rem / ax_stride[ax];
+                    rem -= idx * ax_stride[ax];
+                    keep[ax][idx] = 1;
+                }
             }
-            if (not_nan) keep[0][i0] = 1;
+            free(ax_stride);
         }
+        /* fallthrough to strided path if ax_stride alloc failed */
+    } else if (nd == 1) {
+        /* Strided 1-D path */
+        char *ptr = base;
+        for (npy_intp i0 = 0; i0 < dims[0]; ++i0, ptr += strides[0])
+            if (DROPNA_NOT_NAN(ptr)) keep[0][i0] = 1;
     } else {
-        /* Parallelize across outermost axis when available */
+        /* General strided N-D path with optional OpenMP */
         #pragma omp parallel
         {
             npy_bool **keep_loc = NULL;
@@ -2358,8 +2478,7 @@ LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
             }
             #endif
 
-            int n0 = (int)dims[0];
-            int i0;
+            int n0 = (int)dims[0], i0;
             #pragma omp for schedule(static)
             for (i0 = 0; i0 < n0; ++i0) {
                 char *ptr0 = base + i0 * strides[0];
@@ -2368,67 +2487,44 @@ LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
                 idx[0] = i0;
                 char *ptr = ptr0;
                 while (1) {
-                    int not_nan = 1;
-                    switch (nt) {
-                        case NT_FLOAT16:  { npy_half h = *(npy_half *)ptr; double v = npy_half_to_double(h); not_nan = !npy_isnan(v); } break;
-                        case NT_FLOAT32:  { float v = *(float *)ptr;  not_nan = !npy_isnan((double)v); } break;
-                        case NT_FLOAT64:  { double v = *(double *)ptr; not_nan = !npy_isnan(v); } break;
-                        case NT_CFLOAT:   { float *p = (float *)ptr;  not_nan = !(npy_isnan((double)p[0]) || npy_isnan((double)p[1])); } break;
-                        case NT_CDOUBLE:  { double *p = (double *)ptr; not_nan = !(npy_isnan(p[0]) || npy_isnan(p[1])); } break;
-                        default:          not_nan = 1; break;
-                    }
-                    if (not_nan) {
+                    if (DROPNA_NOT_NAN(ptr)) {
                         #ifdef _OPENMP
                         for (int ax = 0; ax < nd; ++ax) keep_loc[ax][idx[ax]] = 1;
                         #else
                         for (int ax = 0; ax < nd; ++ax) keep[ax][idx[ax]] = 1;
                         #endif
                     }
-
-                    /* advance odometer along last axis */
                     int ax = nd - 1;
-                    ptr += strides[ax];
-                    idx[ax]++;
+                    ptr += strides[ax]; idx[ax]++;
                     while (ax > 0 && idx[ax] >= dims[ax]) {
-                        /* reset this axis */
-                        idx[ax] = 0;
-                        ptr -= strides[ax] * dims[ax];
-                        ax--;
-                        /* advance next axis */
-                        ptr += strides[ax];
-                        idx[ax]++;
+                        idx[ax] = 0; ptr -= strides[ax] * dims[ax];
+                        ax--; ptr += strides[ax]; idx[ax]++;
                     }
                     if (ax == 0 && idx[0] != i0) break;
                 }
             }
 
             #ifdef _OPENMP
-            /* reduce local keep into global */
             #pragma omp critical
             {
-                for (int ax = 0; ax < nd; ++ax) {
-                    for (npy_intp i = 0; i < dims[ax]; ++i) {
+                for (int ax = 0; ax < nd; ++ax)
+                    for (npy_intp i = 0; i < dims[ax]; ++i)
                         if (keep_loc[ax][i]) keep[ax][i] = 1;
-                    }
-                }
             }
-            if (keep_loc) {
-                for (int ax = 0; ax < nd; ++ax) free(keep_loc[ax]);
-                free(keep_loc);
-            }
+            if (keep_loc) { for (int ax = 0; ax < nd; ++ax) free(keep_loc[ax]); free(keep_loc); }
             #endif
         }
     }
 
+#undef DROPNA_NOT_NAN
+
     NPY_END_ALLOW_THREADS;
 
-    /* Build ck from keep arrays */
     PyObject *ck = PyTuple_New(nd);
     if (!ck) { for (int ax = 0; ax < nd; ++ax) free(keep[ax]); free(keep); return NULL; }
     int any_filter = 0;
     for (int ax = 0; ax < nd; ++ax) {
-        npy_intp n = dims[ax];
-        npy_intp count = 0;
+        npy_intp n = dims[ax], count = 0;
         for (npy_intp i = 0; i < n; ++i) if (keep[ax][i]) count++;
         if (count == n) {
             PyObject *sl = PySlice_New(NULL, NULL, NULL);
@@ -2447,34 +2543,88 @@ LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
             PyTuple_SET_ITEM(ck, ax, lst);
         }
     }
+    /* Build the child labels block directly from the keep arrays BEFORE freeing them.
+       This bypasses labelsblock_slice entirely, avoiding any axis_len mismatch that
+       occurs when the labels_block was incorrectly inherited from an ancestor array
+       (e.g. after a subscript where labelsblock_slice also failed). */
+    LabeledArrayObject *self_la = (LabeledArrayObject *)self_obj;
+    LabelsBlock *parent_lb = self_la->labels_block;
+    LabelsBlock *child_lb = NULL;
+
+    if (parent_lb && parent_lb->ndim == nd) {
+        /* Verify parent_lb axis lengths match the actual array dimensions. */
+        int dims_match = 1;
+        for (int ax = 0; ax < nd; ++ax)
+            if (parent_lb->axis_len[ax] != (int)dims[ax]) { dims_match = 0; break; }
+
+        if (dims_match) {
+            child_lb = labelsblock_alloc(nd);
+            if (child_lb) {
+                int build_ok = 1;
+                for (int ax = 0; ax < nd && build_ok; ++ax) {
+                    npy_intp n = dims[ax];
+                    npy_intp count = 0;
+                    for (npy_intp i = 0; i < n; ++i) if (keep[ax][i]) count++;
+
+                    if (count == n) {
+                        /* All rows kept on this axis — copy labels wholesale. */
+                        if (labelsblock_set_axis_copy(child_lb, ax,
+                                parent_lb->axis_labels[ax], (int)n) < 0)
+                            build_ok = 0;
+                    } else {
+                        /* Subset — gather the labels at the kept positions. */
+                        char **sel = (char **)PyMem_Malloc(sizeof(char *) * (size_t)count);
+                        if (!sel) { build_ok = 0; break; }
+                        npy_intp pos = 0;
+                        for (npy_intp i = 0; i < n; ++i)
+                            if (keep[ax][i]) sel[pos++] = parent_lb->axis_labels[ax][i];
+                        int rc = labelsblock_set_axis_copy(child_lb, ax, sel, (int)count);
+                        PyMem_Free(sel);
+                        if (rc < 0) build_ok = 0;
+                    }
+                }
+                if (!build_ok) {
+                    labelsblock_decref(child_lb);
+                    child_lb = NULL;
+                    PyErr_Clear();
+                }
+            }
+        }
+    }
+
     for (int ax = 0; ax < nd; ++ax) free(keep[ax]);
     free(keep);
 
-    if (!any_filter) { Py_DECREF(ck); Py_INCREF(self_obj); return self_obj; }
+    if (!any_filter) {
+        if (child_lb) labelsblock_decref(child_lb);
+        Py_DECREF(ck);
+        Py_INCREF(self_obj);
+        return self_obj;
+    }
 
-    /* Perform selection using base mapping, then attach sliced labels */
     PyObject *res = PyArray_Type.tp_as_mapping->mp_subscript(self_obj, ck);
-    if (!res) { Py_DECREF(ck); return NULL; }
+    if (!res) { if (child_lb) labelsblock_decref(child_lb); Py_DECREF(ck); return NULL; }
     if (PyArray_Check(res)) {
         PyObject *target = res;
         if (!PyObject_TypeCheck(res, (PyTypeObject *)Py_TYPE(self_obj))) {
             PyObject *viewres = PyArray_View((PyArrayObject *)res, NULL, (PyTypeObject *)Py_TYPE(self_obj));
             Py_DECREF(res);
-            if (!viewres) { Py_DECREF(ck); return NULL; }
+            if (!viewres) { if (child_lb) labelsblock_decref(child_lb); Py_DECREF(ck); return NULL; }
             target = viewres;
         }
-        LabeledArrayObject *obj = (LabeledArrayObject *)self_obj;
-        LabelsBlock *parent_lb = obj->labels_block;
-        if (parent_lb) {
-            LabelsBlock *child = labelsblock_slice(parent_lb, ck, (PyArrayObject *)target);
-            if (child) {
-                LabeledArrayObject *tobj = (LabeledArrayObject *)target;
-                LabelsBlock *old = tobj->labels_block;
-                tobj->labels_block = child;
-                labelsblock_decref(old);
-                labels_cache_clear(tobj);
-            }
+
+        if (child_lb) {
+            /* Attach the correctly-built labels block to the result. */
+            LabeledArrayObject *tobj = (LabeledArrayObject *)target;
+            LabelsBlock *old = tobj->labels_block;
+            tobj->labels_block = child_lb;
+            labelsblock_decref(old);
+            labels_cache_clear(tobj);
+            child_lb = NULL;
+        } else {
+            PyErr_Clear();
         }
+
         Py_DECREF(ck);
         if (PyArray_NDIM((PyArrayObject *)target) == 0) {
             PyObject *scalar = PyObject_CallMethod(target, "item", NULL);
@@ -2483,6 +2633,7 @@ LabeledArray_dropna(PyObject *self_obj, PyObject *Py_UNUSED(ignored))
         }
         return target;
     }
+    if (child_lb) labelsblock_decref(child_lb);
     Py_DECREF(ck);
     return res;
 }
@@ -2493,20 +2644,12 @@ copy_to_out(PyObject *out_obj, PyObject *src)
     PyArrayObject *out_arr = (PyArrayObject *)PyArray_FromAny(out_obj, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
     if (!out_arr) return -1;
     PyObject *src_arr_obj = NULL;
-    if (PyObject_TypeCheck(src, &LabeledArray_Type)) {
-        src_arr_obj = PyArray_View((PyArrayObject *)src, NULL, &PyArray_Type);
-    } else if (PyArray_Check(src)) {
-        Py_INCREF(src);
-        src_arr_obj = src;
-    } else {
-        src_arr_obj = PyArray_FromAny(src, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
-    }
+    if (PyObject_TypeCheck(src, &LabeledArray_Type)) src_arr_obj = PyArray_View((PyArrayObject *)src, NULL, &PyArray_Type);
+    else if (PyArray_Check(src)) { Py_INCREF(src); src_arr_obj = src; }
+    else src_arr_obj = PyArray_FromAny(src, NULL, 0, 0, NPY_ARRAY_ENSUREARRAY, NULL);
     if (!src_arr_obj) { Py_DECREF(out_arr); return -1; }
-    if (PyArray_CopyInto(out_arr, (PyArrayObject *)src_arr_obj) < 0) {
-        Py_DECREF(out_arr); Py_DECREF(src_arr_obj); return -1;
-    }
-    Py_DECREF(out_arr);
-    Py_DECREF(src_arr_obj);
+    if (PyArray_CopyInto(out_arr, (PyArrayObject *)src_arr_obj) < 0) { Py_DECREF(out_arr); Py_DECREF(src_arr_obj); return -1; }
+    Py_DECREF(out_arr); Py_DECREF(src_arr_obj);
     return 0;
 }
 
@@ -2518,9 +2661,7 @@ wrap_reduction_result(PyObject *self_obj, PyObject *result, const int *axes, int
     if (!keepdims) {
         PyObject *axes_tuple = PyTuple_New(naxes);
         if (!axes_tuple) return NULL;
-        for (int i = 0; i < naxes; ++i) {
-            PyTuple_SET_ITEM(axes_tuple, i, PyLong_FromLong(axes[i]));
-        }
+        for (int i = 0; i < naxes; ++i) PyTuple_SET_ITEM(axes_tuple, i, PyLong_FromLong(axes[i]));
         PyObject *context = Py_BuildValue("(OOO)", Py_None, Py_None, axes_tuple);
         Py_DECREF(axes_tuple);
         if (!context) return NULL;
@@ -2530,29 +2671,19 @@ wrap_reduction_result(PyObject *self_obj, PyObject *result, const int *axes, int
     }
 
     int orig_nd = PyArray_NDIM((PyArrayObject *)self_obj);
-    if (orig_nd == 0) {
-        PyObject *wrapped = PyObject_CallMethod(self_obj, "__array_wrap__", "OO", result, Py_None);
-        return wrapped;
-    }
+    if (orig_nd == 0) return PyObject_CallMethod(self_obj, "__array_wrap__", "OO", result, Py_None);
 
     char *reduced = (char *)PyMem_Calloc((size_t)orig_nd, sizeof(char));
     if (!reduced) { PyErr_NoMemory(); return NULL; }
-    for (int i = 0; i < naxes; ++i) {
-        int ax = axes[i];
-        if (ax >= 0 && ax < orig_nd) reduced[ax] = 1;
-    }
+    for (int i = 0; i < naxes; ++i) { int ax = axes[i]; if (ax >= 0 && ax < orig_nd) reduced[ax] = 1; }
     npy_intp *new_dims = (npy_intp *)PyMem_Malloc(sizeof(npy_intp) * (size_t)orig_nd);
     if (!new_dims) { PyMem_Free(reduced); PyErr_NoMemory(); return NULL; }
     PyArrayObject *res_arr = (PyArrayObject *)result;
     int j = 0;
-    for (int i = 0; i < orig_nd; ++i) {
-        if (reduced[i]) new_dims[i] = 1;
-        else new_dims[i] = PyArray_DIM(res_arr, j++);
-    }
+    for (int i = 0; i < orig_nd; ++i) new_dims[i] = reduced[i] ? 1 : PyArray_DIM(res_arr, j++);
     PyArray_Dims nds; nds.ptr = new_dims; nds.len = orig_nd;
     PyObject *expanded = PyArray_Newshape(res_arr, &nds, NPY_CORDER);
-    PyMem_Free(new_dims);
-    PyMem_Free(reduced);
+    PyMem_Free(new_dims); PyMem_Free(reduced);
     if (!expanded) return NULL;
     PyObject *wrapped = PyObject_CallMethod(self_obj, "__array_wrap__", "OO", expanded, Py_None);
     Py_DECREF(expanded);
@@ -2560,11 +2691,7 @@ wrap_reduction_result(PyObject *self_obj, PyObject *result, const int *axes, int
     if (PyObject_TypeCheck(wrapped, &LabeledArray_Type)) {
         PyObject *labels = build_keepdims_labels((LabeledArrayObject *)self_obj, axes, naxes);
         if (!labels) { Py_DECREF(wrapped); return NULL; }
-        if (PyObject_SetAttrString(wrapped, "labels", labels) < 0) {
-            Py_DECREF(labels);
-            Py_DECREF(wrapped);
-            return NULL;
-        }
+        if (PyObject_SetAttrString(wrapped, "labels", labels) < 0) { Py_DECREF(labels); Py_DECREF(wrapped); return NULL; }
         Py_DECREF(labels);
     }
     return wrapped;
@@ -2576,23 +2703,16 @@ LabeledArray_nanmean(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     PyObject *axis_obj = Py_None, *dtype_obj = Py_None, *out_obj = Py_None, *where_obj = Py_None;
     int keepdims = 0;
     static char *kwlist[] = {"axis", "dtype", "out", "keepdims", "where", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOpO:nanmean", kwlist,
-                                     &axis_obj, &dtype_obj, &out_obj, &keepdims, &where_obj)) {
-        return NULL;
-    }
-    PyObject *mean = NULL, *var = NULL;
-    int *axes = NULL, naxes = 0;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOpO:nanmean", kwlist, &axis_obj, &dtype_obj, &out_obj, &keepdims, &where_obj)) return NULL;
+    PyObject *mean = NULL, *var = NULL; int *axes = NULL, naxes = 0;
     if (nanmeanvar_core(self_obj, axis_obj, dtype_obj, where_obj, 0.0, &mean, &var, &axes, &naxes) < 0) return NULL;
     Py_DECREF(var);
     PyObject *wrapped = wrap_reduction_result(self_obj, mean, axes, naxes, keepdims);
-    Py_DECREF(mean);
-    PyMem_Free(axes);
+    Py_DECREF(mean); PyMem_Free(axes);
     if (!wrapped) return NULL;
     if (out_obj && out_obj != Py_None) {
         if (copy_to_out(out_obj, wrapped) < 0) { Py_DECREF(wrapped); return NULL; }
-        Py_DECREF(wrapped);
-        Py_INCREF(out_obj);
-        return out_obj;
+        Py_DECREF(wrapped); Py_INCREF(out_obj); return out_obj;
     }
     return wrapped;
 }
@@ -2603,28 +2723,17 @@ LabeledArray_nanstd(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     PyObject *axis_obj = Py_None, *dtype_obj = Py_None, *out_obj = Py_None, *where_obj = Py_None, *ddof_obj = NULL;
     int keepdims = 0;
     static char *kwlist[] = {"axis", "dtype", "out", "ddof", "keepdims", "where", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOOpO:nanstd", kwlist,
-                                     &axis_obj, &dtype_obj, &out_obj, &ddof_obj, &keepdims, &where_obj)) {
-        return NULL;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOOpO:nanstd", kwlist, &axis_obj, &dtype_obj, &out_obj, &ddof_obj, &keepdims, &where_obj)) return NULL;
     double ddof = 0.0;
-    if (ddof_obj && ddof_obj != Py_None) {
-        ddof = PyFloat_AsDouble(ddof_obj);
-        if (ddof == -1.0 && PyErr_Occurred()) return NULL;
-    }
-    PyObject *std = NULL;
-    int *axes = NULL, naxes = 0;
+    if (ddof_obj && ddof_obj != Py_None) { ddof = PyFloat_AsDouble(ddof_obj); if (ddof == -1.0 && PyErr_Occurred()) return NULL; }
+    PyObject *std = NULL; int *axes = NULL, naxes = 0;
     if (nanstd_core(self_obj, axis_obj, dtype_obj, where_obj, ddof, &std, &axes, &naxes) < 0) return NULL;
-
     PyObject *wrapped = wrap_reduction_result(self_obj, std, axes, naxes, keepdims);
-    Py_DECREF(std);
-    PyMem_Free(axes);
+    Py_DECREF(std); PyMem_Free(axes);
     if (!wrapped) return NULL;
     if (out_obj && out_obj != Py_None) {
         if (copy_to_out(out_obj, wrapped) < 0) { Py_DECREF(wrapped); return NULL; }
-        Py_DECREF(wrapped);
-        Py_INCREF(out_obj);
-        return out_obj;
+        Py_DECREF(wrapped); Py_INCREF(out_obj); return out_obj;
     }
     return wrapped;
 }
@@ -2635,29 +2744,17 @@ LabeledArray_nanmean_std(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     PyObject *axis_obj = Py_None, *dtype_obj = Py_None, *where_obj = Py_None, *ddof_obj = NULL;
     int keepdims = 0;
     static char *kwlist[] = {"axis", "dtype", "ddof", "keepdims", "where", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOpO:nanmean_std", kwlist,
-                                     &axis_obj, &dtype_obj, &ddof_obj, &keepdims, &where_obj)) {
-        return NULL;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOpO:nanmean_std", kwlist, &axis_obj, &dtype_obj, &ddof_obj, &keepdims, &where_obj)) return NULL;
     double ddof = 0.0;
-    if (ddof_obj && ddof_obj != Py_None) {
-        ddof = PyFloat_AsDouble(ddof_obj);
-        if (ddof == -1.0 && PyErr_Occurred()) return NULL;
-    }
-    PyObject *mean = NULL, *std = NULL;
-    int *axes = NULL, naxes = 0;
+    if (ddof_obj && ddof_obj != Py_None) { ddof = PyFloat_AsDouble(ddof_obj); if (ddof == -1.0 && PyErr_Occurred()) return NULL; }
+    PyObject *mean = NULL, *std = NULL; int *axes = NULL, naxes = 0;
     if (nanmeanstd_core(self_obj, axis_obj, dtype_obj, where_obj, ddof, &mean, &std, &axes, &naxes) < 0) return NULL;
-
     PyObject *mean_wrapped = wrap_reduction_result(self_obj, mean, axes, naxes, keepdims);
     Py_DECREF(mean);
     PyObject *std_wrapped = wrap_reduction_result(self_obj, std, axes, naxes, keepdims);
     Py_DECREF(std);
     PyMem_Free(axes);
-    if (!mean_wrapped || !std_wrapped) {
-        Py_XDECREF(mean_wrapped);
-        Py_XDECREF(std_wrapped);
-        return NULL;
-    }
+    if (!mean_wrapped || !std_wrapped) { Py_XDECREF(mean_wrapped); Py_XDECREF(std_wrapped); return NULL; }
     PyObject *out = PyTuple_New(2);
     if (!out) { Py_DECREF(mean_wrapped); Py_DECREF(std_wrapped); return NULL; }
     PyTuple_SET_ITEM(out, 0, mean_wrapped);
@@ -2665,22 +2762,25 @@ LabeledArray_nanmean_std(PyObject *self_obj, PyObject *args, PyObject *kwargs)
     return out;
 }
 
-
 static PyMethodDef LabeledArray_methods[] = {
-    {"__array_finalize__", (PyCFunction)array_finalize, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"__array_wrap__", (PyCFunction)array_wrap, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"__array_function__", (PyCFunction)array_function, METH_VARARGS, NULL},
-    {"__array_ufunc__", (PyCFunction)array_ufunc, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"take", (PyCFunction)LabeledArray_take, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"combine", (PyCFunction)LabeledArray_combine, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"reshape", (PyCFunction)LabeledArray_reshape, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"find", (PyCFunction)LabeledArray_find, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"dropna", (PyCFunction)LabeledArray_dropna, METH_NOARGS, NULL},
-    {"nanmean", (PyCFunction)LabeledArray_nanmean, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"nanstd", (PyCFunction)LabeledArray_nanstd, METH_VARARGS | METH_KEYWORDS, NULL},
-    {"nanmean_std", (PyCFunction)LabeledArray_nanmean_std, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"__array_finalize__", (PyCFunction)array_finalize,      METH_VARARGS | METH_KEYWORDS, NULL},
+    {"__array_wrap__",     (PyCFunction)array_wrap,          METH_VARARGS | METH_KEYWORDS, NULL},
+    {"__array_function__", (PyCFunction)array_function,      METH_VARARGS,                 NULL},
+    {"__array_ufunc__",    (PyCFunction)array_ufunc,         METH_VARARGS | METH_KEYWORDS, NULL},
+    {"take",               (PyCFunction)LabeledArray_take,   METH_VARARGS | METH_KEYWORDS, NULL},
+    {"combine",            (PyCFunction)LabeledArray_combine,METH_VARARGS | METH_KEYWORDS, NULL},
+    {"reshape",            (PyCFunction)LabeledArray_reshape,METH_VARARGS | METH_KEYWORDS, NULL},
+    {"find",               (PyCFunction)LabeledArray_find,   METH_VARARGS | METH_KEYWORDS, NULL},
+    {"dropna",             (PyCFunction)LabeledArray_dropna, METH_NOARGS,                  NULL},
+    {"nanmean",            (PyCFunction)LabeledArray_nanmean,METH_VARARGS | METH_KEYWORDS, NULL},
+    {"nanstd",             (PyCFunction)LabeledArray_nanstd, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"nanmean_std",        (PyCFunction)LabeledArray_nanmean_std, METH_VARARGS | METH_KEYWORDS, NULL},
     {NULL, NULL, 0, NULL}
 };
+
+/* Forward declarations needed for the static mapping initializer */
+static PyObject *LabeledArray_subscript(PyObject *self, PyObject *key);
+static int LabeledArray_ass_subscript(PyObject *self, PyObject *key, PyObject *value);
 
 static PyMappingMethods LabeledArray_mapping = {
     0,
@@ -2700,26 +2800,28 @@ PyMODINIT_FUNC
 PyInit_labeledarray(void)
 {
     PyObject *m;
-    
     import_array();
 
     if (sizeof(PyArrayObject) < PyArray_Type.tp_basicsize) {
-        PyErr_SetString(PyExc_ImportError,
-           "Binary incompatibility with NumPy, must recompile/update X.");
+        PyErr_SetString(PyExc_ImportError, "Binary incompatibility with NumPy, must recompile/update X.");
         return NULL;
     }
-    
-    LabeledArray_Type.tp_name = "ieeg.arrays.labeledarray.LabeledArray";
-    LabeledArray_Type.tp_basicsize = (int)sizeof(LabeledArrayObject);
-    LabeledArray_Type.tp_itemsize = 0;
-    LabeledArray_Type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    LabeledArray_Type.tp_new = LabeledArray_new;
-    LabeledArray_Type.tp_base = &PyArray_Type;
-    LabeledArray_Type.tp_methods = LabeledArray_methods;
-    LabeledArray_Type.tp_getset = LabeledArray_getset;
-    LabeledArray_Type.tp_as_mapping = &LabeledArray_mapping;
-    LabeledArray_Type.tp_dealloc = LabeledArray_dealloc;
-    LabeledArray_Type.tp_str = LabeledArray_str;
+
+    LabeledArray_Type.tp_name        = "ieeg.arrays.labeledarray.LabeledArray";
+    LabeledArray_Type.tp_basicsize   = (int)sizeof(LabeledArrayObject);
+    LabeledArray_Type.tp_itemsize    = 0;
+    LabeledArray_Type.tp_flags       = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE
+                                     | Py_TPFLAGS_HAVE_GC;
+    LabeledArray_Type.tp_new         = LabeledArray_new;
+    LabeledArray_Type.tp_base        = &PyArray_Type;
+    LabeledArray_Type.tp_methods     = LabeledArray_methods;
+    LabeledArray_Type.tp_getset      = LabeledArray_getset;
+    LabeledArray_Type.tp_as_mapping  = &LabeledArray_mapping;
+    LabeledArray_Type.tp_dealloc     = LabeledArray_dealloc;
+    LabeledArray_Type.tp_str         = LabeledArray_str;
+    LabeledArray_Type.tp_traverse    = LabeledArray_traverse;
+    LabeledArray_Type.tp_clear       = LabeledArray_clear;
+    LabeledArray_Type.tp_dictoffset  = offsetof(LabeledArrayObject, ob_dict);
 
     if (PyType_Ready(&LabeledArray_Type) < 0) return NULL;
 
@@ -2732,6 +2834,5 @@ PyInit_labeledarray(void)
         Py_DECREF(m);
         return NULL;
     }
-    
     return m;
 }

@@ -332,6 +332,14 @@ class LabeledArray(cla):
     """
     # labels: tuple['Labels', ...]
 
+    # def __init__(self, *args, **kwargs):
+    #     super(LabeledArray, self).__init__(*args, **kwargs)
+    #     self._labels = self.labels
+
+    # @property
+    # def labels1(self):
+    #     return self.labels
+
     @classmethod
     def from_dict(cls, data: dict, **kwargs) -> 'LabeledArray':
         """Create a LabeledArray from a dictionary.
@@ -1508,6 +1516,8 @@ if __name__ == "__main__":
                  "stim/word/5", "stim/word/6", "stim/word/7",]
     labels = Labels(test_list, delim="/")
     functools.reduce(np.setdiff1d, labels.split())
+    la = cla(np.random.rand(2, 3), labels=[('a', 'b'), ('c', 'd', 'e')])
+    la2 = LabeledArray(np.random.rand(2, 3), labels=[('a', 'b'), ('c', 'd', 'e')])
 
 
 def _cat_test():

@@ -1,67 +1,34 @@
 """Tests for the Python implementation of LabeledArray."""
 
 import numpy as np
-import pytest
-# from ieeg.arrays.labeledarray import LabeledArray as cla
+from ieeg.arrays.labeledarray import LabeledArray as cla_c # c implementation
 from ieeg.arrays.label import LabeledArray as cla
 
-# class LabeledArray(cla):
-#     """ A numpy array with labeled dimensions, acting like a dictionary.
+class LabeledArray(cla_c):
+    """ A numpy array with labeled dimensions, acting like a dictionary.
 
-#     A numpy array with labeled dimensions. This class is useful for storing
-#     data that is not easily represented in a tabular format. It acts as a
-#     nested dictionary but its values map to elements of a stored numpy array.
+    A numpy array with labeled dimensions. This class is useful for storing
+    data that is not easily represented in a tabular format. It acts as a
+    nested dictionary but its values map to elements of a stored numpy array.
 
-#     Parameters
-#     ----------
-#     input_array : array_like
-#         The array to store in the LabeledArray.
-#     labels : tuple[tuple[str, ...], ...], optional
-#         The labels for each dimension of the array, by default ().
-#     delimiter : str, optional
-#         The delimiter to use when combining labels, by default '-'
-#     **kwargs
-#         Additional arguments to pass to np.asarray.
+    Parameters
+    ----------
+    input_array : array_like
+        The array to store in the LabeledArray.
+    labels : tuple[tuple[str, ...], ...], optional
+        The labels for each dimension of the array, by default ().
+    delimiter : str, optional
+        The delimiter to use when combining labels, by default '-'
+    **kwargs
+        Additional arguments to pass to np.asarray.
 
-#     Attributes
-#     ----------
-#     labels : tuple[tuple[str, ...], ...]
-#         The labels for each dimension of the array.
-#     array : np.ndarray
-#         The array stored in the LabeledArray.
-
-#     Examples
-#     --------
-#     """
-#     def to_dict(self) -> dict:
-#         """Convert to a dictionary."""
-#         out = {}
-#         for k, v in self.items():
-#             if len(self.labels) > 1:
-#                 out[k] = v.to_dict()
-#             elif np.isnan(v).all():
-#                 continue
-#             else:
-#                 print(v)
-#                 out[k] = v
-#         return out
-
-#     def items(self):
-#         return zip(self.keys(), self.values())
-
-#     def keys(self):
-#         return (lab for lab in self.labels[0])
-
-#     def values(self):
-#         return (a for a in self)
-
-#     @classmethod
-#     def fromfile(cls, file: str, **kwargs) -> 'LabeledArray':
-
-#         kwargs['allow_pickle'] = False
-#         files = np.load(file + '_labels.npz', **kwargs)
-#         labels = list(map(tuple, files.values()))
-#         return cls(np.load(file + '.npy', **kwargs), labels)
+    Attributes
+    ----------
+    labels : tuple[tuple[str, ...], ...]
+        The labels for each dimension of the array.
+    array : np.ndarray
+        The array stored in the LabeledArray.
+    """
 
 
 labels = (('a', 'b'), ('c', 'd', 'e'), ('f', 'g', 'h', 'i'))
@@ -126,3 +93,10 @@ idx_tests = [
 for idx in idx_tests:
     print('idx', idx)
     print('la[idx]', la[idx])
+
+print('la1 dict', la.__dict__)
+la3 = cla_c(np.random.rand(2, 3), labels=[('a', 'b'), ('c', 'd', 'e')])
+print('la3 dict', la3.__dict__)
+la4 = cla(np.random.rand(2, 3), labels=[('a', 'b'), ('c', 'd', 'e')])
+print('la4', la4)
+print('la4 dict', la4.__dict__)
