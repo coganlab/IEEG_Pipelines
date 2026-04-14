@@ -26,10 +26,10 @@ if sys.platform == 'win32':
     compile_args = ["/O2", "/GL", "/arch:AVX2", "/DNDEBUG", "/openmp"]
     link_args = []  # MSVC handles this implicitly
 elif sys.platform == 'linux':
-    compile_args = ["-O3", "-march=native", "-flto", "-fomit-frame-pointer", "-DNDEBUG", "-fopenmp"]
+    compile_args = ["-O3", "-march=x86-64-v3", "-flto", "-fomit-frame-pointer", "-DNDEBUG", "-fopenmp"]
     link_args = ["-fopenmp"]
 elif sys.platform == 'darwin':
-    compile_args = ["-O3", "-march=native", "-flto", "-DNDEBUG"]
+    compile_args = ["-O3", "-march=x86-64-v3", "-flto", "-DNDEBUG"]
     link_args = []
     raise NotImplementedError(f"Platform {sys.platform} not supported.")
 
