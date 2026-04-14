@@ -24,11 +24,13 @@ npyrandom_path = op.normpath(op.join(_numpy_abs, '..', '..', 'random', 'lib'))
 lib_path = [npymath_path, npyrandom_path]
 if sys.platform == 'win32':
     compile_args = ["/O2", "/GL", "/arch:AVX2", "/DNDEBUG", "/openmp"]
+    link_args = []  # MSVC handles this implicitly
 elif sys.platform == 'linux':
     compile_args = ["-O3", "-march=native", "-flto", "-fomit-frame-pointer", "-DNDEBUG", "-fopenmp"]
+    link_args = ["-fopenmp"]
 elif sys.platform == 'darwin':
     compile_args = ["-O3", "-march=native", "-flto", "-DNDEBUG"]
-else:
+    link_args = []
     raise NotImplementedError(f"Platform {sys.platform} not supported.")
 
 try:
@@ -39,11 +41,11 @@ except ValueError:
 
 shared_dir = op.join(getcwd(), "ieeg", "calc", "_fast", "shared")
 kwargs = dict(include_dirs=[_numpy_abs, shared_dir],
-              # includes for numpy
-              library_dirs=lib_path,  # libraries to link
-              libraries=["npyrandom", "npymath"],  # math library
-              extra_compile_args=compile_args,  # compile optimization flag
-              language="c",  # can be "c" or "c++"
+              library_dirs=lib_path,
+              libraries=["npyrandom", "npymath"],
+              extra_compile_args=compile_args,
+              extra_link_args=link_args,
+              language="c",
               define_macros=[]
               )
 
