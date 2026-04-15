@@ -79,14 +79,19 @@ except ImportError:
 try:
     import torch
     import torch.nn as nn
-    from skorch import NeuralNetClassifier
-    from skorch.callbacks import GradientNormClipping, EarlyStopping, LRScheduler, Callback
     from torchvision import models as tv_models
-except Exception:
+except ImportError:
     torch = None
     nn = None
-    NeuralNetClassifier = None
     tv_models = None
+    print("\nWARNING: PyTorch and/or torchvision not available. PyTorch decoders will be unavailable.")
+
+try:
+    from skorch import NeuralNetClassifier
+    from skorch.callbacks import GradientNormClipping, EarlyStopping, LRScheduler, Callback
+
+except Exception:
+    NeuralNetClassifier = None
     GradientNormClipping = None
     EarlyStopping = None
     LRScheduler = None
@@ -1995,7 +2000,8 @@ class CovarianceReducingClassifier(BaseEstimator):
         if isinstance(self.pca, LoopwiseTransformer):
             loop_axis = self.pca.loop_dim
         steps.append(('flatten', FlattenFeaturesTransformer(samples_axis=self.samples_axis, loop_axis=loop_axis)))
-        steps.append(('pca', self.pca))
+        if self.pca is not None:
+            steps.append(('pca', self.pca))
         steps.append(('classifier', self.classifier))
         self.model = Pipeline(steps=steps, memory=self.memory or Memory())
 
