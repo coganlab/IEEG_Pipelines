@@ -55,7 +55,7 @@ class crossPtDecoder_sepDimRed(crossPtDecoder):
         self.tar_dr = tar_dr
 
         # reshape for concatenation
-        X_cross_dr = [x.reshape(cross_pt_trials[i], -1, x.shape[-1]) for i, x
+        X_cross_dr = [x.reshape(cross_pt_trials[i], -1) for i, x
                       in enumerate(X_cross_dr)]
         X_cross_dr = [x.reshape(x.shape[0], -1) for x in X_cross_dr]
         X_tar_dr = X_tar_dr.reshape(X.shape[0], -1)
@@ -99,9 +99,9 @@ class crossPtDecoder_sepAlign(crossPtDecoder):
         self.tar_dr = tar_dr
 
         # reshape back to 3D
-        X_cross_dr = [x.reshape(cross_pt_trials[i], -1, x.shape[-1]) for i, x
+        X_cross_dr = [x.reshape(cross_pt_trials[i], -1) for i, x
                       in enumerate(X_cross_dr)]
-        X_tar_dr = X_tar_dr.reshape(X.shape[0], -1, X_tar_dr.shape[-1])
+        X_tar_dr = X_tar_dr.reshape(X.shape[0], -1)
 
         # option for separate alignment labels
         if y_align is None:

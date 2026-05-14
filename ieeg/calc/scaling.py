@@ -90,7 +90,7 @@ def rescale(data: np.ndarray, basedata: np.ndarray, mode: str = 'mean',
     return data
 
 
-@rescale.register
+@rescale.register(BaseEpochs)
 @verbose
 def _(line: BaseEpochs, baseline: BaseEpochs,
       mode: str = 'mean', copy: bool = False, picks: list = 'data',
@@ -122,7 +122,7 @@ def _(line: BaseEpochs, baseline: BaseEpochs,
     return line
 
 
-@rescale.register
+@rescale.register(EpochsTFR)
 @verbose
 def _(line: EpochsTFR, baseline: EpochsTFR,
       mode: str = 'mean', copy: bool = False, picks: list = 'data',
@@ -145,7 +145,7 @@ def _(line: EpochsTFR, baseline: EpochsTFR,
     return line
 
 
-@rescale.register
+@rescale.register(AverageTFR)
 @verbose
 def _(line: AverageTFR, baseline: AverageTFR,
       mode: str = 'mean', copy: bool = False, picks: list = 'data',

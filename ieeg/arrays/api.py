@@ -196,7 +196,7 @@ def split(array: Array, indices_or_sections: int | list[int], axis: int = 0,
     >>> x = np.arange(9.0)
     >>> np.split(x, 3)
     [array([0., 1., 2.]), array([3., 4., 5.]), array([6., 7., 8.])]
-    >>> x = np.arange(8.0).reshape(2, 4)
+    >>> x = np.arange(8.0).reshape(2,4)
     >>> np.split(x, 2, axis=1)
     [array([[0., 1.],
            [4., 5.]]), array([[2., 3.],

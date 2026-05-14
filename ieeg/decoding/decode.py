@@ -318,6 +318,7 @@ class Decoder(MinimumNaNSplit):
         if config.window is not None:
             data_w = sliding_window_view(data, config.window, axis=-1, subok=True)[..., ::config.step, :]
             n_windows = int(data_w.shape[-2])
+
             # Build tasks across (split, window)
             task_iter = (
                 (train_idx, test_idx, l, data, i, clone(self.model), data_w, w)
@@ -345,9 +346,15 @@ class Decoder(MinimumNaNSplit):
         if config.window is None:
             for result, rep, fold in results:
                 out[rep, fold] = result
+                if is_torch(xp):
+                    import torch
+                    torch.cuda.empty_cache()
         else:
             for result, rep, fold, w in results:
                 out[w, rep, fold] = result
+                if is_torch(xp):
+                    import torch
+                    torch.cuda.empty_cache()
 
         return out
 

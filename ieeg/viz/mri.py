@@ -698,8 +698,13 @@ def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         fig_dims = (int(np.ceil(n_pairs / min_size)), min_size)
     plotter = BackgroundPlotter(shape=fig_dims)
     # Compute ratios and sums for all pairs
+    # if isinstance(colormap, (list, tuple)) and len(colormap) == len(pairs):
     for i, (a, b) in enumerate(pairs):
-        colors = ratio_to_color_gradient(W[a], W[b], colormap, thresh)
+        if isinstance(colormap, (list, tuple)) and len(colormap) == len(pairs):
+            this_colormap = colormap[i]
+        else:
+            this_colormap = colormap
+        colors = ratio_to_color_gradient(W[a], W[b], this_colormap, thresh)
         # Electrode size: sum of weights, clipped to max_size
         size = np.clip(W[a] + W[b], 0, max_size)
         # Optional: scale size for visualization
@@ -723,6 +728,9 @@ def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
         plotter.camera = brain.plotter.camera
         plotter.camera_position = brain.plotter.camera_position
     plotter.link_views()
+    plotter.view_yz(True)
+    plotter.camera.zoom(1.5)
+    return plotter
 
 
 def ratio_to_color_gradient(vec_a: np.ndarray, vec_b: np.ndarray,
@@ -1125,9 +1133,9 @@ if __name__ == "__main__":
                      "%(levelname)s: %(message)s - %(asctime)s",
                      overwrite=True)
     mne.set_log_level("INFO")
-    TASK = "Phoneme_sequencing"
-    sub_num = 35
-    # layout = get_data(TASK, root=LAB_root)
+    TASK = "SentenceRep"
+    sub_num = 7
+    layout = get_data(TASK, root=LAB_root)
     subj_dir = op.join(LAB_root, "..", "ECoG_Recon")
     sub_pad = "D" + str(sub_num).zfill(4)
     info = subject_to_info(f"D{sub_num}", subj_dir)
@@ -1147,7 +1155,13 @@ if __name__ == "__main__":
     #                    [[1, 0, 0], [0, 1, 0]], mode='both')
     # sample_path = mne.datasets.sample.data_path()
     # subjects_dir = sample_path / "subjects"
-    # plot_subj("D16")
+    brain = plot_subj("D121", subj_dir=subj_dir)
+    # Highlight the insula using the aparc parcellation labels
+    insula_labels = mne.read_labels_from_annot(
+        "D121", parc='aparc', subjects_dir=subj_dir,
+        regexp='insula', verbose=False)
+    for label in insula_labels:
+        brain.add_label(label, color='red', alpha=0.8)
     # colors = np.concatenate([np.array([[1,0,0]] * 48), (np.arange(48) / 48)[
     # :, None]], axis=1)
     # brain = plot_subj("D5", color=colors)

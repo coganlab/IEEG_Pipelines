@@ -14,9 +14,42 @@ docs/sg_execution_times.rst
 # Files compiled and built upon installing ieeg
 ieeg.egg-info/*
 ieeg/**/*.pyd
+ieeg/**/*.so
 ieeg/**/*.c
 !ieeg/arrays/*.c
 !ieeg/arrays/*.h
 !ieeg/calc/_fast/ufuncs.c
 !ieeg/calc/_fast/nanconcat.c
 !ieeg/calc/_fast/shared/*
+build/
+out/
+*.pdb
+
+# Generated docs
+docs/_build/
+docs/gen_modules/
+docs/references/
+
+# IDE / editor scratch
+.cache/
+.fleet/
+.claude/
+CppProperties.json
+ieeg/arrays/.vs/
+
+# Profiling / coverage output
+.coverage
+coverage.xml
+profile.*
+scalene
+tach_module_graph.dot
+
+# Scratch data dumps at repo root and in tests/
+/data.npy
+/data_labels.npz
+/temp.npy
+/temp_labels.npz
+tests/temp.npy
+tests/temp_labels.npz
+ieeg/arrays/data.npy
+ieeg/arrays/data_labels.npz

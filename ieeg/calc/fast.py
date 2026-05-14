@@ -781,8 +781,7 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
             arr_flat[missing_rows, batch_idx] += lams * arr_flat[donor2, batch_idx]
 
 
-def _mixup2_torch(arr, labels, obs_axis: int, alpha: float = 1., seed=None) -> None:
-    import torch
+def _mixup2_torch(torch, arr, labels, obs_axis: int, alpha: float = 1., seed=None) -> None:
     device = arr.device
 
     # Prepare RNG
@@ -800,7 +799,7 @@ def _mixup2_torch(arr, labels, obs_axis: int, alpha: float = 1., seed=None) -> N
     arr_moved = torch.moveaxis(arr, (obs_axis, -1), (-2, -1))
     batch_shape = arr_moved.shape[:-2]
     obs = arr_moved.shape[-2]
-    feat = arr_moved.shape[-1]
+    # feat = arr_moved.shape[-1]
 
     # Mask rows with any NaN
     isnan = torch.isnan(arr_moved).any(-1)
@@ -894,7 +893,7 @@ def _mixup2_torch(arr, labels, obs_axis: int, alpha: float = 1., seed=None) -> N
         d2_idx = (donor2, slice(None))
 
     value = lams * arr_moved[d1_idx]
-    value = value + (1.0 - lams) * arr_moved[d2_idx]
+    value += (1.0 - lams) * arr_moved[d2_idx]
     arr_moved[lhs_idx] = value
 
 def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
@@ -929,7 +928,7 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
     >>> np.random.seed(0)
     >>> arr = np.array([[1, 2], [4, 5],
     ... [float("nan"), float("nan")]])
-    >>> labels = np.array([1, 1, 0])
+    >>> labels = np.array([1, 0, 0])
     >>> mixup2(arr[None], labels, 1)
     >>> arr
     array([[1.        , 2.        ],
@@ -969,7 +968,6 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
            [ 9.        , 10.        , 11.        , 12.        ],
            [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
     >>> new = cp.ascontiguousarray(cp.stack(cp.stack(tuple(arr4 for _ in range(1000))) for _ in range(1000)).swapaxes(1,2))
-    >>> list(mixup2(new.copy(), labels4, 1, seed=0) for _ in range(100))
     >>> mixup2(new, labels4, 1, seed=0)
     >>> new[0, -1, 0:10]
     array([[ 1.        ,  2.        ,  3.        ,  4.        ],
@@ -998,7 +996,7 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
 
     # Torch-specific, fully on-device implementation (no NumPy conversion)
     if is_torch(xp):
-        _mixup2_torch(arr, labels, obs_axis, alpha, seed)
+        _mixup2_torch(xp, arr, labels, obs_axis, alpha, seed)
         return
 
     if seed is None:
@@ -1239,26 +1237,36 @@ if __name__ == "__main__":
     import numpy as np
     from timeit import timeit
     from scipy import stats
+    import cupy as cp
 
-    # np.random.seed(0)
+    np.random.seed(0)
     rng = np.random.default_rng()
+
     rvs1 = np.array([
         stats.norm.rvs(loc=5, scale=10, size=500, random_state=rng)
-        for _ in range(100)]) / 10000
-    # group2[::2] = np.nan
-    rvs3 = np.array([
+        for _ in range(10)]) / 10000
+    rvs2 = np.array([
         stats.norm.rvs(loc=8, scale=5, size=2000, random_state=rng)
-        for _ in range(100)]) / 10000
-    res1 = ttest(rvs1, rvs3, axis=1)
-    res2 = stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)
-    res3 = _ttest(rvs1, rvs3, axes=[1, 1])
+        for _ in range(10)]) / 10000
+    rvs2.flat[::8] = np.nan
+    res1 = stats.ttest_ind(rvs1, rvs2, axis=1, equal_var=False, nan_policy='omit')
+    print(res1)
+
+    rvs3 = cp.asarray(rvs1)
+    rvs4 = cp.asarray(rvs2)
+    res2 = stats.ttest_ind(rvs3, rvs4, axis=1, equal_var=False, nan_policy='omit')
+    print(res2)
+
+    res2 = ttest(rvs1, rvs2, axis=1)
+
+    # res3 = _ttest(rvs1, rvs3, axes=[1, 1])
 
     n = 10000
     kwargs = dict(globals=globals(), number=n)
-    time1 = timeit('ttest(rvs1, rvs3, 1)', **kwargs)
-    print(f"ttest: {time1 / n:.3g} per run")
-    # time2 = timeit('stats.ttest_ind(rvs1, rvs3, axis=1, equal_var=False)',
-    # **kwargs)
-    # print(f"scipy: {time2 / n:.3g} per run")
-    time3 = timeit('_ttest(rvs1, rvs3, axes=[1,1])', **kwargs)
-    print(f"_ttest: {time3 / n:.3g} per run")
+    # time1 = timeit('ttest(rvs1, rvs3, 1)', **kwargs)
+    # print(f"ttest: {time1 / n:.3g} per run")
+    time2 = timeit('stats.ttest_ind(rvs3, rvs4, axis=1, equal_var=False, nan_policy=\'omit\')',
+    **kwargs)
+    print(f"scipy: {time2 / n:.3g} per run")
+    # time3 = timeit('_ttest(rvs1, rvs3, axes=[1,1])', **kwargs)
+    # print(f"_ttest: {time3 / n:.3g} per run")
