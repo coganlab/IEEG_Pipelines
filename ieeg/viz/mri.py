@@ -14,9 +14,23 @@ from mne.viz import Brain
 from ieeg import PathLike, Signal
 from ieeg.io import get_elec_volume_labels
 from ieeg.viz import _qt_backend, parula
-from pyvistaqt import BackgroundPlotter
 
 _qt_backend()
+
+
+def _background_plotter(**kwargs):
+    """Lazy import of pyvistaqt.BackgroundPlotter.
+
+    pyvistaqt + pyqt5 are optional; install with ``pip install ieeg[viz-qt]``.
+    """
+    try:
+        from pyvistaqt import BackgroundPlotter
+    except ImportError as e:
+        raise ImportError(
+            "pyvistaqt is required for this plotter. "
+            "Install the optional extras: pip install ieeg[viz-qt]"
+        ) from e
+    return BackgroundPlotter(**kwargs)
 
 import matplotlib  # noqa: E402
 import matplotlib.patheffects as path_effects  # noqa: E402
