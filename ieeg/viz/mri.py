@@ -656,7 +656,7 @@ def electrode_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
     if fig_dims is None:
         min_size = int(np.ceil(np.sqrt(W.shape[0])))
         fig_dims = (int(np.ceil(np.sqrt(W.shape[0] / min_size))), min_size)
-    plotter = BackgroundPlotter(shape=fig_dims)
+    plotter = _background_plotter(shape=fig_dims)
     scale = W.copy()
     scale[scale > max_size] = max_size
 
@@ -710,7 +710,7 @@ def electrode_ratio_gradient(subjects: list[Signal | str, ...], W: np.ndarray,
     if fig_dims is None:
         min_size = int(np.ceil(np.sqrt(n_pairs)))
         fig_dims = (int(np.ceil(n_pairs / min_size)), min_size)
-    plotter = BackgroundPlotter(shape=fig_dims)
+    plotter = _background_plotter(shape=fig_dims)
     # Compute ratios and sums for all pairs
     # if isinstance(colormap, (list, tuple)) and len(colormap) == len(pairs):
     for i, (a, b) in enumerate(pairs):
