@@ -38,7 +38,7 @@ data = data[np.newaxis, :]
 
 # run the superlet transform
 freqs = np.linspace(frange[0], frange[1], 100)
-wavelet = superlets(data, fs, freqs, 5, (10, 20))
+wavelet = superlets(data, fs, freqs, 5, (5, 20))
 
 # Create a figure and GridSpec layout
 fig = plt.figure(figsize=(10, 6))
@@ -124,7 +124,12 @@ for epoch, t in zip(
     trials = trial_ieeg(good, epoch, times, preload=True, picks=[0])
     outliers_to_nan(trials, outliers=10)
     freqs = np.geomspace(4, 500, 80)
-    spec = superlet_tfr(trials, freqs, 1., (15, 15))
+    spec = superlet_tfr(trials, freqs, 1., (10, 50))
+
+    # example CUDA run
+    # freqs = np.linspace(8, 300, 50)
+    # spec = superlet_tfr(trials, freqs, 1, (10, 50), 1, "cuda")
+
     crop_pad(spec, "0.5s")
     if epoch == "onset":
         base = spec.copy()
@@ -136,4 +141,5 @@ for epoch, t in zip(
 # %%
 # Plot data
 # ---------
-chan_grid(spec_a, vlim=(0, 20), cmap=parula_map, yscale='log', n_cols=1, n_rows=1)
+chan_grid(spec_a, vlim=(0, 20), cmap=parula_map,
+          yscale='log', n_cols=1, n_rows=1)

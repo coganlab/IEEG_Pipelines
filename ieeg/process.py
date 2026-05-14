@@ -488,7 +488,7 @@ class COLA:
         # Create our window boundaries
         window_name = window if isinstance(window, str) else 'custom'
         self._window = get_window(window, self._n_samples,
-                                  fftbins=(self._n_samples - 1) % 2)
+                                  fftbins=True)
         self._window /= _check_cola(self._window, self._n_samples, self._step,
                                     window_name, tol=tol)
         self.starts = np.arange(0, n_total - self._n_samples + 1, self._step)
