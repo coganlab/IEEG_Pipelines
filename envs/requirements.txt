@@ -7,14 +7,7 @@ scipy
 scikit-learn
 pandas
 joblib>=1.3
-psutil
-pyvistaqt
-pytz
-pyqt5
 tqdm
-h5io
-dipy
-mne-qt-browser
-edfio
+numba
 array-api-compat
 array-api-extra

@@ -9,7 +9,6 @@ jobs:
   pytest:
     name: '${{ matrix.os }} / ${{ matrix.kind }} / ${{ matrix.python }}'
     timeout-minutes: 70
-    continue-on-error: true
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -22,6 +21,7 @@ jobs:
       MNE_CI_KIND: '${{ matrix.kind }}'
       CI_OS_NAME: '${{ matrix.os }}'
     strategy:
+      fail-fast: false
       matrix:
         include:
         - os: windows-latest

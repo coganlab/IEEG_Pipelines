@@ -29,5 +29,35 @@ Documentation = "https://ieeg-pipelines.readthedocs.io/en/latest/"
 [tool.setuptools.dynamic]
 dependencies = {file = ["envs/requirements.txt"]}
 
+[project.optional-dependencies]
+# GUI / Qt plotting (pyvistaqt-backed brain weight plotters in ieeg/viz/mri.py)
+viz-qt = ["pyqt5", "pyvistaqt"]
+# PyTorch decoder paths (currently only used on wip/decoding-experiments branch,
+# but kept here so optional usage stays consistent)
+torch = ["torch", "lightning", "torchmetrics"]
+# CuPy GPU backend (NumPy array-API-compatible)
+cuda = ["cupy-cuda12x"]
+# System-memory introspection in ieeg/process.py (lazy-imported at call time)
+sysmem = ["psutil"]
+# NOTE: pybids (`bids`) is currently in core requirements because it is used
+# pervasively in ieeg/io.py and ieeg/navigate.py as a cross-cutting type
+# (BIDSLayout). Making it optional requires a refactor — see TODO in
+# CONTRIBUTING.md or open an issue.
+# Dev / test tooling
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "pytest-pycodestyle",
+    "coverage",
+]
+
 [tool.ruff.lint]
 select = ["NPY201"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "ieeg"]
+addopts = "--doctest-modules --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
