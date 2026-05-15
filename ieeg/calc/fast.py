@@ -237,13 +237,18 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
     return out
 
 
+_MIXUP_NATIVE_DTYPES = (np.float16, np.float32, np.float64)
+
+
 def _mixup_cython(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
                   seed=None) -> None:
-    """NumPy fast path for unlabelled mixup via the Cython kernel.
+    """NumPy fast path for unlabelled mixup via the hand-C kernel.
 
-    Recurses over leading batch dimensions, casts non-``float64`` arrays
-    through a ``float64`` scratch buffer, and orients the observation axis
-    to position 1 before invoking ``ieeg.calc._fast.mixup.mixupnd``.
+    Recurses over leading batch dimensions and orients the observation
+    axis to position 1 before invoking ``ieeg.calc._fast.mixup.mixupnd``.
+    The C kernel natively handles ``float16``, ``float32``, and
+    ``float64``; arrays of other dtypes are routed through a ``float64``
+    scratch buffer and written back.
 
     Parameters
     ----------
@@ -254,7 +259,7 @@ def _mixup_cython(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
     alpha : float, default 1
         Beta distribution parameter for the mixing coefficient.
     seed : int, optional
-        Seed forwarded to the Cython RNG. If ``None`` a random 16-bit seed
+        Seed forwarded to the RNG. If ``None`` a random 16-bit seed
         is chosen.
     """
     if obs_axis == 0:
@@ -268,12 +273,14 @@ def _mixup_cython(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
         if seed is None:
             seed = np.random.randint(0, 2 ** 16 - 1)
 
-        if arr.dtype != np.float64:
+        if arr.dtype in _MIXUP_NATIVE_DTYPES:
+            # C kernel handles f16/f32/f64 natively, no precision round-trip.
+            cmixup(arr, 1, alpha, seed)
+        else:
+            # Unsupported dtype: round-trip through f64.
             temp = arr.astype('f8', copy=True)
             cmixup(temp, 1, alpha, seed)
             arr[...] = temp
-        else:
-            cmixup(arr, 1, alpha, seed)
 
 
 def mixup(arr: Array, obs_axis: int, *, labels: Array | None = None,
