@@ -237,129 +237,100 @@ def concatenate_arrays(arrays: tuple[np.ndarray, ...], axis: int = 0
     return out
 
 
-def _mixup_np(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
-              rng: int = None) -> None:
-    """Oversample by mixing two random non-NaN observations
+def _mixup_cython(arr: np.ndarray, obs_axis: int, alpha: float = 1.,
+                  seed=None) -> None:
+    """NumPy fast path for unlabelled mixup via the Cython kernel.
 
-    Parameters
-    ----------
-    arr : array
-        The data to oversample.
-    obs_axis : int
-        The axis along which to apply func.
-    alpha : float
-        The alpha parameter for the beta distribution. If alpha is 0, then
-        the distribution is uniform. If alpha is 1, then the distribution is
-        symmetric. If alpha is greater than 1, then the distribution is
-        skewed towards the first observation. If alpha is less than 1, then
-        the distribution is skewed towards the second observation.
-
-    Examples
-    --------
-    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
-    ... [float("nan"), float("nan")]])
-    >>> _mixup_np(arr, 0, rng=42)
-    >>> arr # doctest: +NORMALIZE_WHITESPACE +SKIP
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [5.24946679, 6.24946679]])
-    >>> arr2 = np.arange(24, dtype=float).reshape(2,3)
-    >>> arr2[0, 2, :] = [float("nan")] * 4
-    >>> _mixup_np(arr2, 1, rng=42)
-    >>> arr2 # doctest: +NORMALIZE_WHITESPACE +SKIP
-    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
-            [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ 2.33404428,  3.33404428,  4.33404428,  5.33404428]],
-    <BLANKLINE>
-           [[12.        , 13.        , 14.        , 15.        ],
-            [16.        , 17.        , 18.        , 19.        ],
-            [20.        , 21.        , 22.        , 23.        ]]])
-    >>> arr3 = np.arange(24).reshape(3,2).astype("f2")
-    >>> arr3[0, :, :] = float("nan")
-    >>> _mixup_np(arr3, 0, rng=42)
-    >>> arr3 # doctest: +NORMALIZE_WHITESPACE +SKIP
-    array([[[12.67, 13.67, 14.67, 15.67],
-            [17.31, 18.31, 19.31, 20.31]],
-    <BLANKLINE>
-           [[ 8.  ,  9.  , 10.  , 11.  ],
-            [12.  , 13.  , 14.  , 15.  ]],
-    <BLANKLINE>
-           [[16.  , 17.  , 18.  , 19.  ],
-            [20.  , 21.  , 22.  , 23.  ]]], dtype=float16)
-    """
-
-    if obs_axis == 0:
-        arr = arr.swapaxes(1, obs_axis)
-    if arr.ndim > 3:
-        for i in range(arr.shape[0]):
-            _mixup_np(arr[i], obs_axis - 1, alpha, rng)
-    elif arr.ndim == 1:
-        raise ValueError("Array must have at least 2 dimensions")
-    else:
-        if rng is None:
-            rng = np.random.randint(0, 2 ** 16 - 1)
-
-        if arr.dtype != np.float64:
-            temp = arr.astype('f8', copy=True)
-            cmixup(temp, 1, alpha, rng)
-            arr[...] = temp
-        else:
-            cmixup(arr, 1, alpha, rng)
-
-
-def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
-          rng=None) -> None:
-    """Replace rows along the observation axis that are “missing” (i.e. contain
-     any NaNs) with a random convex combination of two non‐missing rows (the
-      “mixup”).
-
-    This function works for arrays of arbitrary dimension so long as the
-    observation axis (obs_axis) contains the “rows” to mix up and the last axis
-    holds features. In higher dimensions the axes other than obs_axis and the
-    last axis are treated as independent batch indices. (Every such batch is
-     assumed to have at least one non-NaN row.)
-
-    The mixup coefficient for each missing row is drawn from a beta
-     distribution with parameters (alpha, alpha) and then “flipped” if it is
-      less than 0.5 (so that the coefficient is always >=0.5).
+    Recurses over leading batch dimensions, casts non-``float64`` arrays
+    through a ``float64`` scratch buffer, and orients the observation axis
+    to position 1 before invoking ``ieeg.calc._fast.mixup.mixupnd``.
 
     Parameters
     ----------
     arr : np.ndarray
-        Array of data. In the 2D case it should have shape (n_obs, n_features).
-        For higher dimensions, the last axis is taken as features and obs_axis
-        (which must not be the last axis) is the observation axis.
+        Array to impute in-place.
+    obs_axis : int
+        Observation axis.
+    alpha : float, default 1
+        Beta distribution parameter for the mixing coefficient.
+    seed : int, optional
+        Seed forwarded to the Cython RNG. If ``None`` a random 16-bit seed
+        is chosen.
+    """
+    if obs_axis == 0:
+        arr = arr.swapaxes(1, obs_axis)
+    if arr.ndim > 3:
+        for i in range(arr.shape[0]):
+            _mixup_cython(arr[i], obs_axis - 1, alpha, seed)
+    elif arr.ndim == 1:
+        raise ValueError("Array must have at least 2 dimensions")
+    else:
+        if seed is None:
+            seed = np.random.randint(0, 2 ** 16 - 1)
+
+        if arr.dtype != np.float64:
+            temp = arr.astype('f8', copy=True)
+            cmixup(temp, 1, alpha, seed)
+            arr[...] = temp
+        else:
+            cmixup(arr, 1, alpha, seed)
+
+
+def mixup(arr: Array, obs_axis: int, *, labels: Array | None = None,
+          alpha: float = 1., seed=None, xp=None) -> None:
+    """In-place mixup imputation of NaN rows along ``obs_axis``.
+
+    Replaces each row containing any NaN with a convex combination
+    ``λ·a + (1-λ)·b`` of two non-NaN donor rows sampled from the same
+    batch. ``λ`` is drawn from ``Beta(alpha, alpha)`` and folded into
+    ``[0.5, 1]`` so that ``a`` always carries the larger weight.
+
+    Parameters
+    ----------
+    arr : array
+        Data to impute in-place. The last axis is treated as features and
+        ``obs_axis`` (which must not be the last axis) is the observation
+        axis. Higher dimensions are treated as independent batches.
     obs_axis : int
         The axis along which to look for rows that contain any NaN.
-    alpha : float, default=1.
-        The alpha parameter for the beta distribution.
-    rng : np.random.RandomState or similar, optional
-        A random number generator (if None, one is created using
-         np.random.RandomState()).
+    labels : array, keyword-only, optional
+        1-D class labels aligned with ``obs_axis``. When provided, the
+        larger-weight donor ``a`` is constrained to come from the same
+        class as the missing row; the smaller-weight donor ``b`` is still
+        sampled from any non-NaN row. When ``None`` (default), both donors
+        are sampled uniformly from any non-NaN row.
+    alpha : float, default 1
+        Beta distribution parameter for ``λ``.
+    seed : int | Generator, keyword-only, optional
+        Seed or RNG. If ``None`` a fresh generator is used.
+    xp : module, keyword-only, optional
+        Array-API namespace; inferred from inputs when not given.
 
     Returns
     -------
-    None; arr is modified in-place.
+    None; ``arr`` is modified in-place.
 
     Examples
     --------
+    Random pairing (unlabeled mixup) — 2D NumPy:
+
     >>> arr = np.array([[1, 2],
     ...                 [4, 5],
     ...                 [7, 8],
     ...                 [float("nan"), float("nan")]])
-    >>> mixup(arr, 0, rng=42)
-    >>> arr # doctest: +SKIP
+    >>> mixup(arr, 0, seed=42)
+    >>> arr
     array([[1.        , 2.        ],
            [4.        , 5.        ],
            [7.        , 8.        ],
            [5.24946679, 6.24946679]])
 
-    For a 3D example (here we mix along axis 1):
-    >>> arr3 = np.arange(24, dtype=float).reshape(2,3,4)
+    Unlabeled 3D, mix along axis 1:
+
+    >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
     >>> arr3[0, 2, :] = [float("nan")] * 4
-    >>> mixup(arr3, 1, rng=42)
-    >>> arr3 # doctest: +SKIP
+    >>> mixup(arr3, 1, seed=42)
+    >>> arr3
     array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
             [ 4.        ,  5.        ,  6.        ,  7.        ],
             [ 2.33404428,  3.33404428,  4.33404428,  5.33404428]],
@@ -367,120 +338,131 @@ def mixup(arr: Array, obs_axis: int, alpha: float = 1.,
            [[12.        , 13.        , 14.        , 15.        ],
             [16.        , 17.        , 18.        , 19.        ],
             [20.        , 21.        , 22.        , 23.        ]]])
-    >>> np.random.seed(0)
-    >>> group2 = np.random.rand(500, 10, 10, 100).astype("float16")
-    >>> group2[::2, 0, 0, :] = np.nan
-    >>> mixup(group2, 0)
-    >>> group2[:10, 0, 0, :5] # doctest: +SKIP
-    array([[0.3274 , 0.2805 , 0.1257 , 0.1256 , 0.3027 ],
-           [0.748  , 0.1802 , 0.389  , 0.0376 , 0.01179],
-           [0.6484 , 0.829  , 0.8213 , 0.2578 , 0.5327 ],
-           [0.7583 , 0.5034 , 0.177  , 0.8325 , 0.5166 ],
-           [0.7397 , 0.857  , 0.449  , 0.5913 , 0.714  ],
-           [0.3076 , 0.062  , 0.989  , 0.719  , 0.758  ],
-           [0.571  , 0.176  , 0.679  , 0.6924 , 0.636  ],
-           [0.6323 , 0.07513, 0.722  , 0.4668 , 0.7417 ],
-           [0.6987 , 0.3787 , 0.4668 , 0.04987, 0.915  ],
-           [0.1912 , 0.05853, 0.4368 , 0.72   , 0.824  ]], dtype=float16)
-    >>> import cupy as cp
-    >>> group3 = cp.random.randn(100, 10, 10, 100)
-    >>> group3[0::2, 0, 0, :] = float("nan")
-    >>> mixup(group3, 0)
-    >>> group3[0, 0, :, :5]
-    array([[0.3274 , 0.2805 , 0.1257 , 0.1256 , 0.3027 ],
-           [0.748  , 0.1802 , 0.389  , 0.0376 , 0.01179],
-           [0.6484 , 0.829  , 0.8213 , 0.2578 , 0.5327 ],
-           [0.7583 , 0.5034 , 0.177  , 0.8325 , 0.5166 ],
-           [0.7397 , 0.857  , 0.449  , 0.5913 , 0.714  ],
-           [0.3076 , 0.062  , 0.989  , 0.719  , 0.758  ],
-           [0.571  , 0.176  , 0.679  , 0.6924 , 0.636  ],
-           [0.6323 , 0.07513, 0.722  , 0.4668 , 0.7417 ],
-           [0.6987 , 0.3787 , 0.4668 , 0.04987, 0.915  ],
-           [0.1912 , 0.05853, 0.4368 , 0.72   , 0.824  ]], dtype=float16)
+
+    Class-aware mixup with ``labels`` (larger-weight donor is same-class).
+    2D, the ``arr[None]`` adds a batch axis so the obs axis is 1:
+
+    >>> arr = np.array([[1, 2], [4, 5], [7, 8],
+    ...                 [float("nan"), float("nan")]])
+    >>> labels = np.array([1, 0, 0, 0])
+    >>> mixup(arr[None], 1, labels=labels, seed=0)
+    >>> arr
+    array([[1.        , 2.        ],
+           [4.        , 5.        ],
+           [7.        , 8.        ],
+           [5.34737579, 6.34737579]])
+
+    Labeled 3D with batch axis 0, mix along axis 1:
+
+    >>> arr3 = np.arange(24, dtype=float).reshape(2, 3, 4)
+    >>> arr3[:, 2, :] = float("nan")
+    >>> mixup(arr3, 1, labels=np.array([1, 0, 1]), seed=42)
+    >>> arr3
+    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
+            [ 4.        ,  5.        ,  6.        ,  7.        ],
+            [ 0.        ,  1.        ,  2.        ,  3.        ]],
+    <BLANKLINE>
+           [[12.        , 13.        , 14.        , 15.        ],
+            [16.        , 17.        , 18.        , 19.        ],
+            [15.74862646, 16.74862646, 17.74862646, 18.74862646]]])
+
+    CuPy: unlabeled + labeled (results stay on-device):
+
+    >>> import cupy as cp  # doctest: +SKIP
+    >>> a = cp.random.randn(100, 10, 10, 100)  # doctest: +SKIP
+    >>> a[0::2, 0, 0, :] = float("nan")  # doctest: +SKIP
+    >>> mixup(a, 0)  # doctest: +SKIP
+    >>> arr4 = cp.array([[1, 2], [3, 4], [5, 6],
+    ...                  [7, 8], [9, 10],
+    ...                  [cp.nan, cp.nan]])  # doctest: +SKIP
+    >>> labels4 = cp.array([0, 0, 0, 1, 1, 1])  # doctest: +SKIP
+    >>> mixup(arr4, 0, labels=labels4, seed=0)  # doctest: +SKIP
+    >>> arr4  # doctest: +SKIP
+    array([[1.        , 2.        ],
+           [3.        , 4.        ],
+           [5.        , 6.        ],
+           [7.        , 8.        ],
+           [9.        , 10.       ],
+           [4.54459201, 5.54459201]])
+
+    Large CuPy with extra batch dims (mix along axis 2):
+
+    >>> arr4 = cp.array([[1, 2, 3, 4], [3, 4, 5, 6], [5, 6, 7, 8],
+    ...                  [7, 8, 9, 10], [9, 10, 11, 12],
+    ...                  [cp.nan, cp.nan, cp.nan, cp.nan]])  # doctest: +SKIP
+    >>> new = cp.stack(cp.stack(tuple(arr4 for _ in range(1000)))
+    ...                for _ in range(1000))  # doctest: +SKIP
+    >>> mixup(new, 2, labels=labels4, seed=0)  # doctest: +SKIP
+    >>> new[0, 0]  # doctest: +SKIP
+    array([[ 1.        ,  2.        ,  3.        ,  4.        ],
+           [ 3.        ,  4.        ,  5.        ,  6.        ],
+           [ 5.        ,  6.        ,  7.        ,  8.        ],
+           [ 7.        ,  8.        ,  9.        , 10.        ],
+           [ 9.        , 10.        , 11.        , 12.        ],
+           [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
+
+    Same data after swapaxes — mix along axis 1, contiguous layout:
+
+    >>> new = cp.ascontiguousarray(
+    ...     cp.stack(cp.stack(tuple(arr4 for _ in range(1000)))
+    ...              for _ in range(1000)).swapaxes(1, 2))  # doctest: +SKIP
+    >>> mixup(new, 1, labels=labels4, seed=0)  # doctest: +SKIP
+
+    PyTorch labeled, float16 — exercises the on-device ``_mixup_torch`` path
+    (kept on CPU here so CI without a GPU still runs it):
+
     >>> import torch
-    >>> torch.manual_seed(0)
-    >>> group4 = torch.randn(100, 10, 10, 100)
-    >>> group4[0::2, 0, 0, :] = float("nan")
-    >>> mixup(group4, 0)
-    >>> group4[0, 0, :, :5]
-    tensor([[0.3274, 0.2805, 0.1257, 0.1256, 0.3027],
-            [0.7480, 0.1802, 0.3890, 0.0376, 0.0118],
-            [0.6484, 0.8290, 0.8213, 0.2578, 0.5327],
-            [0.7583, 0.5034, 0.1770, 0.8325, 0.5166],
-            [0.7397, 0.8570, 0.4490, 0.5913, 0.7140],
-            [0.3076, 0.0620, 0.9890, 0.
+    >>> _ = torch.manual_seed(0)
+    >>> group4 = torch.randn(100, 10, 10, 100).to(torch.float16)
+    >>> group4[0, 0::2, 0, :] = float("nan")
+    >>> labels4 = torch.tensor([i // 5 for i in range(10)])
+    >>> mixup(group4, 1, labels=labels4)
+    >>> group4[0, :, 0, 0]
+    tensor([ 0.3542,  0.3542,  0.8545,  0.8916, -0.0916, -0.6719, -0.4390,  0.1815,
+            -1.0615, -1.0615], dtype=torch.float16)
+
+    Same call on GPU — only difference is ``.cuda()`` on the inputs:
+
+    >>> mixup(group4.cuda(), 1, labels=labels4.cuda())  # doctest: +SKIP
     """
-    xp = array_namespace(arr)
-    if is_numpy(xp):
-        _mixup_np(arr, obs_axis, alpha, rng)
+    if labels is None:
+        xp = array_namespace(arr) if xp is None else xp
+    else:
+        xp = array_namespace(arr, labels) if xp is None else xp
+
+    if is_torch(xp):
+        _mixup_torch(xp, arr, obs_axis, labels, alpha, seed)
         return
-    elif is_torch(xp):  # TODO: remove this crutch to keep data on the GPU
-        temp = arr.numpy(force=True).astype(float)
-        _mixup_np(temp, obs_axis, alpha, rng)
-        arr.copy_(xp.from_numpy(temp))
+
+    if is_numpy(xp) and labels is None:
+        # Fast path: Cython kernel for unlabelled NumPy.
+        _mixup_cython(arr, obs_axis, alpha, seed)
         return
 
-    if rng is None:
-        if is_torch(xp):
-            xp.random.manual_seed(xp.random.seed())
-            rng = xp
-            xp.beta = xp.distributions.beta.Beta(alpha, alpha)
-        else:
-            rng = xp.random.RandomState()
-
-    # Bring the observation axis to the front; this is a view.
-    arr_view = xp.moveaxis(arr, obs_axis, 0)
-
-    # For ndim >= 3, assume that the last axis holds features.
-    # Flatten all intermediate (batch) dimensions into one.
-    n_obs = arr_view.shape[0]
-    n_features = arr_view.shape[-1]
-    # if is_torch(xp) and not arr_view.is_contiguous():
-    #     arr_view = arr_view.contiguous()
-
-    arr_flat = arr_view.reshape(n_obs, -1, n_features)
-    # Compute a mask over the observation axis for each batch:
-    mask = xp.isnan(arr_flat).any(axis=-1)
-    # For each batch (i.e. each column in the flattened batch dimension) we
-    # want to know the available (non-NaN) indices. We do this by sorting the
-    # boolean mask along axis 0: since False sorts before True, the first few
-    # indices are the non-missing ones.
-    order = xp.argsort(mask, axis=0)
-    # Get all indices where the observation is missing.
-    missing_rows, batch_idx = xp.nonzero(mask)
-    counts = xp.bincount(batch_idx, minlength=mask.shape[1]) # number of non-missing rows per batch
-    if missing_rows.size:
-        L = missing_rows.shape[0]
-        # For each missing observation, generate a random index into the
-        # available (non-missing) rows in its batch.
-        idx1 = xp.astype(rng.rand(L) * counts[batch_idx], int)
-        idx2 = xp.astype(rng.rand(L) * counts[batch_idx], int)
-        donor1 = order[idx1, batch_idx]
-        donor2 = order[idx2, batch_idx]
-        lams = xp.empty(L, dtype=arr.dtype)[:, None]
-        if is_torch(xp):
-            lams[:] = xp.beta.sample((L,1))
-        else:
-            lams[:] = rng.beta(alpha, alpha, size=(L, 1))
-        less = xp.flatnonzero(lams < 0.5)
-        xp.subtract(1, lams[less], out=lams[less])
-        # lams[:, 1] -= lams[:, 0]
-        # lams.sort(axis=1)
-        # lams = xp.where(lams < 0.5, 1 - lams, lams)
-        # Instead of direct advanced indexing assignment, use index_put_ for
-        # torch:
-        if is_torch(xp):
-            value = lams * arr_flat[donor1, batch_idx]
-            xp.subtract(1, lams, out=lams)
-            value += lams * arr_flat[donor2, batch_idx]
-            arr_flat.masked_scatter_(mask[..., None], value)
-        else:
-            arr_flat[missing_rows, batch_idx] = lams * arr_flat[donor1, batch_idx]
-            xp.subtract(1, lams, out=lams)
-            arr_flat[missing_rows, batch_idx] += lams * arr_flat[donor2, batch_idx]
+    # Array-API path. Two implementations to preserve the perf tuning of each:
+    # the labeled path keeps the carefully-vectorized mixup2 body verbatim;
+    # the unlabeled path uses the simpler original mixup body (no cols_proc
+    # filtering, no per-class bincount/cumsum machinery).
+    if labels is None:
+        _mixup_xp_simple(xp, arr, obs_axis, alpha, seed)
+    else:
+        _mixup_xp_labeled(xp, arr, obs_axis, labels, alpha, seed)
 
 
-def _mixup2_torch(torch, arr, labels, obs_axis: int, alpha: float = 1., seed=None) -> None:
+def _mixup_torch(xp, arr, obs_axis: int, labels, alpha: float = 1.,
+                 seed=None) -> None:
+    """On-device torch mixup implementation.
+
+    ``labels=None`` → both donors uniform from the non-NaN pool.
+    ``labels is not None`` → donor 1 (larger lambda) sampled from same-class pool.
+
+    Uses the raw ``torch`` module internally rather than ``xp``, since when
+    callers run under ``sklearn.config_context(array_api_dispatch=True)`` the
+    ``xp`` they pass in is an ``array_api_compat`` wrapper whose ``nonzero``
+    and friends have non-torch defaults that break the in-place writes here.
+    """
+    import torch  # raw module, not the array-api-compat wrapper
+    del xp  # accepted for caller symmetry but unused
     device = arr.device
 
     # Prepare RNG
@@ -537,34 +519,39 @@ def _mixup2_torch(torch, arr, labels, obs_axis: int, alpha: float = 1., seed=Non
     pool_sizes_any = counts_nonmissing_by_batch[batch_idx]
     if torch.any(pool_sizes_any == 0):
         raise ValueError("Not enough non-nan values to mixup")
+    col_pos = torch.searchsorted(cols_proc, batch_idx)
     idx2 = (torch.rand(missing_rows.shape[0], device=device, generator=gen)
             * pool_sizes_any.to(torch.float32)).to(torch.long)
-    col_pos = torch.searchsorted(cols_proc, batch_idx)
     donor2 = order_proc[idx2, col_pos]
 
-    # Donor 1: same class
-    unique_labels, label_ids = torch.unique(labels, return_inverse=True)
-    K = int(unique_labels.shape[0])
-    non_class_ids = label_ids[rows_nn]
+    # Donor 1: same-class when labels given, else also uniform.
+    if labels is None:
+        idx1 = (torch.rand(missing_rows.shape[0], device=device, generator=gen)
+                * pool_sizes_any.to(torch.float32)).to(torch.long)
+        donor1 = order_proc[idx1, col_pos]
+    else:
+        unique_labels, label_ids = torch.unique(labels, return_inverse=True)
+        K = int(unique_labels.shape[0])
+        non_class_ids = label_ids[rows_nn]
 
-    comp = batch_nn * K + non_class_ids
-    max_len = mask.shape[1] * K
-    counts_comp = torch.bincount(comp, minlength=max_len)
-    offsets_comp = torch.empty(counts_comp.shape[0] + 1, dtype=torch.long, device=device)
-    offsets_comp[0] = 0
-    offsets_comp[1:] = torch.cumsum(counts_comp, dim=0)
-    order_comp = torch.argsort(comp)
-    rows_nn_sorted = rows_nn[order_comp]
+        comp = batch_nn * K + non_class_ids
+        max_len = mask.shape[1] * K
+        counts_comp = torch.bincount(comp, minlength=max_len)
+        offsets_comp = torch.empty(counts_comp.shape[0] + 1, dtype=torch.long, device=device)
+        offsets_comp[0] = 0
+        offsets_comp[1:] = torch.cumsum(counts_comp, dim=0)
+        order_comp = torch.argsort(comp)
+        rows_nn_sorted = rows_nn[order_comp]
 
-    target_class_ids = label_ids[missing_rows]
-    comp_targets = batch_idx * K + target_class_ids
-    pool_sizes_same = counts_comp[comp_targets]
-    if torch.any(pool_sizes_same == 0):
-        raise ValueError("Not enough non-nan values to mixup")
-    r1 = (torch.rand(missing_rows.shape[0], device=device, generator=gen)
-          * pool_sizes_same.to(torch.float32)).to(torch.long)
-    pos1 = offsets_comp[comp_targets] + r1
-    donor1 = rows_nn_sorted[pos1]
+        target_class_ids = label_ids[missing_rows]
+        comp_targets = batch_idx * K + target_class_ids
+        pool_sizes_same = counts_comp[comp_targets]
+        if torch.any(pool_sizes_same == 0):
+            raise ValueError("Not enough non-nan values to mixup")
+        r1 = (torch.rand(missing_rows.shape[0], device=device, generator=gen)
+              * pool_sizes_same.to(torch.float32)).to(torch.long)
+        pos1 = offsets_comp[comp_targets] + r1
+        donor1 = rows_nn_sorted[pos1]
 
     # Mixing coefficients: sample via uniform and Beta icdf to support older PyTorch
     n_missing = int(missing_rows.shape[0])
@@ -595,109 +582,16 @@ def _mixup2_torch(torch, arr, labels, obs_axis: int, alpha: float = 1., seed=Non
     value += (1.0 - lams) * arr_moved[d2_idx]
     arr_moved[lhs_idx] = value
 
-def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
-           seed=None, xp=None) -> None:
-    """Label-aware mixup that pairs the larger lambda with a same-class donor.
+def _mixup_xp_simple(xp, arr, obs_axis: int, alpha: float = 1.,
+                     seed=None) -> None:
+    """Array-API mixup, unlabelled case.
 
-    This function mirrors the vectorized implementation of ``mixup`` but
-    enforces that the larger coefficient multiplies a donor sampled from the
-    same class as the target missing observation, while the smaller coefficient
-    multiplies a donor sampled from any available non-NaN observation.
-
-    Parameters
-    ----------
-    arr : Array
-        Input data. The last axis is treated as features, and ``obs_axis`` is
-        the observation axis where rows with any NaN are imputed.
-    labels : Array
-        1-D class labels aligned with the observation axis.
-    obs_axis : int
-        Axis of observations.
-    alpha : float
-        Beta distribution parameter for the mixing coefficient.
-    rng : RandomState-like, optional
-        Random number generator. If None, a new one is created.
-
-    Returns
-    -------
-    None; modifies ``arr`` in-place.
-
-    Examples
-    --------
-    >>> np.random.seed(0)
-    >>> arr = np.array([[1, 2], [4, 5],
-    ... [float("nan"), float("nan")]])
-    >>> labels = np.array([1, 0, 0])
-    >>> mixup2(arr[None], labels, 1)
-    >>> arr
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [6.03943491, 7.03943491]])
-    >>> arr3 = np.arange(24, dtype=float).reshape(2,3,4)
-    >>> arr3[:, 2, :] = float("nan")
-    >>> mixup2(arr3, np.array([1, 0, 1]), 1, seed=42)
-    >>> arr3
-    array([[[ 0.        ,  1.        ,  2.        ,  3.        ],
-            [ 4.        ,  5.        ,  6.        ,  7.        ],
-            [ 1.99984539,  2.99984539,  3.99984539,  4.99984539]],
-    <BLANKLINE>
-           [[12.        , 13.        , 14.        , 15.        ],
-            [16.        , 17.        , 18.        , 19.        ],
-            [12.25137354, 13.25137354, 14.25137354, 15.25137354]]])
-    >>> import cupy as cp
-    >>> arr4 = cp.array([[1, 2],[3,4], [5, 6],
-    ... [7, 8], [9, 10], [cp.nan, cp.nan]])
-    >>> labels4 = cp.array([0, 0, 0, 1, 1, 1, 1])
-    >>> mixup2(arr4, labels4, 0, seed=0)
-    >>> arr4
-    array([[1.        , 2.        ],
-           [4.        , 5.        ],
-           [7.        , 8.        ],
-           [4.54459201, 5.54459201]])
-    >>> arr4 = cp.array([[1, 2, 3, 4],[3,4, 5, 6], [5, 6, 7, 8],
-    ... [7, 8, 9, 10], [9, 10, 11, 12], [cp.nan, cp.nan, cp.nan, cp.nan]])
-    >>> new = cp.stack(cp.stack(tuple(arr4 for _ in range(1000))) for _ in range(1000))
-    >>> mixup2(new, labels4, 2, seed=0)
-    >>> new[0, 0]
-    array([[ 1.        ,  2.        ,  3.        ,  4.        ],
-           [ 3.        ,  4.        ,  5.        ,  6.        ],
-           [ 5.        ,  6.        ,  7.        ,  8.        ],
-           [ 7.        ,  8.        ,  9.        , 10.        ],
-           [ 9.        , 10.        , 11.        , 12.        ],
-           [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
-    >>> new = cp.ascontiguousarray(cp.stack(cp.stack(tuple(arr4 for _ in range(1000))) for _ in range(1000)).swapaxes(1,2))
-    >>> mixup2(new, labels4, 1, seed=0)
-    >>> new[0, -1, 0:10]
-    array([[ 1.        ,  2.        ,  3.        ,  4.        ],
-           [ 3.        ,  4.        ,  5.        ,  6.        ],
-           [ 5.        ,  6.        ,  7.        ,  8.        ],
-           [ 7.        ,  8.        ,  9.        , 10.        ],
-           [ 9.        , 10.        , 11.        , 12.        ],
-           [ 6.37764196,  7.37764196,  8.37764196,  9.37764196]])
-    >>> import torch
-    >>> torch.manual_seed(0)
-    >>> group4 = torch.randn(100, 10, 10, 100).to(torch.float16).to('cuda')
-    >>> group4[0, 0::2, 0, :] = float("nan")
-    >>> group4[0, :, 0, :]
-    >>> labels4 = torch.tensor([i // 5 for i in range(10)]).to('cuda')
-    >>> mixup2(group4, labels4, 1)
-    >>> group4[0, :, 0, :]
-    tensor([[0.3274, 0.2805, 0.1257, 0.1256, 0.3027],
-            [0.7480, 0.1802, 0.3890, 0.0376, 0.0118],
-            [0.6484, 0.8290, 0.8213, 0.2578, 0.5327],
-            [0.7583, 0.5034, 0.1770, 0.8325, 0.5166],
-            [0.7397, 0.8570, 0.4490, 0.5913, 0.7140],
-            [0.3076, 0.0620, 0.9890, 0.
+    Extracted from the original ``mixup`` body. Uses the simpler approach:
+    move obs to front, flatten batch dims, ``nonzero``/``bincount`` per
+    batch, and uniformly sample two donors per missing row. No ``cols_proc``
+    filtering, no per-class pool machinery — those exist for label-aware
+    pairing and are pure overhead here.
     """
-    if xp is None:
-        xp = array_namespace(arr, labels)
-
-    # Torch-specific, fully on-device implementation (no NumPy conversion)
-    if is_torch(xp):
-        _mixup2_torch(xp, arr, labels, obs_axis, alpha, seed)
-        return
-
     if seed is None:
         rng = xp.random.RandomState()
     elif isinstance(seed, int):
@@ -705,13 +599,58 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
     else:
         rng = seed
 
-    # Move obs axis to -2 and keep features on -1 to maintain a view-only transform
+    # Bring the observation axis to the front; this is a view.
+    arr_view = xp.moveaxis(arr, obs_axis, 0)
+
+    # For ndim >= 3 assume features are last; flatten intermediate dims.
+    n_obs = arr_view.shape[0]
+    n_features = arr_view.shape[-1]
+
+    arr_flat = arr_view.reshape(n_obs, -1, n_features)
+    mask = xp.isnan(arr_flat).any(axis=-1)
+    # Sort the boolean mask so that False (non-missing) comes first; the
+    # first ``counts[b]`` rows of ``order[:, b]`` are the available donors.
+    order = xp.argsort(mask, axis=0)
+    missing_rows, batch_idx = xp.nonzero(mask)
+    counts = xp.bincount(batch_idx, minlength=mask.shape[1])
+    if missing_rows.size:
+        L = missing_rows.shape[0]
+        idx1 = xp.astype(rng.rand(L) * counts[batch_idx], int)
+        idx2 = xp.astype(rng.rand(L) * counts[batch_idx], int)
+        donor1 = order[idx1, batch_idx]
+        donor2 = order[idx2, batch_idx]
+        lams = xp.empty(L, dtype=arr.dtype)[:, None]
+        lams[:] = rng.beta(alpha, alpha, size=(L, 1))
+        less = xp.flatnonzero(lams < 0.5)
+        xp.subtract(1, lams[less], out=lams[less])
+        arr_flat[missing_rows, batch_idx] = lams * arr_flat[donor1, batch_idx]
+        xp.subtract(1, lams, out=lams)
+        arr_flat[missing_rows, batch_idx] += lams * arr_flat[donor2, batch_idx]
+
+
+def _mixup_xp_labeled(xp, arr, obs_axis: int, labels, alpha: float = 1.,
+                      seed=None) -> None:
+    """Array-API mixup, label-aware case (the original ``mixup2`` body).
+
+    Donor 1 (larger lambda) is sampled from the same-class non-NaN pool;
+    donor 2 (smaller lambda) is sampled from any non-NaN row. The vectorised
+    ``cols_proc``/``broadcast_to``/per-class ``bincount``+``cumsum`` machinery
+    exists specifically to make the same-class pool construction efficient on
+    CuPy and JAX — do not collapse it back into the simpler unlabelled body.
+    """
+    if seed is None:
+        rng = xp.random.RandomState()
+    elif isinstance(seed, int):
+        rng = xp.random.RandomState(seed)
+    else:
+        rng = seed
+
+    # obs axis to -2, features stay on -1 (view-only transform)
     arr_moved = xp.moveaxis(arr, [obs_axis, -1], [-2, -1])
     batch_shape = arr_moved.shape[:-2]
     obs = arr_moved.shape[-2]
-    # Mask of rows (along obs) with any NaN in features
-    isnan = xp.isnan(arr_moved).any(-1)  # shape: batch_shape + (obs,)
-    # Disallow batches where every obs is NaN
+
+    isnan = xp.isnan(arr_moved).any(-1)
     isn_sum = isnan.sum(-1, dtype='uintp')
     if (isn_sum == obs).any():
         raise ValueError("Cannot mixup if any rows are completely NaN")
@@ -756,14 +695,14 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
     pool_sizes_any = counts_nonmissing_by_batch[batch_idx]
     if xp.any(pool_sizes_any == 0):
         raise ValueError("Not enough non-nan values to mixup")
+    col_pos = xp.searchsorted(cols_proc, batch_idx)
     idx2 = (rng.rand(missing_rows.shape[0]) * pool_sizes_any).astype(xp.uintp)
-    donor2 = order_proc[idx2, xp.searchsorted(cols_proc, batch_idx)]
+    donor2 = order_proc[idx2, col_pos]
 
     # Donor 1 (same class): build per-batch, per-class pools from non-missing rows
     # Map labels to compact class ids [0, K)
     unique_labels, label_ids = xp.unique(labels, return_inverse=True)
     K = int(unique_labels.shape[0])
-
     non_class_ids = label_ids[rows_nn]
 
     # Compose (batch, class) into a single index for grouping
@@ -808,6 +747,23 @@ def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
     xp.subtract(1., lams, out=lams)
     value += lams * arr_moved[d2_idx]
     arr_moved[lhs_idx] = value
+
+
+def mixup2(arr: Array, labels: Array, obs_axis: int, alpha: float = 1.,
+           seed=None, xp=None) -> None:
+    """Deprecated. Use ``mixup(arr, obs_axis, labels=labels, ...)`` instead.
+
+    .. deprecated::
+        ``mixup2`` is a thin alias for :func:`mixup` with the ``labels``
+        keyword. The label-aware mixup behaviour is unchanged.
+    """
+    import warnings
+    warnings.warn(
+        "mixup2 is deprecated; use "
+        "mixup(arr, obs_axis, labels=labels, alpha=alpha, seed=seed).",
+        DeprecationWarning, stacklevel=2,
+    )
+    mixup(arr, obs_axis, labels=labels, alpha=alpha, seed=seed, xp=xp)
 
 def norm(arr: np.ndarray, obs_axis: int = -1) -> None:
     """Oversample by obtaining the distribution and randomly selecting
