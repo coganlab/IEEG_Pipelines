@@ -23,6 +23,7 @@ ieeg/**/*.c
 !ieeg/calc/_fast/permgt.c
 !ieeg/calc/_fast/mixup.c
 !ieeg/calc/_fast/shared/*
+!ieeg/timefreq/_hilbert_kernel.c
 build/
 out/
 *.pdb
