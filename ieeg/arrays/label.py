@@ -4,6 +4,7 @@ from collections.abc import Iterable
 import mne
 from ieeg.calc.fast import concatenate_arrays
 from ieeg.arrays.labeledarray import LabeledArray as cla
+from ieeg.arrays._labels_mixin import _LabeledMixin
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -208,7 +209,7 @@ def lcs(*strings: str) -> str:
     return common_substr
 
 
-class LabeledArray(cla):
+class LabeledArray(_LabeledMixin, cla):
     """ A numpy array with labeled dimensions, acting like a dictionary.
 
     A numpy array with labeled dimensions. This class is useful for storing
@@ -551,57 +552,9 @@ class LabeledArray(cla):
         labels = list(map(tuple, files.values()))
         return cls(np.load(file + '.npy', **kwargs), labels)
 
-    def __repr__(self):
-        return repr(self.__array__()) + f"\nlabels({self._label_formatter()})"
-
-    def __str__(self):
-        return str(self.__array__()) + f"\nlabels({self._label_formatter()})"
-
-    def _label_formatter(self):
-        def _liststr(x):
-            return f"\n       ".join(x)
-
-        return _liststr([str(Labels(lab)) for lab in self.labels])
-
-    def memory(self):
-        size = self.nbytes
-        for unit in ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']:
-            if size < 1024.0 or unit == 'PiB':
-                break
-            size /= 1024.0
-        return size, unit
-
-    def __eq__(self, other):
-        if isinstance(other, LabeledArray):
-            return np.array_equal(self, other, True) and \
-                all(np.array_equal(l1, l2) for l1, l2 in zip(self.labels,
-                                                             other.labels))
-        else:
-            return self.__array__().__eq__(other)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def to_dict(self) -> dict:
-        """Convert to a dictionary."""
-        out = {}
-        for k, v in self.items():
-            if len(self.labels) > 1:
-                out[k] = v.to_dict()
-            elif np.isnan(v).all():
-                continue
-            else:
-                out[k] = v
-        return out
-
-    def items(self):
-        return zip(self.keys(), self.values())
-
-    def keys(self):
-        return (lab for lab in self.labels[0])
-
-    def values(self):
-        return (a for a in self)
+    # `__repr__`, `__str__`, `_label_formatter`, `memory`, `__eq__`, `__ne__`,
+    # `to_dict`, `items`, `keys`, `values` are inherited from
+    # `ieeg.arrays._labels_mixin._LabeledMixin` (see class declaration).
 
     def reshape(self, shape, order='C', **kwargs) -> 'LabeledArray':
         """Reshape the array.
