@@ -20,6 +20,7 @@ ieeg/**/*.c
 !ieeg/arrays/*.h
 !ieeg/calc/_fast/ufuncs.c
 !ieeg/calc/_fast/nanconcat.c
+!ieeg/calc/_fast/permgt.c
 !ieeg/calc/_fast/shared/*
 build/
 out/
