@@ -24,6 +24,7 @@ ieeg/**/*.c
 !ieeg/calc/_fast/mixup.c
 !ieeg/calc/_fast/shared/*
 !ieeg/timefreq/_hilbert_kernel.c
+!ieeg/timefreq/_superlets_kernels.c
 build/
 out/
 *.pdb

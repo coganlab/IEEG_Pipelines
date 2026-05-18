@@ -54,28 +54,6 @@ def _with_macros(macros):
     kw["define_macros"] = macros
     return kw
 
-try:
-    from Cython.Build import cythonize
-    if not op.exists("ieeg/timefreq/hilbert.pyx"):
-        raise ImportError("Cython file not found.")
-    extensions = [
-        Extension(
-            "ieeg.calc._fast.*",  # the module name exposed to python
-            ['ieeg/calc/_fast/*.pyx'],  # the Cython source file
-            **kwargs
-        ),
-        Extension(
-            "ieeg.timefreq.hilbert",  # the module name exposed to python
-            ['ieeg/timefreq/hilbert.pyx'],  # the Cython source file
-            **kwargs
-        )]
-    extensions = cythonize(extensions)
-except ImportError:
-    USE_CYTHON = False
-    print("Cython not found. Using C files.")
-    if not op.exists("ieeg/timefreq/hilbert.c"):
-        ValueError("C file not found.")
-
 exclude_fast = {"ufuncs.c"}
 extensions = [
     Extension(name, source, **kwargs) for (name, source) in
@@ -87,8 +65,13 @@ extensions += [
         **_with_macros([("PY_ARRAY_UNIQUE_SYMBOL", "IEEG_ARRAY_API_UFUNCS")])
     ),
     Extension(
-        "ieeg.timefreq.hilbert",  # the module name exposed to python
-        ['ieeg/timefreq/hilbert.c'],  # the Cython source file
+        "ieeg.timefreq._hilbert_kernel",
+        ['ieeg/timefreq/_hilbert_kernel.c'],
+        **kwargs
+    ),
+    Extension(
+        "ieeg.timefreq._superlets_kernels",
+        ['ieeg/timefreq/_superlets_kernels.c'],
         **kwargs
     ),
     Extension(
@@ -106,6 +89,10 @@ setup(
         include=['ieeg*'],
     ),
     package_dir={"": "."},
+    # Ship the CUDA-C source for the superlets GPU kernel as a data file
+    # so cupy.RawKernel can read it at runtime (nvrtc compiles on first use).
+    package_data={"ieeg.timefreq": ["*.cu"]},
+    include_package_data=True,
     description='A Python package for iEEG data processing.',
     author='Aaron Earle-Richardson',
     author_email='ae166@duke.edu',

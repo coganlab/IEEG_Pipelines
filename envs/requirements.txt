@@ -8,6 +8,5 @@ scikit-learn
 pandas
 joblib>=1.3
 tqdm
-numba
 array-api-compat
 array-api-extra

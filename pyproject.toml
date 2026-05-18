@@ -35,8 +35,14 @@ viz-qt = ["pyqt5", "pyvistaqt"]
 # PyTorch decoder paths (currently only used on wip/decoding-experiments branch,
 # but kept here so optional usage stays consistent)
 torch = ["torch", "lightning", "torchmetrics"]
-# CuPy GPU backend (NumPy array-API-compatible)
-cuda = ["cupy-cuda12x"]
+# GPU support — minimum required for the superlets CUDA path. Uses
+# NVIDIA's official cuda-python bindings (lightweight, ~5 MB) for nvrtc
+# compilation and cuLaunchKernel. Works with any array library that
+# exposes __cuda_array_interface__ (cupy, torch CUDA tensors, etc.).
+cuda = ["cuda-python"]
+# Optional: full cupy array library if you want cupy ndarrays as your
+# GPU backend rather than torch CUDA tensors.
+cupy = ["cupy-cuda12x"]
 # System-memory introspection in ieeg/process.py (lazy-imported at call time)
 sysmem = ["psutil"]
 # NOTE: pybids (`bids`) is currently in core requirements because it is used
