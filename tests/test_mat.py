@@ -100,12 +100,15 @@ def test_parse_index(index, expected):
     data = {'a': {'b': {'c': 1, 'd': 2, 'e': 3},
                   'f': {'c': 4, 'd': 5}}}
     ad = LabeledArray.from_dict(data)
-    try:
-        parsed = ad._parse_index(list(index))
-        parsed = tuple(tuple(p) if isinstance(p, np.ndarray)
-                       else p for p in parsed)
-    except IndexError as e:
-        parsed = e.args[0]
+    parsed = ad[*index]
+    parsed = tuple(tuple(p) if isinstance(p, np.ndarray) and not np.isscalar(p)
+                else p for p in parsed)
+    # try:
+    #     parsed = ad[index]
+        # parsed = tuple(tuple(p) if isinstance(p, np.ndarray)
+        #                else p for p in parsed)
+    # except IndexError as e:
+    #     parsed = e.args[0]
     assert parsed == expected
 
 

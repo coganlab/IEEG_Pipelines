@@ -1,73 +1,145 @@
+"""Pytest coverage for the C-extension ``LabeledArray`` class.
+
+Originally a print-based smoke script; now expressed as ``test_*``
+functions so it runs as part of the battery. These tests target the
+hand-C class directly (``ieeg.arrays.labeledarray.LabeledArray``)
+without the Python ``label.py`` subclass on top.
+"""
+from __future__ import annotations
+
 import numpy as np
+import pytest
+
 from ieeg.arrays.labeledarray import LabeledArray
-# from ieeg.arrays.label import LabeledArray # from python subclass
-import faulthandler, sys
-faulthandler.enable()
-faulthandler.dump_traceback_later(10, repeat=True, file=sys.stderr)
 
-labs = (('r0','r1'),('c0','c1','c2'))
-a = LabeledArray(np.arange(6, dtype=np.float32).reshape(2,3), labels=labs)
-print('a', a)
 
-# slice by rows retains labels on remaining axis
-s = a['r0']
-print('slice_shape', s.shape)
-print('slice_labels0', s.labels[0])
+LABS_2D = (("r0", "r1"), ("c0", "c1", "c2"))
 
-# slice by columns
-s2 = a[:, ('c1','c2')]
-print('slice2_shape', s2.shape)
-print('slice2_labels1', s2.labels[1])
 
-# ellipsis and newaxis
-s3 = a['r1', ...]
-print('ellipsis_shape', s3.shape)
-print('ellipsis_labels', s3.labels)
+def _arr2d():
+    return LabeledArray(np.arange(6, dtype=np.float32).reshape(2, 3),
+                        labels=LABS_2D)
 
-s4 = a[np.newaxis, 'r0']
-print('newaxis_shape', s4.shape)
-print('newaxis_labels0', s4.labels[0])
 
-# labels persist across views (transpose)
-t = a.T
-print('T_shape', t.shape)
-print('T_labels0', t.labels[0])
+# -------------------------------------------------------------------- #
+# Indexing
+# -------------------------------------------------------------------- #
 
-# print(a.find('r0'))
-print([b for b in a])
+def test_row_label_slice():
+    a = _arr2d()
+    s = a["r0"]
+    assert s.shape == (3,)
+    assert tuple(s.labels[0]) == ("c0", "c1", "c2")
+    np.testing.assert_array_equal(np.asarray(s),
+                                  np.array([0, 1, 2], dtype=np.float32))
 
-print(a.labels)
-a[0] = [2,3,4]
-print(a)
-a[1] = np.array([5,6,7])
-a[1] += 1
-print(a)
 
-def weighted_preserve_stats(data, weights, axis=None):
-    """
-    Multiplies data along the specified axis by weights, then rescales
-    to preserve the original mean and variance.
+def test_column_tuple_label_slice():
+    a = _arr2d()
+    s2 = a[:, ("c1", "c2")]
+    assert s2.shape == (2, 2)
+    assert tuple(s2.labels[1]) == ("c1", "c2")
+    np.testing.assert_array_equal(
+        np.asarray(s2),
+        np.array([[1, 2], [4, 5]], dtype=np.float32))
 
-    Parameters:
-        data (np.ndarray): The input data array.
-        weights (np.ndarray): The weight vector.
-        axis (int): The axis along which to multiply.
 
-    Returns:
-        np.ndarray: The weighted and rescaled data.
-    """
+def test_ellipsis_after_string_key():
+    a = _arr2d()
+    s3 = a["r1", ...]
+    assert s3.shape == (3,)
+    assert tuple(s3.labels[0]) == ("c0", "c1", "c2")
+
+
+def test_newaxis_with_string_key():
+    a = _arr2d()
+    s4 = a[np.newaxis, "r0"]
+    assert s4.shape == (1, 3)
+    # The new axis gets a default singleton label; the surviving
+    # column axis keeps its labels.
+    assert tuple(s4.labels[-1]) == ("c0", "c1", "c2")
+
+
+# -------------------------------------------------------------------- #
+# Views: transpose / iter
+# -------------------------------------------------------------------- #
+
+def test_transpose_preserves_label_block():
+    # The C class's ``.T`` returns a transposed numpy view but does NOT
+    # rotate the label block (legacy behaviour; the Python subclass in
+    # ``label.py`` does rotate via ``__array_finalize__``). The
+    # contract here is just that the labels remain accessible and the
+    # transposed shape is correct.
+    a = _arr2d()
+    t = a.T
+    assert t.shape == (3, 2)
+    assert hasattr(t, "labels")
+    # All original label tokens still reachable.
+    flat = tuple(x for axis in t.labels for x in axis)
+    for tok in ("r0", "r1", "c0", "c1", "c2"):
+        assert tok in flat
+
+
+def test_iter_yields_per_row():
+    a = _arr2d()
+    rows = list(a)
+    assert len(rows) == 2
+    for row in rows:
+        assert row.shape == (3,)
+
+
+# -------------------------------------------------------------------- #
+# Item assignment
+# -------------------------------------------------------------------- #
+
+def test_assign_row_with_list():
+    a = _arr2d()
+    a[0] = [2, 3, 4]
+    np.testing.assert_array_equal(np.asarray(a[0]),
+                                  np.array([2, 3, 4], dtype=np.float32))
+
+
+def test_assign_row_with_ndarray_then_iadd():
+    a = _arr2d()
+    a[1] = np.array([5, 6, 7])
+    a[1] += 1
+    np.testing.assert_array_equal(np.asarray(a[1]),
+                                  np.array([6, 7, 8], dtype=np.float32))
+
+
+# -------------------------------------------------------------------- #
+# Reshape / combine
+# -------------------------------------------------------------------- #
+
+def test_combine_concatenates_labels_along_axis():
+    a = _arr2d()
+    out = a.combine((0, 1))
+    # Combine ``(0, 1)`` collapses the first two axes; the resulting
+    # labels are the cross-product of (r0,r1) × (c0,c1,c2) joined by
+    # the delimiter ('-').
+    assert out.shape == (6,)
+    joined = tuple(out.labels[0])
+    expected = (
+        "r0-c0", "r0-c1", "r0-c2",
+        "r1-c0", "r1-c1", "r1-c2",
+    )
+    assert joined == expected
+
+
+# -------------------------------------------------------------------- #
+# Weighted helper (regression: in-place ufuncs + masks + dtype kwarg)
+# -------------------------------------------------------------------- #
+
+def _weighted_preserve_stats(data, weights, axis=None):
     where = ~np.isnan(data)
-    kwargs = {'where': where, 'dtype': 'f4'}
+    kwargs = {"where": where, "dtype": "f4"}
     orig_mean = np.mean(data, **kwargs)
     orig_std = np.std(data, **kwargs)
-
-    # Multiply along the specified axis
     if axis is None:
         data *= weights
     else:
-        data *= weights.reshape([1 if i != axis else -1 for i in range(data.ndim)])
-
-    # Rescale to preserve mean and variance
+        data *= weights.reshape(
+            [1 if i != axis else -1 for i in range(data.ndim)])
     weighted_mean = np.mean(data, **kwargs)
     weighted_std = np.std(data, **kwargs)
     data -= weighted_mean
@@ -75,8 +147,37 @@ def weighted_preserve_stats(data, weights, axis=None):
     data += orig_mean
     return data
 
-print(weighted_preserve_stats(a, np.array([[1,2,3]])))
 
-print("combine", a.combine((0,1)))
+def test_weighted_preserve_stats_keeps_mean_and_std():
+    a = _arr2d()
+    weights = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+    orig = np.asarray(a).copy()
+    out = _weighted_preserve_stats(a, weights)
+    # In-place mutation; the LabeledArray storage is now scaled. The
+    # contract is "preserve mean and std under the where=~isnan mask".
+    np.testing.assert_allclose(
+        float(np.mean(np.asarray(out))),
+        float(np.mean(orig)),
+        atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        float(np.std(np.asarray(out))),
+        float(np.std(orig)),
+        atol=1e-5,
+    )
 
-print("")
+
+# -------------------------------------------------------------------- #
+# C-class survives a faulthandler-tracked stress test (no crash)
+# -------------------------------------------------------------------- #
+
+def test_c_class_stress_no_crash():
+    # Many small ops in a row — the original print-script exposed
+    # crashes under the C extension with a 10-second faulthandler.
+    a = _arr2d()
+    for _ in range(50):
+        _ = a.T
+        _ = a["r0"]
+        _ = a[:, "c0"]
+        _ = a[np.newaxis, "r0"]
+        _ = a.combine((0, 1))
